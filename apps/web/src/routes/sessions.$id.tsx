@@ -256,14 +256,14 @@ function SessionDrillIn() {
                 {transcriptQ.error instanceof Error ? transcriptQ.error.message : "unknown error"}
               </div>
             ) : (
-              <div className="max-w-3xl mx-auto">
+              <div data-testid="chat-transcript" className="w-full">
                 <TranscriptView messages={transcriptQ.data ?? []} />
                 <div ref={bottomRef} />
               </div>
             )}
           </div>
 
-          <div className="max-w-3xl mx-auto w-full">
+          <div className="w-full">
             <ChatComposer short={id} />
           </div>
         </>
