@@ -1,4 +1,5 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router"
+import { PaletteController } from "../features/palette/PaletteController"
 import { Sidebar } from "../features/sessions/Sidebar"
 
 export const Route = createRootRoute({
@@ -13,6 +14,7 @@ function RootLayout() {
           <Link to="/" className="font-semibold text-sm whitespace-nowrap hover:underline">
             pi-browser-dashboard
           </Link>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">⇧⇧ to jump</span>
         </div>
       </header>
       <div className="flex items-start">
@@ -21,6 +23,7 @@ function RootLayout() {
           <Outlet />
         </main>
       </div>
+      <PaletteController />
     </div>
   )
 }
