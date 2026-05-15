@@ -97,12 +97,27 @@ export const Sidebar = () => {
                 className="group flex items-center gap-1 px-2 py-1 text-[12px] font-medium text-slate-700 dark:text-slate-200"
                 title={b.pathHint}
               >
-                <span className="truncate flex-1">
-                  {b.title}
-                  <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">
-                    {b.sessions.length}
+                {b.project ? (
+                  <Link
+                    to="/projects/$id"
+                    params={{ id: b.project.id }}
+                    data-testid="sidebar-project-link"
+                    data-project-id={b.project.id}
+                    className="truncate flex-1 hover:text-sky-700 dark:hover:text-sky-300 hover:underline"
+                  >
+                    {b.title}
+                    <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">
+                      {b.sessions.length}
+                    </span>
+                  </Link>
+                ) : (
+                  <span className="truncate flex-1">
+                    {b.title}
+                    <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">
+                      {b.sessions.length}
+                    </span>
                   </span>
-                </span>
+                )}
                 {b.project ? (
                   <button
                     type="button"
