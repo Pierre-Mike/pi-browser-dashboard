@@ -1,0 +1,20 @@
+{
+  "name": "@pid/root",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev:daemon": "bun --cwd apps/daemon run dev",
+    "dev:web": "bun --cwd apps/web run dev",
+    "test:e2e": "bun --cwd apps/e2e run test",
+    "test:e2e:ui": "bun --cwd apps/e2e run test:ui",
+    "test:e2e:setup-auth": "bun --cwd apps/e2e run setup:auth",
+    "lint": "biome check --write .",
+    "lint:ci": "biome ci .",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.6.3"
+  }
+}
