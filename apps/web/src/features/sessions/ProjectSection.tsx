@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { useState } from "react"
 import type { Project, SessionState } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
@@ -45,17 +46,40 @@ export const ProjectSection = ({ project, title, pathHint, sessions, canSpawn }:
       data-session-count={sessions.length}
     >
       <div className="flex items-stretch gap-2">
-        <div className="flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-3 py-2 flex items-center gap-2">
-          <span className="text-base leading-none shrink-0" aria-label={agg.label}>
-            {agg.icon}
-          </span>
-          <span className="font-medium truncate" title={pathHint ?? title}>
-            {title}
-          </span>
-          <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
-            {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
-          </span>
-        </div>
+        {project ? (
+          <Link
+            to="/projects/$id"
+            params={{ id: project.id }}
+            data-testid="project-bar"
+            data-project-id={project.id}
+            className="flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-3 py-2 flex items-center gap-2 hover:border-sky-400 dark:hover:border-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/40 transition-colors"
+          >
+            <span className="text-base leading-none shrink-0" aria-label={agg.label}>
+              {agg.icon}
+            </span>
+            <span className="font-medium truncate" title={pathHint ?? title}>
+              {title}
+            </span>
+            <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
+              {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+            </span>
+          </Link>
+        ) : (
+          <div
+            data-testid="project-bar"
+            className="flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-3 py-2 flex items-center gap-2"
+          >
+            <span className="text-base leading-none shrink-0" aria-label={agg.label}>
+              {agg.icon}
+            </span>
+            <span className="font-medium truncate" title={pathHint ?? title}>
+              {title}
+            </span>
+            <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
+              {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+            </span>
+          </div>
+        )}
         {canSpawn ? (
           <button
             type="button"
