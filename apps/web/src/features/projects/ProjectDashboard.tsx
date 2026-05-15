@@ -4,6 +4,7 @@ import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
+import { FileTree } from "./FileTree"
 
 type Props = { project: Project }
 
@@ -140,6 +141,13 @@ export const ProjectDashboard = ({ project }: Props) => {
           ))}
         </div>
       )}
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Files
+        </h2>
+        <FileTree projectId={project.id} />
+      </section>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />
     </div>

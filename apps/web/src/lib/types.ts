@@ -28,6 +28,25 @@ export type Project = {
   lastModified: number
 }
 
+export type FileEntry = {
+  name: string
+  type: "dir" | "file" | "symlink" | "other"
+  size: number
+}
+
+export type FileListing = {
+  path: string
+  entries: FileEntry[]
+}
+
+export type FileContent = {
+  path: string
+  size: number
+  isBinary: boolean
+  truncated: boolean
+  content: string
+}
+
 export type TranscriptMessage = {
   type: "user" | "assistant" | "tool_use" | "tool_result" | "system" | "result"
   // Free-form payload — the JSONL format varies by message type. We render
