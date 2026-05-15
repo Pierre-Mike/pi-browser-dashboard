@@ -14,7 +14,17 @@ type Bridge = {
 
 const bridges = new WeakMap<object, Bridge>()
 
-const spawnChild = (cwd: string, cmd: string) =>
+const DEFAULT_COLS = 120
+const DEFAULT_ROWS = 32
+
+const clampDim = (raw: string | undefined, fallback: number, max: number): number => {
+  if (!raw) return fallback
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return Math.min(n, max)
+}
+
+const spawnChild = (cwd: string, cmd: string, cols: number, rows: number) =>
   Bun.spawn(["bash", "-lc", cmd], {
     cwd,
     stdin: "pipe",
@@ -23,8 +33,8 @@ const spawnChild = (cwd: string, cmd: string) =>
     env: {
       ...process.env,
       TERM: "xterm-256color",
-      COLUMNS: "120",
-      LINES: "32",
+      COLUMNS: String(cols),
+      LINES: String(rows),
     },
   })
 
@@ -55,6 +65,11 @@ const app = new Hono().get(
   "/:id",
   upgradeWebSocket((c) => {
     const id = c.req.param("id") ?? ""
+    // The browser sends its current xterm dims at connect-time. There is no
+    // pty (Bun pipes only), so SIGWINCH isn't an option — these are the only
+    // chance to size `claude attach` (and zellij inside it) correctly.
+    const cols = clampDim(c.req.query("cols"), DEFAULT_COLS, 400)
+    const rows = clampDim(c.req.query("rows"), DEFAULT_ROWS, 200)
     const tokenKey = {}
     return {
       onOpen: async (_evt, ws) => {
@@ -78,7 +93,7 @@ const app = new Hono().get(
         // session's worktree first so `pwd` looks right after detach.
         const cwd = session.cwd || process.env.HOME || "/"
         const cmd = `cd ${JSON.stringify(cwd)} && exec claude attach ${session.short}`
-        const child = spawnChild(cwd, cmd)
+        const child = spawnChild(cwd, cmd, cols, rows)
         const drainAbort = new AbortController()
         bridges.set(tokenKey, { child, drainAbort })
 
