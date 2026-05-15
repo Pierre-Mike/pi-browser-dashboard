@@ -5,6 +5,7 @@ import { SpawnModal } from "../dispatch/SpawnModal"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
+import { GithubPanel } from "./GithubPanel"
 
 type Props = { project: Project }
 
@@ -63,6 +64,18 @@ export const ProjectDashboard = ({ project }: Props) => {
                 ⚠ no isolation
               </span>
             )}
+            {project.githubUrl ? (
+              <a
+                data-testid="github-link"
+                href={project.githubUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
+                className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
+              >
+                GitHub ↗
+              </a>
+            ) : null}
           </h1>
           <button
             type="button"
@@ -129,6 +142,10 @@ export const ProjectDashboard = ({ project }: Props) => {
           ) : null}
         </div>
       </header>
+
+      {project.githubUrl ? (
+        <GithubPanel projectId={project.id} githubUrl={project.githubUrl} />
+      ) : null}
 
       {sessions.length === 0 ? (
         <div className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">

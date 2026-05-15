@@ -1,3 +1,5 @@
+// Pure helpers for the projects feature. No I/O.
+
 import { isAbsolute, normalize, relative, resolve, sep } from "node:path"
 
 export type FileEntry = {
@@ -51,4 +53,70 @@ export const sortEntries = (entries: readonly FileEntry[]): readonly FileEntry[]
     if (r !== 0) return r
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
   })
+}
+
+export type GithubRemote = {
+  readonly owner: string
+  readonly repo: string
+  readonly url: string
+}
+
+// Parses an INI-shaped .git/config and returns the GitHub `origin` remote, if
+// any. Supports both SSH (`git@github.com:owner/repo.git`) and HTTPS
+// (`https://github.com/owner/repo(.git)?`) origin URLs. Returns null when the
+// file lacks an `[remote "origin"]` section, when its `url` is not on
+// github.com, or when the URL cannot be parsed into owner/repo.
+export const parseGithubOrigin = (configText: string): GithubRemote | null => {
+  let inOrigin = false
+  let originUrl: string | null = null
+  for (const rawLine of configText.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (line.length === 0 || line.startsWith("#") || line.startsWith(";")) continue
+    if (line.startsWith("[")) {
+      inOrigin = /^\[remote\s+"origin"\]$/.test(line)
+      continue
+    }
+    if (!inOrigin) continue
+    const eq = line.indexOf("=")
+    if (eq === -1) continue
+    const key = line.slice(0, eq).trim().toLowerCase()
+    const value = line.slice(eq + 1).trim()
+    if (key === "url") {
+      originUrl = value
+      break
+    }
+  }
+  if (!originUrl) return null
+  return parseGithubUrl(originUrl)
+}
+
+const stripGitSuffix = (s: string): string => (s.endsWith(".git") ? s.slice(0, -4) : s)
+
+export const parseGithubUrl = (url: string): GithubRemote | null => {
+  // SSH: git@github.com:owner/repo(.git)?
+  const ssh = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url)
+  if (ssh?.[1] && ssh[2]) {
+    const owner = ssh[1]
+    const repo = stripGitSuffix(ssh[2])
+    return {
+      owner,
+      repo,
+      url: `https://github.com/${owner}/${repo}`,
+    }
+  }
+  // HTTPS/SSH-URL: (https?|ssh|git)://[user@]github.com/owner/repo(.git)?
+  const httpsLike =
+    /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?github\.com\/([^/]+)\/([^/?#]+?)(?:\.git)?\/?(?:[?#].*)?$/.exec(
+      url,
+    )
+  if (httpsLike?.[1] && httpsLike[2]) {
+    const owner = httpsLike[1]
+    const repo = stripGitSuffix(httpsLike[2])
+    return {
+      owner,
+      repo,
+      url: `https://github.com/${owner}/${repo}`,
+    }
+  }
+  return null
 }

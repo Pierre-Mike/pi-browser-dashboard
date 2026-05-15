@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { fetchGithubSummary } from "./github.repo"
 import type { FileError } from "./projects.repo"
 import { ProjectsService } from "./projects.repo"
 
@@ -52,6 +53,20 @@ const app = new Hono()
     )
     if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
     return c.json(result.right)
+  })
+  .get("/:id/github", async (c) => {
+    const id = c.req.param("id")
+    const list = await appRuntime.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* ProjectsService
+        return yield* svc.list()
+      }),
+    )
+    const project = list.find((p) => p.id === id)
+    if (!project) return c.json({ error: "project not found" }, 404)
+    if (!project.githubUrl) return c.json({ error: "project has no github origin" }, 400)
+    const summary = await fetchGithubSummary(project.path)
+    return c.json(summary)
   })
 
 export const testApp = app

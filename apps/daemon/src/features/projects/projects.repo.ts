@@ -2,7 +2,13 @@ import { readFile, readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
-import { type FileEntry, looksBinary, resolveProjectPath, sortEntries } from "./projects.core"
+import {
+  type FileEntry,
+  looksBinary,
+  parseGithubOrigin,
+  resolveProjectPath,
+  sortEntries,
+} from "./projects.core"
 
 export type Project = {
   readonly id: string
@@ -10,6 +16,9 @@ export type Project = {
   readonly path: string
   readonly isGitRepo: boolean
   readonly lastModified: number
+  readonly githubUrl?: string
+  readonly githubOwner?: string
+  readonly githubRepo?: string
 }
 
 export type FileListing = {
@@ -53,11 +62,28 @@ const probeProject = (
     const s = await stat(path)
     if (!s.isDirectory()) return null
     let isGitRepo = false
+    let gitConfigPath: string | null = null
     try {
       const gs = await stat(join(path, ".git"))
-      isGitRepo = gs.isDirectory() || gs.isFile()
+      if (gs.isDirectory()) {
+        isGitRepo = true
+        gitConfigPath = join(path, ".git", "config")
+      } else if (gs.isFile()) {
+        isGitRepo = true
+        // Worktree/submodule .git file — skip config probe (origin lives in
+        // the parent repo; we don't traverse `gitdir:` references here).
+      }
     } catch {
       isGitRepo = false
+    }
+    let gh: ReturnType<typeof parseGithubOrigin> = null
+    if (gitConfigPath) {
+      try {
+        const text = await readFile(gitConfigPath, "utf8")
+        gh = parseGithubOrigin(text)
+      } catch {
+        gh = null
+      }
     }
     return {
       id: entry,
@@ -65,6 +91,7 @@ const probeProject = (
       path,
       isGitRepo,
       lastModified: s.mtimeMs,
+      ...(gh ? { githubUrl: gh.url, githubOwner: gh.owner, githubRepo: gh.repo } : {}),
     }
   }).pipe(Effect.orElseSucceed(() => null))
 
