@@ -15,6 +15,16 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto("/")
   const { short } = await dispatchDirect()
+
+  // Capture the /terminal/:short WebSocket URL so we can verify the cols/rows
+  // handshake. The daemon has no pty (Bun pipes only), so spawn-time env is
+  // the only chance to size `claude attach`. Without these params, zellij
+  // renders at the daemon's 120x32 default in the top-left of the canvas.
+  const termWs = page.waitForEvent("websocket", {
+    predicate: (ws) => ws.url().includes(`/terminal/${short}`),
+    timeout: 20_000,
+  })
+
   try {
     await waitForCard(page, short, 20_000)
     await waitForSettled(page, short)
@@ -25,6 +35,13 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
     await page.getByTestId("tab-terminal").click()
     const host = page.getByTestId("terminal-host")
     await expect(host).toBeVisible()
+
+    const wsUrl = new URL((await termWs).url())
+    const cols = Number(wsUrl.searchParams.get("cols"))
+    const rows = Number(wsUrl.searchParams.get("rows"))
+    // At 1600x1000 the fit should produce well more than xterm's 80x24 default.
+    expect(cols).toBeGreaterThan(120)
+    expect(rows).toBeGreaterThan(30)
 
     const screen = host.locator(".xterm-screen")
     await expect(screen).toBeVisible({ timeout: 15_000 })

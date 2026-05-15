@@ -6,11 +6,13 @@ import type { SessionState } from "../../lib/types"
 
 type Props = { session: SessionState }
 
-const wsUrl = (short: string): string => {
+const wsUrl = (short: string, cols: number, rows: number): string => {
   const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
   const u = new URL(base)
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:"
   u.pathname = `/terminal/${short}`
+  u.searchParams.set("cols", String(cols))
+  u.searchParams.set("rows", String(rows))
   return u.toString()
 }
 
@@ -54,7 +56,11 @@ export const TerminalTab = ({ session }: Props) => {
     const rafId = requestAnimationFrame(safeFit)
     const fitTimers = [setTimeout(safeFit, 60), setTimeout(safeFit, 250)]
 
-    const ws = new WebSocket(wsUrl(session.short))
+    // `claude attach` reads COLUMNS/LINES from spawn env (no pty, no SIGWINCH),
+    // so the only chance to size zellij correctly is at WS open. Use the dims
+    // produced by the synchronous safeFit() above; later re-fits keep the xterm
+    // canvas honest, but the pty-side size is fixed until reconnect.
+    const ws = new WebSocket(wsUrl(session.short, term.cols, term.rows))
     ws.binaryType = "arraybuffer"
 
     const decoder = new TextDecoder()
