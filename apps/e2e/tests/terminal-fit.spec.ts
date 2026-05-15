@@ -36,9 +36,12 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
     const heights = await page.evaluate(() => {
       const hostEl = document.querySelector('[data-testid="terminal-host"]') as HTMLElement | null
       const screenEl = hostEl?.querySelector(".xterm-screen") as HTMLElement | null
+      const tabEl = document.querySelector('[data-testid="terminal-tab"]') as HTMLElement | null
       return {
         hostHeight: hostEl?.clientHeight ?? 0,
         screenHeight: screenEl?.getBoundingClientRect().height ?? 0,
+        tabBottom: tabEl?.getBoundingClientRect().bottom ?? 0,
+        viewportHeight: window.innerHeight,
       }
     })
 
@@ -46,6 +49,10 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
     // Screen should be at least 70% of host height — well above the stale 408px
     // a 1000px viewport would otherwise produce.
     expect(heights.screenHeight).toBeGreaterThan(heights.hostHeight * 0.7)
+    // The terminal tab should reach the viewport bottom — the page container
+    // used to subtract an extra 2rem that wasn't actually consumed by chrome,
+    // leaving a ~32px gap below the status row.
+    expect(heights.viewportHeight - heights.tabBottom).toBeLessThan(8)
   } finally {
     rmSession(short)
   }

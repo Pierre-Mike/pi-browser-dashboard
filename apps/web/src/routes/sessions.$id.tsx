@@ -148,7 +148,7 @@ function SessionDrillIn() {
   }, [messageCount])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-49px-2rem)] -my-4">
+    <div className="flex flex-col h-[calc(100vh-49px)] -my-4">
       <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200 dark:border-slate-800">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -268,7 +268,7 @@ function SessionDrillIn() {
           </div>
         </>
       ) : session ? (
-        <div className="flex-1 min-h-0 px-1 py-2">
+        <div className="flex-1 min-h-0">
           <TerminalTab session={session} />
         </div>
       ) : (
