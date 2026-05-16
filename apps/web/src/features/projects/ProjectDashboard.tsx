@@ -5,6 +5,7 @@ import { SpawnModal } from "../dispatch/SpawnModal"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
+import { ProjectTerminal } from "./ProjectTerminal"
 
 type Props = { project: Project }
 
@@ -141,6 +142,8 @@ export const ProjectDashboard = ({ project }: Props) => {
           ))}
         </div>
       )}
+
+      <ProjectTerminal projectId={project.id} projectName={project.name} />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
