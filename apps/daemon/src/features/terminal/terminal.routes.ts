@@ -1,14 +1,11 @@
-import type { ServerWebSocket } from "bun"
 import { Effect } from "effect"
 import { Hono } from "hono"
 import type { Context } from "hono"
-import { createBunWebSocket } from "hono/bun"
 import { appRuntime } from "../../platform/runtime"
+import { upgradeWebSocket } from "../../platform/ws"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
-
-const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>()
 
 type Bridge = {
   child: Bun.Subprocess<"pipe", "pipe", "pipe">
@@ -203,4 +200,4 @@ const app = new Hono()
   .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand }))
   .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, detachBytes: "\x1a" }))
 
-export { app, websocket }
+export { app }

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
+import { CanvasTab } from "../features/canvas/CanvasTab"
 import { ChatComposer } from "../features/sessions/ChatComposer"
 import { TerminalTab } from "../features/sessions/TerminalTab"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
@@ -8,7 +9,7 @@ import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
 import type { SessionState, TranscriptMessage } from "../lib/types"
 
-type Tab = "chat" | "terminal"
+type Tab = "chat" | "canvas" | "terminal"
 
 export const Route = createFileRoute("/sessions/$id")({
   component: SessionDrillIn,
@@ -227,7 +228,7 @@ function SessionDrillIn() {
       ) : null}
 
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800 px-1">
-        {(["chat", "terminal"] as const).map((t) => (
+        {(["chat", "canvas", "terminal"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -267,6 +268,14 @@ function SessionDrillIn() {
             <ChatComposer short={id} />
           </div>
         </>
+      ) : tab === "canvas" ? (
+        session ? (
+          <div className="flex-1 min-h-0">
+            <CanvasTab session={session} />
+          </div>
+        ) : (
+          <div className="px-1 py-4 text-sm text-slate-500">Loading session…</div>
+        )
       ) : session ? (
         <div className="flex-1 min-h-0">
           <TerminalTab session={session} />
