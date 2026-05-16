@@ -1,9 +1,12 @@
+import type { ServerWebSocket } from "bun"
 import { Effect } from "effect"
 import { Hono } from "hono"
+import type { Context } from "hono"
 import { createBunWebSocket } from "hono/bun"
-import type { ServerWebSocket } from "bun"
 import { appRuntime } from "../../platform/runtime"
+import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
+import { projectZellijCommand, zellijSessionName } from "./terminal.core"
 
 const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>()
 
@@ -61,39 +64,39 @@ const pipeStream = async (
   }
 }
 
-const app = new Hono().get(
-  "/:id",
+type Resolved =
+  | { readonly ok: true; readonly cwd: string; readonly cmd: string }
+  | { readonly ok: false; readonly reason: string }
+
+type BridgeOpts = {
+  readonly resolveCommand: (c: Context) => Promise<Resolved>
+  // Optional pre-kill byte sequence to send on WS close. claude attach reads
+  // Ctrl+Z as "detach"; zellij doesn't need anything — killing the client
+  // process already detaches without disturbing the daemon-owned session.
+  readonly detachBytes?: string
+}
+
+const makeWsHandler = ({ resolveCommand, detachBytes }: BridgeOpts) =>
   upgradeWebSocket((c) => {
-    const id = c.req.param("id") ?? ""
     // The browser sends its current xterm dims at connect-time. There is no
     // pty (Bun pipes only), so SIGWINCH isn't an option — these are the only
-    // chance to size `claude attach` (and zellij inside it) correctly.
+    // chance to size the child correctly.
     const cols = clampDim(c.req.query("cols"), DEFAULT_COLS, 400)
     const rows = clampDim(c.req.query("rows"), DEFAULT_ROWS, 200)
     const tokenKey = {}
     return {
       onOpen: async (_evt, ws) => {
-        if (!id) {
-          ws.close(1011, "missing_id")
+        const resolved = await resolveCommand(c)
+        if (!resolved.ok) {
+          try {
+            ws.send(`\r\n\x1b[31m${resolved.reason}\x1b[0m\r\n`)
+          } catch {
+            // ws closed before send
+          }
+          ws.close(1011, resolved.reason)
           return
         }
-        const session = await appRuntime.runPromise(
-          Effect.gen(function* () {
-            const reg = yield* SessionRegistry
-            return reg.getOne(id)
-          }),
-        )
-        if (!session) {
-          ws.send(`\r\n\x1b[31msession ${id} not found\x1b[0m\r\n`)
-          ws.close(1011, "not_found")
-          return
-        }
-        // The browser tab is our multiplexer. Skip zellij and attach the
-        // supervisor session directly; the bash wrapper lands us in the
-        // session's worktree first so `pwd` looks right after detach.
-        const cwd = session.cwd || process.env.HOME || "/"
-        const cmd = `cd ${JSON.stringify(cwd)} && exec claude attach ${session.short}`
-        const child = spawnChild(cwd, cmd, cols, rows)
+        const child = spawnChild(resolved.cwd, resolved.cmd, cols, rows)
         const drainAbort = new AbortController()
         bridges.set(tokenKey, { child, drainAbort })
 
@@ -113,7 +116,7 @@ const app = new Hono().get(
 
         void child.exited.then((code) => {
           try {
-            ws.send(`\r\n\x1b[2mclaude attach exited (${code})\x1b[0m\r\n`)
+            ws.send(`\r\n\x1b[2mchild exited (${code})\x1b[0m\r\n`)
             ws.close(1000, "child_exited")
           } catch {
             // ws already closed
@@ -142,11 +145,13 @@ const app = new Hono().get(
         if (!b) return
         bridges.delete(tokenKey)
         b.drainAbort.abort()
-        try {
-          b.child.stdin.write("\x1a") // Ctrl+Z — detach cleanly
-          b.child.stdin.flush()
-        } catch {
-          // ignore
+        if (detachBytes !== undefined) {
+          try {
+            b.child.stdin.write(detachBytes)
+            b.child.stdin.flush()
+          } catch {
+            // ignore
+          }
         }
         setTimeout(() => {
           try {
@@ -157,7 +162,45 @@ const app = new Hono().get(
         }, 1_000)
       },
     }
-  }),
-)
+  })
+
+const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
+  const id = c.req.param("id") ?? ""
+  if (!id) return { ok: false, reason: "missing_id" }
+  const session = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const reg = yield* SessionRegistry
+      return reg.getOne(id)
+    }),
+  )
+  if (!session) return { ok: false, reason: `session ${id} not found` }
+  // The browser tab is our multiplexer. Skip zellij and attach the
+  // supervisor session directly; the bash wrapper lands us in the
+  // session's worktree first so `pwd` looks right after detach.
+  const cwd = session.cwd || process.env.HOME || "/"
+  const cmd = `cd ${JSON.stringify(cwd)} && exec claude attach ${session.short}`
+  return { ok: true, cwd, cmd }
+}
+
+const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
+  const id = c.req.param("id") ?? ""
+  if (!id) return { ok: false, reason: "missing_id" }
+  const sessionName = zellijSessionName(id)
+  if (!sessionName) return { ok: false, reason: "invalid_id" }
+  const projects = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const svc = yield* ProjectsService
+      return yield* svc.list()
+    }),
+  )
+  const project = projects.find((p) => p.id === id)
+  if (!project) return { ok: false, reason: `project ${id} not found` }
+  const cmd = projectZellijCommand({ cwd: project.path, sessionName })
+  return { ok: true, cwd: project.path, cmd }
+}
+
+const app = new Hono()
+  .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand }))
+  .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, detachBytes: "\x1a" }))
 
 export { app, websocket }
