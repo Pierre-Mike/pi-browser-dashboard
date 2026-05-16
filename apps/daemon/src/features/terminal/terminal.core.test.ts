@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { projectZellijCommand, zellijSessionName } from "./terminal.core"
+import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
 
 describe("zellijSessionName", () => {
   it("returns the bare repo name, lowercased — no prefix so we share the user's session", () => {
@@ -32,6 +32,32 @@ describe("zellijSessionName", () => {
     const out = zellijSessionName(long)
     expect(out).not.toBeNull()
     if (out !== null) expect(out.length).toBeLessThanOrEqual(64)
+  })
+})
+
+describe("cleanZellijEnv", () => {
+  it("drops every ZELLIJ-prefixed var", () => {
+    const out = cleanZellijEnv({
+      PATH: "/usr/bin",
+      ZELLIJ: "0",
+      ZELLIJ_SESSION_NAME: "pi-browser-dashboard",
+      ZELLIJ_PANE_ID: "12",
+    })
+    expect(out.PATH).toBe("/usr/bin")
+    expect(out.ZELLIJ).toBeUndefined()
+    expect(out.ZELLIJ_SESSION_NAME).toBeUndefined()
+    expect(out.ZELLIJ_PANE_ID).toBeUndefined()
+  })
+
+  it("drops undefined values (Node's env-shaped Record allows them)", () => {
+    const out = cleanZellijEnv({ HOME: "/h", MISSING: undefined })
+    expect(out.HOME).toBe("/h")
+    expect("MISSING" in out).toBe(false)
+  })
+
+  it("keeps unrelated vars untouched", () => {
+    const out = cleanZellijEnv({ FOO: "bar", BAZ: "qux" })
+    expect(out).toEqual({ FOO: "bar", BAZ: "qux" })
   })
 })
 
