@@ -36,7 +36,7 @@ describe("zellijSessionName", () => {
 })
 
 describe("cleanZellijEnv", () => {
-  it("drops every ZELLIJ-prefixed var", () => {
+  it("drops the per-session markers that trigger self-attach detection", () => {
     const out = cleanZellijEnv({
       PATH: "/usr/bin",
       ZELLIJ: "0",
@@ -47,6 +47,21 @@ describe("cleanZellijEnv", () => {
     expect(out.ZELLIJ).toBeUndefined()
     expect(out.ZELLIJ_SESSION_NAME).toBeUndefined()
     expect(out.ZELLIJ_PANE_ID).toBeUndefined()
+  })
+
+  it("KEEPS ZELLIJ_SOCKET_DIR — the child needs it to find the zellij daemon", () => {
+    const out = cleanZellijEnv({ ZELLIJ_SOCKET_DIR: "/var/z", ZELLIJ_SESSION_NAME: "x" })
+    expect(out.ZELLIJ_SOCKET_DIR).toBe("/var/z")
+    expect(out.ZELLIJ_SESSION_NAME).toBeUndefined()
+  })
+
+  it("keeps ZELLIJ_CONFIG_DIR / ZELLIJ_CONFIG_FILE (custom config paths)", () => {
+    const out = cleanZellijEnv({
+      ZELLIJ_CONFIG_DIR: "/cfg",
+      ZELLIJ_CONFIG_FILE: "/cfg/config.kdl",
+    })
+    expect(out.ZELLIJ_CONFIG_DIR).toBe("/cfg")
+    expect(out.ZELLIJ_CONFIG_FILE).toBe("/cfg/config.kdl")
   })
 
   it("drops undefined values (Node's env-shaped Record allows them)", () => {
