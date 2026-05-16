@@ -2,9 +2,10 @@
 
 // Reduce a project id to a zellij session name. Zellij names mostly accept
 // printable chars but trip on whitespace and shell-special chars, so collapse
-// everything outside [a-z0-9._-] to '-'. Prefix with "pid-" so we never collide
-// with the user's own zellij sessions, and cap at 64 chars (zellij's own limit
-// is generous, but long names render badly in the status bar).
+// everything outside [a-z0-9._-] to '-'. We deliberately do NOT prefix the name
+// — the user's convention is to name zellij sessions after the bare repo, and
+// the whole point of this route is to attach to that pre-existing session if
+// it already exists.
 export const zellijSessionName = (rawId: string): string | null => {
   const cleaned = rawId
     .toLowerCase()
@@ -12,7 +13,7 @@ export const zellijSessionName = (rawId: string): string | null => {
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
   if (cleaned.length === 0) return null
-  return `pid-${cleaned}`.slice(0, 64)
+  return cleaned.slice(0, 64)
 }
 
 // Bash-single-quote escape: wrap in single quotes, replace embedded ' with
