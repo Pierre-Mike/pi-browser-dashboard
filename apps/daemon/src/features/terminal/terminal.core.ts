@@ -16,18 +16,23 @@ export const zellijSessionName = (rawId: string): string | null => {
   return cleaned.slice(0, 64)
 }
 
-// Strip ZELLIJ_* env vars from the parent environment before forwarding to a
-// child. If the daemon itself is running inside a zellij pane (common in dev),
-// those vars trick the nested zellij client into thinking it's already
-// attached — and `zellij attach <same-name>` panics with "trying to attach to
-// the current session".
+// Drop the per-session markers ZELLIJ / ZELLIJ_SESSION_NAME / ZELLIJ_PANE_ID
+// before forwarding env to a child. If the daemon runs inside a zellij pane
+// (common in dev) those vars leak and `zellij attach <same-name>` panics with
+// "trying to attach to the current session".
+//
+// Keep ZELLIJ_SOCKET_DIR (and any other ZELLIJ_* config paths) untouched — the
+// child needs them to talk to the user's zellij daemon. Stripping them sends
+// the child to a different socket dir where it sees zero sessions.
+const ZELLIJ_SESSION_KEYS = new Set(["ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID"])
+
 export const cleanZellijEnv = (
   env: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> => {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) continue
-    if (k.startsWith("ZELLIJ")) continue
+    if (ZELLIJ_SESSION_KEYS.has(k)) continue
     out[k] = v
   }
   return out
