@@ -16,6 +16,23 @@ export const zellijSessionName = (rawId: string): string | null => {
   return cleaned.slice(0, 64)
 }
 
+// Strip ZELLIJ_* env vars from the parent environment before forwarding to a
+// child. If the daemon itself is running inside a zellij pane (common in dev),
+// those vars trick the nested zellij client into thinking it's already
+// attached — and `zellij attach <same-name>` panics with "trying to attach to
+// the current session".
+export const cleanZellijEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) continue
+    if (k.startsWith("ZELLIJ")) continue
+    out[k] = v
+  }
+  return out
+}
+
 // Bash-single-quote escape: wrap in single quotes, replace embedded ' with
 // '\''. Safe for any byte string in a POSIX shell.
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`

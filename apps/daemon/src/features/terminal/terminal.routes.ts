@@ -6,7 +6,7 @@ import { createBunWebSocket } from "hono/bun"
 import { appRuntime } from "../../platform/runtime"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
-import { projectZellijCommand, zellijSessionName } from "./terminal.core"
+import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
 
 const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>()
 
@@ -34,7 +34,7 @@ const spawnChild = (cwd: string, cmd: string, cols: number, rows: number) =>
     stdout: "pipe",
     stderr: "pipe",
     env: {
-      ...process.env,
+      ...cleanZellijEnv(process.env),
       TERM: "xterm-256color",
       COLUMNS: String(cols),
       LINES: String(rows),
