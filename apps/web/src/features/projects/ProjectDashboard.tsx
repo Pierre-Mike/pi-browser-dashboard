@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { SessionCard } from "../sessions/SessionCard"
@@ -11,6 +11,10 @@ import { ProjectTerminal } from "./ProjectTerminal"
 type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
+
+type TabKey = "sessions" | "github" | "terminal" | "files"
+
+type Tab = { readonly key: TabKey; readonly label: string }
 
 const emptyCounts = (): Counts => ({
   needs_input: 0,
@@ -41,6 +45,18 @@ export const ProjectDashboard = ({ project }: Props) => {
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
+
+  const tabs: readonly Tab[] = useMemo(() => {
+    const base: Tab[] = [
+      { key: "sessions", label: `Sessions${sessions.length ? ` · ${sessions.length}` : ""}` },
+    ]
+    if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
+    base.push({ key: "terminal", label: "Terminal" })
+    base.push({ key: "files", label: "Files" })
+    return base
+  }, [project.githubUrl, sessions.length])
+
+  const [tab, setTab] = useState<TabKey>("sessions")
 
   return (
     <div data-testid="project-dashboard" className="flex flex-col gap-4">
@@ -144,30 +160,78 @@ export const ProjectDashboard = ({ project }: Props) => {
         </div>
       </header>
 
+      <nav
+        data-testid="project-tabs"
+        role="tablist"
+        aria-label="Project sections"
+        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 -mt-2"
+      >
+        {tabs.map((t) => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`project-tab-${t.key}`}
+              data-active={active}
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                active
+                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </nav>
+
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-sessions"
+        className={tab === "sessions" ? "flex flex-col gap-3" : "hidden"}
+      >
+        {sessions.length === 0 ? (
+          <div className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
+            No sessions yet — use <span className="font-medium">Spawn new +</span> to start one.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {sessions.map((s) => (
+              <SessionCard key={s.short} session={s} />
+            ))}
+          </div>
+        )}
+      </div>
+
       {project.githubUrl ? (
-        <GithubPanel projectId={project.id} githubUrl={project.githubUrl} />
+        <div
+          role="tabpanel"
+          data-testid="project-tab-panel-github"
+          className={tab === "github" ? "" : "hidden"}
+        >
+          <GithubPanel projectId={project.id} githubUrl={project.githubUrl} />
+        </div>
       ) : null}
 
-      {sessions.length === 0 ? (
-        <div className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
-          No sessions yet — use <span className="font-medium">Spawn new +</span> to start one.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {sessions.map((s) => (
-            <SessionCard key={s.short} session={s} />
-          ))}
-        </div>
-      )}
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-terminal"
+        className={tab === "terminal" ? "" : "hidden"}
+      >
+        <ProjectTerminal projectId={project.id} projectName={project.name} />
+      </div>
 
-      <ProjectTerminal projectId={project.id} projectName={project.name} />
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Files
-        </h2>
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-files"
+        className={tab === "files" ? "flex flex-col gap-2" : "hidden"}
+      >
         <FileTree projectId={project.id} />
-      </section>
+      </div>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />
     </div>

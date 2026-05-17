@@ -25,7 +25,8 @@ test("project dashboard exposes GitHub link from origin remote", async ({ page }
   await expect(link).toHaveAttribute("href", "https://github.com/Pierre-Mike/pi-browser-dashboard")
   await expect(link).toHaveAttribute("target", "_blank")
 
-  // GitHub panel renders alongside the link.
+  // GitHub panel sits under the GitHub tab — switch to it before asserting.
+  await page.getByTestId("project-tab-github").click()
   await expect(page.getByTestId("github-panel")).toBeVisible()
 })
 
@@ -37,4 +38,5 @@ test("project dashboard hides GitHub link when no github origin", async ({ page 
   await expect(page.locator('[data-testid="project-dashboard"]')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("github-link")).toHaveCount(0)
   await expect(page.getByTestId("github-panel")).toHaveCount(0)
+  await expect(page.getByTestId("project-tab-github")).toHaveCount(0)
 })
