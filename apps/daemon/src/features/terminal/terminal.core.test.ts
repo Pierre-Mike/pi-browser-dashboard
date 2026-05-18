@@ -139,6 +139,20 @@ describe("projectZellijCommand", () => {
     })
     expect(cmd).toContain(`-n '/tmp/it'\\''s.kdl'`)
   })
+
+  it("omits -n <file> when layoutFile is undefined (global catch-all session)", () => {
+    // Regression: resolveGlobalCommand calls this without layoutFile. Previously
+    // shq(undefined) threw TypeError at onOpen and the WS died before any byte
+    // reached the browser.
+    const cmd = projectZellijCommand({ cwd: "/h", sessionName: "default" })
+    expect(cmd).toContain(`exec zellij -s 'default'`)
+    expect(cmd).not.toContain(" -n ")
+  })
+
+  it("still attaches an existing session even with no layoutFile", () => {
+    const cmd = projectZellijCommand({ cwd: "/h", sessionName: "default" })
+    expect(cmd).toContain(`exec zellij attach 'default'`)
+  })
 })
 
 describe("GLOBAL_ZELLIJ_SESSION", () => {

@@ -76,20 +76,27 @@ export const CLAUDE_LAYOUT_KDL = `layout {
 // the existing session", and when no session by that name exists zellij just
 // prints "Session 'NAME' not found" and exits without creating anything. The
 // caller (TerminalRoutes) writes the layout to a temp file and passes its path.
+//
+// `layoutFile` is optional: per-project sessions pass the claude-pane layout so
+// the first open lands inside `claude`; the global catch-all session omits it
+// and gets a bare default zellij session instead.
 export const projectZellijCommand = (args: {
   readonly cwd: string
   readonly sessionName: string
-  readonly layoutFile: string
+  readonly layoutFile?: string
 }): string => {
   const cwd = shq(args.cwd)
   const name = shq(args.sessionName)
-  const layoutFile = shq(args.layoutFile)
+  const newSession =
+    args.layoutFile !== undefined
+      ? `exec zellij -s ${name} -n ${shq(args.layoutFile)}`
+      : `exec zellij -s ${name}`
   return [
     `cd ${cwd}`,
     `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
     `  exec zellij attach ${name}`,
     `else`,
-    `  exec zellij -s ${name} -n ${layoutFile}`,
+    `  ${newSession}`,
     `fi`,
   ].join("\n")
 }
