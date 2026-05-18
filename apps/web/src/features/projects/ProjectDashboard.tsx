@@ -57,9 +57,13 @@ export const ProjectDashboard = ({ project }: Props) => {
   }, [project.githubUrl, sessions.length])
 
   const [tab, setTab] = useState<TabKey>("sessions")
+  const fillViewport = tab === "terminal"
 
   return (
-    <div data-testid="project-dashboard" className="flex flex-col gap-4">
+    <div
+      data-testid="project-dashboard"
+      className={`flex flex-col gap-4 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-4" : ""}`}
+    >
       <header className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <Link to="/" className="hover:underline">
@@ -231,7 +235,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       <div
         role="tabpanel"
         data-testid="project-tab-panel-terminal"
-        className={tab === "terminal" ? "" : "hidden"}
+        className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <ProjectTerminal projectId={project.id} projectName={project.name} />
       </div>
