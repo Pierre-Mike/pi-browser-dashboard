@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
+import {
+  buildChildArgv,
+  cleanZellijEnv,
+  projectZellijCommand,
+  zellijSessionName,
+} from "./terminal.core"
 
 describe("zellijSessionName", () => {
   it("returns the bare repo name, lowercased — no prefix so we share the user's session", () => {
@@ -107,5 +112,31 @@ describe("projectZellijCommand", () => {
     const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+})
+
+describe("buildChildArgv", () => {
+  it("pty=false → plain bash -lc (back-compat for the session route)", () => {
+    expect(buildChildArgv({ cmd: "echo hi", pty: false, platform: "darwin" })).toEqual([
+      "bash",
+      "-lc",
+      "echo hi",
+    ])
+  })
+
+  it("pty=true → python3 pty.spawn wrapper, cmd passed as argv[1]", () => {
+    // BSD script(1) wants stdin to be a tty; we have a pipe. python3 pty.spawn
+    // uses forkpty() so the pipe stays a pipe and the child still gets a pty.
+    const argv = buildChildArgv({ cmd: "zellij attach foo", pty: true, platform: "darwin" })
+    expect(argv[0]).toBe("python3")
+    expect(argv[1]).toBe("-c")
+    expect(argv[2]).toContain("pty.spawn")
+    expect(argv[3]).toBe("zellij attach foo")
+  })
+
+  it("pty=true argv is platform-agnostic (same on darwin and linux)", () => {
+    const darwin = buildChildArgv({ cmd: "x", pty: true, platform: "darwin" })
+    const linux = buildChildArgv({ cmd: "x", pty: true, platform: "linux" })
+    expect(darwin).toEqual(linux)
   })
 })

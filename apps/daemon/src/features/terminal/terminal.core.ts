@@ -66,3 +66,25 @@ export const projectZellijCommand = (args: {
     `fi`,
   ].join("\n")
 }
+
+// Bun.spawn only gives us pipes, never a pty. zellij refuses to enable raw
+// mode without a controlling tty and panics on attach. We need a pty allocator
+// that does NOT require stdin to already be a tty — macOS BSD script(1) does
+// a tcgetattr on stdin at startup and bails on pipes, so it's unusable here.
+//
+// Python's stdlib `pty.spawn` calls forkpty(2) and proxies bytes between its
+// own stdin/stdout and the pty master, so pipes work. Python 3 ships on both
+// macOS and most Linux distros, so we don't take a new dependency.
+//
+// Inside the child the default pty size is 0×0; the caller must run
+// `stty rows … cols …` before launching the size-sensitive program.
+const PTY_PY = "import pty,sys;pty.spawn(['bash','-lc',sys.argv[1]])"
+
+export const buildChildArgv = (args: {
+  readonly cmd: string
+  readonly pty: boolean
+  readonly platform: NodeJS.Platform
+}): string[] => {
+  if (!args.pty) return ["bash", "-lc", args.cmd]
+  return ["python3", "-c", PTY_PY, args.cmd]
+}

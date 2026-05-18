@@ -6,7 +6,12 @@ import { createBunWebSocket } from "hono/bun"
 import { appRuntime } from "../../platform/runtime"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
-import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
+import {
+  buildChildArgv,
+  cleanZellijEnv,
+  projectZellijCommand,
+  zellijSessionName,
+} from "./terminal.core"
 
 const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>()
 
@@ -27,8 +32,19 @@ const clampDim = (raw: string | undefined, fallback: number, max: number): numbe
   return Math.min(n, max)
 }
 
-const spawnChild = (cwd: string, cmd: string, cols: number, rows: number) =>
-  Bun.spawn(["bash", "-lc", cmd], {
+const spawnChild = (
+  cwd: string,
+  cmd: string,
+  cols: number,
+  rows: number,
+  pty: boolean,
+) => {
+  // When we allocate a pty via script(1), the daemon has no controlling tty
+  // so script opens the new pty at its default size (often 0x0 or 80x24).
+  // zellij reads the *terminal*'s size — not COLUMNS/LINES — so resize the
+  // pty in-band with stty before launching the real command.
+  const inner = pty ? `stty rows ${rows} cols ${cols} 2>/dev/null; ${cmd}` : cmd
+  return Bun.spawn(buildChildArgv({ cmd: inner, pty, platform: process.platform }), {
     cwd,
     stdin: "pipe",
     stdout: "pipe",
@@ -40,6 +56,7 @@ const spawnChild = (cwd: string, cmd: string, cols: number, rows: number) =>
       LINES: String(rows),
     },
   })
+}
 
 const pipeStream = async (
   stream: ReadableStream<Uint8Array>,
@@ -74,13 +91,17 @@ type BridgeOpts = {
   // Ctrl+Z as "detach"; zellij doesn't need anything — killing the client
   // process already detaches without disturbing the daemon-owned session.
   readonly detachBytes?: string
+  // When true, route the child through script(1) so it inherits a real pty.
+  // Required for zellij (raw-mode), unused by `claude attach` which tolerates
+  // pipes.
+  readonly pty?: boolean
 }
 
-const makeWsHandler = ({ resolveCommand, detachBytes }: BridgeOpts) =>
+const makeWsHandler = ({ resolveCommand, detachBytes, pty = false }: BridgeOpts) =>
   upgradeWebSocket((c) => {
-    // The browser sends its current xterm dims at connect-time. There is no
-    // pty (Bun pipes only), so SIGWINCH isn't an option — these are the only
-    // chance to size the child correctly.
+    // The browser sends its current xterm dims at connect-time. Without a
+    // resize channel from the browser these are the only chance to size the
+    // child correctly — passed via env (pipes) or stty (pty wrapper).
     const cols = clampDim(c.req.query("cols"), DEFAULT_COLS, 400)
     const rows = clampDim(c.req.query("rows"), DEFAULT_ROWS, 200)
     const tokenKey = {}
@@ -96,7 +117,7 @@ const makeWsHandler = ({ resolveCommand, detachBytes }: BridgeOpts) =>
           ws.close(1011, resolved.reason)
           return
         }
-        const child = spawnChild(resolved.cwd, resolved.cmd, cols, rows)
+        const child = spawnChild(resolved.cwd, resolved.cmd, cols, rows, pty)
         const drainAbort = new AbortController()
         bridges.set(tokenKey, { child, drainAbort })
 
@@ -200,7 +221,7 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
 }
 
 const app = new Hono()
-  .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand }))
+  .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
   .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, detachBytes: "\x1a" }))
 
 export { app, websocket }
