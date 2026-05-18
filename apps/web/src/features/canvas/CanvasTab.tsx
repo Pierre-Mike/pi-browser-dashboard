@@ -26,6 +26,7 @@ import { EditableGroupNode } from "./EditableGroupNode"
 import { EditableLinkNode } from "./EditableLinkNode"
 import { snapshotFromReactFlow } from "./canvas.types"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
+import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
 import {
   type GroupableNode,
   groupSelected as groupSelectedNodes,
@@ -673,6 +674,17 @@ const CanvasInner = ({ session }: Props) => {
   const onDragOver = useCallback((ev: React.DragEvent<HTMLDivElement>) => {
     if (ev.dataTransfer.types.includes("Files")) ev.preventDefault()
   }, [])
+
+  // Bridge for cross-canvas: file nodes referencing a .canvas dispatch a
+  // CustomEvent with the fetched text, and we import it onto this canvas.
+  useEffect(() => {
+    const onEvent = (ev: Event) => {
+      const detail = (ev as CustomEvent<CanvasImportDetail>).detail
+      if (detail && typeof detail.text === "string") importCanvasText(detail.text)
+    }
+    window.addEventListener(CANVAS_IMPORT_EVENT, onEvent)
+    return () => window.removeEventListener(CANVAS_IMPORT_EVENT, onEvent)
+  }, [importCanvasText])
 
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
   const aGroupIsSelected = useMemo(
