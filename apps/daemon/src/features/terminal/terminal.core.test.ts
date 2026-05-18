@@ -86,26 +86,37 @@ describe("cleanZellijEnv", () => {
 })
 
 describe("projectZellijCommand", () => {
+  const LAYOUT = "/tmp/claude.kdl"
+
   it("cd-s into the cwd before invoking zellij", () => {
-    const cmd = projectZellijCommand({ cwd: "/path/to/repo", sessionName: "foo" })
+    const cmd = projectZellijCommand({
+      cwd: "/path/to/repo",
+      sessionName: "foo",
+      layoutFile: LAYOUT,
+    })
     expect(cmd.split("\n")[0]).toBe("cd '/path/to/repo'")
   })
 
   it("attaches when the session already exists", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
     expect(cmd).toContain("zellij list-sessions -s")
     expect(cmd).toContain("grep -qx 'foo'")
     expect(cmd).toContain("exec zellij attach 'foo'")
   })
 
-  it("spawns a new session with a claude pane otherwise", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
-    expect(cmd).toContain("exec zellij -s 'foo' --layout-string")
-    expect(cmd).toContain('command="claude"')
+  it("creates a new session via -n <layout-file>, NOT --layout-string", () => {
+    // Regression: `zellij -s NAME --layout-string LAYOUT` treats LAYOUT as
+    // "add a tab to the existing NAME session" and exits with "Session not
+    // found" when NAME doesn't exist — so the previous code never actually
+    // created the per-project session on first open. `-n FILE` always starts
+    // a new session.
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
+    expect(cmd).toContain(`exec zellij -s 'foo' -n '/tmp/claude.kdl'`)
+    expect(cmd).not.toContain("--layout-string")
   })
 
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
     const attachLines = cmd.split("\n").filter((l) => l.includes("zellij"))
     for (const l of attachLines) {
       expect(l.trim().startsWith("exec ") || l.includes("list-sessions")).toBe(true)
@@ -113,9 +124,18 @@ describe("projectZellijCommand", () => {
   })
 
   it("single-quote-escapes cwds containing apostrophes", () => {
-    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
+    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x", layoutFile: LAYOUT })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+
+  it("single-quote-escapes the layout file path", () => {
+    const cmd = projectZellijCommand({
+      cwd: "/x",
+      sessionName: "foo",
+      layoutFile: "/tmp/it's.kdl",
+    })
+    expect(cmd).toContain(`-n '/tmp/it'\\''s.kdl'`)
   })
 })
 
