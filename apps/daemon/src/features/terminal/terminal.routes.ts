@@ -6,8 +6,10 @@ import { upgradeWebSocket } from "../../platform/ws"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import {
+  GLOBAL_ZELLIJ_SESSION,
   buildChildArgv,
   cleanZellijEnv,
+  globalTerminalCwd,
   projectZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
@@ -29,13 +31,7 @@ const clampDim = (raw: string | undefined, fallback: number, max: number): numbe
   return Math.min(n, max)
 }
 
-const spawnChild = (
-  cwd: string,
-  cmd: string,
-  cols: number,
-  rows: number,
-  pty: boolean,
-) => {
+const spawnChild = (cwd: string, cmd: string, cols: number, rows: number, pty: boolean) => {
   // When we allocate a pty via script(1), the daemon has no controlling tty
   // so script opens the new pty at its default size (often 0x0 or 80x24).
   // zellij reads the *terminal*'s size — not COLUMNS/LINES — so resize the
@@ -200,6 +196,15 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
   return { ok: true, cwd, cmd }
 }
 
+// Dashboard global terminal: pinned to zellij session "default". No id in the
+// URL — there's exactly one of these per daemon. cwd defaults to $HOME so the
+// user lands somewhere sensible the first time they open it.
+const resolveGlobalCommand = async (_c: Context): Promise<Resolved> => {
+  const cwd = globalTerminalCwd(process.env)
+  const cmd = projectZellijCommand({ cwd, sessionName: GLOBAL_ZELLIJ_SESSION })
+  return { ok: true, cwd, cmd }
+}
+
 const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   const id = c.req.param("id") ?? ""
   if (!id) return { ok: false, reason: "missing_id" }
@@ -218,6 +223,7 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
 }
 
 const app = new Hono()
+  .get("/global", makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true }))
   .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
   .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, detachBytes: "\x1a" }))
 

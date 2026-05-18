@@ -1,5 +1,19 @@
 // Pure helpers for the terminal feature. No I/O.
 
+// The dashboard's global terminal tab attaches to a single shared zellij
+// session named "default" — matches the user's convention for the catch-all
+// session that isn't tied to any specific repo.
+export const GLOBAL_ZELLIJ_SESSION = "default"
+
+// Pick the cwd the global terminal child should spawn in. HOME when present
+// (where the user's prompt expects to start), '/' otherwise — Bun.spawn rejects
+// an empty cwd.
+export const globalTerminalCwd = (env: Readonly<Record<string, string | undefined>>): string => {
+  const home = env.HOME
+  if (home && home.length > 0) return home
+  return "/"
+}
+
 // Reduce a project id to a zellij session name. Zellij names mostly accept
 // printable chars but trip on whitespace and shell-special chars, so collapse
 // everything outside [A-Za-z0-9._-] to '-'. Case is preserved: `zellij
