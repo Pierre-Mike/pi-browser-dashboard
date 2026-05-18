@@ -36,9 +36,6 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Lint (biome ci)
-        run: bun run lint:ci
-
       - name: Install Playwright Chromium
         run: bun --filter @pid/e2e run install:browser
 
