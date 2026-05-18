@@ -58,25 +58,38 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 
 // Layout that opens a single pane running `claude`. close_on_exit lets the user
 // quit claude and have the pane disappear instead of staring at a corpse.
-const CLAUDE_LAYOUT = 'layout { pane command="claude" { close_on_exit true; } }'
+export const CLAUDE_LAYOUT_KDL = `layout {
+    pane command="claude" {
+        close_on_exit true
+    }
+}
+`
 
 // Bash one-liner: cd into the project, then either re-attach an existing zellij
 // session by name or spawn a fresh one whose only pane runs `claude`. `exec` so
 // the child slot is replaced — closing the WS kills the zellij client, but
 // zellij's daemon keeps the session alive for the next attach.
+//
+// New-session branch uses `-n <file>` (--new-session-with-layout), NOT `-s
+// <name> --layout-string …`. The latter looks like the obvious move but its
+// docs are misleading: with --session the layout is treated as "add a tab to
+// the existing session", and when no session by that name exists zellij just
+// prints "Session 'NAME' not found" and exits without creating anything. The
+// caller (TerminalRoutes) writes the layout to a temp file and passes its path.
 export const projectZellijCommand = (args: {
   readonly cwd: string
   readonly sessionName: string
+  readonly layoutFile: string
 }): string => {
   const cwd = shq(args.cwd)
   const name = shq(args.sessionName)
-  const layout = shq(CLAUDE_LAYOUT)
+  const layoutFile = shq(args.layoutFile)
   return [
     `cd ${cwd}`,
     `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
     `  exec zellij attach ${name}`,
     `else`,
-    `  exec zellij -s ${name} --layout-string ${layout}`,
+    `  exec zellij -s ${name} -n ${layoutFile}`,
     `fi`,
   ].join("\n")
 }

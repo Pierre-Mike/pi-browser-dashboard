@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Effect } from "effect"
 import { Hono } from "hono"
 import type { Context } from "hono"
@@ -8,11 +11,22 @@ import { SessionRegistry } from "../sessions/sessions.repo"
 import {
   GLOBAL_ZELLIJ_SESSION,
   buildChildArgv,
+  CLAUDE_LAYOUT_KDL,
   cleanZellijEnv,
   globalTerminalCwd,
   projectZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
+
+// zellij's --new-session-with-layout requires a file path, not a string. Write
+// the static KDL once at module load and reuse the path; the file is tiny and
+// the daemon process owns its lifetime. (mkstemp-per-spawn would force the
+// bash wrapper to also clean it up, which exec replaces away.)
+const CLAUDE_LAYOUT_FILE: string = (() => {
+  const path = join(tmpdir(), "pid-zellij-claude-layout.kdl")
+  writeFileSync(path, CLAUDE_LAYOUT_KDL, "utf8")
+  return path
+})()
 
 type Bridge = {
   child: Bun.Subprocess<"pipe", "pipe", "pipe">
@@ -218,7 +232,11 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   )
   const project = projects.find((p) => p.id === id)
   if (!project) return { ok: false, reason: `project ${id} not found` }
-  const cmd = projectZellijCommand({ cwd: project.path, sessionName })
+  const cmd = projectZellijCommand({
+    cwd: project.path,
+    sessionName,
+    layoutFile: CLAUDE_LAYOUT_FILE,
+  })
   return { ok: true, cwd: project.path, cmd }
 }
 
