@@ -2,14 +2,14 @@
 
 // Reduce a project id to a zellij session name. Zellij names mostly accept
 // printable chars but trip on whitespace and shell-special chars, so collapse
-// everything outside [a-z0-9._-] to '-'. We deliberately do NOT prefix the name
-// — the user's convention is to name zellij sessions after the bare repo, and
-// the whole point of this route is to attach to that pre-existing session if
-// it already exists.
+// everything outside [A-Za-z0-9._-] to '-'. Case is preserved: `zellij
+// list-sessions` and the `grep -qx` match downstream are both case-sensitive,
+// and the user's repo dirs (e.g. `Orchestrator`) are conventionally also their
+// zellij session names — lowercasing here makes attach miss the existing
+// session, and zellij refuses to create a case-colliding twin.
 export const zellijSessionName = (rawId: string): string | null => {
   const cleaned = rawId
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
   if (cleaned.length === 0) return null
