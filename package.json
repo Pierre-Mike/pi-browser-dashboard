@@ -4,6 +4,7 @@
   "type": "module",
   "workspaces": ["apps/*"],
   "scripts": {
+    "dev": "bun run dev:daemon & bun run dev:web & wait",
     "dev:daemon": "cd apps/daemon && bun run dev",
     "dev:web": "cd apps/web && bun run dev",
     "test:e2e": "cd apps/e2e && bun run test",
