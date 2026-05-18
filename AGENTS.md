@@ -320,6 +320,16 @@ For drill-in (`/sessions/$id`), read the JSONL with `getSessionMessages()` and r
 - **Subscription quota**: parallel sessions consume quota linearly. v2 warning bar.
 - **`disableAgentView`**: if the user / admin has turned off agent view, background sessions don't run. Daemon must detect and report cleanly.
 
+## Worktree workflow
+
+Agents working in a `.claude/worktrees/<name>/` copy must always:
+
+1. **Branch from `origin/main`, not local HEAD.** Before starting work, `git fetch origin main` and base the worktree branch on `origin/main` so the diff reflects only the new change — never a stale local state. The harness's default `worktree.baseRef = "fresh"` already does this; do not switch it to `head`.
+2. **Rebase onto `origin/main` before pushing.** If `origin/main` has advanced during the session, `git fetch origin main && git rebase origin/main` before opening the PR. Stop and resolve conflicts in the worktree rather than from the parent checkout.
+3. **Open the PR against `origin main`.** `gh pr create --base main` (matches the auto-PR hook). Never target a feature branch or a fork; this repo's CI and merge queue run on `main`.
+
+The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every commit made inside a worktree.
+
 ## Engineering axioms (inherited)
 
 - **Effect-TS** for error handling, DI, concurrency — no `try/catch`, no mock frameworks.

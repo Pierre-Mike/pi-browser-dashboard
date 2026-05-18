@@ -2,19 +2,19 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
-import { type TerminalKind, terminalWsUrl } from "./terminalUrl"
+import { terminalWsUrl } from "./terminalUrl"
 
 type Props = {
-  readonly kind: TerminalKind
-  readonly id: string
   readonly reconnectTitle: string
   readonly testId?: string
-}
+} & ({ readonly kind: "session" | "project"; readonly id: string } | { readonly kind: "global" })
 
 const apiBase = (): string =>
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
-export const TerminalView = ({ kind, id, reconnectTitle, testId }: Props) => {
+export const TerminalView = (props: Props) => {
+  const { kind, reconnectTitle, testId } = props
+  const id = "id" in props ? props.id : ""
   const hostRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [reconnectKey, setReconnectKey] = useState(0)
@@ -58,13 +58,16 @@ export const TerminalView = ({ kind, id, reconnectTitle, testId }: Props) => {
     // set at spawn — that's all the daemon has. Pass the dims produced by the
     // synchronous safeFit() above; the xterm canvas keeps re-fitting client
     // side, but the child-side size stays fixed until reconnect.
-    const url = terminalWsUrl({
-      baseUrl: apiBase(),
-      kind,
-      id,
-      cols: term.cols,
-      rows: term.rows,
-    })
+    const url =
+      kind === "global"
+        ? terminalWsUrl({ baseUrl: apiBase(), kind: "global", cols: term.cols, rows: term.rows })
+        : terminalWsUrl({
+            baseUrl: apiBase(),
+            kind,
+            id,
+            cols: term.cols,
+            rows: term.rows,
+          })
     const ws = new WebSocket(url)
     ws.binaryType = "arraybuffer"
 

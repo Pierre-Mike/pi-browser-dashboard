@@ -32,6 +32,32 @@ describe("terminalWsUrl", () => {
     expect(u.searchParams.get("rows")).toBe("24")
   })
 
+  it("routes the global kind to /terminal/global with no id segment", () => {
+    const url = terminalWsUrl({
+      baseUrl: "http://localhost:8787",
+      kind: "global",
+      cols: 100,
+      rows: 30,
+    })
+    const u = new URL(url)
+    expect(u.protocol).toBe("ws:")
+    expect(u.pathname).toBe("/terminal/global")
+    expect(u.searchParams.get("cols")).toBe("100")
+    expect(u.searchParams.get("rows")).toBe("30")
+  })
+
+  it("preserves https → wss mapping for the global kind too", () => {
+    const url = terminalWsUrl({
+      baseUrl: "https://daemon.example",
+      kind: "global",
+      cols: 80,
+      rows: 24,
+    })
+    const u = new URL(url)
+    expect(u.protocol).toBe("wss:")
+    expect(u.pathname).toBe("/terminal/global")
+  })
+
   it("encodes ids with special chars in the path segment", () => {
     const url = terminalWsUrl({
       baseUrl: "http://x",

@@ -1,25 +1,36 @@
-// Build the ws:// URL for the daemon terminal bridge. Two kinds:
+// Build the ws:// URL for the daemon terminal bridge. Three kinds:
 //   - "session": /terminal/<short>          → bash + claude attach <short>
 //   - "project": /terminal/project/<id>     → bash + zellij attach/create + claude
+//   - "global" : /terminal/global           → bash + zellij attach 'default' (no id)
 // Pure so the test pins the exact path/query the daemon expects.
-export type TerminalKind = "session" | "project"
+export type TerminalKind = "session" | "project" | "global"
 
-export type TerminalWsUrlInput = {
-  readonly baseUrl: string
-  readonly kind: TerminalKind
-  readonly id: string
-  readonly cols: number
-  readonly rows: number
+export type TerminalWsUrlInput =
+  | {
+      readonly baseUrl: string
+      readonly kind: "session" | "project"
+      readonly id: string
+      readonly cols: number
+      readonly rows: number
+    }
+  | {
+      readonly baseUrl: string
+      readonly kind: "global"
+      readonly cols: number
+      readonly rows: number
+    }
+
+const pathFor = (input: TerminalWsUrlInput): string => {
+  if (input.kind === "session") return `/terminal/${input.id}`
+  if (input.kind === "project") return `/terminal/project/${input.id}`
+  return "/terminal/global"
 }
 
-const pathFor = (kind: TerminalKind, id: string): string =>
-  kind === "session" ? `/terminal/${id}` : `/terminal/project/${id}`
-
-export const terminalWsUrl = ({ baseUrl, kind, id, cols, rows }: TerminalWsUrlInput): string => {
-  const u = new URL(baseUrl)
+export const terminalWsUrl = (input: TerminalWsUrlInput): string => {
+  const u = new URL(input.baseUrl)
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:"
-  u.pathname = pathFor(kind, id)
-  u.searchParams.set("cols", String(cols))
-  u.searchParams.set("rows", String(rows))
+  u.pathname = pathFor(input)
+  u.searchParams.set("cols", String(input.cols))
+  u.searchParams.set("rows", String(input.rows))
   return u.toString()
 }

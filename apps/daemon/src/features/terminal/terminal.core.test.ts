@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import {
+  GLOBAL_ZELLIJ_SESSION,
   buildChildArgv,
   cleanZellijEnv,
+  globalTerminalCwd,
   projectZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
@@ -116,6 +118,31 @@ describe("projectZellijCommand", () => {
     const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+})
+
+describe("GLOBAL_ZELLIJ_SESSION", () => {
+  it("is the literal string 'default' — the user's convention for the catch-all session", () => {
+    expect(GLOBAL_ZELLIJ_SESSION).toBe("default")
+  })
+
+  it("survives zellijSessionName unchanged — already a safe zellij identifier", () => {
+    expect(zellijSessionName(GLOBAL_ZELLIJ_SESSION)).toBe(GLOBAL_ZELLIJ_SESSION)
+  })
+})
+
+describe("globalTerminalCwd", () => {
+  it("returns HOME when set", () => {
+    expect(globalTerminalCwd({ HOME: "/Users/me" })).toBe("/Users/me")
+  })
+
+  it("falls back to '/' when HOME is unset (daemon must always spawn somewhere)", () => {
+    expect(globalTerminalCwd({})).toBe("/")
+    expect(globalTerminalCwd({ HOME: undefined })).toBe("/")
+  })
+
+  it("falls back to '/' when HOME is empty — empty cwd would crash bash", () => {
+    expect(globalTerminalCwd({ HOME: "" })).toBe("/")
   })
 })
 
