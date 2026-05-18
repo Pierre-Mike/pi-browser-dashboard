@@ -11,6 +11,9 @@ export type CanvasNode = {
   readonly data?: Record<string, unknown>
   readonly width?: number
   readonly height?: number
+  readonly parentId?: string
+  readonly extent?: "parent"
+  readonly style?: Record<string, unknown>
 }
 
 export type CanvasEdge = {
@@ -71,6 +74,9 @@ export const snapshotFromReactFlow = (args: {
     data?: Record<string, unknown>
     width?: number | null
     height?: number | null
+    parentId?: string | null
+    extent?: "parent" | unknown
+    style?: Record<string, unknown> | null
   }>
   readonly edges: ReadonlyArray<{
     id: string
@@ -95,6 +101,9 @@ export const snapshotFromReactFlow = (args: {
     if (n.data !== undefined) out.data = n.data
     if (typeof n.width === "number") out.width = n.width
     if (typeof n.height === "number") out.height = n.height
+    if (typeof n.parentId === "string" && n.parentId.length > 0) out.parentId = n.parentId
+    if (n.extent === "parent") out.extent = "parent"
+    if (n.style && typeof n.style === "object") out.style = n.style
     return out
   }),
   edges: args.edges.map((e) => {

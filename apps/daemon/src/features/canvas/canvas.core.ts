@@ -14,6 +14,15 @@ export type CanvasNode = {
   readonly data?: Readonly<Record<string, unknown>>
   readonly width?: number
   readonly height?: number
+  // Group support: a child node names its parent via parentId; extent: "parent"
+  // tells React Flow to clamp drag inside the parent bounds. These are
+  // top-level RF fields (not data), so we mirror them at the schema level.
+  readonly parentId?: string
+  readonly extent?: "parent"
+  // Group nodes need width/height carried in `style` (top-level width/height
+  // are measured outputs, not authoritative). We persist an opaque record and
+  // let React Flow interpret it.
+  readonly style?: Readonly<Record<string, unknown>>
 }
 
 export type CanvasEdge = {
@@ -62,6 +71,9 @@ const parseNode = (v: unknown): CanvasNode | null => {
   if (isObj(v.data)) node.data = v.data
   if (isNum(v.width)) node.width = v.width
   if (isNum(v.height)) node.height = v.height
+  if (isStr(v.parentId)) node.parentId = v.parentId
+  if (v.extent === "parent") node.extent = "parent"
+  if (isObj(v.style)) node.style = v.style
   return node
 }
 
