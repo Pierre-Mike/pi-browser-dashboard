@@ -37,7 +37,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: bun --filter @pid/e2e run install:browser
+        working-directory: apps/e2e
+        run: bunx playwright install --with-deps chromium
 
       - name: Run Playwright e2e
         id: e2e
