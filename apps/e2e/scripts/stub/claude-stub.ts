@@ -260,14 +260,18 @@ const cmdTick = (rest: ReadonlyArray<string>): void => {
       // already finalized by another command (stop/rm)
       process.exit(0)
     }
+    // Stay at `idle` rather than `done`. waitForSettled accepts idle, and
+    // drill-in / stop actions need the session to look "alive" so the Kill
+    // button stays in the DOM. Real claude can take many seconds before
+    // transitioning to done; idle is a faithful "running-and-waiting" state.
     const next: StubState = {
       ...(cur as StubState),
-      state: "done",
+      state: "idle",
       updatedAt: nowIso(),
-      tempo: "done",
-      detail: "stub finished",
+      tempo: "idle",
+      detail: "stub idle",
       // `result` MUST be a string — the card UI calls `result.split(...)`.
-      output: { result: "stub session complete" },
+      output: { result: "stub session settled" },
     }
     writeJsonAtomic(sfile, next)
     process.exit(0)

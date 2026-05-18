@@ -18,8 +18,13 @@ const authMode = (): boolean => {
   }
 }
 
+// This suite drives the real `claude attach` TUI via `claude send-keys`-style
+// input — the stub has no TUI to ingest keystrokes, so we skip whenever the
+// stub is active even if a persistent auth dir is present locally.
+const STUB = process.env.PID_E2E_USE_STUB === "1" || process.env.CI === "true"
+
 test.describe("send-keys (real auth)", () => {
-  test.skip(!authMode(), "requires PID_E2E_AUTH_DIR with a logged-in claude account")
+  test.skip(!authMode() || STUB, "requires PID_E2E_AUTH_DIR with a logged-in claude account")
 
   // Send a slash command — fast, no LLM round-trip, observable via state.json
   // updatedAt advancing. If the supervisor processes our input the state file
