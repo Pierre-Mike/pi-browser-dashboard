@@ -25,6 +25,9 @@ export type CanvasEdge = {
   readonly animated?: boolean
   readonly sourceHandle?: string
   readonly targetHandle?: string
+  // Carries Obsidian-style metadata (color, arrow direction) so it survives
+  // the wire roundtrip; rendering derives markers/colors from data at runtime.
+  readonly data?: Record<string, unknown>
 }
 
 export type CanvasViewport = {
@@ -87,6 +90,7 @@ export const snapshotFromReactFlow = (args: {
     animated?: boolean
     sourceHandle?: string | null
     targetHandle?: string | null
+    data?: Record<string, unknown> | undefined
   }>
   readonly viewport?: CanvasViewport
 }): CanvasSnapshot => ({
@@ -117,6 +121,7 @@ export const snapshotFromReactFlow = (args: {
     if (typeof e.animated === "boolean") out.animated = e.animated
     if (typeof e.sourceHandle === "string") out.sourceHandle = e.sourceHandle
     if (typeof e.targetHandle === "string") out.targetHandle = e.targetHandle
+    if (e.data && typeof e.data === "object") out.data = e.data
     return out
   }),
   ...(args.viewport ? { viewport: args.viewport } : {}),

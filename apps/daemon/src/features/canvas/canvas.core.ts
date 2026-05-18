@@ -34,6 +34,9 @@ export type CanvasEdge = {
   readonly animated?: boolean
   readonly sourceHandle?: string
   readonly targetHandle?: string
+  // Obsidian-style metadata (color, arrow direction). Opaque to the daemon —
+  // we just pass it through so the browser can derive markers and colors.
+  readonly data?: Readonly<Record<string, unknown>>
 }
 
 export type CanvasViewport = {
@@ -91,6 +94,7 @@ const parseEdge = (v: unknown): CanvasEdge | null => {
   if (typeof v.animated === "boolean") edge.animated = v.animated
   if (isStr(v.sourceHandle)) edge.sourceHandle = v.sourceHandle
   if (isStr(v.targetHandle)) edge.targetHandle = v.targetHandle
+  if (isObj(v.data)) edge.data = v.data
   return edge
 }
 
