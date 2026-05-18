@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Effect } from "effect"
 import { Hono } from "hono"
 import type { Context } from "hono"
@@ -6,6 +9,7 @@ import { upgradeWebSocket } from "../../platform/ws"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import {
+  CLAUDE_LAYOUT_KDL,
   GLOBAL_ZELLIJ_SESSION,
   buildChildArgv,
   cleanZellijEnv,
@@ -13,6 +17,17 @@ import {
   projectZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
+
+// zellij's `-n` (--new-session-with-layout) takes a file path, not a string.
+// Write the static KDL once at module load and reuse the path across every
+// spawn — the file is tiny and the daemon process owns its lifetime. (A per-
+// spawn mkstemp would need the bash wrapper to clean up afterwards, but exec
+// replaces that wrapper away.)
+const CLAUDE_LAYOUT_FILE: string = (() => {
+  const path = join(tmpdir(), "pid-zellij-claude-layout.kdl")
+  writeFileSync(path, CLAUDE_LAYOUT_KDL, "utf8")
+  return path
+})()
 
 type Bridge = {
   child: Bun.Subprocess<"pipe", "pipe", "pipe">
@@ -201,7 +216,11 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
 // user lands somewhere sensible the first time they open it.
 const resolveGlobalCommand = async (_c: Context): Promise<Resolved> => {
   const cwd = globalTerminalCwd(process.env)
-  const cmd = projectZellijCommand({ cwd, sessionName: GLOBAL_ZELLIJ_SESSION })
+  const cmd = projectZellijCommand({
+    cwd,
+    sessionName: GLOBAL_ZELLIJ_SESSION,
+    layoutFile: CLAUDE_LAYOUT_FILE,
+  })
   return { ok: true, cwd, cmd }
 }
 
@@ -218,7 +237,11 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   )
   const project = projects.find((p) => p.id === id)
   if (!project) return { ok: false, reason: `project ${id} not found` }
-  const cmd = projectZellijCommand({ cwd: project.path, sessionName })
+  const cmd = projectZellijCommand({
+    cwd: project.path,
+    sessionName,
+    layoutFile: CLAUDE_LAYOUT_FILE,
+  })
   return { ok: true, cwd: project.path, cmd }
 }
 

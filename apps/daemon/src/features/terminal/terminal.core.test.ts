@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  CLAUDE_LAYOUT_KDL,
   GLOBAL_ZELLIJ_SESSION,
   buildChildArgv,
   cleanZellijEnv,
@@ -88,26 +89,38 @@ describe("cleanZellijEnv", () => {
 })
 
 describe("projectZellijCommand", () => {
+  const LAYOUT = "/tmp/claude.kdl"
+
   it("cd-s into the cwd before invoking zellij", () => {
-    const cmd = projectZellijCommand({ cwd: "/path/to/repo", sessionName: "foo" })
+    const cmd = projectZellijCommand({
+      cwd: "/path/to/repo",
+      sessionName: "foo",
+      layoutFile: LAYOUT,
+    })
     expect(cmd.split("\n")[0]).toBe("cd '/path/to/repo'")
   })
 
   it("attaches when the session already exists", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
     expect(cmd).toContain("zellij list-sessions -s")
     expect(cmd).toContain("grep -qx 'foo'")
     expect(cmd).toContain("exec zellij attach 'foo'")
   })
 
-  it("spawns a new session with a claude pane otherwise", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
-    expect(cmd).toContain("exec zellij -s 'foo' --layout-string")
-    expect(cmd).toContain('command="claude"')
+  it("creates a new session via -n <layout-file>, NOT --layout-string", () => {
+    // Regression: `zellij -s NAME --layout-string LAYOUT` is interpreted as
+    // "add a tab to the existing NAME session". When NAME doesn't exist
+    // zellij prints "Session 'NAME' not found. The following sessions are
+    // active: …" and exits 0 — so the per-project session was never created
+    // on first open, and the WS just showed "child exited (0)". `-n FILE`
+    // (--new-session-with-layout) always starts a fresh session.
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
+    expect(cmd).toContain(`exec zellij -s 'foo' -n '/tmp/claude.kdl'`)
+    expect(cmd).not.toContain("--layout-string")
   })
 
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
     const attachLines = cmd.split("\n").filter((l) => l.includes("zellij"))
     for (const l of attachLines) {
       expect(l.trim().startsWith("exec ") || l.includes("list-sessions")).toBe(true)
@@ -115,9 +128,28 @@ describe("projectZellijCommand", () => {
   })
 
   it("single-quote-escapes cwds containing apostrophes", () => {
-    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
+    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x", layoutFile: LAYOUT })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+
+  it("single-quote-escapes the layout file path", () => {
+    const cmd = projectZellijCommand({
+      cwd: "/x",
+      sessionName: "foo",
+      layoutFile: "/tmp/it's.kdl",
+    })
+    expect(cmd).toContain(`-n '/tmp/it'\\''s.kdl'`)
+  })
+})
+
+describe("CLAUDE_LAYOUT_KDL", () => {
+  it("opens a single pane running `claude` and closes the pane on exit", () => {
+    // Verifying the literal KDL — anything else breaks the round-trip through
+    // `zellij -n <file>` the new-session regression test pins.
+    expect(CLAUDE_LAYOUT_KDL).toContain('pane command="claude"')
+    expect(CLAUDE_LAYOUT_KDL).toContain("close_on_exit true")
+    expect(CLAUDE_LAYOUT_KDL.trim().startsWith("layout {")).toBe(true)
   })
 })
 
