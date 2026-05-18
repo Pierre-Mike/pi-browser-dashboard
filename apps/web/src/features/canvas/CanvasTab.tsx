@@ -21,9 +21,11 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { api } from "../../lib/api"
 import type { SessionState } from "../../lib/types"
 import { EditableBoxNode } from "./EditableBoxNode"
+import { EditableFileNode } from "./EditableFileNode"
 import { EditableGroupNode } from "./EditableGroupNode"
 import { EditableLinkNode } from "./EditableLinkNode"
 import { snapshotFromReactFlow } from "./canvas.types"
+import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
 import {
   type GroupableNode,
   groupSelected as groupSelectedNodes,
@@ -92,7 +94,10 @@ const nodeTypes = {
   box: EditableBoxNode,
   group: EditableGroupNode,
   link: EditableLinkNode,
+  file: EditableFileNode,
 }
+
+const GRID_STEP = 16
 
 const toGroupable = (n: Node): GroupableNode => ({
   id: n.id,
@@ -148,6 +153,9 @@ const CanvasInner = ({ session }: Props) => {
   const [briefStatus, setBriefStatus] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [edgeLabelDraft, setEdgeLabelDraft] = useState("")
+  const [readOnly, setReadOnly] = useState(false)
+  const [snap, setSnap] = useState(false)
+  const [search, setSearch] = useState("")
   const rf = useReactFlow()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -206,11 +214,17 @@ const CanvasInner = ({ session }: Props) => {
   const renderableNodes = useMemo<Node[]>(
     () =>
       nodes.map((n) => {
-        if (n.type === "group" || n.type === "link") return n
-        if (!n.type) return { ...n, type: "box" }
-        return n
+        const locked = (n.data as Record<string, unknown> | undefined)?.locked === true
+        const draggable = !readOnly && !locked
+        const base =
+          n.type === "group" || n.type === "link" || n.type === "file"
+            ? n
+            : !n.type
+              ? { ...n, type: "box" }
+              : n
+        return { ...base, draggable, connectable: !readOnly } as Node
       }),
-    [nodes],
+    [nodes, readOnly],
   )
 
   const renderableEdges = useMemo<Edge[]>(() => edges.map(decoratedEdge), [edges])
@@ -281,6 +295,20 @@ const CanvasInner = ({ session }: Props) => {
         // this, the node auto-sizes to text content and the resize handles
         // jump as content changes.
         style: { width: 160, height: 60 },
+      } as Node,
+    ])
+  }, [setNodes])
+
+  const addFile = useCallback(() => {
+    const id = `f-${Date.now().toString(36)}`
+    setNodes((prev) => [
+      ...prev,
+      {
+        id,
+        type: "file",
+        position: { x: 80 + (prev.length % 5) * 220, y: 320 + Math.floor(prev.length / 5) * 110 },
+        data: { file: "" },
+        style: { width: 220, height: 80 },
       } as Node,
     ])
   }, [setNodes])
@@ -419,6 +447,91 @@ const CanvasInner = ({ session }: Props) => {
     setEdges((prev) => [...prev, ...(cloned.edges as unknown as Edge[])])
   }, [nodes, edges, setNodes, setEdges])
 
+  // --- Align / distribute / lock --------------------------------------------
+
+  const onAlign = useCallback(
+    (axis: Axis) => {
+      setNodes((prev) => {
+        const selectedIds = prev.filter((n) => n.selected).map((n) => n.id)
+        if (selectedIds.length < 2) return prev
+        const arrangeable = prev.map((n) => ({
+          id: n.id,
+          position: n.position,
+          width: typeof n.width === "number" ? n.width : (n.measured?.width ?? null),
+          height: typeof n.height === "number" ? n.height : (n.measured?.height ?? null),
+          selected: n.selected,
+          data: n.data as Record<string, unknown> | undefined,
+        }))
+        const aligned = alignNodes(arrangeable, selectedIds, axis)
+        return prev.map((n, i) => {
+          const next = aligned[i]
+          return next ? ({ ...n, position: next.position } as Node) : n
+        })
+      })
+    },
+    [setNodes],
+  )
+
+  const onDistribute = useCallback(
+    (axis: "horizontal" | "vertical") => {
+      setNodes((prev) => {
+        const selectedIds = prev.filter((n) => n.selected).map((n) => n.id)
+        if (selectedIds.length < 3) return prev
+        const arrangeable = prev.map((n) => ({
+          id: n.id,
+          position: n.position,
+          width: typeof n.width === "number" ? n.width : (n.measured?.width ?? null),
+          height: typeof n.height === "number" ? n.height : (n.measured?.height ?? null),
+          selected: n.selected,
+        }))
+        const distributed = distributeNodes(arrangeable, selectedIds, axis)
+        return prev.map((n, i) => {
+          const next = distributed[i]
+          return next ? ({ ...n, position: next.position } as Node) : n
+        })
+      })
+    },
+    [setNodes],
+  )
+
+  const onToggleLock = useCallback(() => {
+    setNodes((prev) => {
+      const someUnlocked = prev.some(
+        (n) => n.selected && (n.data as Record<string, unknown> | undefined)?.locked !== true,
+      )
+      return prev.map((n) => {
+        if (!n.selected) return n
+        const data = { ...(n.data as Record<string, unknown>), locked: someUnlocked }
+        return { ...n, data }
+      })
+    })
+  }, [setNodes])
+
+  const onSelectAll = useCallback(() => {
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: true })))
+  }, [setNodes])
+
+  // --- Search ----------------------------------------------------------------
+
+  const runSearch = useCallback(
+    (query: string) => {
+      const id = findFirstMatch(
+        nodes.map((n) => ({
+          id: n.id,
+          position: n.position,
+          width: typeof n.width === "number" ? n.width : null,
+          height: typeof n.height === "number" ? n.height : null,
+          data: n.data as Record<string, unknown> | undefined,
+        })),
+        query,
+      )
+      if (!id) return
+      rf.fitView({ padding: 0.4, nodes: [{ id }], duration: 300 })
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })))
+    },
+    [nodes, rf, setNodes],
+  )
+
   // --- Fit to selection / content -------------------------------------------
 
   const onFit = useCallback(() => {
@@ -447,11 +560,14 @@ const CanvasInner = ({ session }: Props) => {
       } else if (ev.key.toLowerCase() === "d") {
         ev.preventDefault()
         onDuplicate()
+      } else if (ev.key.toLowerCase() === "a") {
+        ev.preventDefault()
+        onSelectAll()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onUndo, onRedo, onDuplicate])
+  }, [onUndo, onRedo, onDuplicate, onSelectAll])
 
   // --- Export / import .canvas ----------------------------------------------
 
@@ -494,16 +610,11 @@ const CanvasInner = ({ session }: Props) => {
     fileInputRef.current?.click()
   }, [])
 
-  const onImportFile = useCallback(
-    async (ev: ChangeEvent<HTMLInputElement>) => {
-      const file = ev.target.files?.[0]
-      if (!file) return
-      const text = await file.text()
-      ev.target.value = ""
+  const importCanvasText = useCallback(
+    (text: string) => {
       try {
         const jc = parseJsonCanvas(text)
         const snap = fromJsonCanvas(jc)
-        // Convert the snapshot's nodes/edges into React Flow shapes.
         const newNodes = snap.nodes.map(
           (n) =>
             ({
@@ -534,6 +645,34 @@ const CanvasInner = ({ session }: Props) => {
     },
     [setNodes, setEdges],
   )
+
+  const onImportFile = useCallback(
+    async (ev: ChangeEvent<HTMLInputElement>) => {
+      const file = ev.target.files?.[0]
+      if (!file) return
+      const text = await file.text()
+      ev.target.value = ""
+      importCanvasText(text)
+    },
+    [importCanvasText],
+  )
+
+  // Drag-and-drop a .canvas file onto the canvas surface.
+  const onDrop = useCallback(
+    async (ev: React.DragEvent<HTMLDivElement>) => {
+      const file = ev.dataTransfer.files?.[0]
+      if (!file) return
+      if (!file.name.endsWith(".canvas") && file.type !== "application/json") return
+      ev.preventDefault()
+      const text = await file.text()
+      importCanvasText(text)
+    },
+    [importCanvasText],
+  )
+
+  const onDragOver = useCallback((ev: React.DragEvent<HTMLDivElement>) => {
+    if (ev.dataTransfer.types.includes("Files")) ev.preventDefault()
+  }, [])
 
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
   const aGroupIsSelected = useMemo(
@@ -599,6 +738,15 @@ const CanvasInner = ({ session }: Props) => {
           title="Add a link node"
         >
           + Link
+        </button>
+        <button
+          type="button"
+          data-testid="canvas-add-file"
+          onClick={addFile}
+          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          title="Add a file reference node"
+        >
+          + File
         </button>
         <button
           type="button"
@@ -676,6 +824,102 @@ const CanvasInner = ({ session }: Props) => {
         >
           Fit
         </button>
+        <button
+          type="button"
+          data-testid="canvas-readonly"
+          onClick={() => setReadOnly((v) => !v)}
+          className={`rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 ${
+            readOnly
+              ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200"
+              : "hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+          title="Toggle read-only mode (no dragging or connecting)"
+        >
+          {readOnly ? "Read-only ✓" : "Read-only"}
+        </button>
+        <button
+          type="button"
+          data-testid="canvas-snap"
+          onClick={() => setSnap((v) => !v)}
+          className={`rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 ${
+            snap
+              ? "bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200"
+              : "hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+          title="Snap to grid while dragging"
+        >
+          {snap ? "Snap ✓" : "Snap"}
+        </button>
+        <button
+          type="button"
+          data-testid="canvas-lock"
+          onClick={onToggleLock}
+          disabled={selectedCount === 0}
+          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          title="Pin / unpin selected nodes"
+        >
+          Lock
+        </button>
+        <span className="inline-flex border border-slate-300 dark:border-slate-700 rounded overflow-hidden">
+          {(
+            [
+              { key: "left", label: "L" },
+              { key: "centerX", label: "CX" },
+              { key: "right", label: "R" },
+              { key: "top", label: "T" },
+              { key: "centerY", label: "CY" },
+              { key: "bottom", label: "B" },
+            ] as ReadonlyArray<{ key: Axis; label: string }>
+          ).map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              data-testid={`canvas-align-${a.key}`}
+              onClick={() => onAlign(a.key)}
+              disabled={selectedCount < 2}
+              className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 border-r border-slate-300 dark:border-slate-700 last:border-r-0"
+              title={`Align ${a.key}`}
+            >
+              {a.label}
+            </button>
+          ))}
+        </span>
+        <span className="inline-flex border border-slate-300 dark:border-slate-700 rounded overflow-hidden">
+          <button
+            type="button"
+            data-testid="canvas-distribute-h"
+            onClick={() => onDistribute("horizontal")}
+            disabled={selectedCount < 3}
+            className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 border-r border-slate-300 dark:border-slate-700"
+            title="Distribute horizontally"
+          >
+            ↔
+          </button>
+          <button
+            type="button"
+            data-testid="canvas-distribute-v"
+            onClick={() => onDistribute("vertical")}
+            disabled={selectedCount < 3}
+            className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+            title="Distribute vertically"
+          >
+            ↕
+          </button>
+        </span>
+        <input
+          data-testid="canvas-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              runSearch(search)
+            }
+            e.stopPropagation()
+          }}
+          placeholder="search…"
+          className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 w-32"
+        />
         {selectedEdgeId ? (
           <span className="flex items-center gap-1" data-testid="canvas-edge-toolbar">
             <input
@@ -798,25 +1042,34 @@ const CanvasInner = ({ session }: Props) => {
           dbl-click box/arrow to edit · Del to remove · drag handles to connect
         </span>
       </div>
-      <div className="flex-1 min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+      <div
+        className="flex-1 min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950"
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+      >
         <ReactFlow
           nodes={renderableNodes}
           edges={renderableEdges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
+          onConnect={readOnly ? undefined : onConnect}
           onEdgeClick={onEdgeClick}
           onPaneClick={() => setSelectedEdgeId(null)}
           onEdgeDoubleClick={(_, edge) => {
             setSelectedEdgeId(edge.id)
             setEdgeLabelDraft(typeof edge.label === "string" ? edge.label : "")
           }}
-          deleteKeyCode={["Backspace", "Delete"]}
+          deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
+          snapToGrid={snap}
+          snapGrid={[GRID_STEP, GRID_STEP]}
+          nodesDraggable={!readOnly}
+          nodesConnectable={!readOnly}
+          edgesFocusable={!readOnly}
         >
           <Background gap={16} />
           <Controls showInteractive={false} />
