@@ -1,7 +1,8 @@
 import { type Node, type NodeProps, NodeResizer, useReactFlow } from "@xyflow/react"
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { colorFor } from "./canvasObsidian"
 
-type GroupNode = Node<{ label?: string }, "group">
+type GroupNode = Node<{ label?: string; color?: string }, "group">
 
 // A group is a transparent rectangle with a dashed border. Its label sits at
 // the top so it doesn't fight with child boxes for clicks. Double-click the
@@ -50,15 +51,27 @@ export const EditableGroupNode = ({ id, data, selected }: NodeProps<GroupNode>) 
     e.stopPropagation()
   }
 
+  const colorKey = typeof data?.color === "string" ? data.color : ""
+  const palette = colorFor(colorKey)
+  const defaultBorder = selected
+    ? "border-sky-500 bg-sky-50/30 dark:bg-sky-950/20"
+    : "border-slate-400 dark:border-slate-600 bg-slate-100/30 dark:bg-slate-800/20"
+
   return (
     <div
       data-testid="canvas-node-group"
       data-node-id={id}
       className={`relative w-full h-full rounded-lg border-2 border-dashed ${
-        selected
-          ? "border-sky-500 bg-sky-50/30 dark:bg-sky-950/20"
-          : "border-slate-400 dark:border-slate-600 bg-slate-100/30 dark:bg-slate-800/20"
+        palette.stroke ? "" : defaultBorder
       }`}
+      style={
+        palette.stroke
+          ? {
+              borderColor: palette.stroke,
+              backgroundColor: palette.fill ? `${palette.fill}55` : undefined,
+            }
+          : undefined
+      }
     >
       <NodeResizer
         isVisible={selected}

@@ -50,6 +50,20 @@ describe("parseCanvas", () => {
     ])
   })
 
+  it("preserves edge.data — color and arrow direction roundtrip the wire", () => {
+    const snap = parseCanvas({
+      edges: [
+        {
+          id: "e1",
+          source: "a",
+          target: "b",
+          data: { color: "3", arrow: "both" },
+        },
+      ],
+    })
+    expect(snap.edges[0]?.data).toEqual({ color: "3", arrow: "both" })
+  })
+
   it("preserves group-membership fields on a node", () => {
     const snap = parseCanvas({
       nodes: [
