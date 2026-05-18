@@ -50,6 +50,50 @@ describe("parseCanvas", () => {
     ])
   })
 
+  it("preserves group-membership fields on a node", () => {
+    const snap = parseCanvas({
+      nodes: [
+        {
+          id: "child",
+          position: { x: 5, y: 5 },
+          parentId: "g1",
+          extent: "parent",
+          data: { label: "Inside" },
+        },
+        {
+          id: "g1",
+          type: "group",
+          position: { x: 0, y: 0 },
+          style: { width: 200, height: 120 },
+          data: { label: "Cluster" },
+        },
+      ],
+    })
+    expect(snap.nodes.find((n) => n.id === "child")).toMatchObject({
+      parentId: "g1",
+      extent: "parent",
+    })
+    expect(snap.nodes.find((n) => n.id === "g1")).toMatchObject({
+      type: "group",
+      style: { width: 200, height: 120 },
+    })
+  })
+
+  it("drops invalid extent values instead of smuggling them through", () => {
+    const snap = parseCanvas({
+      nodes: [
+        {
+          id: "x",
+          position: { x: 0, y: 0 },
+          parentId: "g1",
+          extent: "bogus",
+        },
+      ],
+    })
+    expect(snap.nodes[0]?.extent).toBeUndefined()
+    expect(snap.nodes[0]?.parentId).toBe("g1")
+  })
+
   it("drops edges missing source/target", () => {
     const snap = parseCanvas({
       edges: [

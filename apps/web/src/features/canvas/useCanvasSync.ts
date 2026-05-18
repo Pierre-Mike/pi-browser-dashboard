@@ -28,6 +28,9 @@ const snapshotToReactFlow = (snap: CanvasSnapshot): { nodes: Node[]; edges: Edge
       data: (n.data ?? { label: n.id }) as Record<string, unknown>,
     }
     if (n.type !== undefined) node.type = n.type
+    if (n.parentId !== undefined) node.parentId = n.parentId
+    if (n.extent !== undefined) node.extent = n.extent
+    if (n.style !== undefined) node.style = n.style as Record<string, string | number>
     return node
   }),
   edges: snap.edges.map((e) => {
@@ -82,6 +85,9 @@ export const useCanvasSync = (short: string): CanvasSyncApi => {
         data: n.data as Record<string, unknown> | undefined,
         width: n.width ?? n.measured?.width ?? null,
         height: n.height ?? n.measured?.height ?? null,
+        parentId: n.parentId ?? null,
+        extent: n.extent,
+        style: (n.style ?? null) as Record<string, unknown> | null,
       })),
       edges: edgesRef.current.map((e) => ({
         id: e.id,
