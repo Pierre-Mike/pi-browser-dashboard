@@ -5,6 +5,7 @@ import { ConfigService } from "../../platform/config.repo"
 import {
   type FileEntry,
   looksBinary,
+  parseGitHead,
   parseGithubOrigin,
   resolveProjectPath,
   sortEntries,
@@ -16,6 +17,7 @@ export type Project = {
   readonly path: string
   readonly isGitRepo: boolean
   readonly lastModified: number
+  readonly branch?: string
   readonly githubUrl?: string
   readonly githubOwner?: string
   readonly githubRepo?: string
@@ -52,6 +54,15 @@ export class ProjectsService extends Context.Tag("ProjectsService")<
   ProjectsServiceApi
 >() {}
 
+const readBranch = async (gitHeadPath: string): Promise<string | null> => {
+  try {
+    const text = await readFile(gitHeadPath, "utf8")
+    return parseGitHead(text)
+  } catch {
+    return null
+  }
+}
+
 const probeProject = (
   projectsRoot: string,
   entry: string,
@@ -63,11 +74,13 @@ const probeProject = (
     if (!s.isDirectory()) return null
     let isGitRepo = false
     let gitConfigPath: string | null = null
+    let gitHeadPath: string | null = null
     try {
       const gs = await stat(join(path, ".git"))
       if (gs.isDirectory()) {
         isGitRepo = true
         gitConfigPath = join(path, ".git", "config")
+        gitHeadPath = join(path, ".git", "HEAD")
       } else if (gs.isFile()) {
         isGitRepo = true
         // Worktree/submodule .git file — skip config probe (origin lives in
@@ -85,12 +98,14 @@ const probeProject = (
         gh = null
       }
     }
+    const branch = gitHeadPath ? await readBranch(gitHeadPath) : null
     return {
       id: entry,
       name: entry,
       path,
       isGitRepo,
       lastModified: s.mtimeMs,
+      ...(branch ? { branch } : {}),
       ...(gh ? { githubUrl: gh.url, githubOwner: gh.owner, githubRepo: gh.repo } : {}),
     }
   }).pipe(Effect.orElseSucceed(() => null))

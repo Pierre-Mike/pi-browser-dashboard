@@ -68,6 +68,16 @@ export const Sidebar = () => {
                         </span>
                       ) : null}
                       <span className="truncate">{b.title}</span>
+                      {b.project.branch ? (
+                        <span
+                          data-testid="sidebar-project-branch"
+                          data-branch={b.project.branch}
+                          title={`branch: ${b.project.branch}`}
+                          className="shrink-0 max-w-[80px] truncate font-mono text-[10px] font-normal text-slate-500 dark:text-slate-400"
+                        >
+                          {b.project.branch}
+                        </span>
+                      ) : null}
                     </Link>
                   ) : (
                     <span className="truncate flex-1 inline-flex items-center gap-1.5 text-[12px] font-medium italic text-slate-500 dark:text-slate-400">

@@ -26,6 +26,7 @@ export type Project = {
   path: string
   isGitRepo: boolean
   lastModified: number
+  branch?: string
   githubUrl?: string
   githubOwner?: string
   githubRepo?: string
