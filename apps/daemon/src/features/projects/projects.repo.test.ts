@@ -16,6 +16,21 @@ beforeAll(async () => {
   await writeFile(join(root, "demo", "src", "nested", "deep.txt"), "deep")
   // Binary fixture: a NUL byte triggers the binary heuristic.
   await writeFile(join(root, "demo", "bin.dat"), Buffer.from([1, 2, 0, 3]))
+
+  // Git repo fixture: HEAD points at a slash-containing branch.
+  await mkdir(join(root, "repo", ".git"), { recursive: true })
+  await writeFile(join(root, "repo", ".git", "HEAD"), "ref: refs/heads/feat/login\n")
+  await writeFile(
+    join(root, "repo", ".git", "config"),
+    `[remote "origin"]\n\turl = git@github.com:acme/widgets.git\n`,
+  )
+
+  // Detached HEAD fixture: no branch should be reported.
+  await mkdir(join(root, "detached", ".git"), { recursive: true })
+  await writeFile(
+    join(root, "detached", ".git", "HEAD"),
+    "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b\n",
+  )
 })
 
 afterAll(async () => {
@@ -60,6 +75,32 @@ describe("ProjectsRepo listDir", () => {
     )
     expect(exit._tag).toBe("Left")
     if (exit._tag === "Left") expect(exit.left).toBe("not_found")
+  })
+})
+
+describe("ProjectsRepo list", () => {
+  it("reports the current branch for a git repo", async () => {
+    const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.list()))
+    const repo = out.find((p) => p.id === "repo")
+    expect(repo).toBeDefined()
+    expect(repo?.isGitRepo).toBe(true)
+    expect(repo?.branch).toBe("feat/login")
+  })
+
+  it("omits branch for non-git projects", async () => {
+    const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.list()))
+    const demo = out.find((p) => p.id === "demo")
+    expect(demo).toBeDefined()
+    expect(demo?.isGitRepo).toBe(false)
+    expect(demo?.branch).toBeUndefined()
+  })
+
+  it("omits branch when HEAD is detached", async () => {
+    const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.list()))
+    const detached = out.find((p) => p.id === "detached")
+    expect(detached).toBeDefined()
+    expect(detached?.isGitRepo).toBe(true)
+    expect(detached?.branch).toBeUndefined()
   })
 })
 

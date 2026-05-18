@@ -92,6 +92,18 @@ export const parseGithubOrigin = (configText: string): GithubRemote | null => {
 
 const stripGitSuffix = (s: string): string => (s.endsWith(".git") ? s.slice(0, -4) : s)
 
+// Parses a `.git/HEAD` payload. Returns the branch name when HEAD points at a
+// `refs/heads/<name>` ref, or null for detached HEAD, non-branch refs, and
+// malformed/empty input. The branch name is preserved verbatim (slashes intact)
+// so feature branches like `feat/login` render correctly.
+export const parseGitHead = (text: string): string | null => {
+  const line = text.trim()
+  if (line === "") return null
+  const refMatch = /^ref:\s*refs\/heads\/(.+?)\s*$/.exec(line)
+  if (!refMatch?.[1]) return null
+  return refMatch[1]
+}
+
 export const parseGithubUrl = (url: string): GithubRemote | null => {
   // SSH: git@github.com:owner/repo(.git)?
   const ssh = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url)

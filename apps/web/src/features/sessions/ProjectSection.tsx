@@ -60,6 +60,17 @@ export const ProjectSection = ({ project, title, pathHint, sessions, canSpawn }:
             <span className="font-medium truncate" title={pathHint ?? title}>
               {title}
             </span>
+            {project.branch ? (
+              <span
+                data-testid="project-bar-branch"
+                data-branch={project.branch}
+                title={`branch: ${project.branch}`}
+                className="shrink-0 max-w-[160px] truncate inline-flex items-center gap-1 rounded-full bg-slate-200/70 dark:bg-slate-800 px-2 py-0.5 font-mono text-[10px] text-slate-700 dark:text-slate-300"
+              >
+                <span aria-hidden>⎇</span>
+                {project.branch}
+              </span>
+            ) : null}
             <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
               {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
             </span>

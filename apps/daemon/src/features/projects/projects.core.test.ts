@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test"
 import {
   looksBinary,
+  parseGitHead,
   parseGithubOrigin,
   parseGithubUrl,
   resolveProjectPath,
@@ -168,5 +169,32 @@ describe("parseGithubOrigin", () => {
       repo: "widgets",
       url: "https://github.com/acme/widgets",
     })
+  })
+})
+
+describe("parseGitHead", () => {
+  test("returns the branch name from a symbolic ref", () => {
+    expect(parseGitHead("ref: refs/heads/main\n")).toBe("main")
+  })
+
+  test("returns slash-containing branch names verbatim", () => {
+    expect(parseGitHead("ref: refs/heads/feat/login\n")).toBe("feat/login")
+  })
+
+  test("tolerates missing trailing newline and extra whitespace", () => {
+    expect(parseGitHead("  ref: refs/heads/main  ")).toBe("main")
+  })
+
+  test("returns null for a detached HEAD (raw SHA)", () => {
+    expect(parseGitHead("9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b\n")).toBeNull()
+  })
+
+  test("returns null for a ref that is not under refs/heads/", () => {
+    expect(parseGitHead("ref: refs/tags/v1.0\n")).toBeNull()
+  })
+
+  test("returns null for empty or whitespace-only input", () => {
+    expect(parseGitHead("")).toBeNull()
+    expect(parseGitHead("   \n")).toBeNull()
   })
 })

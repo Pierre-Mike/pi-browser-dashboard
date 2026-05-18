@@ -81,6 +81,17 @@ export const ProjectDashboard = ({ project }: Props) => {
                 ⚠ no isolation
               </span>
             )}
+            {project.branch ? (
+              <span
+                data-testid="project-dashboard-branch"
+                data-branch={project.branch}
+                title={`current branch: ${project.branch}`}
+                className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
+              >
+                <span aria-hidden>⎇</span>
+                {project.branch}
+              </span>
+            ) : null}
             {project.githubUrl ? (
               <a
                 data-testid="github-link"
