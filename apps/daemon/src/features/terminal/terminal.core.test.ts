@@ -2,9 +2,13 @@ import { describe, expect, it } from "bun:test"
 import { cleanZellijEnv, projectZellijCommand, zellijSessionName } from "./terminal.core"
 
 describe("zellijSessionName", () => {
-  it("returns the bare repo name, lowercased — no prefix so we share the user's session", () => {
+  it("returns the bare repo name verbatim — no prefix, case preserved so we share the user's session", () => {
     expect(zellijSessionName("pi-browser-dashboard")).toBe("pi-browser-dashboard")
-    expect(zellijSessionName("My-Repo")).toBe("my-repo")
+    // Case must be preserved: zellij list-sessions and `grep -qx` are
+    // case-sensitive, and the user's repo dirs (e.g. `Orchestrator`) are also
+    // their zellij session names.
+    expect(zellijSessionName("Orchestrator")).toBe("Orchestrator")
+    expect(zellijSessionName("My-Repo")).toBe("My-Repo")
   })
 
   it("returns null for empty / whitespace-only input", () => {
