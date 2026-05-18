@@ -45,3 +45,31 @@ test("dashboard terminal tab opens a ws to /terminal/global", async ({ page }) =
     .poll(() => wsUrls.some((u) => /\/terminal\/global(\?|$)/.test(u)), { timeout: 10_000 })
     .toBe(true)
 })
+
+// Regression: the daemon seals the zellij pty size at spawn time from the
+// cols/rows query params. FitAddon used to be read synchronously right after
+// term.open(), before xterm measured a char cell — handing the daemon 80×24
+// and stranding the zellij session there. The fix defers WS open until fit
+// resolves.
+test("global terminal handshake passes fit-resolved cols/rows, not 80x24", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  const wsUrls: string[] = []
+  page.on("websocket", (ws) => {
+    wsUrls.push(ws.url())
+  })
+
+  await page.goto("/")
+  await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("dashboard-tab-terminal").click()
+  await expect(page.getByTestId("global-terminal")).toBeVisible()
+
+  await expect
+    .poll(() => wsUrls.find((u) => /\/terminal\/global\?/.test(u)) ?? null, { timeout: 10_000 })
+    .not.toBeNull()
+
+  const url = new URL(wsUrls.find((u) => /\/terminal\/global\?/.test(u)) as string)
+  const cols = Number(url.searchParams.get("cols"))
+  const rows = Number(url.searchParams.get("rows"))
+  expect(cols).toBeGreaterThan(80)
+  expect(rows).toBeGreaterThan(24)
+})

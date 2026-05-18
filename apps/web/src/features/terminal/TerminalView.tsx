@@ -46,59 +46,89 @@ export const TerminalView = (props: Props) => {
         // host might have zero size on first paint; later retries handle it
       }
     }
-    // Flex layout + xterm renderer init aren't always settled when useEffect
-    // runs. Initial fit can latch onto stale dims and leave the terminal stuck
-    // at xterm's 80x24 default until a manual window resize. Schedule re-fits
-    // across upcoming frames so we converge on real dims.
-    safeFit()
-    const rafId = requestAnimationFrame(safeFit)
-    const fitTimers = [setTimeout(safeFit, 60), setTimeout(safeFit, 250)]
 
-    // Bun pipes have no SIGWINCH, so the child sees whatever COLUMNS/LINES we
-    // set at spawn — that's all the daemon has. Pass the dims produced by the
-    // synchronous safeFit() above; the xterm canvas keeps re-fitting client
-    // side, but the child-side size stays fixed until reconnect.
-    const url =
-      kind === "global"
-        ? terminalWsUrl({ baseUrl: apiBase(), kind: "global", cols: term.cols, rows: term.rows })
-        : terminalWsUrl({
-            baseUrl: apiBase(),
-            kind,
-            id,
-            cols: term.cols,
-            rows: term.rows,
-          })
-    const ws = new WebSocket(url)
-    ws.binaryType = "arraybuffer"
+    let ws: WebSocket | null = null
+    let dataSub: { dispose: () => void } | null = null
+    const rafIds: number[] = []
+    const timers: ReturnType<typeof setTimeout>[] = []
+    let disposed = false
 
-    const decoder = new TextDecoder()
-    ws.onopen = () => setStatus("open")
-    ws.onmessage = (ev) => {
-      if (ev.data instanceof ArrayBuffer) {
-        term.write(decoder.decode(new Uint8Array(ev.data)))
-      } else if (typeof ev.data === "string") {
-        term.write(ev.data)
+    // The daemon seals the child pty size at spawn time from these query
+    // params — there's no SIGWINCH channel back to the child. FitAddon
+    // silently no-ops when xterm's renderer hasn't measured a char cell yet
+    // (the normal state right after term.open()), so reading term.cols/rows
+    // synchronously hands the daemon xterm's 80×24 default and strands the
+    // zellij session at that size forever. Defer WS open until fit resolves.
+    const openWs = () => {
+      if (disposed || ws) return
+      safeFit()
+      const url =
+        kind === "global"
+          ? terminalWsUrl({ baseUrl: apiBase(), kind: "global", cols: term.cols, rows: term.rows })
+          : terminalWsUrl({
+              baseUrl: apiBase(),
+              kind,
+              id,
+              cols: term.cols,
+              rows: term.rows,
+            })
+      const sock = new WebSocket(url)
+      sock.binaryType = "arraybuffer"
+      ws = sock
+
+      const decoder = new TextDecoder()
+      sock.onopen = () => setStatus("open")
+      sock.onmessage = (ev) => {
+        if (ev.data instanceof ArrayBuffer) {
+          term.write(decoder.decode(new Uint8Array(ev.data)))
+        } else if (typeof ev.data === "string") {
+          term.write(ev.data)
+        }
       }
-    }
-    ws.onerror = () => setStatus("error")
-    ws.onclose = () => setStatus("closed")
+      sock.onerror = () => setStatus("error")
+      sock.onclose = () => setStatus("closed")
 
-    const dataSub = term.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(d)
-    })
+      dataSub = term.onData((d) => {
+        if (sock.readyState === WebSocket.OPEN) sock.send(d)
+      })
+    }
+
+    // Try fit across upcoming frames; open WS on the first frame where the
+    // host has real dims AND fit produced something larger than xterm's
+    // 80×24 default. Cap attempts so a genuinely tiny container still
+    // connects eventually (better small than never).
+    const MAX_ATTEMPTS = 8
+    let attempts = 0
+    const tryOpen = () => {
+      if (disposed || ws) return
+      attempts++
+      safeFit()
+      const sized = host.clientWidth > 0 && host.clientHeight > 0
+      const fitResolved = term.cols > 80 || term.rows > 24
+      if (sized && (fitResolved || attempts >= MAX_ATTEMPTS)) {
+        openWs()
+        return
+      }
+      rafIds.push(requestAnimationFrame(tryOpen))
+    }
+    rafIds.push(requestAnimationFrame(tryOpen))
+    timers.push(setTimeout(tryOpen, 250))
 
     const ro = new ResizeObserver(safeFit)
     ro.observe(host)
 
     return () => {
-      cancelAnimationFrame(rafId)
-      for (const t of fitTimers) clearTimeout(t)
+      disposed = true
+      for (const id of rafIds) cancelAnimationFrame(id)
+      for (const t of timers) clearTimeout(t)
       ro.disconnect()
-      dataSub.dispose()
-      try {
-        ws.close()
-      } catch {
-        // ignore
+      dataSub?.dispose()
+      if (ws) {
+        try {
+          ws.close()
+        } catch {
+          // ignore
+        }
       }
       term.dispose()
     }
