@@ -153,6 +153,13 @@ describe("projectZellijCommand", () => {
     const cmd = projectZellijCommand({ cwd: "/h", sessionName: "default" })
     expect(cmd).toContain(`exec zellij attach 'default'`)
   })
+
+  it("does not throw when layoutFile is omitted (regression: shq(undefined))", () => {
+    // Prior impl unconditionally ran shq(args.layoutFile) and threw
+    // `TypeError: undefined is not an object (evaluating 's.replace')` on the
+    // first WS connect, taking the whole daemon down with exited code=1.
+    expect(() => projectZellijCommand({ cwd: "/home/me", sessionName: "default" })).not.toThrow()
+  })
 })
 
 describe("GLOBAL_ZELLIJ_SESSION", () => {

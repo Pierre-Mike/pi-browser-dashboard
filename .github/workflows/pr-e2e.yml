@@ -1,0 +1,217 @@
+name: PR e2e
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # push screenshots to the pr-screenshots orphan branch
+  pull-requests: write  # post / update the sticky comment
+
+jobs:
+  e2e:
+    name: Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: apps/e2e
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run Playwright e2e
+        id: e2e
+        run: bun run test:e2e
+
+      - name: Collect screenshots
+        if: always()
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pr-screenshots"
+          rm -rf "$out"
+          mkdir -p "$out"
+          src="apps/e2e/test-results"
+          if [ ! -d "$src" ]; then
+            echo "no test-results dir produced"
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          count=0
+          # Each test produces a dir like <project>-<spec>-<title>/test-finished-N.png
+          while IFS= read -r -d '' png; do
+            dir=$(dirname "$png")
+            slug=$(basename "$dir")
+            base=$(basename "$png" .png)
+            cp "$png" "$out/${slug}__${base}.png"
+            count=$((count+1))
+          done < <(find "$src" -type f -name '*.png' -print0)
+          echo "Collected $count screenshots → $out"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload test-results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-pr-${{ github.event.pull_request.number }}
+          path: |
+            apps/e2e/test-results
+            apps/e2e/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish screenshots to pr-screenshots branch
+        if: always() && steps.collect.outputs.count != '0'
+        id: publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SRC_DIR: ${{ steps.collect.outputs.dir }}
+        run: |
+          set -euo pipefail
+          short_sha="${HEAD_SHA:0:7}"
+          ts=$(date -u +%Y%m%d-%H%M%S)
+          subpath="pr-${PR_NUMBER:-dispatch}/${ts}-${short_sha:-unknown}"
+
+          work="$RUNNER_TEMP/pr-screenshots-branch"
+          rm -rf "$work"
+          git clone --depth=1 --branch pr-screenshots \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "$work" 2>/dev/null || {
+              echo "pr-screenshots branch missing — creating orphan branch"
+              git clone --depth=1 \
+                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+                "$work"
+              cd "$work"
+              git checkout --orphan pr-screenshots
+              git rm -rf . >/dev/null 2>&1 || true
+              echo "# pr-screenshots" > README.md
+              echo "Auto-published Playwright screenshots per PR. Do not edit by hand." >> README.md
+              git add README.md
+              git -c user.email=actions@github.com -c user.name="github-actions[bot]" \
+                commit -m "init: pr-screenshots orphan branch"
+              git push origin pr-screenshots
+              cd -
+            }
+
+          mkdir -p "$work/$subpath"
+          cp -R "$SRC_DIR"/. "$work/$subpath/"
+          cd "$work"
+          git add "$subpath"
+          if git diff --cached --quiet; then
+            echo "no new screenshots"
+          else
+            git -c user.email=actions@github.com -c user.name="github-actions[bot]" \
+              commit -m "pr #${PR_NUMBER} @ ${short_sha}"
+            # Retry-on-conflict push (another job on the same PR may race us).
+            for i in 1 2 3; do
+              if git push origin pr-screenshots; then break; fi
+              git pull --rebase origin pr-screenshots
+            done
+          fi
+
+          base_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/pr-screenshots/${subpath}"
+          echo "base_url=$base_url" >> "$GITHUB_OUTPUT"
+          echo "subpath=$subpath" >> "$GITHUB_OUTPUT"
+
+      - name: Post sticky PR comment with inline screenshots
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          SHOT_COUNT: ${{ steps.collect.outputs.count }}
+          BASE_URL: ${{ steps.publish.outputs.base_url }}
+          SHOT_DIR: ${{ steps.collect.outputs.dir }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- pr-e2e-screenshots -->';
+            const outcome = process.env.E2E_OUTCOME || 'unknown';
+            const count = Number(process.env.SHOT_COUNT || '0');
+            const baseUrl = process.env.BASE_URL || '';
+            const shotDir = process.env.SHOT_DIR || '';
+            const headSha = (process.env.HEAD_SHA || '').slice(0, 7);
+            const runUrl = process.env.RUN_URL;
+            const branch = process.env.BRANCH || '';
+
+            const { owner, repo } = context.repo;
+
+            // Resolve the PR number. On pull_request events context.issue.number
+            // is the PR; on workflow_dispatch / push it's empty, so fall back
+            // to looking up an open PR for the head branch.
+            let issue_number = context.issue.number;
+            if (!issue_number && branch) {
+              const { data: prs } = await github.rest.pulls.list({
+                owner, repo, state: 'open', head: `${owner}:${branch}`, per_page: 1,
+              });
+              if (prs[0]) issue_number = prs[0].number;
+            }
+            if (!issue_number) {
+              core.info(`no open PR for branch=${branch}; skipping sticky comment`);
+              return;
+            }
+
+            const icon = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⚠️';
+            let body = `${marker}\n## ${icon} Playwright e2e — \`${headSha}\`\n\n`;
+            body += `- Result: **${outcome}**\n`;
+            body += `- Screenshots captured: **${count}**\n`;
+            body += `- [Workflow run](${runUrl})\n\n`;
+
+            if (count > 0 && baseUrl && shotDir) {
+              const files = fs.readdirSync(shotDir)
+                .filter((f) => f.endsWith('.png'))
+                .sort();
+              body += `<details open><summary>Screenshots (${files.length})</summary>\n\n`;
+              for (const f of files) {
+                const url = `${baseUrl}/${f}`;
+                const title = f.replace(/__test-finished-\d+\.png$/, '').replace(/\.png$/, '');
+                body += `\n<details><summary>${title}</summary>\n\n`;
+                body += `<img src="${url}" alt="${title}" width="900" />\n\n`;
+                body += `</details>\n`;
+              }
+              body += `\n</details>\n`;
+            } else if (outcome === 'failure') {
+              body += `_No screenshots were collected. Inspect the workflow run for traces and videos._\n`;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail job if e2e failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1
