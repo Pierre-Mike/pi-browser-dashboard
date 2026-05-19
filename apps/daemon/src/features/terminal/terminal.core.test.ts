@@ -130,23 +130,32 @@ describe("projectZellijCommand", () => {
 })
 
 describe("sessionZellijCommand", () => {
-  it("wraps the session in a bare zellij keyed by short — no auto-`claude attach`", () => {
-    // The drill-in terminal used to exec `claude attach <short>` directly: no
-    // zellij meant no tab bar, and no room for a second pane next to the
-    // claude TUI. Wrapping in zellij brings the tab bar back and lets the
-    // user open extra panes (tail logs, run tests) alongside the claude
-    // session. They type `claude attach <short>` themselves — the session
-    // card already exposes a copy button for that exact command.
+  it("auto-attaches to the claude bg session while keeping zellij's tab bar visible", () => {
+    // The drill-in used to exec `claude attach <short>` directly (no tab bar,
+    // no room for a second pane); then dropped auto-attach entirely because
+    // the layout used didn't include default_tab_template and swallowed the
+    // zellij UI. This shape keeps both: default_tab_template restores the
+    // tab bar / status bar, and the first pane auto-runs `claude attach`.
     const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
     expect(cmd).not.toBeNull()
     if (cmd === null) return
     expect(cmd).toContain("cd '/wt'")
     expect(cmd).toContain("zellij list-sessions -s")
     expect(cmd).toContain("grep -qx 'abcd1234'")
+    // Existing session: plain attach (claude is already running in the pane
+    // from first open — re-running it would stack TUIs).
     expect(cmd).toContain("exec zellij attach 'abcd1234'")
-    expect(cmd).toContain("exec zellij -s 'abcd1234'")
-    expect(cmd).not.toContain("claude attach")
-    expect(cmd).not.toContain("--layout")
+    // New session: layout file written via mktemp + heredoc, then `-n <file>`.
+    expect(cmd).toContain("mktemp")
+    expect(cmd).toContain("exec zellij -s 'abcd1234' -n")
+    // Layout must include default_tab_template so the tab bar is visible.
+    expect(cmd).toContain("default_tab_template")
+    expect(cmd).toContain(`plugin location="zellij:tab-bar"`)
+    expect(cmd).toContain(`plugin location="zellij:status-bar"`)
+    // Layout must auto-run `claude attach <short>` in the pane.
+    expect(cmd).toContain(`pane command="claude"`)
+    expect(cmd).toContain(`args "attach" "abcd1234"`)
+    expect(cmd).toContain("close_on_exit true")
   })
 
   it("returns null when the short sanitises to empty (route surfaces invalid_id)", () => {
@@ -159,6 +168,13 @@ describe("sessionZellijCommand", () => {
     expect(cmd).not.toBeNull()
     if (cmd === null) return
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+
+  it("inlines the sanitised short into the KDL — sanitiser keeps it within [A-Za-z0-9._-] so no string escaping is needed", () => {
+    const cmd = sessionZellijCommand({ cwd: "/wt", short: "weird name!" })
+    expect(cmd).not.toBeNull()
+    if (cmd === null) return
+    expect(cmd).toContain(`args "attach" "weird-name"`)
   })
 })
 

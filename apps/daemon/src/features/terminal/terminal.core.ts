@@ -82,23 +82,77 @@ export const projectZellijCommand = (args: {
   ].join("\n")
 }
 
-// Drill-in session terminal: same bare-zellij shape as the project terminal,
-// keyed off the daemon session's short id. Earlier versions exec'd
-// `claude attach <short>` directly — the tab had no zellij UI and no room
-// for a second pane (tail logs, run tests) next to the claude TUI. Wrapping
-// in zellij brings the tab bar back; the user runs `claude attach <short>`
-// themselves (the session card has a copy button for that exact command).
+// Layout for the drill-in zellij session. Two requirements pull against
+// each other here:
+//   1. Auto-run `claude attach <short>` so the terminal tab "just works"
+//      the moment the user opens it (prior shape made them type it).
+//   2. Keep zellij's tab bar / status bar visible so a second pane can be
+//      opened alongside the claude TUI.
+//
+// `default_tab_template` is the load-bearing piece: without it, a layout
+// with a single top-level `pane` hides the tab/status bars and looks
+// identical to running claude bare — which is why an earlier auto-attach
+// shape was reverted.
+//
+// `close_on_exit true`: quitting claude attach closes the pane; zellij
+// exits with the last pane and the next drill-in starts fresh.
+const sessionClaudeLayoutKdl = (short: string): string =>
+  `layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    pane command="claude" {
+        args "attach" "${short}"
+        close_on_exit true
+    }
+}
+`
+
+// Drill-in session terminal: zellij keyed by short, auto-running
+// `claude attach <short>` in the first pane.
+//
+// First open: bash materialises the layout KDL to a temp file via
+// mktemp + heredoc, then `exec zellij -s <name> -n <file>`. (`--layout-string`
+// is misleading per projectZellijCommand notes; `-n <file>` is the only path
+// that actually applies a layout when creating a session.)
+//
+// Subsequent opens: the session already exists with claude running, so
+// `exec zellij attach <name>` is enough — re-applying the layout would
+// stack a second claude TUI on top of the live one.
+//
+// Heredoc safety: `sessionName` already passed through zellijSessionName
+// (restricted to [A-Za-z0-9._-]). Inlining into a double-quoted KDL string
+// inside a single-quoted heredoc is safe.
 //
 // Returns null when `short` sanitises to an empty zellij name — the route
-// translates that into an `invalid_id` reason rather than spawning a
-// nameless session.
+// translates that into an `invalid_id` reason.
 export const sessionZellijCommand = (args: {
   readonly cwd: string
   readonly short: string
 }): string | null => {
   const sessionName = zellijSessionName(args.short)
   if (sessionName === null) return null
-  return projectZellijCommand({ cwd: args.cwd, sessionName })
+  const cwd = shq(args.cwd)
+  const name = shq(sessionName)
+  const layoutKdl = sessionClaudeLayoutKdl(sessionName)
+  return [
+    `cd ${cwd}`,
+    `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
+    `  exec zellij attach ${name}`,
+    "else",
+    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
+    `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
+    layoutKdl.trimEnd(),
+    "PID_LAYOUT_EOF",
+    `  exec zellij -s ${name} -n "$layout_file"`,
+    "fi",
+  ].join("\n")
 }
 
 // Bun.spawn only gives us pipes, never a pty. zellij refuses to enable raw
