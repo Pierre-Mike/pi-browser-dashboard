@@ -59,68 +59,56 @@ export const ProjectDashboard = ({ project }: Props) => {
   const [tab, setTab] = useState<TabKey>("sessions")
 
   return (
-    <div data-testid="project-dashboard" className="flex flex-col gap-4">
-      <header className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <Link to="/" className="hover:underline">
-            ← All projects
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-lg font-semibold flex items-center gap-2 min-w-0">
-            <span className="truncate">{project.name}</span>
-            {project.isGitRepo ? (
-              <span className="text-[10px] uppercase tracking-wide rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5">
-                git
-              </span>
-            ) : (
-              <span
-                className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5"
-                title="No git → supervisor cannot isolate worktrees; siblings race on disk"
-              >
-                ⚠ no isolation
-              </span>
-            )}
-            {project.branch ? (
-              <span
-                data-testid="project-dashboard-branch"
-                data-branch={project.branch}
-                title={`current branch: ${project.branch}`}
-                className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
-              >
-                <span aria-hidden>⎇</span>
-                {project.branch}
-              </span>
-            ) : null}
-            {project.githubUrl ? (
-              <a
-                data-testid="github-link"
-                href={project.githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
-                className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
-              >
-                GitHub ↗
-              </a>
-            ) : null}
-          </h1>
-          <button
-            type="button"
-            data-testid="dashboard-spawn"
-            onClick={() => setSpawnOpen(true)}
-            className="ml-auto text-xs font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2.5 py-1 hover:bg-sky-100 dark:hover:bg-sky-900/50"
-          >
-            Spawn new +
-          </button>
-        </div>
-        <div
-          className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate"
-          title={project.path}
+    <div data-testid="project-dashboard" className="flex flex-col gap-2">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Link
+          to="/"
+          className="text-xs text-slate-500 dark:text-slate-400 hover:underline shrink-0"
+          title="All projects"
         >
-          {project.path}
-        </div>
-        <div className="flex flex-wrap gap-1.5 pt-1">
+          ←
+        </Link>
+        <h1 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
+          <span className="truncate" title={project.path}>
+            {project.name}
+          </span>
+          {project.isGitRepo ? (
+            <span className="text-[10px] uppercase tracking-wide rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5">
+              git
+            </span>
+          ) : (
+            <span
+              className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5"
+              title="No git → supervisor cannot isolate worktrees; siblings race on disk"
+            >
+              ⚠ no isolation
+            </span>
+          )}
+          {project.branch ? (
+            <span
+              data-testid="project-dashboard-branch"
+              data-branch={project.branch}
+              title={`current branch: ${project.branch}`}
+              className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[160px] truncate"
+            >
+              <span aria-hidden>⎇</span>
+              {project.branch}
+            </span>
+          ) : null}
+          {project.githubUrl ? (
+            <a
+              data-testid="github-link"
+              href={project.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
+              className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
+            >
+              GitHub ↗
+            </a>
+          ) : null}
+        </h1>
+        <div className="flex flex-wrap items-center gap-1">
           <Pill
             label="total"
             value={sessions.length}
@@ -169,13 +157,21 @@ export const ProjectDashboard = ({ project }: Props) => {
             />
           ) : null}
         </div>
+        <button
+          type="button"
+          data-testid="dashboard-spawn"
+          onClick={() => setSpawnOpen(true)}
+          className="ml-auto text-xs font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50"
+        >
+          Spawn +
+        </button>
       </header>
 
       <nav
         data-testid="project-tabs"
         role="tablist"
         aria-label="Project sections"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 -mt-2"
+        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800"
       >
         {tabs.map((t) => {
           const active = tab === t.key
