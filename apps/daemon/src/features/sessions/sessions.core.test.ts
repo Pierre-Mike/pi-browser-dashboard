@@ -1,6 +1,86 @@
 import { describe, expect, test } from "bun:test"
 import { ageMs, parseRoster, parseState } from "./sessions.core"
 
+describe("parseState — additional coverage", () => {
+  test("downcases and trims a known state string before matching", () => {
+    expect(parseState({ short: "x", json: { state: "  Needs_Input  " } }).state).toBe("needs_input")
+  })
+
+  test("falls back to 'idle' when state is not a string", () => {
+    expect(parseState({ short: "x", json: { state: 42 } }).state).toBe("idle")
+    expect(parseState({ short: "x", json: { state: null } }).state).toBe("idle")
+  })
+
+  test("prefers daemonShort over the registry short when both are present", () => {
+    expect(parseState({ short: "ignore-me", json: { daemonShort: "real" } }).short).toBe("real")
+  })
+
+  test("uses the registry short when daemonShort is absent or null", () => {
+    expect(parseState({ short: "abcd", json: { daemonShort: null } }).short).toBe("abcd")
+    expect(parseState({ short: "abcd", json: {} }).short).toBe("abcd")
+  })
+
+  test("surfaces output.result as the session result", () => {
+    const s = parseState({
+      short: "abcd",
+      json: { output: { result: { ok: true, value: 7 } } },
+    })
+    expect(s.result).toEqual({ ok: true, value: 7 })
+  })
+
+  test("tolerates a null output without crashing", () => {
+    expect(parseState({ short: "abcd", json: { output: null } }).result).toBeUndefined()
+  })
+
+  test("normalises nulls to undefined for optional string fields", () => {
+    const s = parseState({
+      short: "abcd",
+      json: {
+        detail: null,
+        tempo: null,
+        intent: null,
+        name: null,
+        sessionId: null,
+        cwd: null,
+        createdAt: null,
+        updatedAt: null,
+        linkScanPath: null,
+      },
+    })
+    expect(s.detail).toBeUndefined()
+    expect(s.tempo).toBeUndefined()
+    expect(s.intent).toBeUndefined()
+    expect(s.name).toBeUndefined()
+    expect(s.sessionId).toBeUndefined()
+    expect(s.cwd).toBeUndefined()
+    expect(s.createdAt).toBeUndefined()
+    expect(s.updatedAt).toBeUndefined()
+    expect(s.linkScanPath).toBeUndefined()
+  })
+
+  test("ignores unknown fields rather than throwing", () => {
+    expect(parseState({ short: "abcd", json: { state: "working", futureField: "noise" } }).state)
+      .toBe("working")
+  })
+})
+
+describe("parseRoster — additional coverage", () => {
+  test("captures supervisor metadata", () => {
+    const r = parseRoster({ supervisorPid: 42, updatedAt: 1700000000 })
+    expect(r.supervisorPid).toBe(42)
+    expect(r.updatedAt).toBe(1700000000)
+  })
+
+  test("ignores unknown top-level fields rather than throwing", () => {
+    const r = parseRoster({ workers: { x1: {} }, unexpectedKey: "noise" })
+    expect(r.workers).toHaveLength(1)
+  })
+
+  test("throws on a fundamentally wrong shape", () => {
+    expect(() => parseRoster("not an object")).toThrow()
+  })
+})
+
 describe("parseState", () => {
   test("surfaces worktreePath and worktreeBranch when present", () => {
     const out = parseState({
