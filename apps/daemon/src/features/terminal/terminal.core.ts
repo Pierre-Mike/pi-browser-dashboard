@@ -96,6 +96,14 @@ export const projectZellijCommand = (args: {
 //
 // `close_on_exit true`: quitting claude attach closes the pane; zellij
 // exits with the last pane and the next drill-in starts fresh.
+//
+// The command is wrapped in `bash -lc`, not run directly as `command="claude"`.
+// Directly invoking `claude` from a zellij pane produces a pty that claude
+// rejects within a few seconds — the TUI paints once and then claude exits,
+// `close_on_exit true` collapses the pane, and the user lands on an empty
+// shell pane the moment the WS reconnects. Wrapping in bash gives claude
+// the controlling-tty shape it expects and the process stays alive across
+// reconnects.
 const sessionClaudeLayoutKdl = (short: string): string =>
   `layout {
     default_tab_template {
@@ -107,8 +115,8 @@ const sessionClaudeLayoutKdl = (short: string): string =>
             plugin location="zellij:status-bar"
         }
     }
-    pane command="claude" {
-        args "attach" "${short}"
+    pane command="bash" {
+        args "-lc" "claude attach ${short}"
         close_on_exit true
     }
 }
