@@ -8,49 +8,49 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as SessionsIdRouteImport } from './routes/sessions.$id'
-import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
+import { Route as rootRouteImport } from "./routes/__root"
+import { Route as IndexRouteImport } from "./routes/index"
+import { Route as ProjectsIdRouteImport } from "./routes/projects.$id"
+import { Route as SessionsIdRouteImport } from "./routes/sessions.$id"
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const SessionsIdRoute = SessionsIdRouteImport.update({
-  id: '/sessions/$id',
-  path: '/sessions/$id',
+  id: "/sessions/$id",
+  path: "/sessions/$id",
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsIdRoute = ProjectsIdRouteImport.update({
-  id: '/projects/$id',
-  path: '/projects/$id',
+  id: "/projects/$id",
+  path: "/projects/$id",
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/projects/$id': typeof ProjectsIdRoute
-  '/sessions/$id': typeof SessionsIdRoute
+  "/": typeof IndexRoute
+  "/projects/$id": typeof ProjectsIdRoute
+  "/sessions/$id": typeof SessionsIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/projects/$id': typeof ProjectsIdRoute
-  '/sessions/$id': typeof SessionsIdRoute
+  "/": typeof IndexRoute
+  "/projects/$id": typeof ProjectsIdRoute
+  "/sessions/$id": typeof SessionsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/projects/$id': typeof ProjectsIdRoute
-  '/sessions/$id': typeof SessionsIdRoute
+  "/": typeof IndexRoute
+  "/projects/$id": typeof ProjectsIdRoute
+  "/sessions/$id": typeof SessionsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/projects/$id' | '/sessions/$id'
+  fullPaths: "/" | "/projects/$id" | "/sessions/$id"
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects/$id' | '/sessions/$id'
-  id: '__root__' | '/' | '/projects/$id' | '/sessions/$id'
+  to: "/" | "/projects/$id" | "/sessions/$id"
+  id: "__root__" | "/" | "/projects/$id" | "/sessions/$id"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -59,26 +59,26 @@ export interface RootRouteChildren {
   SessionsIdRoute: typeof SessionsIdRoute
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
+    "/": {
+      id: "/"
+      path: "/"
+      fullPath: "/"
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$id': {
-      id: '/sessions/$id'
-      path: '/sessions/$id'
-      fullPath: '/sessions/$id'
+    "/sessions/$id": {
+      id: "/sessions/$id"
+      path: "/sessions/$id"
+      fullPath: "/sessions/$id"
       preLoaderRoute: typeof SessionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$id': {
-      id: '/projects/$id'
-      path: '/projects/$id'
-      fullPath: '/projects/$id'
+    "/projects/$id": {
+      id: "/projects/$id"
+      path: "/projects/$id"
+      fullPath: "/projects/$id"
       preLoaderRoute: typeof ProjectsIdRouteImport
       parentRoute: typeof rootRouteImport
     }

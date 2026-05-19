@@ -96,7 +96,9 @@ export default async function globalSetup(): Promise<void> {
   const defaultAuthDir = join(process.env.HOME ?? "", ".claude-e2e")
   const authDir =
     explicitAuthDir === undefined
-      ? existsSync(defaultAuthDir) ? defaultAuthDir : undefined
+      ? existsSync(defaultAuthDir)
+        ? defaultAuthDir
+        : undefined
       : explicitAuthDir.length > 0 && existsSync(explicitAuthDir)
         ? explicitAuthDir
         : undefined
@@ -116,7 +118,9 @@ export default async function globalSetup(): Promise<void> {
     PID_PROJECTS_ROOT: workspace,
   }
 
-  process.stderr.write(`[e2e] sandbox=${sandbox} ${persistent ? "(persistent auth)" : "(ephemeral)"}\n`)
+  process.stderr.write(
+    `[e2e] sandbox=${sandbox} ${persistent ? "(persistent auth)" : "(ephemeral)"}\n`,
+  )
   process.stderr.write(`[e2e] starting daemon on :${DAEMON_PORT}\n`)
 
   const daemon = spawn("bun", ["run", DAEMON_MAIN], {

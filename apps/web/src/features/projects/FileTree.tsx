@@ -151,24 +151,35 @@ export const FileTree = ({ projectId, onPick }: Props) => {
   return (
     <div
       data-testid="project-file-tree"
-      className="grid grid-cols-1 md:grid-cols-[minmax(220px,300px)_1fr] gap-3 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-white/40 dark:bg-slate-900/40"
+      className="flex flex-col min-h-[24rem] h-[calc(100vh-22rem)] border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-white/40 dark:bg-slate-900/40"
     >
-      <div className="border-r border-slate-200 dark:border-slate-800 overflow-auto max-h-[60vh] py-1">
-        <DirNode
-          projectId={projectId}
-          path=""
-          name="."
-          depth={0}
-          selected={selected}
-          onPick={pick}
-        />
-      </div>
-      <div className="min-h-[20vh] max-h-[60vh] overflow-hidden">
-        {selected ? (
-          <FilePreview projectId={projectId} path={selected} />
-        ) : (
-          <div className="text-xs text-slate-500 p-3">Select a file to preview.</div>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] flex-1 min-h-0">
+        <div className="flex flex-col min-h-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60">
+            <span className="text-[10px] uppercase tracking-wide font-medium text-slate-500 dark:text-slate-400">
+              Tree
+            </span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto py-1">
+            <DirNode
+              projectId={projectId}
+              path=""
+              name="."
+              depth={0}
+              selected={selected}
+              onPick={pick}
+            />
+          </div>
+        </div>
+        <div className="flex flex-col min-h-0">
+          {selected ? (
+            <FilePreview projectId={projectId} path={selected} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 p-6 text-center">
+              Select a file to preview.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

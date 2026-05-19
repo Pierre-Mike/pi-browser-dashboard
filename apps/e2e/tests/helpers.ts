@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { expect, type Locator, type Page } from "@playwright/test"
+import { type Locator, type Page, expect } from "@playwright/test"
 
 const DAEMON_PORT = Number(process.env.PID_E2E_DAEMON_PORT ?? 18787)
 
@@ -81,7 +81,10 @@ export const ensureProject = (name: string, opts: { gitInit?: boolean } = {}): s
   return path
 }
 
-export const waitForSessionInRegistry = async (short: string, timeoutMs = 10_000): Promise<void> => {
+export const waitForSessionInRegistry = async (
+  short: string,
+  timeoutMs = 10_000,
+): Promise<void> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
@@ -188,7 +191,11 @@ export const waitForCard = async (page: Page, short: string, timeout = 30_000): 
   await expect(cardLocator(page, short)).toBeVisible({ timeout })
 }
 
-export const waitForCardGone = async (page: Page, short: string, timeout = 30_000): Promise<void> => {
+export const waitForCardGone = async (
+  page: Page,
+  short: string,
+  timeout = 30_000,
+): Promise<void> => {
   await expect(cardLocator(page, short)).toHaveCount(0, { timeout })
 }
 
@@ -203,10 +210,12 @@ export const waitForState = async (
   await expect(cardLocator(page, short)).toHaveAttribute("data-state", state, { timeout })
 }
 
-export const waitForSettled = async (page: Page, short: string, timeout = 90_000): Promise<void> => {
-  await expect(cardLocator(page, short)).toHaveAttribute(
-    "data-state",
-    /^(idle|done|failed)$/,
-    { timeout },
-  )
+export const waitForSettled = async (
+  page: Page,
+  short: string,
+  timeout = 90_000,
+): Promise<void> => {
+  await expect(cardLocator(page, short)).toHaveAttribute("data-state", /^(idle|done|failed)$/, {
+    timeout,
+  })
 }

@@ -1,11 +1,5 @@
 import { expect, test } from "@playwright/test"
-import {
-  cardLocator,
-  dispatchDirect,
-  rmSession,
-  waitForCard,
-  waitForSettled,
-} from "./helpers"
+import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Regression: when the terminal tab mounts, the xterm fit pass used to latch
 // onto stale flex dims and leave the terminal stuck at xterm's 80x24 default
