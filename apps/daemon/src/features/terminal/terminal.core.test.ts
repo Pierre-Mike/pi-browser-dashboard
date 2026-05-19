@@ -152,9 +152,13 @@ describe("sessionZellijCommand", () => {
     expect(cmd).toContain("default_tab_template")
     expect(cmd).toContain(`plugin location="zellij:tab-bar"`)
     expect(cmd).toContain(`plugin location="zellij:status-bar"`)
-    // Layout must auto-run `claude attach <short>` in the pane.
-    expect(cmd).toContain(`pane command="claude"`)
-    expect(cmd).toContain(`args "attach" "abcd1234"`)
+    // Layout must auto-run `claude attach <short>` wrapped in `bash -lc`.
+    // Direct `command="claude"` produces a pty that claude rejects, so the
+    // TUI paints once and the pane collapses within seconds — leaving the
+    // user on an empty shell pane after the next reconnect.
+    expect(cmd).toContain(`pane command="bash"`)
+    expect(cmd).toContain(`args "-lc" "claude attach abcd1234"`)
+    expect(cmd).not.toContain(`pane command="claude"`)
     expect(cmd).toContain("close_on_exit true")
   })
 
@@ -174,7 +178,7 @@ describe("sessionZellijCommand", () => {
     const cmd = sessionZellijCommand({ cwd: "/wt", short: "weird name!" })
     expect(cmd).not.toBeNull()
     if (cmd === null) return
-    expect(cmd).toContain(`args "attach" "weird-name"`)
+    expect(cmd).toContain(`args "-lc" "claude attach weird-name"`)
   })
 })
 
