@@ -6,7 +6,7 @@ type Props = { projectId: string; projectName: string }
 // after the repo, running `claude` inside. Browser tabs come and go; the zellij
 // daemon keeps the session warm so a refresh re-attaches to the same REPL.
 export const ProjectTerminal = ({ projectId, projectName }: Props) => (
-  <div className="flex flex-col gap-2 min-h-[24rem] h-[calc(100vh-24rem)]">
+  <div className="flex flex-col gap-2 flex-1 min-h-0 w-full">
     <div className="flex items-baseline gap-2">
       <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Terminal

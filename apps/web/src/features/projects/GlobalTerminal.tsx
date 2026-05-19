@@ -5,7 +5,7 @@ import { TerminalView } from "../terminal/TerminalView"
 // specific repo). The daemon resolves cwd = $HOME on first spawn; subsequent
 // reconnects just re-attach the running session.
 export const GlobalTerminal = () => (
-  <div className="flex flex-col gap-2 min-h-[24rem] h-[calc(100vh-18rem)]">
+  <div className="flex flex-col gap-2 flex-1 min-h-0 w-full">
     <div className="flex items-baseline gap-2">
       <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Terminal

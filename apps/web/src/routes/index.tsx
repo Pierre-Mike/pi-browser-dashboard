@@ -54,9 +54,13 @@ const ProjectsPanel = () => {
 
 function IndexPage() {
   const [tab, setTab] = useState<TabKey>("projects")
+  const fillViewport = tab === "terminal"
 
   return (
-    <div data-testid="dashboard" className="flex flex-col gap-4">
+    <div
+      data-testid="dashboard"
+      className={`flex flex-col gap-4 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-4" : ""}`}
+    >
       <nav
         data-testid="dashboard-tabs"
         role="tablist"
@@ -97,7 +101,7 @@ function IndexPage() {
       <div
         role="tabpanel"
         data-testid="dashboard-tab-panel-terminal"
-        className={tab === "terminal" ? "" : "hidden"}
+        className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <GlobalTerminal />
       </div>
