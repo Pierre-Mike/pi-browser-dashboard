@@ -7,7 +7,7 @@ export const TerminalTab = ({ session }: Props) => (
   <TerminalView
     kind="session"
     id={session.short}
-    reconnectTitle="Reconnect — respawns the underlying claude attach"
+    reconnectTitle="Reconnect — re-attaches the zellij session (panes stay running)"
     testId="terminal-tab"
   />
 )

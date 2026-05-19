@@ -82,6 +82,25 @@ export const projectZellijCommand = (args: {
   ].join("\n")
 }
 
+// Drill-in session terminal: same bare-zellij shape as the project terminal,
+// keyed off the daemon session's short id. Earlier versions exec'd
+// `claude attach <short>` directly — the tab had no zellij UI and no room
+// for a second pane (tail logs, run tests) next to the claude TUI. Wrapping
+// in zellij brings the tab bar back; the user runs `claude attach <short>`
+// themselves (the session card has a copy button for that exact command).
+//
+// Returns null when `short` sanitises to an empty zellij name — the route
+// translates that into an `invalid_id` reason rather than spawning a
+// nameless session.
+export const sessionZellijCommand = (args: {
+  readonly cwd: string
+  readonly short: string
+}): string | null => {
+  const sessionName = zellijSessionName(args.short)
+  if (sessionName === null) return null
+  return projectZellijCommand({ cwd: args.cwd, sessionName })
+}
+
 // Bun.spawn only gives us pipes, never a pty. zellij refuses to enable raw
 // mode without a controlling tty and panics on attach. We need a pty allocator
 // that does NOT require stdin to already be a tty — macOS BSD script(1) does

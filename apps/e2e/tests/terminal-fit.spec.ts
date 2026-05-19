@@ -17,8 +17,8 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
   const { short } = await dispatchDirect()
 
   // Capture the /terminal/:short WebSocket URL so we can verify the cols/rows
-  // handshake. The daemon has no pty (Bun pipes only), so spawn-time env is
-  // the only chance to size `claude attach`. Without these params, zellij
+  // handshake. The daemon allocates a pty via python3 forkpty and resizes it
+  // in-band with stty before launching zellij. Without these params, zellij
   // renders at the daemon's 120x32 default in the top-left of the canvas.
   const termWs = page.waitForEvent("websocket", {
     predicate: (ws) => ws.url().includes(`/terminal/${short}`),

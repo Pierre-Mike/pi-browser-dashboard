@@ -1,7 +1,10 @@
 // Build the ws:// URL for the daemon terminal bridge. Three kinds:
-//   - "session": /terminal/<short>          → bash + claude attach <short>
-//   - "project": /terminal/project/<id>     → bash + zellij attach/create + claude
-//   - "global" : /terminal/global           → bash + zellij attach 'default' (no id)
+//   - "session": /terminal/<short>          → bash + zellij attach/create '<short>'
+//   - "project": /terminal/project/<id>     → bash + zellij attach/create '<id>'
+//   - "global" : /terminal/global           → bash + zellij attach/create 'default'
+// All three are bare zellij sessions (tab bar visible, no auto-claude); the
+// user runs `claude attach <short>` themselves from inside zellij when they
+// want the session TUI.
 // Pure so the test pins the exact path/query the daemon expects.
 export type TerminalKind = "session" | "project" | "global"
 
