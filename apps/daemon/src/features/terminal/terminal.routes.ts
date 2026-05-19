@@ -11,6 +11,7 @@ import {
   cleanZellijEnv,
   globalTerminalCwd,
   projectZellijCommand,
+  sessionZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
 
@@ -80,17 +81,13 @@ type Resolved =
 
 type BridgeOpts = {
   readonly resolveCommand: (c: Context) => Promise<Resolved>
-  // Optional pre-kill byte sequence to send on WS close. claude attach reads
-  // Ctrl+Z as "detach"; zellij doesn't need anything — killing the client
-  // process already detaches without disturbing the daemon-owned session.
-  readonly detachBytes?: string
-  // When true, route the child through script(1) so it inherits a real pty.
-  // Required for zellij (raw-mode), unused by `claude attach` which tolerates
-  // pipes.
+  // When true, route the child through a forkpty wrapper so it inherits a
+  // real pty. Required for zellij (raw-mode); all three terminal routes use
+  // zellij now, so callers always pass true.
   readonly pty?: boolean
 }
 
-const makeWsHandler = ({ resolveCommand, detachBytes, pty = false }: BridgeOpts) =>
+const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
   upgradeWebSocket((c) => {
     // The browser sends its current xterm dims at connect-time. Without a
     // resize channel from the browser these are the only chance to size the
@@ -159,14 +156,6 @@ const makeWsHandler = ({ resolveCommand, detachBytes, pty = false }: BridgeOpts)
         if (!b) return
         bridges.delete(tokenKey)
         b.drainAbort.abort()
-        if (detachBytes !== undefined) {
-          try {
-            b.child.stdin.write(detachBytes)
-            b.child.stdin.flush()
-          } catch {
-            // ignore
-          }
-        }
         setTimeout(() => {
           try {
             b.child.kill()
@@ -188,11 +177,13 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
     }),
   )
   if (!session) return { ok: false, reason: `session ${id} not found` }
-  // The browser tab is our multiplexer. Skip zellij and attach the
-  // supervisor session directly; the bash wrapper lands us in the
-  // session's worktree first so `pwd` looks right after detach.
+  // Wrap the drill-in in a per-session zellij so the tab bar is visible and
+  // a second pane (tail logs, run tests) can live next to the claude TUI.
+  // The user runs `claude attach <short>` themselves — SessionCard already
+  // exposes a copy button for the exact command.
   const cwd = session.cwd || process.env.HOME || "/"
-  const cmd = `cd ${JSON.stringify(cwd)} && exec claude attach ${session.short}`
+  const cmd = sessionZellijCommand({ cwd, short: session.short })
+  if (cmd === null) return { ok: false, reason: "invalid_id" }
   return { ok: true, cwd, cmd }
 }
 
@@ -225,6 +216,6 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
 const app = new Hono()
   .get("/global", makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true }))
   .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
-  .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, detachBytes: "\x1a" }))
+  .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, pty: true }))
 
 export { app }

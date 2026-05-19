@@ -5,6 +5,7 @@ import {
   cleanZellijEnv,
   globalTerminalCwd,
   projectZellijCommand,
+  sessionZellijCommand,
   zellijSessionName,
 } from "./terminal.core"
 
@@ -124,6 +125,39 @@ describe("projectZellijCommand", () => {
   it("single-quote-escapes cwds containing apostrophes", () => {
     const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
+    expect(cmd).toContain(`cd '/it'\\''s/here'`)
+  })
+})
+
+describe("sessionZellijCommand", () => {
+  it("wraps the session in a bare zellij keyed by short — no auto-`claude attach`", () => {
+    // The drill-in terminal used to exec `claude attach <short>` directly: no
+    // zellij meant no tab bar, and no room for a second pane next to the
+    // claude TUI. Wrapping in zellij brings the tab bar back and lets the
+    // user open extra panes (tail logs, run tests) alongside the claude
+    // session. They type `claude attach <short>` themselves — the session
+    // card already exposes a copy button for that exact command.
+    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
+    expect(cmd).not.toBeNull()
+    if (cmd === null) return
+    expect(cmd).toContain("cd '/wt'")
+    expect(cmd).toContain("zellij list-sessions -s")
+    expect(cmd).toContain("grep -qx 'abcd1234'")
+    expect(cmd).toContain("exec zellij attach 'abcd1234'")
+    expect(cmd).toContain("exec zellij -s 'abcd1234'")
+    expect(cmd).not.toContain("claude attach")
+    expect(cmd).not.toContain("--layout")
+  })
+
+  it("returns null when the short sanitises to empty (route surfaces invalid_id)", () => {
+    expect(sessionZellijCommand({ cwd: "/wt", short: "" })).toBeNull()
+    expect(sessionZellijCommand({ cwd: "/wt", short: "///" })).toBeNull()
+  })
+
+  it("single-quote-escapes the cwd", () => {
+    const cmd = sessionZellijCommand({ cwd: "/it's/here", short: "x" })
+    expect(cmd).not.toBeNull()
+    if (cmd === null) return
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
   })
 })
