@@ -56,28 +56,53 @@ export const cleanZellijEnv = (
 // '\''. Safe for any byte string in a POSIX shell.
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 
+// Layout for the project / global zellij session. Mirrors the drill-in
+// shape (default_tab_template with the tab-bar + status-bar plugins) so the
+// zellij UI is always visible — bare `zellij -s <name>` depends on the
+// user's config to render those bars, and some configs hide them. Unlike
+// the drill-in there is no auto-running command pane; the bare `pane`
+// drops the user at their default shell so they can run `claude` (or
+// anything else) themselves.
+const projectLayoutKdl = (): string =>
+  `layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    pane
+}
+`
+
 // Bash one-liner: cd into the project, then either re-attach an existing zellij
-// session by name or spawn a fresh bare session. `exec` so the child slot is
-// replaced — closing the WS kills the zellij client, but zellij's daemon keeps
-// the session alive for the next attach.
+// session by name or spawn a fresh session with the project layout. `exec` so
+// the child slot is replaced — closing the WS kills the zellij client, but
+// zellij's daemon keeps the session alive for the next attach.
 //
-// No layout: the project session boots into the user's default shell with
-// zellij's tab bar visible. The user runs `claude` (or anything else)
-// themselves. An earlier version passed a single-pane layout that auto-ran
-// `claude`, which swallowed the zellij UI — one pane, no tab bar — and made
-// the tab indistinguishable from running claude bare.
+// First open: bash materialises the layout KDL via mktemp + heredoc, then
+// `exec zellij -s <name> -n <file>`. Subsequent opens: plain attach —
+// re-applying the layout would stack extra default panes on the live session.
 export const projectZellijCommand = (args: {
   readonly cwd: string
   readonly sessionName: string
 }): string => {
   const cwd = shq(args.cwd)
   const name = shq(args.sessionName)
+  const layoutKdl = projectLayoutKdl()
   return [
     `cd ${cwd}`,
     `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
     `  exec zellij attach ${name}`,
     "else",
-    `  exec zellij -s ${name}`,
+    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
+    `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
+    layoutKdl.trimEnd(),
+    "PID_LAYOUT_EOF",
+    `  exec zellij -s ${name} -n "$layout_file"`,
     "fi",
   ].join("\n")
 }

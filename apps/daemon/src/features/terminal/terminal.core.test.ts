@@ -101,24 +101,28 @@ describe("projectZellijCommand", () => {
     expect(cmd).toContain("exec zellij attach 'foo'")
   })
 
-  it("creates a bare new session (no layout, no auto-claude) so the zellij tab bar is visible", () => {
-    // Project sessions used to launch with a layout file that auto-ran
-    // `claude` in the only pane — which swallowed the zellij UI: one pane,
-    // no tab bar, indistinguishable from running `claude` directly. Bare
-    // zellij gives the user the tab bar and their default shell so they
-    // can run claude themselves (or anything else).
+  it("creates a new session with a layout that pins zellij's tab bar visible (no auto-claude)", () => {
+    // Bare `zellij -s <name>` relies on the user's config to show the tab
+    // bar / status bar — some configs hide them, leaving the dashboard
+    // terminal indistinguishable from a single shell pane. Mirror the
+    // session drill-in shape: write a layout file with default_tab_template
+    // pinning the tab-bar and status-bar plugins. Unlike the drill-in, no
+    // auto-claude pane — the user picks what to run.
     const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
-    expect(cmd).toContain(`exec zellij -s 'foo'`)
-    expect(cmd).not.toContain(" -n ")
-    expect(cmd).not.toContain("--layout")
+    expect(cmd).toContain("mktemp")
+    expect(cmd).toContain(`exec zellij -s 'foo' -n`)
+    expect(cmd).toContain("default_tab_template")
+    expect(cmd).toContain(`plugin location="zellij:tab-bar"`)
+    expect(cmd).toContain(`plugin location="zellij:status-bar"`)
+    // No auto-claude — the project terminal should drop the user at a shell.
     expect(cmd).not.toContain("claude")
   })
 
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
     const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
-    const attachLines = cmd.split("\n").filter((l) => l.includes("zellij"))
+    const attachLines = cmd.split("\n").filter((l) => l.includes("exec zellij"))
     for (const l of attachLines) {
-      expect(l.trim().startsWith("exec ") || l.includes("list-sessions")).toBe(true)
+      expect(l.trim().startsWith("exec ")).toBe(true)
     }
   })
 
