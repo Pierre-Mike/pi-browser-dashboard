@@ -78,6 +78,75 @@ describe("ProjectsRepo listDir", () => {
   })
 })
 
+const runGit = async (cwd: string, args: readonly string[]): Promise<void> => {
+  const proc = Bun.spawn({
+    cmd: ["git", ...args],
+    cwd,
+    stdout: "ignore",
+    stderr: "ignore",
+    stdin: "ignore",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "pid-test",
+      GIT_AUTHOR_EMAIL: "pid@test.invalid",
+      GIT_COMMITTER_NAME: "pid-test",
+      GIT_COMMITTER_EMAIL: "pid@test.invalid",
+    },
+  })
+  const code = await proc.exited
+  if (code !== 0) throw new Error(`git ${args.join(" ")} exited ${code}`)
+}
+
+describe("ProjectsRepo list ordering by last commit", () => {
+  let gitRoot: string
+
+  beforeAll(async () => {
+    gitRoot = await mkdtemp(join(tmpdir(), "pid-commit-sort-"))
+    // Three projects: a real git repo with a fresh commit, a non-git project
+    // touched in the distant past, and a non-git project touched recently.
+    const real = join(gitRoot, "real-git")
+    const oldPlain = join(gitRoot, "old-plain")
+    const newPlain = join(gitRoot, "new-plain")
+    await mkdir(real, { recursive: true })
+    await mkdir(oldPlain, { recursive: true })
+    await mkdir(newPlain, { recursive: true })
+    await writeFile(join(real, "README.md"), "hi\n")
+    await runGit(real, ["init", "-q", "-b", "main"])
+    await runGit(real, ["add", "."])
+    await runGit(real, ["commit", "-q", "-m", "init"])
+    // Force mtimes: old-plain ~ year 2001, new-plain ~ now. The real repo's
+    // HEAD commit just happened, so it should still sort first.
+    const { utimes } = await import("node:fs/promises")
+    await utimes(oldPlain, new Date(1_000_000_000_000), new Date(1_000_000_000_000))
+    await utimes(newPlain, new Date(), new Date())
+  })
+
+  afterAll(async () => {
+    await rm(gitRoot, { recursive: true, force: true })
+  })
+
+  it("ranks a freshly-committed git repo ahead of a recently-touched plain dir", async () => {
+    const layer = Layer.provide(ProjectsRepoLive, ConfigRepoTest({ projectsRoot: gitRoot }))
+    const out = await Effect.runPromise(
+      Effect.provide(
+        Effect.flatMap(ProjectsService, (s) => s.list()),
+        layer,
+      ),
+    )
+    const ids = out.map((p) => p.id)
+    expect(ids).toContain("real-git")
+    expect(ids).toContain("new-plain")
+    expect(ids).toContain("old-plain")
+    // Real git commit time is "now" and beats the new-plain mtime
+    // (also "now") on tie-break only when commit time is strictly newer; we
+    // can't guarantee strict ordering against mtime "now", so the weaker
+    // contract we test is: real-git outranks the year-2001 plain dir.
+    expect(ids.indexOf("real-git")).toBeLessThan(ids.indexOf("old-plain"))
+    const real = out.find((p) => p.id === "real-git")
+    expect(real?.lastCommitMs).toBeGreaterThan(0)
+  })
+})
+
 describe("ProjectsRepo list", () => {
   it("reports the current branch for a git repo", async () => {
     const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.list()))

@@ -104,6 +104,33 @@ export const parseGitHead = (text: string): string | null => {
   return refMatch[1]
 }
 
+// Parses the stdout of `git log -1 --format=%ct HEAD` (unix seconds) into
+// milliseconds. Returns null for empty, malformed, or non-positive input — the
+// caller will fall back to directory mtime when the repo has no commits yet or
+// git is unavailable.
+export const parseGitCommitTimestamp = (stdout: string): number | null => {
+  const trimmed = stdout.trim()
+  if (trimmed === "") return null
+  if (!/^\d+$/.test(trimmed)) return null
+  const seconds = Number(trimmed)
+  if (!Number.isFinite(seconds) || seconds <= 0) return null
+  return seconds * 1000
+}
+
+type ProjectSortKey = {
+  readonly lastModified: number
+  readonly lastCommitMs?: number
+}
+
+// Newest-first comparator. Prefers `lastCommitMs` (HEAD commit time) when
+// available, falling back to filesystem mtime so non-git projects still sort
+// sensibly alongside git ones.
+export const compareProjectsByCommit = (a: ProjectSortKey, b: ProjectSortKey): number => {
+  const ka = a.lastCommitMs ?? a.lastModified
+  const kb = b.lastCommitMs ?? b.lastModified
+  return kb - ka
+}
+
 export const parseGithubUrl = (url: string): GithubRemote | null => {
   // SSH: git@github.com:owner/repo(.git)?
   const ssh = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url)
