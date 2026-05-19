@@ -1,0 +1,3 @@
+# palette
+
+`⇧⇧` (double-shift within 300 ms) project switcher. `palette.ts` is a pure controller (`installPalette`) — owns `open`, the shift-tap timer, the filtered entry list, and a `selectRowAt` callback that routes the chosen project. Pure so it tests cleanly; the DOM/keyboard wiring lives in `PaletteController.tsx` which listens with `capture: true` on `document.keydown`, taps the controller, then re-syncs React state from `handle.getEntries()`. `PaletteModal` renders a portal with a centered input + filtered list; navigation moves the route to `/projects/$id`. Non-shift keys reset the tap timer; held modifiers (Ctrl/Meta/Alt) suppress the tap so global shortcuts aren't hijacked.

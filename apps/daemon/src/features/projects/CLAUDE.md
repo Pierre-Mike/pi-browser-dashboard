@@ -1,0 +1,3 @@
+# projects
+
+Read-only filesystem browser scoped under `ConfigService.projectsRoot` (default `~/Github`, overridable via `PID_PROJECTS_ROOT`). Routes: `GET /projects` lists top-level directories (each probed for `.git` to flag `isGitRepo`, sorted by mtime desc); `GET /projects/:id/files?path=` lists entries inside a project subdir; `GET /projects/:id/file?path=` returns file content (1 MB cap, NUL-byte binary sniff). Path safety lives in `projects.core.ts` (`resolveProjectPath`) — refuses absolute paths, `..` traversal, NUL bytes, and double-checks via `path.relative`. Errors map to HTTP codes via `errorToStatus`: `forbidden` → 403, `not_a_directory|not_a_file` → 400, `too_large` → 413, default → 404.

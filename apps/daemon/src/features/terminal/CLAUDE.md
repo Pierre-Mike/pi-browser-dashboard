@@ -1,0 +1,3 @@
+# terminal
+
+`GET /terminal/:id` WebSocket — duplex bridge between an xterm.js front-end and a `claude attach <short>` child process. On open: looks up the session via `SessionRegistry`, spawns `bash -lc 'cd <cwd> && exec claude attach <short>'` with `TERM=xterm-256color`, `COLUMNS=120`, `LINES=32`. The browser tab is the multiplexer — we deliberately skip zellij so detach behavior is clean. Pumps child stdout/stderr → ws (copying into fresh `Uint8Array` to satisfy Bun's WS typings), ws → child stdin. On ws close: writes `Ctrl+Z` (the documented `claude attach` detach key), waits 1 s, then kills. Bridges are tracked in a per-socket `WeakMap`, never reused across connections. Errors surface as red ANSI in the terminal and `ws.close(1011, …)`.

@@ -1,0 +1,3 @@
+# dispatch
+
+Modal UI for spawning a new background session. `SpawnModal` is a portal-rendered overlay opened from any project bar (project grid, sidebar, dashboard) with the target `project` pre-selected — submits `{ intent, cwd: project.path }` to `POST /dispatch` via the `hc` client. ⌘/Ctrl + Enter to submit, Escape or backdrop-click to close. On success invalidates `["sessions"]` so TanStack Query refetches (SSE `session.created` arrives moments later anyway, but the manual invalidate avoids a perceptible gap). No agent / permission-mode controls in v1 — daemon accepts them but the bar surfaces only the prompt.
