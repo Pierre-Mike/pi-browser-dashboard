@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
-import { SpawnModal } from "../dispatch/SpawnModal"
+import { InlineSpawn } from "../dispatch/InlineSpawn"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
@@ -42,7 +42,6 @@ const Pill = ({ label, value, tone }: { label: string; value: number; tone: stri
 
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
-  const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
 
@@ -105,14 +104,6 @@ export const ProjectDashboard = ({ project }: Props) => {
               </a>
             ) : null}
           </h1>
-          <button
-            type="button"
-            data-testid="dashboard-spawn"
-            onClick={() => setSpawnOpen(true)}
-            className="ml-auto text-xs font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2.5 py-1 hover:bg-sky-100 dark:hover:bg-sky-900/50"
-          >
-            Spawn new +
-          </button>
         </div>
         <div
           className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate"
@@ -205,9 +196,10 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tab-panel-sessions"
         className={tab === "sessions" ? "flex flex-col gap-3" : "hidden"}
       >
+        <InlineSpawn project={project} />
         {sessions.length === 0 ? (
           <div className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
-            No sessions yet — use <span className="font-medium">Spawn new +</span> to start one.
+            No sessions yet — type an intent above to start one.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -243,8 +235,6 @@ export const ProjectDashboard = ({ project }: Props) => {
       >
         <FileTree projectId={project.id} />
       </div>
-
-      <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />
     </div>
   )
 }

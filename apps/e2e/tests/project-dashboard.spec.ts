@@ -34,8 +34,10 @@ test("click project bar on grid → navigate to /projects/$id dashboard", async 
     await waitForCard(page, short, 20_000)
     await expect(dash.locator(cardLocator(page, short))).toHaveCount(1)
 
-    // Spawn button is available on the dashboard.
-    await expect(page.getByTestId("dashboard-spawn")).toBeVisible()
+    // Inline spawn form is available on the Sessions tab.
+    await expect(page.getByTestId("inline-spawn")).toBeVisible()
+    await expect(page.getByTestId("inline-spawn-input")).toBeVisible()
+    await expect(page.getByTestId("inline-spawn-submit")).toBeVisible()
   } finally {
     rmSession(short)
   }
