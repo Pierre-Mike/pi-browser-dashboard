@@ -1,6 +1,8 @@
 import { describe, expect, it, test } from "bun:test"
 import {
+  compareProjectsByCommit,
   looksBinary,
+  parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
   parseGithubUrl,
@@ -169,6 +171,52 @@ describe("parseGithubOrigin", () => {
       repo: "widgets",
       url: "https://github.com/acme/widgets",
     })
+  })
+})
+
+describe("parseGitCommitTimestamp", () => {
+  test("parses a unix-seconds timestamp to milliseconds", () => {
+    expect(parseGitCommitTimestamp("1715000000\n")).toBe(1_715_000_000_000)
+  })
+
+  test("tolerates surrounding whitespace", () => {
+    expect(parseGitCommitTimestamp("  1715000000  ")).toBe(1_715_000_000_000)
+  })
+
+  test("returns null for empty or non-numeric input", () => {
+    expect(parseGitCommitTimestamp("")).toBeNull()
+    expect(parseGitCommitTimestamp("\n")).toBeNull()
+    expect(parseGitCommitTimestamp("not-a-number")).toBeNull()
+  })
+
+  test("returns null for negative or non-integer values", () => {
+    expect(parseGitCommitTimestamp("-1")).toBeNull()
+    expect(parseGitCommitTimestamp("1.5")).toBeNull()
+  })
+})
+
+describe("compareProjectsByCommit", () => {
+  const base = { id: "x", name: "x", path: "/x", isGitRepo: false } as const
+
+  test("orders by lastCommitMs descending when both are present", () => {
+    const a = { ...base, id: "a", lastModified: 1, lastCommitMs: 100 }
+    const b = { ...base, id: "b", lastModified: 1, lastCommitMs: 200 }
+    expect(compareProjectsByCommit(a, b)).toBeGreaterThan(0)
+    expect(compareProjectsByCommit(b, a)).toBeLessThan(0)
+  })
+
+  test("falls back to lastModified when lastCommitMs is missing", () => {
+    const a = { ...base, id: "a", lastModified: 50 }
+    const b = { ...base, id: "b", lastModified: 10, lastCommitMs: 100 }
+    // a uses 50 (mtime), b uses 100 (commit) → b first
+    expect(compareProjectsByCommit(a, b)).toBeGreaterThan(0)
+  })
+
+  test("ranks commit time above mtime when mixed", () => {
+    const gitRecent = { ...base, id: "git", lastModified: 1, lastCommitMs: 1000 }
+    const mtimeAhead = { ...base, id: "plain", lastModified: 999 }
+    const sorted = [mtimeAhead, gitRecent].sort(compareProjectsByCommit)
+    expect(sorted.map((p) => p.id)).toEqual(["git", "plain"])
   })
 })
 

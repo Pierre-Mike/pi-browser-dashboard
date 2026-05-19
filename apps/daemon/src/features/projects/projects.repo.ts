@@ -4,7 +4,9 @@ import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
 import {
   type FileEntry,
+  compareProjectsByCommit,
   looksBinary,
+  parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
   resolveProjectPath,
@@ -17,6 +19,7 @@ export type Project = {
   readonly path: string
   readonly isGitRepo: boolean
   readonly lastModified: number
+  readonly lastCommitMs?: number
   readonly branch?: string
   readonly githubUrl?: string
   readonly githubOwner?: string
@@ -63,6 +66,34 @@ const readBranch = async (gitHeadPath: string): Promise<string | null> => {
   }
 }
 
+// Runs `git log -1 --format=%ct HEAD` against the repo and returns the HEAD
+// commit time in ms, or null if the command fails (no commits yet, git missing,
+// timeout). Times out fast so a slow repo can't stall the project list.
+const readLastCommitMs = async (repoPath: string): Promise<number | null> => {
+  try {
+    const proc = Bun.spawn({
+      cmd: ["git", "-C", repoPath, "log", "-1", "--format=%ct", "HEAD"],
+      stdout: "pipe",
+      stderr: "ignore",
+      stdin: "ignore",
+    })
+    const timer = setTimeout(() => {
+      try {
+        proc.kill()
+      } catch {
+        // ignore — already exited
+      }
+    }, 2_000)
+    const stdout = await new Response(proc.stdout).text()
+    const exitCode = await proc.exited
+    clearTimeout(timer)
+    if (exitCode !== 0) return null
+    return parseGitCommitTimestamp(stdout)
+  } catch {
+    return null
+  }
+}
+
 const probeProject = (
   projectsRoot: string,
   entry: string,
@@ -99,12 +130,14 @@ const probeProject = (
       }
     }
     const branch = gitHeadPath ? await readBranch(gitHeadPath) : null
+    const lastCommitMs = isGitRepo ? await readLastCommitMs(path) : null
     return {
       id: entry,
       name: entry,
       path,
       isGitRepo,
       lastModified: s.mtimeMs,
+      ...(lastCommitMs !== null ? { lastCommitMs } : {}),
       ...(branch ? { branch } : {}),
       ...(gh ? { githubUrl: gh.url, githubOwner: gh.owner, githubRepo: gh.repo } : {}),
     }
@@ -143,7 +176,7 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
             { concurrency: 8 },
           )
           const projects = probed.filter((p): p is Project => p !== null)
-          projects.sort((a, b) => b.lastModified - a.lastModified)
+          projects.sort(compareProjectsByCommit)
           return projects
         }),
 
@@ -201,7 +234,7 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
 
 export const ProjectsRepoTest = (fixtures: readonly Project[]): Layer.Layer<ProjectsService> =>
   Layer.succeed(ProjectsService, {
-    list: () => Effect.succeed([...fixtures].sort((a, b) => b.lastModified - a.lastModified)),
+    list: () => Effect.succeed([...fixtures].sort(compareProjectsByCommit)),
     listDir: () => Effect.fail<FileError>("not_found"),
     readFile: () => Effect.fail<FileError>("not_found"),
   })
