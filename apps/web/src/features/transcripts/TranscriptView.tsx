@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { TranscriptMessage } from "../../lib/types"
+import { Markdown } from "./Markdown"
 import { type Block, asString, flattenContent } from "./flattenContent"
 
 type Props = { messages: readonly TranscriptMessage[] }
@@ -200,15 +201,10 @@ const Avatar = ({ kind }: { kind: "user" | "assistant" | "system" }) => {
 const UserBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <div className="flex flex-col items-end w-full min-w-0">
-      <div className="w-full rounded-2xl rounded-tr-sm bg-sky-500 text-white px-3.5 py-2 shadow-sm text-right">
+      <div className="w-full rounded-2xl rounded-tr-sm bg-sky-500 text-white px-3.5 py-2 shadow-sm text-left">
         {blocks.map((b, i) =>
           b.kind === "text" ? (
-            <pre
-              key={i}
-              className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-right"
-            >
-              {b.text}
-            </pre>
+            <Markdown key={i} text={b.text} tone="user" />
           ) : b.kind === "tool_result" ? (
             <div key={i} className="text-sky-50 text-left">
               <ToolResult text={b.text} isError={b.isError} />
@@ -232,14 +228,7 @@ const AssistantBubble = ({ blocks, time }: { blocks: Block[]; time: string }) =>
         ) : (
           blocks.map((b, i) => {
             if (b.kind === "text") {
-              return (
-                <pre
-                  key={i}
-                  className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed"
-                >
-                  {b.text}
-                </pre>
-              )
+              return <Markdown key={i} text={b.text} />
             }
             if (b.kind === "thinking") {
               return <Thinking key={i} text={b.text} />
@@ -262,7 +251,7 @@ const ResultBubble = ({ text, time }: { text: string; time: string }) => (
       <div className="text-[10px] uppercase tracking-wide font-semibold opacity-60 mb-0.5">
         Result {time ? `· ${time}` : ""}
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans">{text}</pre>
+      <Markdown text={text} />
     </div>
   </div>
 )
