@@ -88,37 +88,33 @@ describe("cleanZellijEnv", () => {
 })
 
 describe("projectZellijCommand", () => {
-  const LAYOUT = "/tmp/claude.kdl"
-
   it("cd-s into the cwd before invoking zellij", () => {
-    const cmd = projectZellijCommand({
-      cwd: "/path/to/repo",
-      sessionName: "foo",
-      layoutFile: LAYOUT,
-    })
+    const cmd = projectZellijCommand({ cwd: "/path/to/repo", sessionName: "foo" })
     expect(cmd.split("\n")[0]).toBe("cd '/path/to/repo'")
   })
 
   it("attaches when the session already exists", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
     expect(cmd).toContain("zellij list-sessions -s")
     expect(cmd).toContain("grep -qx 'foo'")
     expect(cmd).toContain("exec zellij attach 'foo'")
   })
 
-  it("creates a new session via -n <layout-file>, NOT --layout-string", () => {
-    // Regression: `zellij -s NAME --layout-string LAYOUT` treats LAYOUT as
-    // "add a tab to the existing NAME session" and exits with "Session not
-    // found" when NAME doesn't exist — so the previous code never actually
-    // created the per-project session on first open. `-n FILE` always starts
-    // a new session.
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
-    expect(cmd).toContain(`exec zellij -s 'foo' -n '/tmp/claude.kdl'`)
-    expect(cmd).not.toContain("--layout-string")
+  it("creates a bare new session (no layout, no auto-claude) so the zellij tab bar is visible", () => {
+    // Project sessions used to launch with a layout file that auto-ran
+    // `claude` in the only pane — which swallowed the zellij UI: one pane,
+    // no tab bar, indistinguishable from running `claude` directly. Bare
+    // zellij gives the user the tab bar and their default shell so they
+    // can run claude themselves (or anything else).
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    expect(cmd).toContain(`exec zellij -s 'foo'`)
+    expect(cmd).not.toContain(" -n ")
+    expect(cmd).not.toContain("--layout")
+    expect(cmd).not.toContain("claude")
   })
 
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
-    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo", layoutFile: LAYOUT })
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
     const attachLines = cmd.split("\n").filter((l) => l.includes("zellij"))
     for (const l of attachLines) {
       expect(l.trim().startsWith("exec ") || l.includes("list-sessions")).toBe(true)
@@ -126,39 +122,9 @@ describe("projectZellijCommand", () => {
   })
 
   it("single-quote-escapes cwds containing apostrophes", () => {
-    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x", layoutFile: LAYOUT })
+    const cmd = projectZellijCommand({ cwd: "/it's/here", sessionName: "x" })
     // POSIX trick: ' → '\''  (close, escaped-quote, reopen)
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
-  })
-
-  it("single-quote-escapes the layout file path", () => {
-    const cmd = projectZellijCommand({
-      cwd: "/x",
-      sessionName: "foo",
-      layoutFile: "/tmp/it's.kdl",
-    })
-    expect(cmd).toContain(`-n '/tmp/it'\\''s.kdl'`)
-  })
-
-  it("omits -n <file> when layoutFile is undefined (global catch-all session)", () => {
-    // Regression: resolveGlobalCommand calls this without layoutFile. Previously
-    // shq(undefined) threw TypeError at onOpen and the WS died before any byte
-    // reached the browser.
-    const cmd = projectZellijCommand({ cwd: "/h", sessionName: "default" })
-    expect(cmd).toContain(`exec zellij -s 'default'`)
-    expect(cmd).not.toContain(" -n ")
-  })
-
-  it("still attaches an existing session even with no layoutFile", () => {
-    const cmd = projectZellijCommand({ cwd: "/h", sessionName: "default" })
-    expect(cmd).toContain(`exec zellij attach 'default'`)
-  })
-
-  it("does not throw when layoutFile is omitted (regression: shq(undefined))", () => {
-    // Prior impl unconditionally ran shq(args.layoutFile) and threw
-    // `TypeError: undefined is not an object (evaluating 's.replace')` on the
-    // first WS connect, taking the whole daemon down with exited code=1.
-    expect(() => projectZellijCommand({ cwd: "/home/me", sessionName: "default" })).not.toThrow()
   })
 })
 

@@ -56,48 +56,29 @@ export const cleanZellijEnv = (
 // '\''. Safe for any byte string in a POSIX shell.
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 
-// Layout that opens a single pane running `claude`. close_on_exit lets the user
-// quit claude and have the pane disappear instead of staring at a corpse.
-export const CLAUDE_LAYOUT_KDL = `layout {
-    pane command="claude" {
-        close_on_exit true
-    }
-}
-`
-
 // Bash one-liner: cd into the project, then either re-attach an existing zellij
-// session by name or spawn a fresh one whose only pane runs `claude`. `exec` so
-// the child slot is replaced — closing the WS kills the zellij client, but
-// zellij's daemon keeps the session alive for the next attach.
+// session by name or spawn a fresh bare session. `exec` so the child slot is
+// replaced — closing the WS kills the zellij client, but zellij's daemon keeps
+// the session alive for the next attach.
 //
-// New-session branch uses `-n <file>` (--new-session-with-layout), NOT `-s
-// <name> --layout-string …`. The latter looks like the obvious move but its
-// docs are misleading: with --session the layout is treated as "add a tab to
-// the existing session", and when no session by that name exists zellij just
-// prints "Session 'NAME' not found" and exits without creating anything. The
-// caller (TerminalRoutes) writes the layout to a temp file and passes its path.
-//
-// `layoutFile` is optional: per-project sessions pass the claude-pane layout so
-// the first open lands inside `claude`; the global catch-all session omits it
-// and gets a bare default zellij session instead.
+// No layout: the project session boots into the user's default shell with
+// zellij's tab bar visible. The user runs `claude` (or anything else)
+// themselves. An earlier version passed a single-pane layout that auto-ran
+// `claude`, which swallowed the zellij UI — one pane, no tab bar — and made
+// the tab indistinguishable from running claude bare.
 export const projectZellijCommand = (args: {
   readonly cwd: string
   readonly sessionName: string
-  readonly layoutFile?: string
 }): string => {
   const cwd = shq(args.cwd)
   const name = shq(args.sessionName)
-  const newSession =
-    args.layoutFile !== undefined
-      ? `exec zellij -s ${name} -n ${shq(args.layoutFile)}`
-      : `exec zellij -s ${name}`
   return [
     `cd ${cwd}`,
     `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
     `  exec zellij attach ${name}`,
-    `else`,
-    `  ${newSession}`,
-    `fi`,
+    "else",
+    `  exec zellij -s ${name}`,
+    "fi",
   ].join("\n")
 }
 
