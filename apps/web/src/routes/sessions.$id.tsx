@@ -3,13 +3,14 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
 import { CanvasTab } from "../features/canvas/CanvasTab"
 import { ChatComposer } from "../features/sessions/ChatComposer"
+import { FilesTab, useSessionFiles } from "../features/sessions/FilesTab"
 import { TerminalTab } from "../features/sessions/TerminalTab"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
 import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
 import type { SessionState, TranscriptMessage } from "../lib/types"
 
-type Tab = "chat" | "canvas" | "terminal"
+type Tab = "chat" | "canvas" | "terminal" | "files"
 
 export const Route = createFileRoute("/sessions/$id")({
   component: SessionDrillIn,
@@ -142,6 +143,23 @@ function SessionDrillIn() {
     session.state !== "done"
   const [tab, setTab] = useState<Tab>("chat")
 
+  const filesQ = useSessionFiles(id)
+  const filesChanged = filesQ.data?.changed === true
+  const fileCount = filesQ.data?.files.length ?? 0
+
+  // Refetch the diff when the session state changes — `session.state` SSE
+  // events flow through queryClient.setQueryData(["sessions", id], …), so
+  // observing that cache version is enough without coupling to the SSE bus.
+  const sessionVersion = session?.updatedAt
+  useEffect(() => {
+    if (sessionVersion) filesQ.refetch()
+  }, [sessionVersion, filesQ.refetch])
+
+  // If the tab was on `files` and the changes disappeared, drop back to chat.
+  useEffect(() => {
+    if (tab === "files" && !filesChanged) setTab("chat")
+  }, [tab, filesChanged])
+
   const bottomRef = useRef<HTMLDivElement>(null)
   const messageCount = transcriptQ.data?.length ?? 0
   useEffect(() => {
@@ -244,6 +262,25 @@ function SessionDrillIn() {
             {t}
           </button>
         ))}
+        {filesChanged ? (
+          <button
+            type="button"
+            data-testid="tab-files"
+            data-active={tab === "files" ? "true" : "false"}
+            onClick={() => setTab("files")}
+            className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${
+              tab === "files"
+                ? "border-sky-500 text-sky-700 dark:text-sky-300"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+            title="View the diff of files changed in this session's worktree"
+          >
+            Files
+            <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-mono">
+              {fileCount}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {tab === "chat" ? (
@@ -276,6 +313,10 @@ function SessionDrillIn() {
         ) : (
           <div className="px-1 py-4 text-sm text-slate-500">Loading session…</div>
         )
+      ) : tab === "files" ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <FilesTab short={id} />
+        </div>
       ) : session ? (
         <div className="flex-1 min-h-0">
           <TerminalTab session={session} />

@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { ShellRepo } from "../../platform/shell.repo"
+import { FilesError, FilesService } from "./files.repo"
 import { SessionRegistry } from "./sessions.repo"
 
 const MAX_TRANSCRIPT_LINES = 500
@@ -64,6 +65,47 @@ const app = new Hono()
       const status = code === "ENOENT" ? 404 : 500
       return c.json({ error: "transcript_read_failed", code }, status)
     }
+  })
+  .get("/:id/files", async (c) => {
+    const id = c.req.param("id")
+    const session = await appRuntime.runPromise(
+      Effect.gen(function* () {
+        const reg = yield* SessionRegistry
+        return reg.getOne(id)
+      }),
+    )
+    if (!session) return c.json({ error: "not_found", short: id }, 404)
+    if (!session.worktreePath) {
+      // Non-isolated session — no per-session diff to compute.
+      return c.json({
+        short: id,
+        changed: false,
+        files: [],
+        diff: "",
+        truncated: false,
+        base: null,
+        worktreePath: null,
+      })
+    }
+    const result = await appRuntime.runPromiseExit(
+      Effect.gen(function* () {
+        const svc = yield* FilesService
+        return yield* svc.diffWorktree(session.worktreePath ?? "")
+      }),
+    )
+    if (result._tag === "Failure") {
+      const failure = result.cause
+      // Best-effort: surface our FilesError reason as the HTTP error.
+      let reason: string | undefined
+      const squashed = await appRuntime.runPromise(
+        Effect.either(Effect.failCause(failure)).pipe(
+          Effect.map((e) => (e._tag === "Left" ? e.left : null)),
+        ),
+      )
+      if (squashed instanceof FilesError) reason = squashed.reason
+      return c.json({ error: "diff_failed", short: id, reason }, 500)
+    }
+    return c.json({ short: id, ...result.value })
   })
   .post("/:id/stop", async (c) => {
     const id = c.req.param("id")

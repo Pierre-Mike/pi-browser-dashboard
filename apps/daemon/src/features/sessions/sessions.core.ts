@@ -95,6 +95,8 @@ const StateFileSchema = S.Struct({
   createdAt: S.optional(S.NullishOr(S.String)),
   updatedAt: S.optional(S.NullishOr(S.String)),
   linkScanPath: S.optional(S.NullishOr(S.String)),
+  worktreePath: S.optional(S.NullishOr(S.String)),
+  worktreeBranch: S.optional(S.NullishOr(S.String)),
   output: S.optional(NullishOutput),
 })
 
@@ -110,6 +112,8 @@ export type SessionState = {
   readonly createdAt: string | undefined
   readonly updatedAt: string | undefined
   readonly linkScanPath: string | undefined
+  readonly worktreePath: string | undefined
+  readonly worktreeBranch: string | undefined
   readonly result: unknown
 }
 
@@ -129,6 +133,8 @@ export const parseState = ({ short, json }: ParseStateInput): SessionState => {
     createdAt: decoded.createdAt ?? undefined,
     updatedAt: decoded.updatedAt ?? undefined,
     linkScanPath: decoded.linkScanPath ?? undefined,
+    worktreePath: decoded.worktreePath ?? undefined,
+    worktreeBranch: decoded.worktreeBranch ?? undefined,
     result: decoded.output?.result,
   }
 }

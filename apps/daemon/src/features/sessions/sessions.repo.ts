@@ -92,6 +92,8 @@ const reconcileRoster = async (
       createdAt: undefined,
       updatedAt: undefined,
       linkScanPath: undefined,
+      worktreePath: undefined,
+      worktreeBranch: undefined,
       result: undefined,
     }
     reg.sessions.set(worker.short, seed)
