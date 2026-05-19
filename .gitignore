@@ -6,3 +6,7 @@ dist/
 *.log
 .env.local
 bun.lockb
+
+.claude/settings.local.json
+.claude/worktrees/
+apps/e2e/test-results/

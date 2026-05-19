@@ -2,7 +2,14 @@ import { readFile, readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
-import { type FileEntry, looksBinary, resolveProjectPath, sortEntries } from "./projects.core"
+import {
+  type FileEntry,
+  looksBinary,
+  parseGitHead,
+  parseGithubOrigin,
+  resolveProjectPath,
+  sortEntries,
+} from "./projects.core"
 
 export type Project = {
   readonly id: string
@@ -10,6 +17,10 @@ export type Project = {
   readonly path: string
   readonly isGitRepo: boolean
   readonly lastModified: number
+  readonly branch?: string
+  readonly githubUrl?: string
+  readonly githubOwner?: string
+  readonly githubRepo?: string
 }
 
 export type FileListing = {
@@ -43,6 +54,15 @@ export class ProjectsService extends Context.Tag("ProjectsService")<
   ProjectsServiceApi
 >() {}
 
+const readBranch = async (gitHeadPath: string): Promise<string | null> => {
+  try {
+    const text = await readFile(gitHeadPath, "utf8")
+    return parseGitHead(text)
+  } catch {
+    return null
+  }
+}
+
 const probeProject = (
   projectsRoot: string,
   entry: string,
@@ -53,18 +73,40 @@ const probeProject = (
     const s = await stat(path)
     if (!s.isDirectory()) return null
     let isGitRepo = false
+    let gitConfigPath: string | null = null
+    let gitHeadPath: string | null = null
     try {
       const gs = await stat(join(path, ".git"))
-      isGitRepo = gs.isDirectory() || gs.isFile()
+      if (gs.isDirectory()) {
+        isGitRepo = true
+        gitConfigPath = join(path, ".git", "config")
+        gitHeadPath = join(path, ".git", "HEAD")
+      } else if (gs.isFile()) {
+        isGitRepo = true
+        // Worktree/submodule .git file — skip config probe (origin lives in
+        // the parent repo; we don't traverse `gitdir:` references here).
+      }
     } catch {
       isGitRepo = false
     }
+    let gh: ReturnType<typeof parseGithubOrigin> = null
+    if (gitConfigPath) {
+      try {
+        const text = await readFile(gitConfigPath, "utf8")
+        gh = parseGithubOrigin(text)
+      } catch {
+        gh = null
+      }
+    }
+    const branch = gitHeadPath ? await readBranch(gitHeadPath) : null
     return {
       id: entry,
       name: entry,
       path,
       isGitRepo,
       lastModified: s.mtimeMs,
+      ...(branch ? { branch } : {}),
+      ...(gh ? { githubUrl: gh.url, githubOwner: gh.owner, githubRepo: gh.repo } : {}),
     }
   }).pipe(Effect.orElseSucceed(() => null))
 

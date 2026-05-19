@@ -12,7 +12,7 @@ test("spawn → wait settled → click card → drill-in page loads", async ({ p
     await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
 
     await expect(page.getByText("Loading transcript…")).toHaveCount(0, { timeout: 15_000 })
-    await expect(page.getByRole("link", { name: /Back to grid/i })).toBeVisible()
+    await expect(page.getByRole("link", { name: /Back to project grid/i })).toBeVisible()
     await expect(page.getByRole("button", { name: /Open in CLI/i })).toBeVisible()
     await expect(page.getByRole("heading", { level: 1 })).toContainText(short)
 

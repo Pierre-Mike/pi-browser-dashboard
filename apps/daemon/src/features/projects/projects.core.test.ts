@@ -1,5 +1,12 @@
-import { describe, expect, it } from "bun:test"
-import { looksBinary, resolveProjectPath, sortEntries } from "./projects.core"
+import { describe, expect, it, test } from "bun:test"
+import {
+  looksBinary,
+  parseGitHead,
+  parseGithubOrigin,
+  parseGithubUrl,
+  resolveProjectPath,
+  sortEntries,
+} from "./projects.core"
 
 const ROOT = "/repos/demo"
 
@@ -61,5 +68,133 @@ describe("sortEntries", () => {
       { name: "apps", type: "dir", size: 0 },
     ])
     expect(out.map((e) => e.name)).toEqual(["apps", "src", "b.ts", "z.ts"])
+  })
+})
+
+describe("parseGithubUrl", () => {
+  test("parses SSH origin", () => {
+    expect(parseGithubUrl("git@github.com:acme/widgets.git")).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+
+  test("parses SSH origin without .git suffix", () => {
+    expect(parseGithubUrl("git@github.com:acme/widgets")).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+
+  test("parses HTTPS origin", () => {
+    expect(parseGithubUrl("https://github.com/acme/widgets.git")).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+
+  test("parses HTTPS origin with token prefix", () => {
+    expect(parseGithubUrl("https://x-access-token:abc123@github.com/acme/widgets.git")).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+
+  test("parses ssh:// scheme", () => {
+    expect(parseGithubUrl("ssh://git@github.com/acme/widgets.git")).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+
+  test("returns null for non-github host", () => {
+    expect(parseGithubUrl("git@gitlab.com:acme/widgets.git")).toBeNull()
+    expect(parseGithubUrl("https://gitlab.com/acme/widgets.git")).toBeNull()
+  })
+
+  test("returns null for malformed url", () => {
+    expect(parseGithubUrl("not-a-url")).toBeNull()
+    expect(parseGithubUrl("")).toBeNull()
+  })
+})
+
+describe("parseGithubOrigin", () => {
+  test("extracts origin URL from a .git/config", () => {
+    const cfg = `[core]
+\trepositoryformatversion = 0
+\tfilemode = true
+[remote "origin"]
+\turl = git@github.com:Pierre-Mike/pi-browser-dashboard.git
+\tfetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+\tremote = origin
+\tmerge = refs/heads/main
+`
+    expect(parseGithubOrigin(cfg)).toEqual({
+      owner: "Pierre-Mike",
+      repo: "pi-browser-dashboard",
+      url: "https://github.com/Pierre-Mike/pi-browser-dashboard",
+    })
+  })
+
+  test("ignores upstream remote when origin is non-github", () => {
+    const cfg = `[remote "origin"]
+\turl = git@gitlab.com:acme/widgets.git
+[remote "upstream"]
+\turl = git@github.com:acme/widgets.git
+`
+    expect(parseGithubOrigin(cfg)).toBeNull()
+  })
+
+  test("returns null when origin remote is absent", () => {
+    const cfg = `[core]
+\trepositoryformatversion = 0
+`
+    expect(parseGithubOrigin(cfg)).toBeNull()
+  })
+
+  test("skips comments and blank lines", () => {
+    const cfg = `# top-level comment
+[remote "origin"]
+; inline comment
+\turl = https://github.com/acme/widgets
+`
+    expect(parseGithubOrigin(cfg)).toEqual({
+      owner: "acme",
+      repo: "widgets",
+      url: "https://github.com/acme/widgets",
+    })
+  })
+})
+
+describe("parseGitHead", () => {
+  test("returns the branch name from a symbolic ref", () => {
+    expect(parseGitHead("ref: refs/heads/main\n")).toBe("main")
+  })
+
+  test("returns slash-containing branch names verbatim", () => {
+    expect(parseGitHead("ref: refs/heads/feat/login\n")).toBe("feat/login")
+  })
+
+  test("tolerates missing trailing newline and extra whitespace", () => {
+    expect(parseGitHead("  ref: refs/heads/main  ")).toBe("main")
+  })
+
+  test("returns null for a detached HEAD (raw SHA)", () => {
+    expect(parseGitHead("9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b\n")).toBeNull()
+  })
+
+  test("returns null for a ref that is not under refs/heads/", () => {
+    expect(parseGitHead("ref: refs/tags/v1.0\n")).toBeNull()
+  })
+
+  test("returns null for empty or whitespace-only input", () => {
+    expect(parseGitHead("")).toBeNull()
+    expect(parseGitHead("   \n")).toBeNull()
   })
 })

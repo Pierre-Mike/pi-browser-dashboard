@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
+import { CanvasTab } from "../features/canvas/CanvasTab"
 import { ChatComposer } from "../features/sessions/ChatComposer"
 import { TerminalTab } from "../features/sessions/TerminalTab"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
@@ -8,7 +9,7 @@ import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
 import type { SessionState, TranscriptMessage } from "../lib/types"
 
-type Tab = "chat" | "terminal"
+type Tab = "chat" | "canvas" | "terminal"
 
 export const Route = createFileRoute("/sessions/$id")({
   component: SessionDrillIn,
@@ -148,7 +149,7 @@ function SessionDrillIn() {
   }, [messageCount])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-49px-2rem)] -my-4">
+    <div className="flex flex-col h-[calc(100vh-41px)] -my-4">
       <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200 dark:border-slate-800">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -227,7 +228,7 @@ function SessionDrillIn() {
       ) : null}
 
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800 px-1">
-        {(["chat", "terminal"] as const).map((t) => (
+        {(["chat", "canvas", "terminal"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -256,19 +257,27 @@ function SessionDrillIn() {
                 {transcriptQ.error instanceof Error ? transcriptQ.error.message : "unknown error"}
               </div>
             ) : (
-              <div className="max-w-3xl mx-auto">
+              <div data-testid="chat-transcript" className="w-full">
                 <TranscriptView messages={transcriptQ.data ?? []} />
                 <div ref={bottomRef} />
               </div>
             )}
           </div>
 
-          <div className="max-w-3xl mx-auto w-full">
+          <div className="w-full">
             <ChatComposer short={id} />
           </div>
         </>
+      ) : tab === "canvas" ? (
+        session ? (
+          <div className="flex-1 min-h-0">
+            <CanvasTab session={session} />
+          </div>
+        ) : (
+          <div className="px-1 py-4 text-sm text-slate-500">Loading session…</div>
+        )
       ) : session ? (
-        <div className="flex-1 min-h-0 px-1 py-2">
+        <div className="flex-1 min-h-0">
           <TerminalTab session={session} />
         </div>
       ) : (

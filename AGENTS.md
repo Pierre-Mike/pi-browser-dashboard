@@ -320,6 +320,41 @@ For drill-in (`/sessions/$id`), read the JSONL with `getSessionMessages()` and r
 - **Subscription quota**: parallel sessions consume quota linearly. v2 warning bar.
 - **`disableAgentView`**: if the user / admin has turned off agent view, background sessions don't run. Daemon must detect and report cleanly.
 
+## Worktree workflow
+
+Agents working in a `.claude/worktrees/<name>/` copy must always:
+
+1. **Branch from `origin/main`, not local HEAD.** Before starting work, `git fetch origin main` and base the worktree branch on `origin/main` so the diff reflects only the new change — never a stale local state. The harness's default `worktree.baseRef = "fresh"` already does this; do not switch it to `head`.
+2. **Rebase onto `origin/main` before pushing.** If `origin/main` has advanced during the session, `git fetch origin main && git rebase origin/main` before opening the PR. Stop and resolve conflicts in the worktree rather than from the parent checkout.
+3. **Open the PR against `origin main`.** `gh pr create --base main` (matches the auto-PR hook). Never target a feature branch or a fork; this repo's CI and merge queue run on `main`.
+
+The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every commit made inside a worktree.
+
+## TDD gates (mandatory)
+
+This repo enforces TDD at three layers; do not bypass without a written reason.
+
+1. **Pre-commit (`.githooks/pre-commit` → `scripts/check-tests-touched.sh`)**
+   Blocks any commit that touches `apps/*/src/**` without staging a `*.spec.ts` /
+   `*.test.ts` / `*.spec.tsx` / `*.test.tsx`. Bypass: `SKIP_TDD=1 git commit …` or
+   `git commit --no-verify …` — docs/deps/config only.
+
+2. **Pre-push (`.githooks/pre-push`)**
+   Runs `bun run test:e2e` (full Playwright suite) before every push. Failures
+   abort the push, so a red branch never reaches the remote and no PR is opened
+   on broken code. Bypass: `SKIP_E2E=1 git push …` or `git push --no-verify …`.
+
+3. **PR e2e workflow (`.github/workflows/pr-e2e.yml`)**
+   Runs on every PR against `main`: `bun install` → `lint:ci` → Playwright. The
+   workflow uploads `test-results/` as an artifact, publishes per-test
+   screenshots to an orphan `pr-screenshots` branch, and posts a sticky PR
+   comment (`<!-- pr-e2e-screenshots -->`) with each screenshot rendered inline
+   via `raw.githubusercontent.com`. Screenshot capture is wired in
+   `apps/e2e/playwright.config.ts` (`screenshot: { mode: "on", fullPage: true }`).
+
+The local hooks activate automatically via `package.json` `prepare` →
+`git config core.hooksPath .githooks`. Run `bun install` once after cloning.
+
 ## Engineering axioms (inherited)
 
 - **Effect-TS** for error handling, DI, concurrency — no `try/catch`, no mock frameworks.

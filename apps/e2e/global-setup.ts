@@ -108,12 +108,33 @@ export default async function globalSetup(): Promise<void> {
   const workspace = join(sandbox, "workspace")
   mkdirSync(workspace, { recursive: true })
 
+  // CI / opt-in: install a stub `claude` onto PATH so the daemon shells out
+  // to a deterministic in-tree script (no Anthropic API, no real CLI). Wins:
+  // CI runners need nothing pre-installed, runs are hermetic, and local devs
+  // can flip PID_E2E_USE_STUB=1 to reproduce CI behavior verbatim. Reads
+  // CLAUDE_CONFIG_DIR == sandbox to drive roster.json + state.json the same
+  // way the real supervisor does.
+  const useStub = process.env.PID_E2E_USE_STUB === "1" || process.env.CI === "true"
+  let stubBin: string | undefined
+  if (useStub) {
+    stubBin = join(sandbox, "bin")
+    mkdirSync(stubBin, { recursive: true })
+    const stubScript = join(__dirname, "scripts", "stub", "claude-stub.ts")
+    const wrapper = `#!/usr/bin/env bash\nexec bun run "${stubScript}" "$@"\n`
+    writeFileSync(join(stubBin, "claude"), wrapper, { mode: 0o755 })
+    process.stderr.write(`[e2e] using claude stub at ${stubBin}/claude\n`)
+  }
+
+  const pathWithStub = stubBin ? `${stubBin}:${process.env.PATH ?? ""}` : process.env.PATH
+  if (stubBin) process.env.PATH = pathWithStub // helpers.ts spawns `claude` too
+
   const daemonEnv = {
     ...process.env,
     CLAUDE_CONFIG_DIR: sandbox,
     PORT: String(DAEMON_PORT),
     PID_CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
     PID_PROJECTS_ROOT: workspace,
+    PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
   process.stderr.write(`[e2e] sandbox=${sandbox} ${persistent ? "(persistent auth)" : "(ephemeral)"}\n`)
@@ -168,6 +189,9 @@ export default async function globalSetup(): Promise<void> {
       PORT: String(DAEMON_PORT),
       PID_CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
       PID_PROJECTS_ROOT: workspace,
+      // Carry stub PATH so helpers.restartDaemon spawns a daemon that can
+      // still resolve `claude` to the stub in CI.
+      ...(stubBin ? { PATH: pathWithStub ?? "" } : {}),
     },
     daemonPid: daemon.pid ?? null,
   }

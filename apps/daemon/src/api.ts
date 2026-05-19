@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
@@ -29,8 +30,9 @@ const app = new Hono()
   .route("/dispatch", dispatchRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
+  .route("/canvas", canvasRoute.app)
 
 export type AppType = typeof app
 export { app }
-export { websocket } from "./features/terminal/terminal.routes"
+export { websocket } from "./platform/ws"
 export default app
