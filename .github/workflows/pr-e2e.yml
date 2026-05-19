@@ -10,8 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write       # push screenshots to the pr-screenshots orphan branch
+  contents: read
   pull-requests: write  # post / update the sticky comment
+  actions: read         # read artifact metadata for the comment
 
 jobs:
   e2e:
@@ -44,6 +45,10 @@ jobs:
         id: e2e
         run: bun run test:e2e
 
+      # Flatten screenshots into a single directory so the artifact viewer
+      # shows them all in one place. Private-repo PRs cannot embed images
+      # via raw.githubusercontent.com (token-gated, sanitizer strips data:
+      # URIs), so the artifact viewer is the canonical place to see them.
       - name: Collect screenshots
         if: always()
         id: collect
@@ -57,6 +62,7 @@ jobs:
           if [ ! -d "$src" ]; then
             echo "no test-results dir produced"
             echo "count=0" >> "$GITHUB_OUTPUT"
+            echo "dir=$out" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           count=0
@@ -69,84 +75,73 @@ jobs:
             count=$((count+1))
           done < <(find "$src" -type f -name '*.png' -print0)
           echo "Collected $count screenshots → $out"
+          ls -la "$out" || true
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "dir=$out" >> "$GITHUB_OUTPUT"
 
-      - name: Upload test-results artifact
-        if: always()
+      - name: Upload screenshots artifact
+        if: always() && steps.collect.outputs.count != '0'
+        id: upload_shots
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-pr-${{ github.event.pull_request.number }}
+          name: pr-${{ github.event.pull_request.number || github.run_id }}-screenshots
+          path: ${{ steps.collect.outputs.dir }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload full test-results artifact
+        if: always()
+        id: upload_results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-${{ github.event.pull_request.number || github.run_id }}-test-results
           path: |
             apps/e2e/test-results
             apps/e2e/playwright-report
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Publish screenshots to pr-screenshots branch
-        if: always() && steps.collect.outputs.count != '0'
-        id: publish
+      - name: Write job summary
+        if: always()
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          SRC_DIR: ${{ steps.collect.outputs.dir }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+          SHOT_COUNT: ${{ steps.collect.outputs.count }}
+          SHOT_DIR: ${{ steps.collect.outputs.dir }}
+          SHOTS_URL: ${{ steps.upload_shots.outputs.artifact-url }}
+          RESULTS_URL: ${{ steps.upload_results.outputs.artifact-url }}
         run: |
-          set -euo pipefail
-          short_sha="${HEAD_SHA:0:7}"
-          ts=$(date -u +%Y%m%d-%H%M%S)
-          subpath="pr-${PR_NUMBER:-dispatch}/${ts}-${short_sha:-unknown}"
+          {
+            echo "## Playwright e2e — \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo "- Result: **${E2E_OUTCOME}**"
+            echo "- Screenshots captured: **${SHOT_COUNT}**"
+            if [ -n "${SHOTS_URL:-}" ]; then
+              echo "- [Browse screenshots in the artifact viewer](${SHOTS_URL})"
+            fi
+            if [ -n "${RESULTS_URL:-}" ]; then
+              echo "- [Download full test-results (traces, videos, HTML report)](${RESULTS_URL})"
+            fi
+            echo
+            if [ -d "${SHOT_DIR:-}" ] && [ "${SHOT_COUNT:-0}" != "0" ]; then
+              echo "### Captured tests"
+              echo
+              find "${SHOT_DIR}" -name '*.png' -printf '%f\n' \
+                | sed 's/__test-finished-[0-9]*\.png$//' \
+                | sort -u \
+                | sed 's/^/- /'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          work="$RUNNER_TEMP/pr-screenshots-branch"
-          rm -rf "$work"
-          git clone --depth=1 --branch pr-screenshots \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "$work" 2>/dev/null || {
-              echo "pr-screenshots branch missing — creating orphan branch"
-              git clone --depth=1 \
-                "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-                "$work"
-              cd "$work"
-              git checkout --orphan pr-screenshots
-              git rm -rf . >/dev/null 2>&1 || true
-              echo "# pr-screenshots" > README.md
-              echo "Auto-published Playwright screenshots per PR. Do not edit by hand." >> README.md
-              git add README.md
-              git -c user.email=actions@github.com -c user.name="github-actions[bot]" \
-                commit -m "init: pr-screenshots orphan branch"
-              git push origin pr-screenshots
-              cd -
-            }
-
-          mkdir -p "$work/$subpath"
-          cp -R "$SRC_DIR"/. "$work/$subpath/"
-          cd "$work"
-          git add "$subpath"
-          if git diff --cached --quiet; then
-            echo "no new screenshots"
-          else
-            git -c user.email=actions@github.com -c user.name="github-actions[bot]" \
-              commit -m "pr #${PR_NUMBER} @ ${short_sha}"
-            # Retry-on-conflict push (another job on the same PR may race us).
-            for i in 1 2 3; do
-              if git push origin pr-screenshots; then break; fi
-              git pull --rebase origin pr-screenshots
-            done
-          fi
-
-          base_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/pr-screenshots/${subpath}"
-          echo "base_url=$base_url" >> "$GITHUB_OUTPUT"
-          echo "subpath=$subpath" >> "$GITHUB_OUTPUT"
-
-      - name: Post sticky PR comment with inline screenshots
+      - name: Post sticky PR comment
         if: always()
         uses: actions/github-script@v7
         env:
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
           SHOT_COUNT: ${{ steps.collect.outputs.count }}
-          BASE_URL: ${{ steps.publish.outputs.base_url }}
           SHOT_DIR: ${{ steps.collect.outputs.dir }}
+          SHOTS_URL: ${{ steps.upload_shots.outputs.artifact-url }}
+          RESULTS_URL: ${{ steps.upload_results.outputs.artifact-url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -156,8 +151,9 @@ jobs:
             const marker = '<!-- pr-e2e-screenshots -->';
             const outcome = process.env.E2E_OUTCOME || 'unknown';
             const count = Number(process.env.SHOT_COUNT || '0');
-            const baseUrl = process.env.BASE_URL || '';
             const shotDir = process.env.SHOT_DIR || '';
+            const shotsUrl = process.env.SHOTS_URL || '';
+            const resultsUrl = process.env.RESULTS_URL || '';
             const headSha = (process.env.HEAD_SHA || '').slice(0, 7);
             const runUrl = process.env.RUN_URL;
             const branch = process.env.BRANCH || '';
@@ -180,26 +176,39 @@ jobs:
             }
 
             const icon = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⚠️';
+
+            // Group PNG basenames by spec/title (drop the trailing __test-finished-N.png).
+            let tests = [];
+            if (shotDir && count > 0) {
+              const seen = new Set();
+              for (const f of fs.readdirSync(shotDir).filter((x) => x.endsWith('.png')).sort()) {
+                const title = f.replace(/__test-finished-\d+\.png$/, '');
+                if (!seen.has(title)) {
+                  seen.add(title);
+                  tests.push(title);
+                }
+              }
+            }
+
             let body = `${marker}\n## ${icon} Playwright e2e — \`${headSha}\`\n\n`;
             body += `- Result: **${outcome}**\n`;
             body += `- Screenshots captured: **${count}**\n`;
-            body += `- [Workflow run](${runUrl})\n\n`;
+            body += `- [Workflow run](${runUrl})\n`;
+            if (shotsUrl) {
+              body += `- 🖼️ **[Browse screenshots in artifact viewer](${shotsUrl})** — opens an authenticated GitHub page where you can preview each PNG inline.\n`;
+            }
+            if (resultsUrl) {
+              body += `- 📦 [Download full test-results (traces, videos, HTML report)](${resultsUrl})\n`;
+            }
+            body += `\n`;
+            body += `> Inline images are not embedded because this is a private repo: GitHub's markdown sanitizer strips \`data:\` URIs and \`raw.githubusercontent.com\` URLs require per-request tokens. Click the artifact link above to preview screenshots in the authenticated Actions UI.\n`;
 
-            if (count > 0 && baseUrl && shotDir) {
-              const files = fs.readdirSync(shotDir)
-                .filter((f) => f.endsWith('.png'))
-                .sort();
-              body += `<details open><summary>Screenshots (${files.length})</summary>\n\n`;
-              for (const f of files) {
-                const url = `${baseUrl}/${f}`;
-                const title = f.replace(/__test-finished-\d+\.png$/, '').replace(/\.png$/, '');
-                body += `\n<details><summary>${title}</summary>\n\n`;
-                body += `<img src="${url}" alt="${title}" width="900" />\n\n`;
-                body += `</details>\n`;
-              }
+            if (tests.length > 0) {
+              body += `\n<details open><summary>Captured tests (${tests.length})</summary>\n\n`;
+              for (const t of tests) body += `- \`${t}\`\n`;
               body += `\n</details>\n`;
             } else if (outcome === 'failure') {
-              body += `_No screenshots were collected. Inspect the workflow run for traces and videos._\n`;
+              body += `\n_No screenshots were collected. Inspect the workflow run for traces and videos._\n`;
             }
 
             const { data: comments } = await github.rest.issues.listComments({
