@@ -1,5 +1,6 @@
 import { Layer, ManagedRuntime } from "effect"
 import { ProjectsRepoLive } from "../features/projects/projects.repo"
+import { FilesRepoLive } from "../features/sessions/files.repo"
 import { SessionRegistryLive } from "../features/sessions/sessions.repo"
 import { ConfigRepoLive } from "./config.repo"
 import { ShellRepoLive } from "./shell.repo"
@@ -11,6 +12,7 @@ import { ShellRepoLive } from "./shell.repo"
 const AppLayer = Layer.mergeAll(
   SessionRegistryLive,
   ShellRepoLive,
+  FilesRepoLive,
   Layer.provide(ProjectsRepoLive, ConfigRepoLive),
 )
 
