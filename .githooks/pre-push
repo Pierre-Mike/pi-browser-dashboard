@@ -29,12 +29,34 @@ if [ "$has_real_push" = "0" ]; then
   exit 0
 fi
 
-echo "▶ pre-push: running Playwright e2e suite (SKIP_E2E=1 to bypass)…" >&2
-
 if ! command -v bun >/dev/null 2>&1; then
   echo "✖ pre-push: bun not found on PATH — install bun or bypass with SKIP_E2E=1." >&2
   exit 1
 fi
+
+# Feature-test floor: catch a whole feature folder shipping without any
+# co-located tests. Cheap (~50ms) and runs before the slow e2e step.
+echo "▶ pre-push: feature-test floor…" >&2
+if ! "$repo_root/scripts/check-feature-tests.sh"; then
+  cat <<'EOF' >&2
+
+✖ pre-push: feature-test floor failed. Push aborted.
+
+Genuine exception (e.g. generated stub folder):
+  SKIP_FEATURE_TEST_FLOOR=1 git push ...
+EOF
+  exit 1
+fi
+
+# Unit tests: fast bun suite for the daemon. Catches behavioral regressions
+# before the e2e step pays the Playwright boot cost.
+echo "▶ pre-push: running daemon unit tests…" >&2
+if ! bun run test; then
+  echo "✖ pre-push: daemon unit tests failed. Push aborted." >&2
+  exit 1
+fi
+
+echo "▶ pre-push: running Playwright e2e suite (SKIP_E2E=1 to bypass)…" >&2
 
 if ! bun run test:e2e; then
   cat <<'EOF' >&2
