@@ -79,6 +79,17 @@ describe("ProjectsRepo listDir", () => {
 })
 
 const runGit = async (cwd: string, args: readonly string[]): Promise<void> => {
+  // Strip any inherited git env from the parent process. When this test runs
+  // under a pre-push hook (or similar) git sets GIT_DIR / GIT_WORK_TREE /
+  // GIT_INDEX_FILE / GIT_PREFIX in the env so subprocesses bind back to the
+  // outer repo — without this scrub, our `git init` + `git commit` would
+  // mutate the project's real history instead of the fixture's tmp dir.
+  const cleanEnv: Record<string, string> = {}
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined) continue
+    if (k.startsWith("GIT_")) continue
+    cleanEnv[k] = v
+  }
   const proc = Bun.spawn({
     cmd: ["git", ...args],
     cwd,
@@ -86,11 +97,15 @@ const runGit = async (cwd: string, args: readonly string[]): Promise<void> => {
     stderr: "ignore",
     stdin: "ignore",
     env: {
-      ...process.env,
+      ...cleanEnv,
       GIT_AUTHOR_NAME: "pid-test",
       GIT_AUTHOR_EMAIL: "pid@test.invalid",
       GIT_COMMITTER_NAME: "pid-test",
       GIT_COMMITTER_EMAIL: "pid@test.invalid",
+      // Neutralise the user's global ~/.gitconfig so commit.gpgsign / signing
+      // hooks don't make this test machine-dependent.
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_SYSTEM: "/dev/null",
     },
   })
   const code = await proc.exited
