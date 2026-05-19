@@ -64,14 +64,14 @@ export const ProjectDashboard = ({ project }: Props) => {
       data-testid="project-dashboard"
       className={`flex flex-col gap-4 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-4" : ""}`}
     >
-      <header className="flex flex-col gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <header className="flex flex-col gap-1 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
           <Link to="/" className="hover:underline">
             ← All projects
           </Link>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-lg font-semibold flex items-center gap-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-sm font-semibold flex items-center gap-2 min-w-0">
             <span className="truncate">{project.name}</span>
             {project.isGitRepo ? (
               <span className="text-[10px] uppercase tracking-wide rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5">
@@ -113,18 +113,18 @@ export const ProjectDashboard = ({ project }: Props) => {
             type="button"
             data-testid="dashboard-spawn"
             onClick={() => setSpawnOpen(true)}
-            className="ml-auto text-xs font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2.5 py-1 hover:bg-sky-100 dark:hover:bg-sky-900/50"
+            className="ml-auto text-[11px] font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50"
           >
             Spawn new +
           </button>
         </div>
         <div
-          className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate"
+          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate"
           title={project.path}
         >
           {project.path}
         </div>
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap gap-1.5">
           <Pill
             label="total"
             value={sessions.length}
