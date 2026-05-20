@@ -78,6 +78,67 @@ const projectLayoutKdl = (): string =>
 }
 `
 
+// Atomic lockdir wrapper around a zellij "check session, attach-or-create" flow.
+// React StrictMode double-mounts TerminalView (and fast user clicks / Reconnect
+// double-taps do the same shape), so two WS children for the same session name
+// can be alive at once — the daemon kills the previous child only after a 1s
+// grace. Without serialisation both children pass the `grep -qx <name>` check,
+// both run `zellij -s <name> -n <file>`, the loser errors "session already
+// exists" and the user sees `child exited (1)` in xterm with no zellij UI.
+//
+// mkdir(2) is atomic on every POSIX fs, so we use a per-session lockdir to
+// serialise the critical section. macOS doesn't ship flock(1), and pulling in
+// a new dep for this is overkill.
+//
+// On the *attach* branch the lock is released immediately — the session
+// already exists, no waiter can race us. On the *create* branch the lock must
+// outlive `exec` (which replaces the shell). We can't poll-then-exec in the
+// foreground, so a backgrounded subshell polls `list-sessions` until the new
+// session appears, then rmdir's the lock. A second waker that wakes up while
+// the create is in flight blocks on the lockdir, wakes after registration, and
+// falls through to attach.
+//
+// Both branches are passed as parameters so projectZellijCommand and
+// sessionZellijCommand can share the wrapper while keeping their own
+// layout shapes.
+const zellijAttachOrCreate = (args: {
+  readonly cwd: string
+  readonly sessionName: string // already sanitised to [A-Za-z0-9._-]
+  readonly layoutKdl: string
+}): string => {
+  const cwd = shq(args.cwd)
+  const name = shq(args.sessionName)
+  return [
+    `cd ${cwd}`,
+    `lock="\${TMPDIR:-/tmp}/pid-zellij-${args.sessionName}.lock"`,
+    "i=0",
+    `while ! mkdir "$lock" 2>/dev/null; do`,
+    "  i=$((i+1))",
+    `  [ "$i" -gt 100 ] && break`,
+    "  sleep 0.05",
+    "done",
+    `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
+    `  rmdir "$lock" 2>/dev/null`,
+    `  exec zellij attach ${name}`,
+    "else",
+    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
+    `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
+    args.layoutKdl.trimEnd(),
+    "PID_LAYOUT_EOF",
+    "  (",
+    "    j=0",
+    `    while [ "$j" -lt 50 ]; do`,
+    `      if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then break; fi`,
+    "      j=$((j+1))",
+    "      sleep 0.1",
+    "    done",
+    `    rmdir "$lock" 2>/dev/null`,
+    "  ) &",
+    `  exec zellij -s ${name} -n "$layout_file"`,
+    "fi",
+  ].join("\n")
+}
+
 // Bash one-liner: cd into the project, then either re-attach an existing zellij
 // session by name or spawn a fresh session with the project layout. `exec` so
 // the child slot is replaced — closing the WS kills the zellij client, but
@@ -86,26 +147,16 @@ const projectLayoutKdl = (): string =>
 // First open: bash materialises the layout KDL via mktemp + heredoc, then
 // `exec zellij -s <name> -n <file>`. Subsequent opens: plain attach —
 // re-applying the layout would stack extra default panes on the live session.
+// See zellijAttachOrCreate for the lock that serialises the if/else.
 export const projectZellijCommand = (args: {
   readonly cwd: string
   readonly sessionName: string
-}): string => {
-  const cwd = shq(args.cwd)
-  const name = shq(args.sessionName)
-  const layoutKdl = projectLayoutKdl()
-  return [
-    `cd ${cwd}`,
-    `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
-    `  exec zellij attach ${name}`,
-    "else",
-    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
-    `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
-    layoutKdl.trimEnd(),
-    "PID_LAYOUT_EOF",
-    `  exec zellij -s ${name} -n "$layout_file"`,
-    "fi",
-  ].join("\n")
-}
+}): string =>
+  zellijAttachOrCreate({
+    cwd: args.cwd,
+    sessionName: args.sessionName,
+    layoutKdl: projectLayoutKdl(),
+  })
 
 // Layout for the drill-in zellij session. Two requirements pull against
 // each other here:
@@ -119,16 +170,18 @@ export const projectZellijCommand = (args: {
 // identical to running claude bare — which is why an earlier auto-attach
 // shape was reverted.
 //
-// `close_on_exit true`: quitting claude attach closes the pane; zellij
-// exits with the last pane and the next drill-in starts fresh.
-//
 // The command is wrapped in `bash -lc`, not run directly as `command="claude"`.
 // Directly invoking `claude` from a zellij pane produces a pty that claude
-// rejects within a few seconds — the TUI paints once and then claude exits,
-// `close_on_exit true` collapses the pane, and the user lands on an empty
-// shell pane the moment the WS reconnects. Wrapping in bash gives claude
-// the controlling-tty shape it expects and the process stays alive across
+// rejects within a few seconds; wrapping in bash gives claude the
+// controlling-tty shape it expects and the process stays alive across
 // reconnects.
+//
+// `claude attach <short>; exec bash -l` — drop into a login shell on exit
+// (clean or otherwise). The previous shape was `close_on_exit true`, but if
+// `claude attach` fails immediately (e.g. supervisor still registering the
+// short on first drill-in), the pane collapses and the next reconnect lands
+// on a stripped session with no claude pane. The shell fallback keeps the
+// pane alive with the failure output visible so the user can retry.
 const sessionClaudeLayoutKdl = (short: string): string =>
   `layout {
     default_tab_template {
@@ -141,8 +194,7 @@ const sessionClaudeLayoutKdl = (short: string): string =>
         }
     }
     pane command="bash" {
-        args "-lc" "claude attach ${short}"
-        close_on_exit true
+        args "-lc" "claude attach ${short}; exec bash -l"
     }
 }
 `
@@ -171,21 +223,11 @@ export const sessionZellijCommand = (args: {
 }): string | null => {
   const sessionName = zellijSessionName(args.short)
   if (sessionName === null) return null
-  const cwd = shq(args.cwd)
-  const name = shq(sessionName)
-  const layoutKdl = sessionClaudeLayoutKdl(sessionName)
-  return [
-    `cd ${cwd}`,
-    `if zellij list-sessions -s 2>/dev/null | grep -qx ${name}; then`,
-    `  exec zellij attach ${name}`,
-    "else",
-    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
-    `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
-    layoutKdl.trimEnd(),
-    "PID_LAYOUT_EOF",
-    `  exec zellij -s ${name} -n "$layout_file"`,
-    "fi",
-  ].join("\n")
+  return zellijAttachOrCreate({
+    cwd: args.cwd,
+    sessionName,
+    layoutKdl: sessionClaudeLayoutKdl(sessionName),
+  })
 }
 
 // Bun.spawn only gives us pipes, never a pty. zellij refuses to enable raw
