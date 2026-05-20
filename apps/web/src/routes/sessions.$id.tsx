@@ -141,7 +141,7 @@ function SessionDrillIn() {
     session !== undefined &&
     session.state !== "stopped" &&
     session.state !== "done"
-  const [tab, setTab] = useState<Tab>("chat")
+  const [tab, setTab] = useState<Tab>("terminal")
 
   const filesQ = useSessionFiles(id)
   const filesChanged = filesQ.data?.changed === true
@@ -155,9 +155,9 @@ function SessionDrillIn() {
     if (sessionVersion) filesQ.refetch()
   }, [sessionVersion, filesQ.refetch])
 
-  // If the tab was on `files` and the changes disappeared, drop back to chat.
+  // If the tab was on `files` and the changes disappeared, drop back to terminal.
   useEffect(() => {
-    if (tab === "files" && !filesChanged) setTab("chat")
+    if (tab === "files" && !filesChanged) setTab("terminal")
   }, [tab, filesChanged])
 
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -246,7 +246,7 @@ function SessionDrillIn() {
       ) : null}
 
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800 px-1">
-        {(["chat", "canvas", "terminal"] as const).map((t) => (
+        {(["terminal", "chat", "canvas"] as const).map((t) => (
           <button
             key={t}
             type="button"

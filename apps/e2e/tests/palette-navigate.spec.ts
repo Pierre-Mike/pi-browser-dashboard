@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test"
-import { ensureProject } from "./helpers"
+import { ensureProject, ensureProjectsTab } from "./helpers"
 
 test("double-shift palette → select project → navigate to /projects/$id", async ({ page }) => {
   ensureProject("palette-nav-target", { gitInit: true })
 
   await page.goto("/")
+  await ensureProjectsTab(page)
   await expect(
     page.locator('[data-testid="project-section"][data-project-id="palette-nav-target"]'),
   ).toBeVisible({ timeout: 15_000 })

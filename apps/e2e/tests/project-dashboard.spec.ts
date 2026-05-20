@@ -3,6 +3,7 @@ import {
   cardLocator,
   dispatchDirect,
   ensureProject,
+  ensureProjectsTab,
   rmSession,
   waitForCard,
   waitForSessionInRegistry,
@@ -15,6 +16,7 @@ test("click project bar on grid → navigate to /projects/$id dashboard", async 
 
   try {
     await page.goto("/")
+    await ensureProjectsTab(page)
 
     const section = page.locator('[data-testid="project-section"][data-project-id="proj-dash"]')
     await expect(section).toBeVisible({ timeout: 15_000 })
