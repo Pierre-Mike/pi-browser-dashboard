@@ -62,74 +62,57 @@ export const ProjectDashboard = ({ project }: Props) => {
   return (
     <div
       data-testid="project-dashboard"
-      className={`flex flex-col gap-4 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-4" : ""}`}
+      className={`flex flex-col gap-1 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-1" : ""}`}
     >
-      <header className="flex flex-col gap-1 border-b border-slate-200 dark:border-slate-800 pb-2">
-        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-          <Link to="/" className="hover:underline">
-            ← All projects
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-sm font-semibold flex items-center gap-2 min-w-0">
-            <span className="truncate">{project.name}</span>
-            {project.isGitRepo ? (
-              <span className="text-[10px] uppercase tracking-wide rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5">
-                git
-              </span>
-            ) : (
-              <span
-                className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5"
-                title="No git → supervisor cannot isolate worktrees; siblings race on disk"
-              >
-                ⚠ no isolation
-              </span>
-            )}
-            {project.branch ? (
-              <span
-                data-testid="project-dashboard-branch"
-                data-branch={project.branch}
-                title={`current branch: ${project.branch}`}
-                className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
-              >
-                <span aria-hidden>⎇</span>
-                {project.branch}
-              </span>
-            ) : null}
-            {project.githubUrl ? (
-              <a
-                data-testid="github-link"
-                href={project.githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
-                className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
-              >
-                GitHub ↗
-              </a>
-            ) : null}
-          </h1>
-          <button
-            type="button"
-            data-testid="dashboard-spawn"
-            onClick={() => setSpawnOpen(true)}
-            className="ml-auto text-[11px] font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50"
-          >
-            Spawn new +
-          </button>
-        </div>
-        <div
-          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate"
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <Link
+          to="/"
+          className="text-[11px] text-slate-500 dark:text-slate-400 hover:underline shrink-0"
+          title="All projects"
+        >
+          ←
+        </Link>
+        <h1 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{project.name}</span>
+          {project.isGitRepo ? null : (
+            <span
+              className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5"
+              title="No git → supervisor cannot isolate worktrees; siblings race on disk"
+            >
+              ⚠ no isolation
+            </span>
+          )}
+          {project.branch ? (
+            <span
+              data-testid="project-dashboard-branch"
+              data-branch={project.branch}
+              title={`current branch: ${project.branch}`}
+              className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
+            >
+              <span aria-hidden>⎇</span>
+              {project.branch}
+            </span>
+          ) : null}
+          {project.githubUrl ? (
+            <a
+              data-testid="github-link"
+              href={project.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
+              className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
+            >
+              GitHub ↗
+            </a>
+          ) : null}
+        </h1>
+        <span
+          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1"
           title={project.path}
         >
           {project.path}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Pill
-            label="total"
-            value={sessions.length}
-            tone="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
-          />
+        </span>
+        <div className="flex flex-wrap items-center gap-1">
           {counts.working > 0 ? (
             <Pill
               label="working"
@@ -144,20 +127,6 @@ export const ProjectDashboard = ({ project }: Props) => {
               tone="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
             />
           ) : null}
-          {counts.idle > 0 ? (
-            <Pill
-              label="idle"
-              value={counts.idle}
-              tone="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-            />
-          ) : null}
-          {counts.done > 0 ? (
-            <Pill
-              label="done"
-              value={counts.done}
-              tone="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200"
-            />
-          ) : null}
           {counts.failed > 0 ? (
             <Pill
               label="failed"
@@ -165,21 +134,22 @@ export const ProjectDashboard = ({ project }: Props) => {
               tone="bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200"
             />
           ) : null}
-          {counts.stopped > 0 ? (
-            <Pill
-              label="stopped"
-              value={counts.stopped}
-              tone="bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200"
-            />
-          ) : null}
         </div>
+        <button
+          type="button"
+          data-testid="dashboard-spawn"
+          onClick={() => setSpawnOpen(true)}
+          className="text-[11px] font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50 shrink-0"
+        >
+          Spawn +
+        </button>
       </header>
 
       <nav
         data-testid="project-tabs"
         role="tablist"
         aria-label="Project sections"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 -mt-2"
+        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800"
       >
         {tabs.map((t) => {
           const active = tab === t.key
@@ -192,7 +162,7 @@ export const ProjectDashboard = ({ project }: Props) => {
               data-testid={`project-tab-${t.key}`}
               data-active={active}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+              className={`px-3 py-1 text-xs font-medium border-b-2 -mb-px transition-colors ${
                 active
                   ? "border-sky-500 text-sky-700 dark:text-sky-300"
                   : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
