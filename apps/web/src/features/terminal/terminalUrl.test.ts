@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { terminalWsUrl } from "./terminalUrl"
+import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 
 describe("terminalWsUrl", () => {
   it("maps http → ws and points at /terminal/<id> for sessions", () => {
@@ -71,5 +71,33 @@ describe("terminalWsUrl", () => {
     const u = new URL(url)
     expect(u.pathname.startsWith("/terminal/project/")).toBe(true)
     expect(u.search).toBe("?cols=1&rows=1")
+  })
+})
+
+describe("terminalKillUrl", () => {
+  it("DELETE target for sessions: http(s) + /terminal/<id> + no query", () => {
+    // Restart button hits DELETE — must NOT be ws://, and the WS dim query
+    // must not leak through (the daemon's DELETE handler ignores it but a
+    // stray "?cols=" upstream is noise).
+    const url = terminalKillUrl({ baseUrl: "http://localhost:8787", kind: "session", id: "abc" })
+    const u = new URL(url)
+    expect(u.protocol).toBe("http:")
+    expect(u.pathname).toBe("/terminal/abc")
+    expect(u.search).toBe("")
+  })
+
+  it("DELETE target for projects: /terminal/project/<id>", () => {
+    const url = terminalKillUrl({ baseUrl: "http://x", kind: "project", id: "my-repo" })
+    expect(new URL(url).pathname).toBe("/terminal/project/my-repo")
+  })
+
+  it("DELETE target for the global terminal: /terminal/global", () => {
+    const url = terminalKillUrl({ baseUrl: "http://x", kind: "global" })
+    expect(new URL(url).pathname).toBe("/terminal/global")
+  })
+
+  it("preserves https → https (does NOT cross over to ws/wss like the WS builder)", () => {
+    const url = terminalKillUrl({ baseUrl: "https://daemon.example", kind: "global" })
+    expect(new URL(url).protocol).toBe("https:")
   })
 })

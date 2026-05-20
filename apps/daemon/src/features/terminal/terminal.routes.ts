@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Effect } from "effect"
 import { Hono } from "hono"
 import type { Context } from "hono"
@@ -7,20 +10,35 @@ import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import {
   GLOBAL_ZELLIJ_SESSION,
+  HEARTBEAT_PAYLOAD,
   buildChildArgv,
   cleanZellijEnv,
+  formatSizeFileContent,
   globalTerminalCwd,
+  parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,
+  zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
 
 type Bridge = {
   child: Bun.Subprocess<"pipe", "pipe", "pipe">
   drainAbort: AbortController
+  sizefile: string
+  sizedir: string
+  heartbeat: ReturnType<typeof setInterval>
 }
 
 const bridges = new WeakMap<object, Bridge>()
+
+// Idle proxies (Vite dev server, OS NAT) drop WebSockets after 60-120s of
+// silence. zellij output is bursty — a user staring at a TUI sees no traffic
+// for minutes, then SIGPIPE on next keystroke. Server-pushed JSON heartbeat
+// keeps the connection warm AND lets the client detect a half-open socket
+// (the browser fires onclose when send fails). 20s undershoots every proxy
+// idle window I've checked.
+const HEARTBEAT_INTERVAL_MS = 20_000
 
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 32
@@ -32,24 +50,40 @@ const clampDim = (raw: string | undefined, fallback: number, max: number): numbe
   return Math.min(n, max)
 }
 
-const spawnChild = (cwd: string, cmd: string, cols: number, rows: number, pty: boolean) => {
-  // When we allocate a pty via script(1), the daemon has no controlling tty
-  // so script opens the new pty at its default size (often 0x0 or 80x24).
-  // zellij reads the *terminal*'s size — not COLUMNS/LINES — so resize the
-  // pty in-band with stty before launching the real command.
-  const inner = pty ? `stty rows ${rows} cols ${cols} 2>/dev/null; ${cmd}` : cmd
-  return Bun.spawn(buildChildArgv({ cmd: inner, pty, platform: process.platform }), {
-    cwd,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...cleanZellijEnv(process.env),
-      TERM: "xterm-256color",
-      COLUMNS: String(cols),
-      LINES: String(rows),
+const spawnChild = (args: {
+  readonly cwd: string
+  readonly cmd: string
+  readonly cols: number
+  readonly rows: number
+  readonly pty: boolean
+  readonly sizefile: string
+}) => {
+  // The wrapper now handles size: it reads sizefile + applies TIOCSWINSZ on
+  // the master fd at spawn AND on every SIGWINCH. The inline `stty rows … cols
+  // …` shim is gone — TIOCSWINSZ is the canonical mechanism and a
+  // controlling-tty stty inside the child was always a workaround.
+  return Bun.spawn(
+    buildChildArgv({
+      cmd: args.cmd,
+      pty: args.pty,
+      platform: process.platform,
+      sizefile: args.sizefile,
+    }),
+    {
+      cwd: args.cwd,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...cleanZellijEnv(process.env),
+        TERM: "xterm-256color",
+        // COLUMNS / LINES are still set as a belt-and-braces for any tool that
+        // reads them before the first SIGWINCH lands.
+        COLUMNS: String(args.cols),
+        LINES: String(args.rows),
+      },
     },
-  })
+  )
 }
 
 const pipeStream = async (
@@ -107,9 +141,30 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
           ws.close(1011, resolved.reason)
           return
         }
-        const child = spawnChild(resolved.cwd, resolved.cmd, cols, rows, pty)
+        // Per-bridge sizefile. mkdtempSync gives us a private directory so
+        // two terminals can't race on the same path. The wrapper opens this
+        // every SIGWINCH; the route rewrites it on every resize message.
+        const sizedir = mkdtempSync(join(tmpdir(), "pid-term-"))
+        const sizefile = join(sizedir, "size")
+        writeFileSync(sizefile, formatSizeFileContent({ cols, rows }))
+
+        const child = spawnChild({
+          cwd: resolved.cwd,
+          cmd: resolved.cmd,
+          cols,
+          rows,
+          pty,
+          sizefile,
+        })
         const drainAbort = new AbortController()
-        bridges.set(tokenKey, { child, drainAbort })
+        const heartbeat = setInterval(() => {
+          try {
+            ws.send(HEARTBEAT_PAYLOAD)
+          } catch {
+            // ws closed; onClose will clear the interval
+          }
+        }, HEARTBEAT_INTERVAL_MS)
+        bridges.set(tokenKey, { child, drainAbort, sizefile, sizedir, heartbeat })
 
         const send = (bytes: Uint8Array) => {
           try {
@@ -138,6 +193,33 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         const b = bridges.get(tokenKey)
         if (!b) return
         const data = evt.data
+        // Resize control travels as a JSON text frame; everything else is
+        // forwarded to the child's stdin verbatim. parseClientMessage degrades
+        // malformed JSON to "input" so a paste of JSON-shaped text from the
+        // user still reaches the shell.
+        if (typeof data === "string") {
+          const parsed = parseClientMessage(data)
+          if (parsed.kind === "resize") {
+            try {
+              writeFileSync(
+                b.sizefile,
+                formatSizeFileContent({ cols: parsed.cols, rows: parsed.rows }),
+              )
+            } catch {
+              // sizefile gone (race with onClose); nothing to signal
+              return
+            }
+            const pid = b.child.pid
+            if (pid !== undefined) {
+              try {
+                process.kill(pid, "SIGWINCH")
+              } catch {
+                // child already exited
+              }
+            }
+            return
+          }
+        }
         try {
           if (typeof data === "string") {
             b.child.stdin.write(data)
@@ -155,12 +237,18 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         const b = bridges.get(tokenKey)
         if (!b) return
         bridges.delete(tokenKey)
+        clearInterval(b.heartbeat)
         b.drainAbort.abort()
         setTimeout(() => {
           try {
             b.child.kill()
           } catch {
             // already exited
+          }
+          try {
+            rmSync(b.sizedir, { recursive: true, force: true })
+          } catch {
+            // already gone
           }
         }, 1_000)
       },
@@ -213,9 +301,54 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   return { ok: true, cwd: project.path, cmd }
 }
 
+// Wedge recovery: `zellij kill-session <name>` so the user doesn't have to
+// reach for a real terminal when a session goes unresponsive. Always returns
+// 200 — distinguishing "no such session" from "killed" doesn't help the UI,
+// which just wants the chance to reconnect to a fresh session.
+const killZellijSession = async (sessionName: string | null): Promise<{ ok: boolean }> => {
+  if (!sessionName) return { ok: false }
+  try {
+    const proc = Bun.spawn(zellijKillSessionArgv(sessionName), {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: cleanZellijEnv(process.env),
+    })
+    await proc.exited
+    return { ok: proc.exitCode === 0 }
+  } catch {
+    return { ok: false }
+  }
+}
+
+const resolveProjectKillName = async (id: string): Promise<string | null> => {
+  const sessionName = zellijSessionName(id)
+  if (!sessionName) return null
+  return sessionName
+}
+
+const resolveSessionKillName = async (id: string): Promise<string | null> => {
+  const session = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const reg = yield* SessionRegistry
+      return reg.getOne(id)
+    }),
+  )
+  if (!session) return null
+  return zellijSessionName(session.short)
+}
+
 const app = new Hono()
   .get("/global", makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true }))
   .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
+  .delete("/global", async (c) => c.json(await killZellijSession(GLOBAL_ZELLIJ_SESSION)))
+  .delete("/project/:id", async (c) => {
+    const id = c.req.param("id") ?? ""
+    return c.json(await killZellijSession(await resolveProjectKillName(id)))
+  })
+  .delete("/:id", async (c) => {
+    const id = c.req.param("id") ?? ""
+    return c.json(await killZellijSession(await resolveSessionKillName(id)))
+  })
   .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, pty: true }))
 
 export { app }

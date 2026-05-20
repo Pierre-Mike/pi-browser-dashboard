@@ -37,3 +37,26 @@ export const terminalWsUrl = (input: TerminalWsUrlInput): string => {
   u.searchParams.set("rows", String(input.rows))
   return u.toString()
 }
+
+// HTTP URL the "Restart" button hits — `DELETE` runs `zellij kill-session
+// <name>` on the daemon. Same path shape as the WS URL but without the dim
+// query; the caller follows up with a fresh WS connect that creates a brand
+// new zellij session.
+export type TerminalKillUrlInput =
+  | { readonly baseUrl: string; readonly kind: "session" | "project"; readonly id: string }
+  | { readonly baseUrl: string; readonly kind: "global" }
+
+const killPathFor = (input: TerminalKillUrlInput): string => {
+  if (input.kind === "session") return `/terminal/${input.id}`
+  if (input.kind === "project") return `/terminal/project/${input.id}`
+  return "/terminal/global"
+}
+
+export const terminalKillUrl = (input: TerminalKillUrlInput): string => {
+  const u = new URL(input.baseUrl)
+  // Always http(s) for the DELETE — never coerce to ws://.
+  if (u.protocol !== "http:" && u.protocol !== "https:") u.protocol = "http:"
+  u.pathname = killPathFor(input)
+  u.search = ""
+  return u.toString()
+}

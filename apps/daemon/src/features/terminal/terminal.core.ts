@@ -235,19 +235,127 @@ export const sessionZellijCommand = (args: {
 // that does NOT require stdin to already be a tty — macOS BSD script(1) does
 // a tcgetattr on stdin at startup and bails on pipes, so it's unusable here.
 //
-// Python's stdlib `pty.spawn` calls forkpty(2) and proxies bytes between its
-// own stdin/stdout and the pty master, so pipes work. Python 3 ships on both
-// macOS and most Linux distros, so we don't take a new dependency.
+// Python's stdlib pty + forkpty(2) lets us proxy bytes between stdin/stdout
+// pipes and the slave pty. Python 3 ships on both macOS and most Linux
+// distros, so we don't take a new dependency.
 //
-// Inside the child the default pty size is 0×0; the caller must run
-// `stty rows … cols …` before launching the size-sensitive program.
-const PTY_PY = "import pty,sys;pty.spawn(['bash','-lc',sys.argv[1]])"
+// Beyond a plain pty.spawn we need a live resize channel: the browser xterm
+// can change geometry at any time but the daemon's WS messages are stdin-only,
+// so we route resize out-of-band via a sizefile + SIGWINCH on the wrapper PID.
+// On signal the wrapper re-reads the sizefile and applies TIOCSWINSZ on the
+// master fd, which in turn delivers SIGWINCH inside the child to whatever
+// program is running (zellij, the user's shell, etc.).
+const PTY_PY = [
+  "import pty,os,sys,fcntl,termios,struct,signal,select,errno",
+  "cmd=sys.argv[1]",
+  "sf=sys.argv[2] if len(sys.argv)>2 else ''",
+  "def rs():",
+  " try:",
+  "  with open(sf) as f:",
+  "   p=f.read().split()",
+  "   return int(p[0]),int(p[1])",
+  " except Exception:",
+  "  return 24,80",
+  "pid,fd=pty.fork()",
+  "if pid==0:",
+  " try: os.execvp('bash',['bash','-lc',cmd])",
+  " except Exception as e:",
+  "  sys.stderr.write('exec failed: '+str(e)+chr(10))",
+  "  os._exit(127)",
+  "def ap(*_):",
+  " r,c=rs()",
+  " try: fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',r,c,0,0))",
+  " except Exception: pass",
+  "ap()",
+  "signal.signal(signal.SIGWINCH,ap)",
+  "while True:",
+  " try: rr,_,_=select.select([0,fd],[],[])",
+  " except (OSError,select.error) as e:",
+  "  if getattr(e,'errno',None)==errno.EINTR or (e.args and e.args[0]==errno.EINTR): continue",
+  "  break",
+  " if 0 in rr:",
+  "  try: d=os.read(0,4096)",
+  "  except OSError: break",
+  "  if not d:",
+  "   try: os.close(fd)",
+  "   except Exception: pass",
+  "   break",
+  "  try: os.write(fd,d)",
+  "  except OSError: break",
+  " if fd in rr:",
+  "  try: d=os.read(fd,4096)",
+  "  except OSError: break",
+  "  if not d: break",
+  "  try: os.write(1,d)",
+  "  except OSError: break",
+].join("\n")
 
 export const buildChildArgv = (args: {
   readonly cmd: string
   readonly pty: boolean
   readonly platform: NodeJS.Platform
+  // Path the wrapper polls on SIGWINCH for the current "<rows> <cols>" pair.
+  // Optional for back-compat — when omitted, the wrapper falls back to 24x80
+  // and the resize channel is effectively dead (still safe to launch).
+  readonly sizefile?: string
 }): string[] => {
   if (!args.pty) return ["bash", "-lc", args.cmd]
-  return ["python3", "-c", PTY_PY, args.cmd]
+  const sizefile = args.sizefile ?? ""
+  return ["python3", "-c", PTY_PY, args.cmd, sizefile]
 }
+
+// "<rows> <cols>\n" — the format the wrapper's rs() expects. Centralised here
+// so the daemon route writes the same shape the wrapper parses.
+export const formatSizeFileContent = (args: {
+  readonly cols: number
+  readonly rows: number
+}): string => `${args.rows} ${args.cols}\n`
+
+// Protocol for WS frames the browser sends. Anything that isn't a valid JSON
+// resize control is forwarded to the child's stdin verbatim. Resize controls
+// travel as text frames so binary keystrokes stay a fast path.
+//
+// Bounds match the route's query-string clamps (cols ≤ 400, rows ≤ 200).
+// Anything outside [1, max] (NaN, negative, huge value from a flaky client)
+// degrades to input — better to type one bad keystroke than to TIOCSWINSZ a
+// pty to 0×0 or 65535×65535.
+export type ParsedClientMessage =
+  | { readonly kind: "resize"; readonly cols: number; readonly rows: number }
+  | { readonly kind: "input" }
+
+const MAX_COLS = 400
+const MAX_ROWS = 200
+
+const inBounds = (n: unknown, max: number): n is number =>
+  typeof n === "number" && Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= max
+
+export const parseClientMessage = (raw: string): ParsedClientMessage => {
+  // Cheap rejection before JSON.parse: every keystroke goes through here, so
+  // skip the try/catch unless the payload at least starts with '{'.
+  if (raw.length < 2 || raw.charCodeAt(0) !== 0x7b) return { kind: "input" }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { kind: "input" }
+  }
+  if (!parsed || typeof parsed !== "object") return { kind: "input" }
+  const obj = parsed as Record<string, unknown>
+  if (obj.type !== "resize") return { kind: "input" }
+  if (!inBounds(obj.cols, MAX_COLS)) return { kind: "input" }
+  if (!inBounds(obj.rows, MAX_ROWS)) return { kind: "input" }
+  return { kind: "resize", cols: obj.cols, rows: obj.rows }
+}
+
+// Server → client control frames. The browser filters these out of xterm.
+// JSON text frame; first byte is '{' so cheap to distinguish from inline
+// error strings ("\r\n\x1b[31m…") that the daemon still writes raw.
+export const HEARTBEAT_PAYLOAD = '{"type":"hb"}'
+
+// Argv for `zellij kill-session <name>`. Pure so the route's spawn call has
+// nothing to lie about in tests.
+export const zellijKillSessionArgv = (sessionName: string): string[] => [
+  "zellij",
+  "kill-session",
+  sessionName,
+]

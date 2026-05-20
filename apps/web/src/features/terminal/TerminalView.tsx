@@ -2,7 +2,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
-import { terminalWsUrl } from "./terminalUrl"
+import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 
 type Props = {
   readonly reconnectTitle: string
@@ -12,12 +12,19 @@ type Props = {
 const apiBase = (): string =>
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
+// Server → client control frames are JSON text starting with '{'. Inline
+// errors / exit notices that the daemon paints into the terminal start with
+// "\r\n", so the leading-byte check is enough to route without parsing every
+// pty chunk.
+const isControlFrame = (data: string): boolean => data.length > 0 && data.charCodeAt(0) === 0x7b
+
 export const TerminalView = (props: Props) => {
   const { kind, reconnectTitle, testId } = props
   const id = "id" in props ? props.id : ""
   const hostRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [reconnectKey, setReconnectKey] = useState(0)
+  const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
     const host = hostRef.current
@@ -49,19 +56,36 @@ export const TerminalView = (props: Props) => {
 
     let ws: WebSocket | null = null
     let dataSub: { dispose: () => void } | null = null
+    let resizeSub: { dispose: () => void } | null = null
+    let lastCols = 0
+    let lastRows = 0
     const rafIds: number[] = []
     const timers: ReturnType<typeof setTimeout>[] = []
     let disposed = false
 
-    // The daemon seals the child pty size at spawn time from these query
-    // params — there's no SIGWINCH channel back to the child. FitAddon
-    // silently no-ops when xterm's renderer hasn't measured a char cell yet
-    // (the normal state right after term.open()), so reading term.cols/rows
-    // synchronously hands the daemon xterm's 80×24 default and strands the
-    // zellij session at that size forever. Defer WS open until fit resolves.
+    const sendResize = (cols: number, rows: number): void => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      if (cols === lastCols && rows === lastRows) return
+      lastCols = cols
+      lastRows = rows
+      try {
+        ws.send(JSON.stringify({ type: "resize", cols, rows }))
+      } catch {
+        // ws closed between readyState check and send
+      }
+    }
+
+    // First-mount: the daemon's initial pty geometry is the cols/rows query
+    // on the WS URL. After open, ResizeObserver fires fit() on every host
+    // dim change; we forward the new xterm cols/rows to the daemon, which
+    // rewrites the sizefile and sends SIGWINCH to the pty wrapper. Without
+    // this loop the user resizes the window and zellij stays at the seal-in
+    // size until reconnect.
     const openWs = () => {
       if (disposed || ws) return
       safeFit()
+      lastCols = term.cols
+      lastRows = term.rows
       const url =
         kind === "global"
           ? terminalWsUrl({ baseUrl: apiBase(), kind: "global", cols: term.cols, rows: term.rows })
@@ -82,6 +106,9 @@ export const TerminalView = (props: Props) => {
         if (ev.data instanceof ArrayBuffer) {
           term.write(decoder.decode(new Uint8Array(ev.data)))
         } else if (typeof ev.data === "string") {
+          // Heartbeat / future control frames travel as JSON text. Routing on
+          // the leading '{' keeps the pty fast path zero-overhead.
+          if (isControlFrame(ev.data)) return
           term.write(ev.data)
         }
       }
@@ -91,12 +118,9 @@ export const TerminalView = (props: Props) => {
       dataSub = term.onData((d) => {
         if (sock.readyState === WebSocket.OPEN) sock.send(d)
       })
+      resizeSub = term.onResize(({ cols, rows }) => sendResize(cols, rows))
     }
 
-    // Try fit across upcoming frames; open WS on the first frame where the
-    // host has real dims AND fit produced something larger than xterm's
-    // 80×24 default. Cap attempts so a genuinely tiny container still
-    // connects eventually (better small than never).
     const MAX_ATTEMPTS = 8
     let attempts = 0
     const tryOpen = () => {
@@ -123,6 +147,7 @@ export const TerminalView = (props: Props) => {
       for (const t of timers) clearTimeout(t)
       ro.disconnect()
       dataSub?.dispose()
+      resizeSub?.dispose()
       if (ws) {
         try {
           ws.close()
@@ -133,6 +158,27 @@ export const TerminalView = (props: Props) => {
       term.dispose()
     }
   }, [kind, id, reconnectKey])
+
+  const onRestart = async (): Promise<void> => {
+    if (restarting) return
+    setRestarting(true)
+    try {
+      const url =
+        kind === "global"
+          ? terminalKillUrl({ baseUrl: apiBase(), kind: "global" })
+          : terminalKillUrl({ baseUrl: apiBase(), kind, id })
+      try {
+        await fetch(url, { method: "DELETE" })
+      } catch {
+        // wedge recovery is best-effort: even if the DELETE fails, force a
+        // fresh WS — the next attach hits the lockdir create branch and
+        // builds a new zellij session if the old one is truly gone.
+      }
+    } finally {
+      setRestarting(false)
+      setReconnectKey((k) => k + 1)
+    }
+  }
 
   return (
     <div data-testid={testId ?? "terminal-view"} className="flex flex-col h-full">
@@ -155,8 +201,18 @@ export const TerminalView = (props: Props) => {
         </span>
         <button
           type="button"
+          data-testid="terminal-restart"
+          onClick={onRestart}
+          disabled={restarting}
+          className="ml-auto rounded border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-200 px-2 py-0.5 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50"
+          title="Kill the zellij session on the daemon and reconnect"
+        >
+          {restarting ? "Restarting…" : "Restart"}
+        </button>
+        <button
+          type="button"
           onClick={() => setReconnectKey((k) => k + 1)}
-          className="ml-auto rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
           title={reconnectTitle}
         >
           Reconnect
