@@ -3,6 +3,7 @@ import { cors } from "hono/cors"
 import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
+import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
@@ -31,6 +32,7 @@ const app = new Hono()
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
   .route("/canvas", canvasRoute.app)
+  .route("/issue-driver", issueDriverRoute.app)
 
 export type AppType = typeof app
 export { app }
