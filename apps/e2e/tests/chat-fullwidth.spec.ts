@@ -10,6 +10,8 @@ const MIN_WIDTH_PX = 900
 
 test("chat tab fills available width (not capped at max-w-3xl)", async ({ page }) => {
   await page.goto("/")
+  // Terminal is the default dashboard tab — switch to Projects to see cards.
+  await page.getByTestId("dashboard-tab-projects").click()
   const { short } = await dispatchDirect()
   try {
     await waitForCard(page, short, 20_000)
@@ -19,7 +21,7 @@ test("chat tab fills available width (not capped at max-w-3xl)", async ({ page }
     await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
     await expect(page.getByText("Loading transcript…")).toHaveCount(0, { timeout: 15_000 })
 
-    // chat tab is the default; force-click to be explicit/idempotent
+    // Terminal is the default session tab — switch to chat for this assertion.
     await page.getByTestId("tab-chat").click()
 
     const composer = page.getByTestId("chat-composer")

@@ -11,6 +11,8 @@ test("spawn → wait settled → click card → drill-in page loads", async ({ p
     await cardLocator(page, short).locator("a", { hasText: short }).first().click()
     await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
 
+    // Terminal is the default session tab — switch to chat to see the transcript.
+    await page.getByTestId("tab-chat").click()
     await expect(page.getByText("Loading transcript…")).toHaveCount(0, { timeout: 15_000 })
     await expect(page.getByRole("link", { name: /Back to project grid/i })).toBeVisible()
     await expect(page.getByRole("button", { name: /Open in CLI/i })).toBeVisible()

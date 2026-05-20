@@ -42,13 +42,18 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
     await expect(terminalTab).toBeVisible()
     await expect(filesTab).toBeVisible()
 
-    // Default tab is Sessions — the session card is visible, other panels hidden.
+    // Default tab is Terminal — the terminal host is visible, other panels hidden.
+    await expect(terminalTab).toHaveAttribute("data-active", "true")
+    await expect(page.getByTestId("project-terminal")).toBeVisible()
+    await expect(page.getByTestId("github-panel")).toBeHidden()
+    await expect(page.getByTestId("project-file-tree")).toBeHidden()
+
+    // Switch to Sessions.
+    await sessionsTab.click()
     await expect(sessionsTab).toHaveAttribute("data-active", "true")
     await waitForCard(page, short, 20_000)
     await expect(cardLocator(page, short)).toBeVisible()
-    await expect(page.getByTestId("github-panel")).toBeHidden()
     await expect(page.getByTestId("project-terminal")).toBeHidden()
-    await expect(page.getByTestId("project-file-tree")).toBeHidden()
 
     // Switch to GitHub.
     await githubTab.click()
@@ -56,22 +61,16 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
     await expect(page.getByTestId("github-panel")).toBeVisible()
     await expect(cardLocator(page, short)).toBeHidden()
 
-    // Switch to Terminal.
-    await terminalTab.click()
-    await expect(terminalTab).toHaveAttribute("data-active", "true")
-    await expect(page.getByTestId("project-terminal")).toBeVisible()
-    await expect(page.getByTestId("github-panel")).toBeHidden()
-
     // Switch to Files.
     await filesTab.click()
     await expect(filesTab).toHaveAttribute("data-active", "true")
     await expect(page.getByTestId("project-file-tree")).toBeVisible()
-    await expect(page.getByTestId("project-terminal")).toBeHidden()
+    await expect(page.getByTestId("github-panel")).toBeHidden()
 
-    // Back to Sessions.
-    await sessionsTab.click()
-    await expect(sessionsTab).toHaveAttribute("data-active", "true")
-    await expect(cardLocator(page, short)).toBeVisible()
+    // Back to Terminal.
+    await terminalTab.click()
+    await expect(terminalTab).toHaveAttribute("data-active", "true")
+    await expect(page.getByTestId("project-terminal")).toBeVisible()
     await expect(page.getByTestId("project-file-tree")).toBeHidden()
   } finally {
     rmSession(short)

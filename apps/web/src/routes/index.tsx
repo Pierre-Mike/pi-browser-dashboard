@@ -13,8 +13,8 @@ type TabKey = "projects" | "terminal"
 type Tab = { readonly key: TabKey; readonly label: string }
 
 const TABS: readonly Tab[] = [
-  { key: "projects", label: "Projects" },
   { key: "terminal", label: "Terminal" },
+  { key: "projects", label: "Projects" },
 ]
 
 const ProjectsPanel = () => {
@@ -53,7 +53,7 @@ const ProjectsPanel = () => {
 }
 
 function IndexPage() {
-  const [tab, setTab] = useState<TabKey>("projects")
+  const [tab, setTab] = useState<TabKey>("terminal")
   const fillViewport = tab === "terminal"
 
   return (

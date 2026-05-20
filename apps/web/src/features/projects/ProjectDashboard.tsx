@@ -48,15 +48,15 @@ export const ProjectDashboard = ({ project }: Props) => {
 
   const tabs: readonly Tab[] = useMemo(() => {
     const base: Tab[] = [
+      { key: "terminal", label: "Terminal" },
       { key: "sessions", label: `Sessions${sessions.length ? ` · ${sessions.length}` : ""}` },
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
-    base.push({ key: "terminal", label: "Terminal" })
     base.push({ key: "files", label: "Files" })
     return base
   }, [project.githubUrl, sessions.length])
 
-  const [tab, setTab] = useState<TabKey>("sessions")
+  const [tab, setTab] = useState<TabKey>("terminal")
   const fillViewport = tab === "terminal"
 
   return (
