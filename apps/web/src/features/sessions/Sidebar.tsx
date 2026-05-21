@@ -28,12 +28,16 @@ export const Sidebar = () => {
   return (
     <aside
       data-testid="sidebar"
-      className="hidden md:flex w-72 shrink-0 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-[calc(100vh-41px)] sticky top-[41px] overflow-y-auto"
+      className="hidden md:flex w-72 shrink-0 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-screen sticky top-0 overflow-y-auto"
     >
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+        <Link
+          to="/"
+          data-testid="sidebar-projects-link"
+          className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline"
+        >
           Projects
-        </span>
+        </Link>
         <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
           {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
         </span>

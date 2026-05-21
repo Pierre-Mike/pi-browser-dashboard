@@ -62,7 +62,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   return (
     <div
       data-testid="project-dashboard"
-      className={`flex flex-col gap-1 ${fillViewport ? "h-[calc(100vh-41px)] -my-4 pt-1" : ""}`}
+      className={`flex flex-col gap-1 ${fillViewport ? "h-screen -my-4 pt-1" : ""}`}
     >
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <Link
