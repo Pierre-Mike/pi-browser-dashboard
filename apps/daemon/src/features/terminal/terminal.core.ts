@@ -121,7 +121,15 @@ const zellijAttachOrCreate = (args: {
     `  rmdir "$lock" 2>/dev/null`,
     `  exec zellij attach ${name}`,
     "else",
-    `  layout_file="$(mktemp "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX")"`,
+    // `.kdl` extension is load-bearing: `zellij -n <arg>` treats arg as
+    // either a layout NAME (looked up in the layout dir) or a layout FILE,
+    // and the file path only wins when the extension is `.kdl`. Without it,
+    // zellij silently falls back to the default layout and drops the
+    // `pane command="bash" args claude attach <short>` directive — leaving
+    // the user on a bare $SHELL pane. BSD mktemp won't expand X's when the
+    // template has a trailing suffix, so reserve a unique name with `-u`
+    // (no stub file) and append `.kdl` before the heredoc creates it.
+    `  layout_file="$(mktemp -u "\${TMPDIR:-/tmp}/pid-zellij.XXXXXXXX").kdl"`,
     `  cat > "$layout_file" <<'PID_LAYOUT_EOF'`,
     args.layoutKdl.trimEnd(),
     "PID_LAYOUT_EOF",

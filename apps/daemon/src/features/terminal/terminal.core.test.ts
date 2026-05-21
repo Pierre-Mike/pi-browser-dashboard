@@ -247,6 +247,24 @@ describe("sessionZellijCommand", () => {
     expect(sessionZellijCommand({ cwd: "/wt", short: "///" })).toBeNull()
   })
 
+  it("writes the layout file with a .kdl extension so `zellij -n <file>` parses it as a layout", () => {
+    // zellij -n's arg is ambiguous: "Name of a predefined layout … or the path
+    // to a layout file". Without a .kdl extension, zellij treats the arg as a
+    // NAME, looks it up in the layout dir, fails to find it, and silently
+    // falls back to the default layout (single $SHELL pane). The
+    // `pane command="bash" args claude attach <short>` directive is dropped
+    // entirely and the user lands on a bare zsh prompt — exactly the bug
+    // that made every drill-in require typing `claude attach` manually.
+    // BSD mktemp doesn't accept a template-with-suffix, so use `mktemp -u`
+    // to reserve a unique name without creating the stub file, then append
+    // `.kdl` and let the heredoc create it.
+    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
+    expect(cmd).not.toBeNull()
+    if (cmd === null) return
+    expect(cmd).toMatch(/layout_file="\$\(mktemp -u [^)]+\)\.kdl"/)
+    expect(cmd).toMatch(/exec zellij -s 'abcd1234' -n "\$layout_file"/)
+  })
+
   it("single-quote-escapes the cwd", () => {
     const cmd = sessionZellijCommand({ cwd: "/it's/here", short: "x" })
     expect(cmd).not.toBeNull()
