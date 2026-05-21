@@ -213,3 +213,51 @@ describe("ProjectsRepo readFile", () => {
     if (exit._tag === "Left") expect(exit.left).toBe("not_a_file")
   })
 })
+
+describe("ProjectsRepo resolveRaw", () => {
+  it("resolves a markdown file with the right MIME and size", async () => {
+    const out = await withLayer(
+      Effect.flatMap(ProjectsService, (s) => s.resolveRaw("demo", "README.md")),
+    )
+    expect(out.relPath).toBe("README.md")
+    expect(out.mime).toBe("text/markdown; charset=utf-8")
+    expect(out.size).toBe(7)
+    expect(out.absPath.endsWith("/demo/README.md")).toBe(true)
+  })
+
+  it("resolves a binary file as octet-stream when extension is unknown", async () => {
+    const out = await withLayer(
+      Effect.flatMap(ProjectsService, (s) => s.resolveRaw("demo", "bin.dat")),
+    )
+    expect(out.mime).toBe("application/octet-stream")
+    expect(out.size).toBe(4)
+  })
+
+  it("rejects parent-directory escapes", async () => {
+    const exit = await withLayer(
+      Effect.flatMap(ProjectsService, (s) => s.resolveRaw("demo", "../etc/passwd")).pipe(
+        Effect.either,
+      ),
+    )
+    expect(exit._tag).toBe("Left")
+    if (exit._tag === "Left") expect(exit.left).toBe("forbidden")
+  })
+
+  it("refuses to resolve directories", async () => {
+    const exit = await withLayer(
+      Effect.flatMap(ProjectsService, (s) => s.resolveRaw("demo", "src")).pipe(Effect.either),
+    )
+    expect(exit._tag).toBe("Left")
+    if (exit._tag === "Left") expect(exit.left).toBe("not_a_file")
+  })
+
+  it("returns not_found for missing files", async () => {
+    const exit = await withLayer(
+      Effect.flatMap(ProjectsService, (s) => s.resolveRaw("demo", "missing.png")).pipe(
+        Effect.either,
+      ),
+    )
+    expect(exit._tag).toBe("Left")
+    if (exit._tag === "Left") expect(exit.left).toBe("not_found")
+  })
+})
