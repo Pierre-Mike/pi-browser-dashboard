@@ -207,7 +207,7 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tab-panel-terminal"
         className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
-        <ProjectTerminal projectId={project.id} projectName={project.name} />
+        <ProjectTerminal projectId={project.id} />
       </div>
 
       <div
