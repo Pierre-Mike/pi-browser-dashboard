@@ -1,21 +1,13 @@
 import { TerminalView } from "../terminal/TerminalView"
 
-type Props = { projectId: string; projectName: string }
+type Props = { projectId: string }
 
 // Project-level terminal: the daemon hands us a long-lived bare zellij session
 // named after the repo. The user picks what to run inside it (claude, tests,
 // scratch shells). Browser tabs come and go; the zellij daemon keeps the
 // session warm so a refresh re-attaches to the same panes.
-export const ProjectTerminal = ({ projectId, projectName }: Props) => (
-  <div className="flex flex-col gap-2 flex-1 min-h-0 w-full">
-    <div className="flex items-baseline gap-2">
-      <h2 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        Terminal
-      </h2>
-      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-        zellij · {projectName}
-      </span>
-    </div>
+export const ProjectTerminal = ({ projectId }: Props) => (
+  <div className="flex flex-col flex-1 min-h-0 w-full">
     <TerminalView
       kind="project"
       id={projectId}
