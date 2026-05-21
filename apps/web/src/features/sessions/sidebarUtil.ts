@@ -7,11 +7,13 @@ export type SidebarBucket = {
   pathHint: string
   sessions: SessionState[]
   project: Project | null
+  pinned: boolean
 }
 
 export const bucketProjects = (
   projects: readonly Project[],
   sessions: readonly SessionState[],
+  pinnedIds: ReadonlySet<string> = new Set(),
 ): readonly SidebarBucket[] => {
   const byPath = new Map<string, Project>()
   for (const p of projects) byPath.set(p.path, p)
@@ -24,6 +26,7 @@ export const bucketProjects = (
       pathHint: p.path,
       sessions: [],
       project: p,
+      pinned: false,
     })
   }
   for (const s of sessions) {
@@ -43,12 +46,22 @@ export const bucketProjects = (
         pathHint: s.cwd,
         sessions: [s],
         project: null,
+        pinned: false,
       })
+    }
+  }
+
+  // Pin only applies to project buckets that have at least one session — pin
+  // is a "this project is hot right now" marker, not a generic bookmark.
+  for (const b of byKey.values()) {
+    if (b.project && b.sessions.length > 0 && pinnedIds.has(b.project.id)) {
+      b.pinned = true
     }
   }
 
   const out = [...byKey.values()]
   out.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
     if (a.sessions.length !== b.sessions.length) return b.sessions.length - a.sessions.length
     return a.title.localeCompare(b.title)
   })
