@@ -20,7 +20,7 @@ test("send-keys: panel → presets → free-form all POST /send and report sent"
 
     // Panel is open by default only for state=needs_input; sandbox sessions
     // land in idle, so click the toggle.
-    if (await panel.count() === 0) {
+    if ((await panel.count()) === 0) {
       await card.getByTestId("send-toggle").click()
     }
     await expect(panel).toBeVisible()

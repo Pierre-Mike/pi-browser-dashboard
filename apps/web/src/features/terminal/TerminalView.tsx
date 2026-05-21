@@ -157,7 +157,7 @@ export const TerminalView = (props: Props) => {
       }
       term.dispose()
     }
-  }, [kind, id, reconnectKey])
+  }, [kind, id])
 
   const onRestart = async (): Promise<void> => {
     if (restarting) return

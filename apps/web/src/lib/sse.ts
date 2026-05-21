@@ -37,8 +37,11 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
   let closed = false
 
   const log = (name: string, data?: unknown) => {
-    if (typeof window !== "undefined" && (window as { __PID_SSE_DEBUG__?: boolean }).__PID_SSE_DEBUG__) {
-      console.log(`[sse] ${name}`, data ?? "")
+    if (
+      typeof window !== "undefined" &&
+      (window as { __PID_SSE_DEBUG__?: boolean }).__PID_SSE_DEBUG__
+    ) {
+      console.warn(`[sse] ${name}`, data ?? "")
     }
   }
 

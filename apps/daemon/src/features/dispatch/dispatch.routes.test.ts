@@ -39,7 +39,7 @@ const buildHarness = (spy: Spy) => {
   return { app: buildDispatchApp(runtime), dispose: () => runtime.dispose() }
 }
 
-const post = (app: ReturnType<typeof buildDispatchApp>, body: unknown): Promise<Response> =>
+const post = (app: ReturnType<typeof buildDispatchApp>, body: unknown) =>
   app.request("/", {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -10,7 +10,6 @@ type E2ECtx = {
 }
 
 declare global {
-  // biome-ignore lint/style/noVar: globalThis augmentation
   var __PID_E2E__: E2ECtx | undefined
 }
 
@@ -33,7 +32,7 @@ const killProc = async (proc: ChildProcess, label: string): Promise<void> => {
 export default async function globalTeardown(): Promise<void> {
   const ctx = globalThis.__PID_E2E__
   if (!ctx) {
-    process.stderr.write(`[e2e] teardown: no ctx (setup may have failed)\n`)
+    process.stderr.write("[e2e] teardown: no ctx (setup may have failed)\n")
     return
   }
   const { sandbox, daemon, web } = ctx
@@ -82,7 +81,7 @@ export default async function globalTeardown(): Promise<void> {
   if (persistent) {
     // Keep auth artifacts (.claude.json, settings*.json, .credentials.json,
     // sessions/, plugins/) untouched. Wipe per-run state only.
-    process.stderr.write(`[e2e] persistent auth dir — scrubbing ephemeral state\n`)
+    process.stderr.write("[e2e] persistent auth dir — scrubbing ephemeral state\n")
     for (const name of [
       "jobs",
       "daemon",

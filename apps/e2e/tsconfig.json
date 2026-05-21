@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node", "@playwright/test"],
+    "types": ["node", "@playwright/test", "bun-types"],
     "outDir": "dist",
     "noEmit": true
   },

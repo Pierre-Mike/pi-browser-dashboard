@@ -4,12 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { ShellError, ShellRepo, type ShellRepoApi } from "../../platform/shell.repo"
-import {
-  FilesError,
-  FilesService,
-  type FilesServiceApi,
-  type WorktreeDiff,
-} from "./files.repo"
+import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.repo"
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.repo"
 import { buildSessionsApp } from "./sessions.routes"
 
@@ -329,7 +324,7 @@ describe("GET /sessions/:id/files", () => {
     filesStub.diffByPath.set(wt, {
       worktreePath: wt,
       base: "origin/main",
-      files: [{ name: "src/a.ts", status: "M" }],
+      files: [{ path: "src/a.ts", status: "modified" }],
       diff: "diff --git a/src/a.ts b/src/a.ts\n+x\n",
       truncated: false,
       changed: true,
@@ -341,7 +336,7 @@ describe("GET /sessions/:id/files", () => {
       const body = (await res.json()) as {
         short: string
         base: string
-        files: Array<{ name: string; status: string }>
+        files: Array<{ path: string; status: string }>
         diff: string
         truncated: boolean
         changed: boolean
@@ -349,7 +344,7 @@ describe("GET /sessions/:id/files", () => {
       expect(body.short).toBe("ab12")
       expect(body.base).toBe("origin/main")
       expect(body.changed).toBe(true)
-      expect(body.files).toEqual([{ name: "src/a.ts", status: "M" }])
+      expect(body.files).toEqual([{ path: "src/a.ts", status: "modified" }])
       expect(body.diff).toContain("diff --git")
     } finally {
       await dispose()

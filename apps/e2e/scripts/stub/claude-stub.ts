@@ -25,13 +25,7 @@
 // parses (`backgrounded · <short>` on a line by itself).
 
 import { spawn } from "node:child_process"
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -48,8 +42,7 @@ export const configDir = (): string => {
 }
 
 const rosterPath = (dir: string): string => join(dir, "daemon", "roster.json")
-const statePath = (dir: string, short: string): string =>
-  join(dir, "jobs", short, "state.json")
+const statePath = (dir: string, short: string): string => join(dir, "jobs", short, "state.json")
 const jobDir = (dir: string, short: string): string => join(dir, "jobs", short)
 
 const readJsonOr = <T>(file: string, fallback: T): T => {
@@ -68,7 +61,6 @@ const writeJsonAtomic = (file: string, data: unknown): void => {
   const tmp = `${file}.${process.pid}.tmp`
   writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`)
   // node:fs rename is sync, atomic on same fs.
-  // biome-ignore lint/style/useNodejsImportProtocol: dynamic require
   require("node:fs").renameSync(tmp, file)
 }
 
@@ -106,7 +98,11 @@ export type StubState = {
   tempo?: string | null
 }
 
-export const upsertWorker = (roster: StubRoster, short: string, worker: StubWorker): StubRoster => ({
+export const upsertWorker = (
+  roster: StubRoster,
+  short: string,
+  worker: StubWorker,
+): StubRoster => ({
   ...roster,
   updatedAt: Date.now(),
   workers: { ...roster.workers, [short]: worker },
@@ -230,15 +226,11 @@ const cmdDispatch = (rest: ReadonlyArray<string>): void => {
   //    and resolve immediately while the simulated session "runs" in the bg.
   const selfPath = fileURLToPath(import.meta.url)
   const tickDelay = Number(process.env.PID_E2E_STUB_TICK_MS ?? 600)
-  const child = spawn(
-    process.execPath,
-    ["run", selfPath, "tick", short, String(tickDelay)],
-    {
-      detached: true,
-      stdio: "ignore",
-      env: process.env,
-    },
-  )
+  const child = spawn(process.execPath, ["run", selfPath, "tick", short, String(tickDelay)], {
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  })
   child.unref()
 
   // 4) Match real CLI: `backgrounded · <short>` on its own line.
@@ -366,13 +358,34 @@ const main = (): void => {
   const argv = process.argv.slice(2)
   const first = argv[0]
   // --bg may appear as the first token (dispatch mode), or stop/rm/etc.
-  if (first === "--bg") return cmdDispatch(argv)
-  if (first === "stop") return cmdStop(argv.slice(1))
-  if (first === "rm") return cmdRm(argv.slice(1))
-  if (first === "respawn") return cmdRespawn(argv.slice(1))
-  if (first === "peek") return cmdPeek(argv.slice(1))
-  if (first === "attach") return cmdAttach(argv.slice(1))
-  if (first === "tick") return cmdTick(argv.slice(1))
+  if (first === "--bg") {
+    cmdDispatch(argv)
+    return
+  }
+  if (first === "stop") {
+    cmdStop(argv.slice(1))
+    return
+  }
+  if (first === "rm") {
+    cmdRm(argv.slice(1))
+    return
+  }
+  if (first === "respawn") {
+    cmdRespawn(argv.slice(1))
+    return
+  }
+  if (first === "peek") {
+    cmdPeek(argv.slice(1))
+    return
+  }
+  if (first === "attach") {
+    cmdAttach(argv.slice(1))
+    return
+  }
+  if (first === "tick") {
+    cmdTick(argv.slice(1))
+    return
+  }
   if (first === "--version") {
     process.stdout.write("claude-stub 0.0.0\n")
     process.exit(0)

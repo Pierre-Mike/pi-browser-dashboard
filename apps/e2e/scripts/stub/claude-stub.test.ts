@@ -1,11 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import {
-  emptyRoster,
-  parseDispatch,
-  randomShort,
-  removeWorker,
-  upsertWorker,
-} from "./claude-stub"
+import { emptyRoster, parseDispatch, randomShort, removeWorker, upsertWorker } from "./claude-stub"
 
 describe("parseDispatch", () => {
   it("extracts a bare positional intent", () => {
@@ -22,14 +16,7 @@ describe("parseDispatch", () => {
   })
 
   it("parses --permission-mode and --session-id together", () => {
-    const out = parseDispatch([
-      "--bg",
-      "--permission-mode",
-      "plan",
-      "--session-id",
-      "abc123",
-      "hi",
-    ])
+    const out = parseDispatch(["--bg", "--permission-mode", "plan", "--session-id", "abc123", "hi"])
     expect(out.permissionMode).toBe("plan")
     expect(out.sessionId).toBe("abc123")
     expect(out.intent).toBe("hi")

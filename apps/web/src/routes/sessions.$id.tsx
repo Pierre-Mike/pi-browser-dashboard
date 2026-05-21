@@ -162,6 +162,7 @@ function SessionDrillIn() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messageCount = transcriptQ.data?.length ?? 0
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messageCount triggers scroll on new transcript messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [messageCount])
@@ -197,7 +198,7 @@ function SessionDrillIn() {
             onClick={onCopy}
             className="text-xs rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            {copied ? "Copied" : `Open in CLI ↗`}
+            {copied ? "Copied" : "Open in CLI ↗"}
           </button>
           <button
             type="button"

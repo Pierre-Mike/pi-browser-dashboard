@@ -125,19 +125,12 @@ export const SessionCard = ({ session }: Props) => {
   }
 
   return (
-    <div
+    <button
+      type="button"
       data-testid="session-card"
       data-short={session.short}
       data-state={session.state}
       onClick={openDrillIn}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          openDrillIn()
-        }
-      }}
-      role="button"
-      tabIndex={0}
       className={`rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-3 flex flex-col gap-1.5 ring-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 focus:outline-none focus:ring-2 focus:ring-sky-400 ${tone.ring}`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -254,6 +247,6 @@ export const SessionCard = ({ session }: Props) => {
           <SendKeysPanel short={session.short} />
         </div>
       ) : null}
-    </div>
+    </button>
   )
 }

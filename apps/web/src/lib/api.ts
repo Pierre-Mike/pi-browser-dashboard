@@ -1,4 +1,3 @@
-// biome-ignore lint/correctness/noUnusedImports: type-only side import resolved by build
 // The daemon package exposes its Hono app type via "@pid/daemon/types".
 // During isolated typecheck before `bun install`, this import may not resolve;
 // we fall back to `any` (suppressed via a generic) to keep the call sites typed
