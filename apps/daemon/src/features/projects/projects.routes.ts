@@ -54,6 +54,29 @@ const app = new Hono()
     if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
     return c.json(result.right)
   })
+  .get("/:id/raw", async (c) => {
+    const id = c.req.param("id")
+    const path = c.req.query("path") ?? ""
+    if (!path) return c.json({ error: "missing_path" }, 400)
+    const result = await appRuntime.runPromise(
+      Effect.gen(function* () {
+        const svc = yield* ProjectsService
+        return yield* svc.resolveRaw(id, path)
+      }).pipe(Effect.either),
+    )
+    if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
+    const { absPath, size, mime } = result.right
+    const file = Bun.file(absPath)
+    return new Response(file.stream(), {
+      status: 200,
+      headers: {
+        "Content-Type": mime,
+        "Content-Length": String(size),
+        "Cache-Control": "private, max-age=30",
+        "X-Content-Type-Options": "nosniff",
+      },
+    })
+  })
   .get("/:id/github", async (c) => {
     const id = c.req.param("id")
     const list = await appRuntime.runPromise(

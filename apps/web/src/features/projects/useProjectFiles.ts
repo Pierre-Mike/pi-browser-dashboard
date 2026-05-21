@@ -34,3 +34,12 @@ export const useProjectFile = (projectId: string, path: string | null) =>
       return (await res.json()) as FileContent
     },
   })
+
+// Stable URL the browser can fetch directly for an image/audio/video/pdf/html
+// element's `src` (or for an "Open raw" link). The daemon streams the file with
+// the correct Content-Type so the browser renders it natively.
+export const projectRawUrl = (projectId: string, path: string): string => {
+  const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/raw`)
+  url.searchParams.set("path", path)
+  return url.toString()
+}

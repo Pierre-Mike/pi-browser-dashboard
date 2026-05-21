@@ -6,6 +6,7 @@ import {
   type FileEntry,
   compareProjectsByCommit,
   looksBinary,
+  mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
@@ -41,7 +42,15 @@ export type FileContent = {
 
 export type FileError = "not_found" | "not_a_directory" | "not_a_file" | "forbidden" | "too_large"
 
-const MAX_READ_BYTES = 1_000_000 // 1 MB hard cap on previews
+const MAX_READ_BYTES = 1_000_000 // 1 MB hard cap on text previews
+const MAX_RAW_BYTES = 50_000_000 // 50 MB hard cap on raw media streams
+
+export type RawFile = {
+  readonly absPath: string
+  readonly relPath: string
+  readonly size: number
+  readonly mime: string
+}
 
 export type ProjectsServiceApi = {
   readonly list: () => Effect.Effect<readonly Project[], never, never>
@@ -50,6 +59,7 @@ export type ProjectsServiceApi = {
     relPath: string | undefined,
   ) => Effect.Effect<FileListing, FileError, never>
   readonly readFile: (id: string, relPath: string) => Effect.Effect<FileContent, FileError, never>
+  readonly resolveRaw: (id: string, relPath: string) => Effect.Effect<RawFile, FileError, never>
 }
 
 export class ProjectsService extends Context.Tag("ProjectsService")<
@@ -228,6 +238,25 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
             content: isBinary ? "" : new TextDecoder("utf-8", { fatal: false }).decode(data),
           }
         }),
+
+      resolveRaw: (id, relPath) =>
+        Effect.gen(function* () {
+          const root = findProjectPath(config.projectsRoot, id)
+          if (!root) return yield* Effect.fail<FileError>("not_found")
+          const resolved = resolveProjectPath(root, relPath)
+          if (!resolved.ok) return yield* Effect.fail<FileError>("forbidden")
+          const s = yield* Effect.tryPromise(() => stat(resolved.absPath)).pipe(
+            Effect.mapError<unknown, FileError>(() => "not_found"),
+          )
+          if (!s.isFile()) return yield* Effect.fail<FileError>("not_a_file")
+          if (s.size > MAX_RAW_BYTES) return yield* Effect.fail<FileError>("too_large")
+          return {
+            absPath: resolved.absPath,
+            relPath: resolved.relPath,
+            size: s.size,
+            mime: mimeFromPath(resolved.relPath),
+          }
+        }),
     }
   }),
 )
@@ -237,4 +266,5 @@ export const ProjectsRepoTest = (fixtures: readonly Project[]): Layer.Layer<Proj
     list: () => Effect.succeed([...fixtures].sort(compareProjectsByCommit)),
     listDir: () => Effect.fail<FileError>("not_found"),
     readFile: () => Effect.fail<FileError>("not_found"),
+    resolveRaw: () => Effect.fail<FileError>("not_found"),
   })

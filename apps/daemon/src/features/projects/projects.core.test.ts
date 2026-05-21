@@ -2,6 +2,7 @@ import { describe, expect, it, test } from "bun:test"
 import {
   compareProjectsByCommit,
   looksBinary,
+  mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
@@ -244,5 +245,41 @@ describe("parseGitHead", () => {
   test("returns null for empty or whitespace-only input", () => {
     expect(parseGitHead("")).toBeNull()
     expect(parseGitHead("   \n")).toBeNull()
+  })
+})
+
+describe("mimeFromPath", () => {
+  test("maps image extensions", () => {
+    expect(mimeFromPath("logo.png")).toBe("image/png")
+    expect(mimeFromPath("Photo.JPG")).toBe("image/jpeg")
+    expect(mimeFromPath("icon.svg")).toBe("image/svg+xml")
+    expect(mimeFromPath("frame.webp")).toBe("image/webp")
+  })
+
+  test("maps audio extensions", () => {
+    expect(mimeFromPath("clip.mp3")).toBe("audio/mpeg")
+    expect(mimeFromPath("song.WAV")).toBe("audio/wav")
+    expect(mimeFromPath("voice.ogg")).toBe("audio/ogg")
+  })
+
+  test("maps video extensions", () => {
+    expect(mimeFromPath("scene.mp4")).toBe("video/mp4")
+    expect(mimeFromPath("clip.webm")).toBe("video/webm")
+    expect(mimeFromPath("intro.mov")).toBe("video/quicktime")
+  })
+
+  test("maps document and text extensions", () => {
+    expect(mimeFromPath("manual.pdf")).toBe("application/pdf")
+    expect(mimeFromPath("README.md")).toBe("text/markdown; charset=utf-8")
+    expect(mimeFromPath("page.html")).toBe("text/html; charset=utf-8")
+    expect(mimeFromPath("notes.txt")).toBe("text/plain; charset=utf-8")
+    expect(mimeFromPath("data.json")).toBe("application/json; charset=utf-8")
+  })
+
+  test("falls back to octet-stream for unknown and extensionless paths", () => {
+    expect(mimeFromPath("Dockerfile")).toBe("application/octet-stream")
+    expect(mimeFromPath("archive.xyz")).toBe("application/octet-stream")
+    expect(mimeFromPath("nodot")).toBe("application/octet-stream")
+    expect(mimeFromPath("trailing.")).toBe("application/octet-stream")
   })
 })

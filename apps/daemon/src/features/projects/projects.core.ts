@@ -131,6 +131,65 @@ export const compareProjectsByCommit = (a: ProjectSortKey, b: ProjectSortKey): n
   return kb - ka
 }
 
+// Extension → MIME type. The browser uses Content-Type to decide whether to
+// render inline (image/audio/video/pdf), iframe (html), or treat as opaque
+// download. Covers the formats the file viewer needs; everything else falls
+// back to application/octet-stream.
+const MIME_BY_EXT: Readonly<Record<string, string>> = {
+  txt: "text/plain; charset=utf-8",
+  log: "text/plain; charset=utf-8",
+  md: "text/markdown; charset=utf-8",
+  markdown: "text/markdown; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  jsonl: "application/json; charset=utf-8",
+  ndjson: "application/json; charset=utf-8",
+  xml: "application/xml; charset=utf-8",
+  yaml: "application/yaml; charset=utf-8",
+  yml: "application/yaml; charset=utf-8",
+  toml: "application/toml; charset=utf-8",
+  csv: "text/csv; charset=utf-8",
+  tsv: "text/tab-separated-values; charset=utf-8",
+  html: "text/html; charset=utf-8",
+  htm: "text/html; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  js: "text/javascript; charset=utf-8",
+  mjs: "text/javascript; charset=utf-8",
+  cjs: "text/javascript; charset=utf-8",
+  ts: "text/typescript; charset=utf-8",
+  tsx: "text/typescript; charset=utf-8",
+  jsx: "text/javascript; charset=utf-8",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  ico: "image/vnd.microsoft.icon",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  ogv: "video/ogg",
+  pdf: "application/pdf",
+}
+
+export const mimeFromPath = (relPath: string): string => {
+  const name = relPath.toLowerCase()
+  const dot = name.lastIndexOf(".")
+  if (dot === -1 || dot === name.length - 1) return "application/octet-stream"
+  const ext = name.slice(dot + 1)
+  return MIME_BY_EXT[ext] ?? "application/octet-stream"
+}
+
 export const parseGithubUrl = (url: string): GithubRemote | null => {
   // SSH: git@github.com:owner/repo(.git)?
   const ssh = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url)
