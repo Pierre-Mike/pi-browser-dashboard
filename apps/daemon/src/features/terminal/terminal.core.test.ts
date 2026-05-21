@@ -1,11 +1,15 @@
 import { describe, expect, it } from "bun:test"
 import {
   GLOBAL_ZELLIJ_SESSION,
+  HEARTBEAT_PAYLOAD,
   buildChildArgv,
   cleanZellijEnv,
+  formatSizeFileContent,
   globalTerminalCwd,
+  parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,
+  zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
 
@@ -292,19 +296,118 @@ describe("buildChildArgv", () => {
     ])
   })
 
-  it("pty=true → python3 pty.spawn wrapper, cmd passed as argv[1]", () => {
-    // BSD script(1) wants stdin to be a tty; we have a pipe. python3 pty.spawn
-    // uses forkpty() so the pipe stays a pipe and the child still gets a pty.
-    const argv = buildChildArgv({ cmd: "zellij attach foo", pty: true, platform: "darwin" })
+  it("pty=true → python3 wrapper, cmd as argv[1], sizefile as argv[2]", () => {
+    // BSD script(1) wants stdin to be a tty; we have a pipe. python3 + forkpty
+    // gives the child a pty even though our stdin/stdout are pipes. argv[2] is
+    // the sizefile the wrapper re-reads on SIGWINCH — the browser-triggered
+    // resize channel hangs off this contract.
+    const argv = buildChildArgv({
+      cmd: "zellij attach foo",
+      pty: true,
+      platform: "darwin",
+      sizefile: "/tmp/pid-term-abc.size",
+    })
     expect(argv[0]).toBe("python3")
     expect(argv[1]).toBe("-c")
-    expect(argv[2]).toContain("pty.spawn")
+    // The wrapper must install a SIGWINCH handler AND call ioctl with
+    // TIOCSWINSZ on the master pty fd — without both, browser resize is dead.
+    expect(argv[2]).toContain("pty.fork")
+    expect(argv[2]).toContain("SIGWINCH")
+    expect(argv[2]).toContain("TIOCSWINSZ")
     expect(argv[3]).toBe("zellij attach foo")
+    expect(argv[4]).toBe("/tmp/pid-term-abc.size")
+  })
+
+  it("pty=true without sizefile still launches — wrapper falls back to 24×80", () => {
+    // Back-compat: old callers (and unit tests of unrelated features) pass no
+    // sizefile. The wrapper must read_size() → (24,80) when argv[2] is the
+    // empty string; the route writes a real sizefile in production.
+    const argv = buildChildArgv({ cmd: "true", pty: true, platform: "darwin" })
+    expect(argv.length).toBe(5)
+    expect(argv[4]).toBe("")
   })
 
   it("pty=true argv is platform-agnostic (same on darwin and linux)", () => {
-    const darwin = buildChildArgv({ cmd: "x", pty: true, platform: "darwin" })
-    const linux = buildChildArgv({ cmd: "x", pty: true, platform: "linux" })
+    const darwin = buildChildArgv({ cmd: "x", pty: true, platform: "darwin", sizefile: "/s" })
+    const linux = buildChildArgv({ cmd: "x", pty: true, platform: "linux", sizefile: "/s" })
     expect(darwin).toEqual(linux)
+  })
+})
+
+describe("formatSizeFileContent", () => {
+  it("writes rows then cols separated by a space, trailing newline", () => {
+    // The wrapper splits on whitespace and reads (rows, cols) in that order —
+    // mismatching the order flips the pty geometry. Pin the exact shape.
+    expect(formatSizeFileContent({ cols: 120, rows: 32 })).toBe("32 120\n")
+    expect(formatSizeFileContent({ cols: 80, rows: 24 })).toBe("24 80\n")
+  })
+})
+
+describe("parseClientMessage", () => {
+  it("ascii input passes through as 'input' without trying JSON.parse", () => {
+    // Hot path: every keystroke. Must not allocate a try/catch frame for a
+    // bare character.
+    expect(parseClientMessage("a")).toEqual({ kind: "input" })
+    expect(parseClientMessage("hello")).toEqual({ kind: "input" })
+    expect(parseClientMessage("\x1b[A")).toEqual({ kind: "input" })
+  })
+
+  it("malformed JSON degrades to input — never throws to the WS handler", () => {
+    // A user pastes JSON-shaped text into the terminal; we must forward it to
+    // the child, not crash the bridge.
+    expect(parseClientMessage("{not valid")).toEqual({ kind: "input" })
+    expect(parseClientMessage("{}{}")).toEqual({ kind: "input" })
+  })
+
+  it("recognises a well-formed resize control", () => {
+    expect(parseClientMessage('{"type":"resize","cols":120,"rows":32}')).toEqual({
+      kind: "resize",
+      cols: 120,
+      rows: 32,
+    })
+  })
+
+  it("rejects out-of-bounds dims (cols > 400, rows > 200, zero, negative)", () => {
+    // TIOCSWINSZ with absurd dims either errors or wedges the pty; clamp at
+    // the same ceiling as the query-string parser (400×200) and reject < 1.
+    expect(parseClientMessage('{"type":"resize","cols":9999,"rows":24}')).toEqual({
+      kind: "input",
+    })
+    expect(parseClientMessage('{"type":"resize","cols":80,"rows":9999}')).toEqual({
+      kind: "input",
+    })
+    expect(parseClientMessage('{"type":"resize","cols":0,"rows":24}')).toEqual({ kind: "input" })
+    expect(parseClientMessage('{"type":"resize","cols":-1,"rows":24}')).toEqual({ kind: "input" })
+  })
+
+  it("ignores unknown control types — forwards as input", () => {
+    // Forward-compat: a future client sending {type:"foo"} must not silently
+    // drop the bytes from the child's stdin perspective; degrade to input.
+    expect(parseClientMessage('{"type":"foo"}')).toEqual({ kind: "input" })
+  })
+
+  it("rejects fractional dims — TIOCSWINSZ takes ushort, not float", () => {
+    expect(parseClientMessage('{"type":"resize","cols":120.5,"rows":32}')).toEqual({
+      kind: "input",
+    })
+  })
+})
+
+describe("HEARTBEAT_PAYLOAD", () => {
+  it("is a JSON text frame starting with '{' — distinguishable from inline error strings", () => {
+    // The browser filters control frames by checking the leading '{'; inline
+    // errors written by the route start with "\r\n" so they paint into xterm.
+    expect(HEARTBEAT_PAYLOAD.startsWith("{")).toBe(true)
+    expect(JSON.parse(HEARTBEAT_PAYLOAD)).toEqual({ type: "hb" })
+  })
+})
+
+describe("zellijKillSessionArgv", () => {
+  it("builds `zellij kill-session <name>` argv verbatim", () => {
+    // The route uses Bun.spawn(argv) — no shell, so the session name does not
+    // need quoting, but it must be passed as its own argv slot to survive
+    // names with shell metacharacters (rare; sanitiser already restricts).
+    expect(zellijKillSessionArgv("foo")).toEqual(["zellij", "kill-session", "foo"])
+    expect(zellijKillSessionArgv("default")).toEqual(["zellij", "kill-session", "default"])
   })
 })
