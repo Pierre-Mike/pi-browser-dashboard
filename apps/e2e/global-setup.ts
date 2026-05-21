@@ -38,7 +38,6 @@ type E2ECtx = {
 }
 
 declare global {
-  // biome-ignore lint/style/noVar: globalThis augmentation
   var __PID_E2E__: E2ECtx | undefined
 }
 
@@ -96,7 +95,9 @@ export default async function globalSetup(): Promise<void> {
   const defaultAuthDir = join(process.env.HOME ?? "", ".claude-e2e")
   const authDir =
     explicitAuthDir === undefined
-      ? existsSync(defaultAuthDir) ? defaultAuthDir : undefined
+      ? existsSync(defaultAuthDir)
+        ? defaultAuthDir
+        : undefined
       : explicitAuthDir.length > 0 && existsSync(explicitAuthDir)
         ? explicitAuthDir
         : undefined
@@ -137,7 +138,9 @@ export default async function globalSetup(): Promise<void> {
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
-  process.stderr.write(`[e2e] sandbox=${sandbox} ${persistent ? "(persistent auth)" : "(ephemeral)"}\n`)
+  process.stderr.write(
+    `[e2e] sandbox=${sandbox} ${persistent ? "(persistent auth)" : "(ephemeral)"}\n`,
+  )
   process.stderr.write(`[e2e] starting daemon on :${DAEMON_PORT}\n`)
 
   const daemon = spawn("bun", ["run", DAEMON_MAIN], {

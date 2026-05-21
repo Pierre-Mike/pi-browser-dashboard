@@ -52,9 +52,7 @@ let sseBusUnsub: (() => boolean) | null = null
 
 const startRegistry = async (): Promise<RegistryApi> => {
   runtime = ManagedRuntime.make(SessionRegistryLive)
-  const api = await runtime.runPromise(
-    Effect.flatMap(SessionRegistry, (r) => Effect.succeed(r)),
-  )
+  const api = await runtime.runPromise(Effect.flatMap(SessionRegistry, (r) => Effect.succeed(r)))
   return api as RegistryApi
 }
 

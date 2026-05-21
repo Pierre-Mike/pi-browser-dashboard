@@ -197,6 +197,19 @@ const Avatar = ({ kind }: { kind: "user" | "assistant" | "system" }) => {
   )
 }
 
+const simpleHash = (s: string): string => {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i)
+  return (h >>> 0).toString(36)
+}
+
+const blockKey = (b: Block, idx: number): string => {
+  if (b.kind === "text") return `text-${simpleHash(b.text.slice(0, 50))}`
+  if (b.kind === "thinking") return `thinking-${simpleHash(b.text.slice(0, 50))}`
+  if (b.kind === "tool_use") return `tool_use-${b.id || b.name}`
+  return `tool_result-${simpleHash(b.text.slice(0, 50))}-${idx}`
+}
+
 const UserBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <div className="flex flex-col items-end w-full min-w-0">
@@ -204,13 +217,13 @@ const UserBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
         {blocks.map((b, i) =>
           b.kind === "text" ? (
             <pre
-              key={i}
+              key={blockKey(b, i)}
               className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-right"
             >
               {b.text}
             </pre>
           ) : b.kind === "tool_result" ? (
-            <div key={i} className="text-sky-50 text-left">
+            <div key={blockKey(b, i)} className="text-sky-50 text-left">
               <ToolResult text={b.text} isError={b.isError} />
             </div>
           ) : null,
@@ -234,7 +247,7 @@ const AssistantBubble = ({ blocks, time }: { blocks: Block[]; time: string }) =>
             if (b.kind === "text") {
               return (
                 <pre
-                  key={i}
+                  key={blockKey(b, i)}
                   className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed"
                 >
                   {b.text}
@@ -242,12 +255,12 @@ const AssistantBubble = ({ blocks, time }: { blocks: Block[]; time: string }) =>
               )
             }
             if (b.kind === "thinking") {
-              return <Thinking key={i} text={b.text} />
+              return <Thinking key={blockKey(b, i)} text={b.text} />
             }
             if (b.kind === "tool_use") {
-              return <ToolCall key={i} name={b.name} input={b.input} />
+              return <ToolCall key={blockKey(b, i)} name={b.name} input={b.input} />
             }
-            return <ToolResult key={i} text={b.text} isError={b.isError} />
+            return <ToolResult key={blockKey(b, i)} text={b.text} isError={b.isError} />
           })
         )}
       </div>
@@ -290,29 +303,38 @@ export const TranscriptView = ({ messages }: Props) => {
           const allToolResults = blocks.every((b) => b.kind === "tool_result")
           if (allToolResults) {
             return (
-              <div key={i} className="flex justify-start gap-2 pl-9">
+              <div
+                key={`msg-${m.timestamp || i}-tool_results`}
+                className="flex justify-start gap-2 pl-9"
+              >
                 <div className="flex flex-col items-start w-full min-w-0">
                   {blocks.map((b, j) =>
                     b.kind === "tool_result" ? (
-                      <ToolResult key={j} text={b.text} isError={b.isError} />
+                      <ToolResult key={blockKey(b, j)} text={b.text} isError={b.isError} />
                     ) : null,
                   )}
                 </div>
               </div>
             )
           }
-          return <UserBubble key={i} blocks={blocks} time={time} />
+          return <UserBubble key={`msg-${m.timestamp || i}-user`} blocks={blocks} time={time} />
         }
 
         if (role === "assistant") {
           if (blocks.length === 0) return null
-          return <AssistantBubble key={i} blocks={blocks} time={time} />
+          return (
+            <AssistantBubble
+              key={`msg-${m.timestamp || i}-assistant`}
+              blocks={blocks}
+              time={time}
+            />
+          )
         }
 
         // result
         const text = typeof m.result === "string" ? m.result : asString(extractContent(m))
         if (!text || text === "null") return null
-        return <ResultBubble key={i} text={text} time={time} />
+        return <ResultBubble key={`msg-${m.timestamp || i}-result`} text={text} time={time} />
       })}
     </div>
   )

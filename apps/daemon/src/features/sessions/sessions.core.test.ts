@@ -59,8 +59,9 @@ describe("parseState — additional coverage", () => {
   })
 
   test("ignores unknown fields rather than throwing", () => {
-    expect(parseState({ short: "abcd", json: { state: "working", futureField: "noise" } }).state)
-      .toBe("working")
+    expect(
+      parseState({ short: "abcd", json: { state: "working", futureField: "noise" } }).state,
+    ).toBe("working")
   })
 })
 
