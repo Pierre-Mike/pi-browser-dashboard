@@ -154,14 +154,7 @@ export const Sidebar = () => {
                       )
                     })}
                   </ul>
-                ) : (
-                  <div
-                    className="ml-3.5 pl-2 border-l border-slate-200 dark:border-slate-800 py-0.5 text-[10.5px] italic text-slate-400 dark:text-slate-600"
-                    aria-hidden
-                  >
-                    no sessions
-                  </div>
-                )}
+                ) : null}
               </div>
             )
           })
