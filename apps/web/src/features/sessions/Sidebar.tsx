@@ -5,6 +5,7 @@ import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { useProjects } from "../projects/useProjects"
 import { bucketProjects, sessionLabel } from "./sidebarUtil"
+import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
 
 export const Sidebar = () => {
@@ -13,6 +14,7 @@ export const Sidebar = () => {
   const params = useParams({ strict: false }) as { id?: string }
   const activeShort = params.id
   const [spawnProject, setSpawnProject] = useState<Project | null>(null)
+  const { pinnedIds, togglePin } = usePinnedProjects()
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
     return (
@@ -22,7 +24,7 @@ export const Sidebar = () => {
     )
   }
 
-  const buckets = bucketProjects(projectsQ.data ?? [], sessionsQ.data ?? [])
+  const buckets = bucketProjects(projectsQ.data ?? [], sessionsQ.data ?? [], pinnedIds)
   const totalSessions = buckets.reduce((n, b) => n + b.sessions.length, 0)
 
   return (
@@ -60,7 +62,12 @@ export const Sidebar = () => {
                       params={{ id: b.project.id }}
                       data-testid="sidebar-project-link"
                       data-project-id={b.project.id}
-                      className="truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 hover:text-sky-700 dark:hover:text-sky-300"
+                      data-pinned={b.pinned ? "true" : "false"}
+                      className={`truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold hover:text-sky-700 dark:hover:text-sky-300 ${
+                        b.pinned
+                          ? "text-amber-700 dark:text-amber-300"
+                          : "text-slate-800 dark:text-slate-100"
+                      }`}
                     >
                       {isNonGit ? (
                         <span
@@ -105,6 +112,25 @@ export const Sidebar = () => {
                   >
                     {b.sessions.length}
                   </span>
+                  {b.project && b.sessions.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => b.project && togglePin(b.project.id)}
+                      data-testid="sidebar-pin-toggle"
+                      data-project-id={b.project.id}
+                      data-pinned={b.pinned ? "true" : "false"}
+                      title={b.pinned ? `Unpin ${b.title}` : `Pin ${b.title} to top`}
+                      aria-label={b.pinned ? `Unpin ${b.title}` : `Pin ${b.title} to top`}
+                      aria-pressed={b.pinned}
+                      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[11px] leading-none transition-colors ${
+                        b.pinned
+                          ? "text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                          : "text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 opacity-60 group-hover:opacity-100 focus:opacity-100"
+                      }`}
+                    >
+                      {b.pinned ? "★" : "☆"}
+                    </button>
+                  ) : null}
                   {b.project ? (
                     <button
                       type="button"

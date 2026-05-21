@@ -56,6 +56,38 @@ describe("bucketProjects", () => {
     )
     expect(out.map((bk) => bk.title)).toEqual(["b-busy", "a-empty", "c-empty"])
   })
+
+  it("floats pinned projects with sessions above unpinned ones", () => {
+    const a = proj({ id: "a", name: "a-busy", path: "/p/a" })
+    const b = proj({ id: "b", name: "b-busy", path: "/p/b" })
+    const c = proj({ id: "c", name: "c-pinned", path: "/p/c" })
+    const out = bucketProjects(
+      [a, b, c],
+      [
+        sess({ cwd: "/p/a", short: "s1" }),
+        sess({ cwd: "/p/a", short: "s2" }),
+        sess({ cwd: "/p/b", short: "s3" }),
+        sess({ cwd: "/p/c", short: "s4" }),
+      ],
+      new Set(["c"]),
+    )
+    expect(out.map((bk) => bk.title)).toEqual(["c-pinned", "a-busy", "b-busy"])
+    expect(out[0]?.pinned).toBe(true)
+    expect(out[1]?.pinned).toBe(false)
+  })
+
+  it("ignores pin on projects without sessions", () => {
+    const a = proj({ id: "a", name: "a-empty", path: "/p/a" })
+    const b = proj({ id: "b", name: "b-busy", path: "/p/b" })
+    const out = bucketProjects([a, b], [sess({ cwd: "/p/b" })], new Set(["a"]))
+    expect(out.map((bk) => bk.title)).toEqual(["b-busy", "a-empty"])
+    expect(out[1]?.pinned).toBe(false)
+  })
+
+  it("defaults pinned to false when no set is passed", () => {
+    const out = bucketProjects([proj()], [sess()])
+    expect(out[0]?.pinned).toBe(false)
+  })
 })
 
 describe("sessionLabel", () => {
