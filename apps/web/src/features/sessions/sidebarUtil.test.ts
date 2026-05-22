@@ -57,7 +57,7 @@ describe("bucketProjects", () => {
     expect(out.map((bk) => bk.title)).toEqual(["b-busy", "a-empty", "c-empty"])
   })
 
-  it("floats pinned projects with sessions above unpinned ones", () => {
+  it("floats pinned projects above unpinned ones regardless of session count", () => {
     const a = proj({ id: "a", name: "a-busy", path: "/p/a" })
     const b = proj({ id: "b", name: "b-busy", path: "/p/b" })
     const c = proj({ id: "c", name: "c-pinned", path: "/p/c" })
@@ -76,12 +76,18 @@ describe("bucketProjects", () => {
     expect(out[1]?.pinned).toBe(false)
   })
 
-  it("ignores pin on projects without sessions", () => {
+  it("pins projects even when they have no sessions", () => {
     const a = proj({ id: "a", name: "a-empty", path: "/p/a" })
     const b = proj({ id: "b", name: "b-busy", path: "/p/b" })
     const out = bucketProjects([a, b], [sess({ cwd: "/p/b" })], new Set(["a"]))
-    expect(out.map((bk) => bk.title)).toEqual(["b-busy", "a-empty"])
+    expect(out.map((bk) => bk.title)).toEqual(["a-empty", "b-busy"])
+    expect(out[0]?.pinned).toBe(true)
     expect(out[1]?.pinned).toBe(false)
+  })
+
+  it("does not pin orphan (project-less) buckets even if id matches", () => {
+    const out = bucketProjects([], [sess({ cwd: "/x/y/orphan" })], new Set(["/x/y/orphan"]))
+    expect(out[0]?.pinned).toBe(false)
   })
 
   it("defaults pinned to false when no set is passed", () => {
