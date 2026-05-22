@@ -77,6 +77,32 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
   }
 })
 
+test("Files tab fills viewport height and the tree list scrolls within it", async ({ page }) => {
+  ensureProject("proj-files-fill", { gitInit: true })
+
+  await page.goto("/projects/proj-files-fill")
+  await expect(page.locator('[data-testid="project-dashboard"]')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId("project-tab-files").click()
+  const tree = page.getByTestId("project-file-tree")
+  await expect(tree).toBeVisible()
+
+  // The file tree should fill close to the full viewport — not be capped at the
+  // previous 70vh fixed cell.
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error("viewport size unavailable")
+  const treeBox = await tree.boundingBox()
+  if (!treeBox) throw new Error("tree bounding box unavailable")
+  expect(treeBox.height).toBeGreaterThanOrEqual(viewport.height * 0.8)
+
+  // The inner tree-row container must be scrollable so long file lists don't
+  // overflow the panel.
+  const scroller = page.getByTestId("file-tree-scroll")
+  await expect(scroller).toBeVisible()
+  const scrollOverflow = await scroller.evaluate((el) => getComputedStyle(el).overflowY)
+  expect(scrollOverflow).toBe("auto")
+})
+
 test("project dashboard hides GitHub tab when no github origin", async ({ page }) => {
   ensureProject("proj-tabs-no-gh", { gitInit: true })
 
