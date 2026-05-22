@@ -18,6 +18,7 @@ import {
   parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,
+  shouldAutoKillSession,
   zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
@@ -110,7 +111,17 @@ const pipeStream = async (
 }
 
 type Resolved =
-  | { readonly ok: true; readonly cwd: string; readonly cmd: string }
+  | {
+      readonly ok: true
+      readonly cwd: string
+      readonly cmd: string
+      // Used by the fast-crash recovery path: if `zellij attach <name>`
+      // panics on startup against a wedged session, we run
+      // `zellij kill-session <name>` so the next reconnect hits the create
+      // branch and rebuilds the session fresh. Null when the route can't
+      // identify a session (defensive — current callers all set it).
+      readonly sessionName: string | null
+    }
   | { readonly ok: false; readonly reason: string }
 
 type BridgeOpts = {
@@ -156,6 +167,7 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
           pty,
           sizefile,
         })
+        const spawnedAt = Date.now()
         const drainAbort = new AbortController()
         const heartbeat = setInterval(() => {
           try {
@@ -181,8 +193,29 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         void pipeStream(child.stderr, send, drainAbort.signal)
 
         void child.exited.then((code) => {
+          // Detect the "zellij attach panicked on startup" loop: client panics
+          // with EIO sub-second against a wedged session, exits non-zero, and
+          // the server-side session sticks around so the next attach panics
+          // again. shouldAutoKillSession encapsulates the heuristic; if it
+          // fires, kill the wedged session so the next reconnect hits the
+          // create branch and rebuilds it from the layout.
+          const elapsedMs = Date.now() - spawnedAt
+          const autoKill = shouldAutoKillSession({
+            elapsedMs,
+            exitCode: code,
+            sessionName: resolved.sessionName,
+          })
+          let exitMessage = `\r\n\x1b[2mchild exited (${code})\x1b[0m\r\n`
+          if (autoKill && resolved.sessionName !== null) {
+            // Fire-and-forget — the user-facing message is sent immediately so
+            // the WS close doesn't race the kill subprocess. Errors swallowed:
+            // the kill is best-effort recovery, the next attach reveals
+            // whether it worked.
+            void killZellijSession(resolved.sessionName)
+            exitMessage = `\r\n\x1b[33mzellij client crashed on startup (exit ${code} in ${elapsedMs}ms); reset session '${resolved.sessionName}' — click Reconnect to spawn a fresh one.\x1b[0m\r\n`
+          }
           try {
-            ws.send(`\r\n\x1b[2mchild exited (${code})\x1b[0m\r\n`)
+            ws.send(exitMessage)
             ws.close(1000, "child_exited")
           } catch {
             // ws already closed
@@ -272,7 +305,7 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
   const cwd = session.cwd || process.env.HOME || "/"
   const cmd = sessionZellijCommand({ cwd, short: session.short })
   if (cmd === null) return { ok: false, reason: "invalid_id" }
-  return { ok: true, cwd, cmd }
+  return { ok: true, cwd, cmd, sessionName: zellijSessionName(session.short) }
 }
 
 // Dashboard global terminal: pinned to zellij session "default". No id in the
@@ -281,7 +314,7 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
 const resolveGlobalCommand = async (_c: Context): Promise<Resolved> => {
   const cwd = globalTerminalCwd(process.env)
   const cmd = projectZellijCommand({ cwd, sessionName: GLOBAL_ZELLIJ_SESSION })
-  return { ok: true, cwd, cmd }
+  return { ok: true, cwd, cmd, sessionName: GLOBAL_ZELLIJ_SESSION }
 }
 
 const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
@@ -298,7 +331,7 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   const project = projects.find((p) => p.id === id)
   if (!project) return { ok: false, reason: `project ${id} not found` }
   const cmd = projectZellijCommand({ cwd: project.path, sessionName })
-  return { ok: true, cwd: project.path, cmd }
+  return { ok: true, cwd: project.path, cmd, sessionName }
 }
 
 // Wedge recovery: `zellij kill-session <name>` so the user doesn't have to
