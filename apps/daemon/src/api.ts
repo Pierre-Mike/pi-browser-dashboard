@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import * as canvasRoute from "./features/canvas/canvas.routes"
+import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
@@ -33,6 +34,7 @@ const app = new Hono()
   .route("/terminal", terminalRoute.app)
   .route("/canvas", canvasRoute.app)
   .route("/issue-driver", issueDriverRoute.app)
+  .route("/claude-config", claudeConfigRoute.app)
 
 export type AppType = typeof app
 export { app }

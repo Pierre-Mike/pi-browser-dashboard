@@ -1,4 +1,5 @@
 import { Layer, ManagedRuntime } from "effect"
+import { ClaudeConfigRepoLive } from "../features/claude-config/claude-config.repo"
 import { GhIssueClientLive } from "../features/issue-driver/gh-issue.repo"
 import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.repo"
 import { ProjectsRepoLive } from "../features/projects/projects.repo"
@@ -11,6 +12,10 @@ const ISSUE_DRIVER_GLOBAL_CAP = 2
 const ISSUE_DRIVER_PER_REPO_CAP = 1
 
 const ProjectsLive = Layer.provide(ProjectsRepoLive, ConfigRepoLive)
+const ClaudeConfigLive = Layer.provide(
+  ClaudeConfigRepoLive,
+  Layer.mergeAll(ConfigRepoLive, ProjectsLive),
+)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
     globalCap: ISSUE_DRIVER_GLOBAL_CAP,
@@ -28,6 +33,7 @@ const AppLayer = Layer.mergeAll(
   ShellRepoLive,
   FilesRepoLive,
   ProjectsLive,
+  ClaudeConfigLive,
   IssueDriverLive,
 )
 
