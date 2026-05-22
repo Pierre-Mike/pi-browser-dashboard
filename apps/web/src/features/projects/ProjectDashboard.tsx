@@ -59,7 +59,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   }, [project.githubUrl, sessions.length])
 
   const [tab, setTab] = useState<TabKey>("terminal")
-  const fillViewport = tab === "terminal"
+  const fillViewport = tab === "terminal" || tab === "files"
 
   return (
     <div
@@ -215,7 +215,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       <div
         role="tabpanel"
         data-testid="project-tab-panel-files"
-        className={tab === "files" ? "flex flex-col gap-2" : "hidden"}
+        className={tab === "files" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <FileTree projectId={project.id} />
       </div>

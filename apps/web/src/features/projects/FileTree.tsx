@@ -419,9 +419,9 @@ export const FileTree = ({ projectId, onPick }: Props) => {
   return (
     <div
       data-testid="project-file-tree"
-      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm h-[70vh]"
+      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm flex-1 min-h-0"
     >
-      <aside className="flex flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+      <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
         <div className="px-2 py-2 border-b border-slate-200 dark:border-slate-800">
           <input
             type="search"
@@ -432,7 +432,7 @@ export const FileTree = ({ projectId, onPick }: Props) => {
             className="w-full text-xs px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
           />
         </div>
-        <div className="flex-1 min-h-0 overflow-auto py-1.5 px-1">
+        <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto py-1.5 px-1">
           <DirNode
             projectId={projectId}
             path=""
