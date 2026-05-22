@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
+import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
@@ -12,7 +13,7 @@ type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
 
-type TabKey = "sessions" | "github" | "terminal" | "files"
+type TabKey = "sessions" | "github" | "terminal" | "files" | "claude"
 
 type Tab = { readonly key: TabKey; readonly label: string }
 
@@ -53,6 +54,7 @@ export const ProjectDashboard = ({ project }: Props) => {
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
     base.push({ key: "files", label: "Files" })
+    base.push({ key: "claude", label: "Claude" })
     return base
   }, [project.githubUrl, sessions.length])
 
@@ -216,6 +218,14 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "files" ? "flex flex-col gap-2" : "hidden"}
       >
         <FileTree projectId={project.id} />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-claude"
+        className={tab === "claude" ? "flex flex-col gap-2" : "hidden"}
+      >
+        <ClaudeConfigPanel scope="project" projectId={project.id} />
       </div>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />

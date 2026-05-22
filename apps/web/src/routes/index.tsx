@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
+import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { useProjects } from "../features/projects/useProjects"
 import { ProjectGrid } from "../features/sessions/ProjectGrid"
@@ -9,12 +10,13 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 })
 
-type TabKey = "projects" | "terminal"
+type TabKey = "projects" | "terminal" | "claude"
 type Tab = { readonly key: TabKey; readonly label: string }
 
 const TABS: readonly Tab[] = [
   { key: "terminal", label: "Terminal" },
   { key: "projects", label: "Projects" },
+  { key: "claude", label: "Claude" },
 ]
 
 const ProjectsPanel = () => {
@@ -104,6 +106,14 @@ function IndexPage() {
         className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <GlobalTerminal />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="dashboard-tab-panel-claude"
+        className={tab === "claude" ? "flex flex-col gap-2" : "hidden"}
+      >
+        <ClaudeConfigPanel scope="global" />
       </div>
     </div>
   )
