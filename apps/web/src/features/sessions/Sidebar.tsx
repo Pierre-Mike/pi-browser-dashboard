@@ -63,11 +63,7 @@ export const Sidebar = () => {
                       data-testid="sidebar-project-link"
                       data-project-id={b.project.id}
                       data-pinned={b.pinned ? "true" : "false"}
-                      className={`truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold hover:text-sky-700 dark:hover:text-sky-300 ${
-                        b.pinned
-                          ? "text-amber-700 dark:text-amber-300"
-                          : "text-slate-800 dark:text-slate-100"
-                      }`}
+                      className="truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 hover:text-sky-700 dark:hover:text-sky-300"
                     >
                       {isNonGit ? (
                         <span
@@ -112,7 +108,7 @@ export const Sidebar = () => {
                   >
                     {b.sessions.length}
                   </span>
-                  {b.project && b.sessions.length > 0 ? (
+                  {b.project ? (
                     <button
                       type="button"
                       onClick={() => b.project && togglePin(b.project.id)}
@@ -122,10 +118,10 @@ export const Sidebar = () => {
                       title={b.pinned ? `Unpin ${b.title}` : `Pin ${b.title} to top`}
                       aria-label={b.pinned ? `Unpin ${b.title}` : `Pin ${b.title} to top`}
                       aria-pressed={b.pinned}
-                      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[11px] leading-none transition-colors ${
+                      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[11px] leading-none ${
                         b.pinned
-                          ? "text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                          : "text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 opacity-60 group-hover:opacity-100 focus:opacity-100"
+                          ? "text-amber-500 dark:text-amber-400"
+                          : "text-slate-300 dark:text-slate-600 hover:text-amber-500 dark:hover:text-amber-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
                       }`}
                     >
                       {b.pinned ? "★" : "☆"}

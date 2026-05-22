@@ -51,12 +51,8 @@ export const bucketProjects = (
     }
   }
 
-  // Pin only applies to project buckets that have at least one session — pin
-  // is a "this project is hot right now" marker, not a generic bookmark.
   for (const b of byKey.values()) {
-    if (b.project && b.sessions.length > 0 && pinnedIds.has(b.project.id)) {
-      b.pinned = true
-    }
+    if (b.project && pinnedIds.has(b.project.id)) b.pinned = true
   }
 
   const out = [...byKey.values()]
