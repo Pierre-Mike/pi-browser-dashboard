@@ -367,3 +367,30 @@ export const zellijKillSessionArgv = (sessionName: string): string[] => [
   "kill-session",
   sessionName,
 ]
+
+// Fast-crash window for "the zellij client panicked on startup against a wedged
+// session". `zellij attach <name>` panics with EIO (Input/output error, os
+// error 5) sub-second; a legitimate session — even one where `claude attach`
+// fails and the layout falls back to a login shell — runs for far longer
+// before any non-zero exit. 3s sits comfortably between the two.
+export const FAST_CRASH_MS = 3_000
+
+// Decide whether to auto-`zellij kill-session <name>` after a child exit.
+// True iff the child crashed (non-zero) within FAST_CRASH_MS AND we know
+// which session to kill. The wedged-session symptom (5,000+ EIO panics in
+// the zellij log against a single `default` session) loops because the
+// server-side session stays alive across panicking clients; killing it lets
+// the next attach hit the create branch and rebuild from the layout.
+//
+// Clean exits (user typed `exit`) and long-lived sessions are never killed
+// — those represent real work the user shouldn't lose.
+export const shouldAutoKillSession = (args: {
+  readonly elapsedMs: number
+  readonly exitCode: number
+  readonly sessionName: string | null
+}): boolean => {
+  if (args.sessionName === null) return false
+  if (args.exitCode === 0) return false
+  if (args.elapsedMs >= FAST_CRASH_MS) return false
+  return true
+}

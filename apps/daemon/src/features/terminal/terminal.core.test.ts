@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  FAST_CRASH_MS,
   GLOBAL_ZELLIJ_SESSION,
   HEARTBEAT_PAYLOAD,
   buildChildArgv,
@@ -9,6 +10,7 @@ import {
   parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,
+  shouldAutoKillSession,
   zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
@@ -417,6 +419,58 @@ describe("HEARTBEAT_PAYLOAD", () => {
     // errors written by the route start with "\r\n" so they paint into xterm.
     expect(HEARTBEAT_PAYLOAD.startsWith("{")).toBe(true)
     expect(JSON.parse(HEARTBEAT_PAYLOAD)).toEqual({ type: "hb" })
+  })
+})
+
+describe("shouldAutoKillSession", () => {
+  // The bug this guards against: `zellij attach default` panics with EIO
+  // (Input/output error, os error 5) on startup against a wedged session,
+  // exits non-zero in well under a second, and the server-side session sticks
+  // around. The next WS open hits the attach branch again → panics again →
+  // user sees a black xterm forever. Detect the fast-crash and kill the
+  // wedged session so the NEXT attach hits the create branch and rebuilds
+  // it fresh with the project layout.
+  it("kills when zellij attach exits non-zero within the fast-crash window", () => {
+    expect(shouldAutoKillSession({ elapsedMs: 250, exitCode: 1, sessionName: "default" })).toBe(
+      true,
+    )
+    expect(shouldAutoKillSession({ elapsedMs: 1500, exitCode: 134, sessionName: "default" })).toBe(
+      true,
+    )
+  })
+
+  it("never kills when the child exited cleanly — the user typed `exit`", () => {
+    // A user who runs `exit` in their global terminal is detaching on purpose.
+    // The session is healthy; killing it would lose their panes / scrollback.
+    expect(shouldAutoKillSession({ elapsedMs: 200, exitCode: 0, sessionName: "default" })).toBe(
+      false,
+    )
+  })
+
+  it("never kills after a long-lived child exits — the session worked, then ended", () => {
+    // Past the fast-crash window means the user actually used the terminal.
+    // Auto-killing here would destroy real work on every detach.
+    expect(
+      shouldAutoKillSession({
+        elapsedMs: FAST_CRASH_MS + 1,
+        exitCode: 1,
+        sessionName: "default",
+      }),
+    ).toBe(false)
+  })
+
+  it("returns false when sessionName is null — nothing to kill", () => {
+    // Routes that couldn't resolve a session (invalid_id) skip the recovery.
+    expect(shouldAutoKillSession({ elapsedMs: 100, exitCode: 1, sessionName: null })).toBe(false)
+  })
+
+  it("FAST_CRASH_MS is conservative enough to skip normal session use", () => {
+    // The threshold must be longer than a panic-on-startup (sub-second) but
+    // shorter than any plausible legitimate session — even a `claude attach`
+    // that fails and falls back to bash takes well over 3s before the user
+    // hits exit. Pin a sane order of magnitude.
+    expect(FAST_CRASH_MS).toBeGreaterThanOrEqual(2_000)
+    expect(FAST_CRASH_MS).toBeLessThanOrEqual(10_000)
   })
 })
 
