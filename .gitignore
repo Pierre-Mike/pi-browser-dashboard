@@ -14,5 +14,6 @@ bun.lockb
 
 .claude/settings.local.json
 .claude/worktrees/
+.claude/plans/
 apps/e2e/test-results/
 apps/e2e/playwright-report/
