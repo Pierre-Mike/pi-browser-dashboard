@@ -27,6 +27,12 @@ README for the full requirements list.
 5. Squash-merge once green. Conventional commit prefix in the title
    (`feat`, `fix`, `chore`, `test`, `docs`, `refactor`).
 
+> The repo has no required-checks branch protection (private repo on the
+> free plan). `gh pr merge --auto` will fire the instant a PR is mergeable —
+> **don't queue it on a draft until CI is green**. The host-level
+> `triage.sh` loop already enforces "ready + auto-merge only after green",
+> so let it handle promotion for issue-driver PRs.
+
 ## Code style
 
 - **Biome** is the linter and formatter. Run `bun run lint` before pushing,
