@@ -36,3 +36,7 @@ Out of scope:
 ## Supported versions
 
 This project is pre-1.0. Only `main` is supported.
+
+---
+
+For general contribution guidelines, see [CONTRIBUTING.md](./CONTRIBUTING.md).
