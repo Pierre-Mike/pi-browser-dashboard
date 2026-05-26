@@ -93,4 +93,19 @@ describe("handleDrop", () => {
     expect(clipboard.writes).toEqual([])
     expect(listener.events).toEqual([])
   })
+
+  it("treats a clipboard.writeText rejection as non-fatal: paths still returned, events still emitted", async () => {
+    const clipboard = {
+      writeText: async (_: string) => {
+        throw new DOMException("Document is not focused.", "NotAllowedError")
+      },
+    }
+    const result = await handleDrop([new File(["a"], "a.txt")], {
+      upload: okUploader(["/abs/a.txt"]),
+      clipboard,
+    })
+    expect(result.paths).toEqual(["/abs/a.txt"])
+    expect(result.errors).toEqual([])
+    expect(listener.events).toEqual(["/abs/a.txt"])
+  })
 })
