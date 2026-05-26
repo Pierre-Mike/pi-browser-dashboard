@@ -32,7 +32,7 @@ describe("POST /drops", () => {
     const file = json.files[0]
     expect(file?.name).toBe("hello.txt")
     expect(file?.size).toBe(5)
-    expect(file?.path.startsWith(join(appRoot, "drops") + "/")).toBe(true)
+    expect(file?.path.startsWith(`${join(appRoot, "drops")}/`)).toBe(true)
     expect(existsSync(file?.path ?? "")).toBe(true)
     expect(readFileSync(file?.path ?? "", "utf-8")).toBe("hello")
   })
