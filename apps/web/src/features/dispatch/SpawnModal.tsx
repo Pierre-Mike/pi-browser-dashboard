@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { api } from "../../lib/api"
 import type { Project } from "../../lib/types"
+import { appendPath } from "../uploads/appendPath"
+import { subscribeDroppedPaths } from "../uploads/dropEvents"
 
 type Props = {
   open: boolean
@@ -31,6 +33,13 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    return subscribeDroppedPaths((path) => {
+      setIntent((prev) => appendPath(prev, path))
+    })
+  }, [open])
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()

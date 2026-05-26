@@ -9,6 +9,7 @@ import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
+import * as uploadsRoute from "./features/uploads/uploads.routes"
 
 const DEFAULT_ORIGINS = ["http://localhost:5173"]
 const extraOrigins = (process.env.PID_CORS_ORIGINS ?? "")
@@ -37,6 +38,7 @@ const app = new Hono()
   .route("/canvas", canvasRoute.app)
   .route("/issue-driver", issueDriverRoute.app)
   .route("/claude-config", claudeConfigRoute.app)
+  .route("/uploads", uploadsRoute.app)
 
 export type AppType = typeof app
 export { app }
