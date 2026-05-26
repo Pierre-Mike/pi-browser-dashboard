@@ -1,6 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { api } from "../../lib/api"
+import { appendPath } from "../uploads/appendPath"
+import { subscribeDroppedPaths } from "../uploads/dropEvents"
 
 type Props = { short: string; disabled?: boolean }
 
@@ -12,6 +14,12 @@ export const ChatComposer = ({ short, disabled }: Props) => {
   const [inFlight, setInFlight] = useState(0)
   const [status, setStatus] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    return subscribeDroppedPaths((path) => {
+      setText((prev) => appendPath(prev, path))
+    })
+  }, [])
 
   const send = async () => {
     const trimmed = text.trim()
