@@ -25,6 +25,11 @@ describe("classifyFile", () => {
     expect(classifyFile("guide.pdf", true)).toBe("pdf")
   })
 
+  it("classifies .canvas as canvas (JSON Canvas format)", () => {
+    expect(classifyFile("ideas.canvas", false)).toBe("canvas")
+    expect(classifyFile("nested/dir/Notes.CANVAS", false)).toBe("canvas")
+  })
+
   it("classifies code by extension", () => {
     expect(classifyFile("src/index.ts", false)).toBe("code")
     expect(classifyFile("Component.tsx", false)).toBe("code")

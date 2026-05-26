@@ -6,6 +6,7 @@ export type FileKind =
   | "video"
   | "pdf"
   | "svg"
+  | "canvas"
   | "code"
   | "text"
   | "binary"
@@ -38,6 +39,7 @@ const KIND_BY_EXT: Readonly<Record<string, FileKind>> = {
   webm: "video",
   ogv: "video",
   pdf: "pdf",
+  canvas: "canvas",
   ts: "code",
   tsx: "code",
   js: "code",
