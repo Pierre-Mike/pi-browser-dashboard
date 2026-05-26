@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import type { FileContent, FileEntry } from "../../lib/types"
+import { CanvasView } from "./CanvasView"
 import { MarkdownView } from "./MarkdownView"
 import { type FileKind, basenameOf, classifyFile } from "./fileKind"
 import { formatSize, joinPath } from "./treeUtil"
@@ -28,6 +29,7 @@ const ICON_FOR_KIND: Record<FileKind, string> = {
   video: "🎬",
   pdf: "📕",
   svg: "🖼",
+  canvas: "🗺",
   code: "⟨⟩",
   text: "📄",
   binary: "■",
@@ -317,6 +319,8 @@ const FileBody = ({
           className="w-full h-full border-0 bg-white"
         />
       )
+    case "canvas":
+      return <CanvasView raw={file.content} />
     case "binary":
       return (
         <div
