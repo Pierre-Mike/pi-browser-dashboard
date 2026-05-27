@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "bun --bun x vite",
+    "build": "bun --bun x vite build",
+    "preview": "bun --bun x vite preview"
   },
   "dependencies": {
     "@pid/daemon": "workspace:*",
