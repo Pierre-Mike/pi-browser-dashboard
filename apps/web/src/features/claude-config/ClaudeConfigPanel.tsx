@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { MarkdownView } from "../projects/MarkdownView"
 import type { HookEntry, HookScript, ScopeBundle, SettingsSummary, SkillSummary } from "./types"
 import { useGlobalClaudeConfig, useProjectClaudeConfig, useSkillDetail } from "./useClaudeConfig"
 
@@ -270,9 +271,12 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
                 {detailQ.data.description}
               </p>
             ) : null}
-            <pre className="px-3 py-2 text-[12px] font-mono whitespace-pre-wrap break-words max-h-[55vh] overflow-auto">
-              {detailQ.data.body}
-            </pre>
+            <div
+              data-testid="claude-config-skill-body"
+              className="max-h-[55vh] overflow-auto"
+            >
+              <MarkdownView text={detailQ.data.body} />
+            </div>
           </article>
         ) : null}
       </div>
@@ -358,8 +362,11 @@ const ClaudeMdTab = ({ bundle }: { bundle: ScopeBundle }) => {
     return <div className="text-sm text-slate-500">No CLAUDE.md found.</div>
   }
   return (
-    <pre className="text-[12px] font-mono whitespace-pre-wrap break-words rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 max-h-[60vh] overflow-auto">
-      {bundle.claudeMd}
-    </pre>
+    <div
+      data-testid="claude-config-claude-md"
+      className="rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 max-h-[60vh] overflow-auto"
+    >
+      <MarkdownView text={bundle.claudeMd} />
+    </div>
   )
 }
