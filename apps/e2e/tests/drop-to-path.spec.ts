@@ -104,3 +104,36 @@ test("drop while a session is open: absolute path is appended into the ChatCompo
     rmSession(short)
   }
 })
+
+test("drop while the global terminal is active: path is sent over the pty WebSocket", async ({
+  page,
+}) => {
+  const ptyFrames: string[] = []
+  // Capture frames the page sends to the terminal WS *before* navigating so
+  // we don't miss the initial open. Filter for the terminal endpoint so we
+  // don't see SSE or other sockets (the dashboard only has one WS today,
+  // but the filter keeps the assertion focused).
+  page.on("websocket", (ws) => {
+    if (!ws.url().includes("/terminal/")) return
+    ws.on("framesent", ({ payload }) => {
+      ptyFrames.push(typeof payload === "string" ? payload : payload.toString("utf8"))
+    })
+  })
+
+  await page.goto("/")
+  // Dashboard defaults to the Terminal tab; wait for the host to render and
+  // for the status badge to flip to "open" so the WS is connected before we drop.
+  await expect(page.getByTestId("global-terminal")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("global-terminal")).toContainText("open", { timeout: 20_000 })
+
+  const uploadResp = page.waitForResponse(
+    (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
+    { timeout: 15_000 },
+  )
+  await dropFile(page, { name: "term-target.md", contents: "# t" })
+  const { path } = (await (await uploadResp).json()) as { path: string }
+
+  await expect
+    .poll(() => ptyFrames.some((f) => f.includes(path)), { timeout: 10_000 })
+    .toBeTruthy()
+})
