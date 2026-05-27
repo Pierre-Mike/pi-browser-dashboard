@@ -11,6 +11,8 @@ export type MdSpan =
   | { readonly kind: "em"; readonly spans: readonly MdSpan[] }
   | { readonly kind: "link"; readonly href: string; readonly spans: readonly MdSpan[] }
 
+export type MdAlign = "left" | "center" | "right" | null
+
 export type MdBlock =
   | {
       readonly kind: "heading"
@@ -23,6 +25,12 @@ export type MdBlock =
   | { readonly kind: "blockquote"; readonly spans: readonly MdSpan[] }
   | { readonly kind: "code"; readonly lang: string; readonly text: string }
   | { readonly kind: "hr" }
+  | {
+      readonly kind: "table"
+      readonly headers: readonly (readonly MdSpan[])[]
+      readonly aligns: readonly MdAlign[]
+      readonly rows: readonly (readonly (readonly MdSpan[])[])[]
+    }
 
 const isSafeHref = (href: string): boolean => {
   const h = href.trim().toLowerCase()
@@ -105,6 +113,23 @@ const HEADING_RE = /^(#{1,6})\s+(.*)$/
 const UL_RE = /^[-*]\s+(.*)$/
 const OL_RE = /^\d+\.\s+(.*)$/
 const HR_RE = /^(?:-{3,}|\*{3,}|_{3,})$/
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/
+const TABLE_SEP_CELL_RE = /^\s*:?-{2,}:?\s*$/
+
+const splitTableRow = (line: string): readonly string[] => {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
+  return trimmed.split("|").map((c) => c.trim())
+}
+
+const parseAlignCell = (cell: string): MdAlign => {
+  const c = cell.trim()
+  const left = c.startsWith(":")
+  const right = c.endsWith(":")
+  if (left && right) return "center"
+  if (right) return "right"
+  if (left) return "left"
+  return null
+}
 
 export const parseMarkdown = (input: string): readonly MdBlock[] => {
   const lines = input.replace(/\r\n?/g, "\n").split("\n")
@@ -177,6 +202,31 @@ export const parseMarkdown = (input: string): readonly MdBlock[] => {
       }
       blocks.push({ kind: "blockquote", spans: parseInline(buf.join(" ")) })
       continue
+    }
+    // GFM table: header pipe-row, separator pipe-row (`| --- |`), then body.
+    if (TABLE_ROW_RE.test(line) && i + 1 < lines.length) {
+      const sepLine = lines[i + 1] ?? ""
+      if (TABLE_ROW_RE.test(sepLine)) {
+        const sepCells = splitTableRow(sepLine)
+        if (sepCells.length > 0 && sepCells.every((c) => TABLE_SEP_CELL_RE.test(c))) {
+          const headerCells = splitTableRow(line)
+          const aligns: MdAlign[] = sepCells.map(parseAlignCell)
+          const rows: MdSpan[][][] = []
+          let j = i + 2
+          while (j < lines.length && TABLE_ROW_RE.test(lines[j] ?? "")) {
+            rows.push(splitTableRow(lines[j] ?? "").map((c) => [...parseInline(c)]))
+            j += 1
+          }
+          blocks.push({
+            kind: "table",
+            headers: headerCells.map((c) => [...parseInline(c)]),
+            aligns,
+            rows,
+          })
+          i = j
+          continue
+        }
+      }
     }
     // Paragraph: consume lines until blank line or block boundary.
     const buf: string[] = [line]

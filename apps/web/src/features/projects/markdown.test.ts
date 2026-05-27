@@ -79,4 +79,55 @@ describe("parseMarkdown", () => {
     expect(blocks[0]?.kind).toBe("paragraph")
     expect(blocks[1]?.kind).toBe("paragraph")
   })
+
+  it("parses GFM tables with header, alignment row, and body", () => {
+    const md = ["| Layer | Choice |", "| ----- | ------ |", "| Repo  | bun    |"].join("\n")
+    const blocks = parseMarkdown(md)
+    expect(blocks).toHaveLength(1)
+    const t = blocks[0]
+    expect(t?.kind).toBe("table")
+    if (t?.kind === "table") {
+      expect(t.headers).toEqual([
+        [{ kind: "text", text: "Layer" }],
+        [{ kind: "text", text: "Choice" }],
+      ])
+      expect(t.rows).toEqual([
+        [[{ kind: "text", text: "Repo" }], [{ kind: "text", text: "bun" }]],
+      ])
+    }
+  })
+
+  it("parses table column alignment from the separator row", () => {
+    const md = [
+      "| L | C | R |",
+      "| :-- | :--: | --: |",
+      "| a | b | c |",
+    ].join("\n")
+    const blocks = parseMarkdown(md)
+    const t = blocks[0]
+    expect(t?.kind).toBe("table")
+    if (t?.kind === "table") {
+      expect(t.aligns).toEqual(["left", "center", "right"])
+    }
+  })
+
+  it("falls back to paragraph for pipe-rows without a separator row", () => {
+    const md = "| not | a table |\n| because | no sep |"
+    const blocks = parseMarkdown(md)
+    expect(blocks[0]?.kind).toBe("paragraph")
+  })
+
+  it("parses inline markdown inside table cells", () => {
+    const md = ["| col |", "| --- |", "| **bold** `code` |"].join("\n")
+    const blocks = parseMarkdown(md)
+    const t = blocks[0]
+    expect(t?.kind).toBe("table")
+    if (t?.kind === "table") {
+      expect(t.rows[0]?.[0]).toEqual([
+        { kind: "strong", spans: [{ kind: "text", text: "bold" }] },
+        { kind: "text", text: " " },
+        { kind: "code", text: "code" },
+      ])
+    }
+  })
 })
