@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
+import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 
 type Props = {
@@ -121,6 +122,15 @@ export const TerminalView = (props: Props) => {
       resizeSub = term.onResize(({ cols, rows }) => sendResize(cols, rows))
     }
 
+    // Pipe dropped-file paths into this terminal's pty as if the user had
+    // typed them. Only the on-screen terminal consumes — IndexPage keeps the
+    // GlobalTerminal mounted under `display: none` while another tab is
+    // active, and we don't want to type into hidden ptys.
+    const offDrop = subscribeDroppedPaths((path) => {
+      if (host.offsetParent === null) return
+      if (ws?.readyState === WebSocket.OPEN) ws.send(path)
+    })
+
     const MAX_ATTEMPTS = 8
     let attempts = 0
     const tryOpen = () => {
@@ -143,6 +153,7 @@ export const TerminalView = (props: Props) => {
 
     return () => {
       disposed = true
+      offDrop()
       for (const id of rafIds) cancelAnimationFrame(id)
       for (const t of timers) clearTimeout(t)
       ro.disconnect()
