@@ -129,12 +129,42 @@ export default async function globalSetup(): Promise<void> {
   const pathWithStub = stubBin ? `${stubBin}:${process.env.PATH ?? ""}` : process.env.PATH
   if (stubBin) process.env.PATH = pathWithStub // helpers.ts spawns `claude` too
 
+  // Seed a minimal Library catalog inside the sandbox so the Library tab
+  // renders (`library-panel` testid) instead of the catalog-missing banner.
+  // The agentic repo path is redirected to an empty sandbox dir so the
+  // agentic sub-tab renders the "empty" state deterministically.
+  const libraryDir = join(sandbox, ".claude", "skills", "library")
+  mkdirSync(libraryDir, { recursive: true })
+  const skillsGlobalDir = join(sandbox, ".claude", "skills")
+  mkdirSync(join(skillsGlobalDir, "smoke"), { recursive: true })
+  writeFileSync(join(skillsGlobalDir, "smoke", "SKILL.md"), "x\n")
+  const catalogYaml = [
+    "default_dirs:",
+    "  skills:",
+    "    - default: .claude/skills/",
+    `    - global: ${skillsGlobalDir}/`,
+    "  agents:",
+    "    - default: .claude/agents/",
+    `    - global: ${join(sandbox, ".claude", "agents")}/`,
+    "library:",
+    "  skills:",
+    "    - name: smoke",
+    "      description: e2e fixture skill",
+    `      source: ${skillsGlobalDir}/smoke/SKILL.md`,
+    "",
+  ].join("\n")
+  writeFileSync(join(libraryDir, "library.yaml"), catalogYaml)
+  const agenticRepoPath = join(sandbox, "agentic")
+  mkdirSync(join(agenticRepoPath, "skills"), { recursive: true })
+
   const daemonEnv = {
     ...process.env,
     CLAUDE_CONFIG_DIR: sandbox,
     PORT: String(DAEMON_PORT),
     PID_CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
     PID_PROJECTS_ROOT: workspace,
+    PID_LIBRARY_DIR: libraryDir,
+    PID_AGENTIC_REPO_PATH: agenticRepoPath,
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
@@ -192,6 +222,8 @@ export default async function globalSetup(): Promise<void> {
       PORT: String(DAEMON_PORT),
       PID_CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
       PID_PROJECTS_ROOT: workspace,
+      PID_LIBRARY_DIR: libraryDir,
+      PID_AGENTIC_REPO_PATH: agenticRepoPath,
       // Carry stub PATH so helpers.restartDaemon spawns a daemon that can
       // still resolve `claude` to the stub in CI.
       ...(stubBin ? { PATH: pathWithStub ?? "" } : {}),
