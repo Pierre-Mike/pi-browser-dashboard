@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { type Page, expect, test } from "@playwright/test"
-import { ensureProject } from "./helpers"
+import { dispatchDirect, ensureProject, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Dispatch a synthetic `drop` DragEvent at the document root carrying one
 // in-memory file. Playwright cannot deliver a real OS-level drag, but the
@@ -73,4 +73,34 @@ test("drop while spawn modal is open: absolute path is appended into the intent 
 
   // appendPath: existing content + space + absolute path.
   await expect(textarea).toHaveValue(`review this ${path}`)
+})
+
+test("drop while a session is open: absolute path is appended into the ChatComposer textarea", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const { short } = await dispatchDirect()
+  try {
+    await waitForCard(page, short, 20_000)
+    await waitForSettled(page, short)
+    await page.goto(`/sessions/${short}`)
+
+    // Session view defaults to the Terminal tab; the ChatComposer lives behind
+    // the Chat tab. Click it to mount the textarea before dropping.
+    await page.getByTestId("tab-chat").click()
+    const composer = page.getByTestId("chat-textarea")
+    await expect(composer).toBeVisible({ timeout: 10_000 })
+    await composer.fill("look at")
+
+    const uploadResp = page.waitForResponse(
+      (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
+      { timeout: 15_000 },
+    )
+    await dropFile(page, { name: "context.md", contents: "# context" })
+    const { path } = (await (await uploadResp).json()) as { path: string }
+
+    await expect(composer).toHaveValue(`look at ${path}`)
+  } finally {
+    rmSession(short)
+  }
 })
