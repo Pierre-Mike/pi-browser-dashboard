@@ -1,5 +1,11 @@
 import { useMemo } from "react"
-import { type MdBlock, type MdSpan, parseMarkdown } from "./markdown"
+import { type MdAlign, type MdBlock, type MdSpan, parseMarkdown } from "./markdown"
+
+const ALIGN_CLASS: Record<Exclude<MdAlign, null>, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+}
 
 const SpanItem = ({ span }: { span: MdSpan }): React.ReactElement => {
   switch (span.kind) {
@@ -88,6 +94,55 @@ const BlockItem = ({ block }: { block: MdBlock }): React.ReactElement => {
       )
     case "hr":
       return <hr className="my-4 border-slate-200 dark:border-slate-800" />
+    case "table":
+      return (
+        <div className="my-3 overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-300 dark:border-slate-700">
+                {block.headers.map((cell, j) => {
+                  const align = block.aligns[j] ?? null
+                  return (
+                    <th
+                      // biome-ignore lint/suspicious/noArrayIndexKey: table header cells are positionally stable per parse
+                      key={j}
+                      className={`px-3 py-1.5 font-semibold ${
+                        align ? ALIGN_CLASS[align] : "text-left"
+                      }`}
+                    >
+                      {renderSpans(cell)}
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, ri) => (
+                <tr
+                  // biome-ignore lint/suspicious/noArrayIndexKey: rows are positionally stable per parse
+                  key={ri}
+                  className="border-b border-slate-200 dark:border-slate-800 last:border-b-0"
+                >
+                  {row.map((cell, ci) => {
+                    const align = block.aligns[ci] ?? null
+                    return (
+                      <td
+                        // biome-ignore lint/suspicious/noArrayIndexKey: cells are positionally stable per parse
+                        key={ci}
+                        className={`px-3 py-1.5 align-top ${
+                          align ? ALIGN_CLASS[align] : "text-left"
+                        }`}
+                      >
+                        {renderSpans(cell)}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
   }
 }
 
