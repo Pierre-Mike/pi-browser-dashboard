@@ -16,9 +16,15 @@ test("double-shift palette → select project → navigate to /projects/$id", as
   const modal = page.locator('[data-testid="palette-modal"]')
   await expect(modal).toBeVisible()
 
-  await page.keyboard.type("palette-nav-target")
+  // Anchor input interactions to the palette's search box rather than using
+  // `page.keyboard.*` directly — page-level typing relies on whatever element
+  // happened to be focused, and StrictMode's double-mount + the modal's
+  // setTimeout(0) focus-on-open occasionally lose the race, so the Enter
+  // keystroke lands on `document.body` instead of the input.
+  const search = modal.locator('input[type="search"]')
+  await search.fill("palette-nav-target")
   await expect(modal.locator('[data-testid="palette-row"]')).toHaveCount(1)
-  await page.keyboard.press("Enter")
+  await search.press("Enter")
 
   await expect(page).toHaveURL(/\/projects\/palette-nav-target$/)
   await expect(page.locator('[data-testid="project-dashboard"]')).toBeVisible()
