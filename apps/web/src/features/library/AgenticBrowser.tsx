@@ -1,11 +1,12 @@
-import type { LibraryCategory } from "./types"
+import type { AgenticItem, LibraryCategory } from "./types"
 import { useAgenticRepo } from "./useLibrary"
 
 type Props = {
   category: LibraryCategory
+  onRegister: (item: AgenticItem) => void
 }
 
-export const AgenticBrowser = ({ category }: Props) => {
+export const AgenticBrowser = ({ category, onRegister }: Props) => {
   const q = useAgenticRepo(category)
 
   if (q.isLoading) return <div className="text-sm text-slate-500">Loading agentic repo…</div>
@@ -63,12 +64,19 @@ export const AgenticBrowser = ({ category }: Props) => {
               </span>
             </div>
             <span className="text-[10px] font-mono text-slate-500 break-all">{item.path}</span>
+            {item.registered ? null : (
+              <button
+                type="button"
+                data-testid={`agentic-register-${category}-${item.name}`}
+                onClick={() => onRegister(item)}
+                className="self-start text-xs rounded px-2 py-0.5 border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30 mt-1"
+              >
+                Register in catalog
+              </button>
+            )}
           </li>
         ))}
       </ul>
-      <p className="text-[11px] italic text-slate-500">
-        "Register in catalog" action lands in a follow-up.
-      </p>
     </div>
   )
 }

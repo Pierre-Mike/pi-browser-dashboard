@@ -75,6 +75,93 @@ const buildApp = () => {
   return app
 }
 
+const buildAppWithMutations = (overrides?: {
+  installEntry?: Parameters<typeof LibraryRepoTest>[0]
+}) => {
+  const fixtures = {
+    catalog: sampleCatalog,
+    agentic: { skills: sampleAgentic },
+    ...(overrides?.installEntry ?? {}),
+  }
+  const testRuntime = ManagedRuntime.make(LibraryRepoTest(fixtures))
+  return new Hono()
+    .post("/use", async (c) => {
+      const body = await c.req.json()
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.installEntry({
+            name: body.name,
+            type: body.type,
+            scope: body.scope,
+            projectId: body.projectId ?? null,
+          }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") return c.json({ error: result.left }, 422)
+      return c.json(result.right)
+    })
+    .post("/add", async (c) => {
+      const body = await c.req.json()
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.addEntry({
+            name: body.name,
+            type: body.type,
+            description: body.description,
+            source: body.source,
+            ...(body.requires ? { requires: body.requires } : {}),
+          }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") return c.json({ error: result.left }, 422)
+      return c.json({ entry: result.right })
+    })
+    .post("/push", async (c) => {
+      const body = await c.req.json()
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.pushEntry({
+            name: body.name,
+            type: body.type,
+            scope: body.scope,
+            projectId: body.projectId ?? null,
+          }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") return c.json({ error: result.left }, 422)
+      return c.json(result.right)
+    })
+    .post("/remove", async (c) => {
+      const body = await c.req.json()
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.removeEntry({
+            name: body.name,
+            type: body.type,
+            scope: body.scope,
+            deleteLocal: body.deleteLocal,
+            projectId: body.projectId ?? null,
+          }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") return c.json({ error: result.left }, 422)
+      return c.json({ removed: true })
+    })
+    .post("/sync", async (c) => {
+      const body = await c.req.json()
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.syncAll({
+            scope: body.scope,
+            projectId: body.projectId ?? null,
+          }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") return c.json({ error: result.left }, 422)
+      return c.json(result.right)
+    })
+}
+
 describe("library routes", () => {
   it("GET /catalog returns entries and statusByName", async () => {
     const res = await buildApp().request("/catalog")
@@ -100,5 +187,70 @@ describe("library routes", () => {
   it("GET /agentic 404s when repo is missing for that category", async () => {
     const res = await buildApp().request("/agentic?category=tools")
     expect(res.status).toBe(404)
+  })
+
+  it("POST /use installs and returns the installed names", async () => {
+    const res = await buildAppWithMutations().request("/use", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "align", type: "skills", scope: "global" }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.installed).toEqual(["align"])
+  })
+
+  it("POST /add returns the registered entry", async () => {
+    const res = await buildAppWithMutations().request("/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "new",
+        type: "skills",
+        description: "x",
+        source: "/tmp/new/SKILL.md",
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.entry.name).toBe("new")
+  })
+
+  it("POST /push returns a commit sha", async () => {
+    const res = await buildAppWithMutations().request("/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "align", type: "skills", scope: "global" }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.commitSha).toBe("stub-sha")
+  })
+
+  it("POST /remove returns removed:true", async () => {
+    const res = await buildAppWithMutations().request("/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "align",
+        type: "skills",
+        scope: "global",
+        deleteLocal: false,
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.removed).toBe(true)
+  })
+
+  it("POST /sync returns an outcomes array", async () => {
+    const res = await buildAppWithMutations().request("/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(Array.isArray(body.outcomes)).toBe(true)
   })
 })

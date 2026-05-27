@@ -45,3 +45,53 @@ export type AgenticListing = {
   category: LibraryCategory
   items: AgenticItem[]
 }
+
+export type InstallScope = "global" | "local"
+
+export type InstallInput = {
+  name: string
+  type: LibraryCategory
+  scope: InstallScope
+  projectId?: string | null
+}
+
+export type InstallResult = {
+  installed: string[]
+  destinations: string[]
+}
+
+export type AddInput = {
+  name: string
+  type: LibraryCategory
+  description: string
+  source: string
+  requires?: string[]
+}
+
+export type RemoveInput = {
+  name: string
+  type: LibraryCategory
+  deleteLocal: boolean
+  scope: InstallScope
+  projectId?: string | null
+}
+
+export type PushInput = {
+  name: string
+  type: LibraryCategory
+  scope: InstallScope
+  projectId?: string | null
+}
+
+export type SyncInput = {
+  scope?: InstallScope
+  projectId?: string | null
+}
+
+export type SyncOutcome = {
+  name: string
+  type: LibraryCategory
+  scope: InstallScope
+  ok: boolean
+  error?: string
+}

@@ -1,14 +1,31 @@
 import { useMemo, useState } from "react"
-import type { CatalogBundle, LibraryCategory, LibraryEntry, StatusByScope } from "./types"
+import { InstallDialog } from "./dialogs/InstallDialog"
+import { RemoveDialog } from "./dialogs/RemoveDialog"
+import type {
+  CatalogBundle,
+  InstallScope,
+  LibraryCategory,
+  LibraryEntry,
+  StatusByScope,
+} from "./types"
+import { usePushMutation } from "./useLibrary"
 
 type Props = {
   bundle: CatalogBundle
   category: LibraryCategory
+  projectId: string | null
 }
 
-export const CatalogList = ({ bundle, category }: Props) => {
+type DialogState =
+  | { kind: "none" }
+  | { kind: "install"; entry: LibraryEntry; scope?: InstallScope }
+  | { kind: "remove"; entry: LibraryEntry }
+
+export const CatalogList = ({ bundle, category, projectId }: Props) => {
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<DialogState>({ kind: "none" })
+  const pushM = usePushMutation()
 
   const entries = useMemo(() => {
     const filtered = bundle.catalog.entries.filter((e) => e.type === category)
@@ -82,10 +99,43 @@ export const CatalogList = ({ bundle, category }: Props) => {
             <EntryDetail
               entry={selectedEntry}
               status={bundle.statusByName[`${selectedEntry.type}:${selectedEntry.name}`]}
+              projectId={projectId}
+              pushPending={pushM.isPending}
+              pushError={pushM.error instanceof Error ? pushM.error.message : null}
+              onInstall={(scope) =>
+                setDialog({ kind: "install", entry: selectedEntry, ...(scope ? { scope } : {}) })
+              }
+              onRemove={() => setDialog({ kind: "remove", entry: selectedEntry })}
+              onPush={(scope) =>
+                pushM.mutate({
+                  name: selectedEntry.name,
+                  type: selectedEntry.type,
+                  scope,
+                  ...(scope === "local" && projectId ? { projectId } : {}),
+                })
+              }
             />
           )}
         </div>
       </div>
+      <InstallDialog
+        open={dialog.kind === "install"}
+        entry={dialog.kind === "install" ? dialog.entry : null}
+        projectId={projectId}
+        {...(dialog.kind === "install" && dialog.scope ? { initialScope: dialog.scope } : {})}
+        onClose={() => setDialog({ kind: "none" })}
+      />
+      <RemoveDialog
+        open={dialog.kind === "remove"}
+        entry={dialog.kind === "remove" ? dialog.entry : null}
+        status={
+          dialog.kind === "remove"
+            ? bundle.statusByName[`${dialog.entry.type}:${dialog.entry.name}`]
+            : undefined
+        }
+        projectId={projectId}
+        onClose={() => setDialog({ kind: "none" })}
+      />
     </div>
   )
 }
@@ -129,14 +179,31 @@ const sourceBadge = (source: string): { label: string; tone: string } => {
   }
 }
 
+type EntryDetailProps = {
+  entry: LibraryEntry
+  status: StatusByScope | undefined
+  projectId: string | null
+  pushPending: boolean
+  pushError: string | null
+  onInstall: (scope?: InstallScope) => void
+  onRemove: () => void
+  onPush: (scope: InstallScope) => void
+}
+
 const EntryDetail = ({
   entry,
   status,
-}: {
-  entry: LibraryEntry
-  status: StatusByScope | undefined
-}) => {
+  projectId,
+  pushPending,
+  pushError,
+  onInstall,
+  onRemove,
+  onPush,
+}: EntryDetailProps) => {
   const badge = sourceBadge(entry.source)
+  const canLocal = projectId !== null
+  const globalInstalled = status?.global === "installed"
+  const localInstalled = status?.local === "installed"
   return (
     <article
       data-testid={`library-detail-${entry.type}-${entry.name}`}
@@ -172,9 +239,45 @@ const EntryDetail = ({
             ))}
           </div>
         ) : null}
-        <p className="text-[11px] italic text-slate-500 mt-2">
-          Read-only view. Install / push / remove actions land in a follow-up.
-        </p>
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            data-testid={`library-action-install-global-${entry.name}`}
+            onClick={() => onInstall("global")}
+            className="text-xs rounded px-2 py-1 bg-sky-600 text-white hover:bg-sky-500"
+          >
+            {globalInstalled ? "Reinstall global" : "Install global"}
+          </button>
+          <button
+            type="button"
+            data-testid={`library-action-install-local-${entry.name}`}
+            disabled={!canLocal}
+            onClick={() => onInstall("local")}
+            className="text-xs rounded px-2 py-1 bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={canLocal ? undefined : "open a project to install locally"}
+          >
+            {localInstalled ? "Reinstall local" : "Install local"}
+          </button>
+          <button
+            type="button"
+            data-testid={`library-action-push-global-${entry.name}`}
+            disabled={!globalInstalled || pushPending}
+            onClick={() => onPush("global")}
+            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={globalInstalled ? undefined : "install globally first"}
+          >
+            {pushPending ? "Pushing…" : "Push from global"}
+          </button>
+          <button
+            type="button"
+            data-testid={`library-action-remove-${entry.name}`}
+            onClick={onRemove}
+            className="text-xs rounded px-2 py-1 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 ml-auto"
+          >
+            Remove
+          </button>
+        </div>
+        {pushError ? <div className="text-[11px] text-rose-600">{pushError}</div> : null}
       </div>
     </article>
   )

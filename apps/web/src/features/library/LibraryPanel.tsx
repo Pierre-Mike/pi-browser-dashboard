@@ -1,8 +1,9 @@
 import { useState } from "react"
 import { AgenticBrowser } from "./AgenticBrowser"
 import { CatalogList } from "./CatalogList"
+import { AddDialog } from "./dialogs/AddDialog"
 import { LIBRARY_CATEGORIES, type LibraryCategory } from "./types"
-import { useCatalog } from "./useLibrary"
+import { useCatalog, useSyncMutation } from "./useLibrary"
 
 type Tab = { key: LibraryCategory | "hooks" | "agentic"; label: string }
 
@@ -24,6 +25,11 @@ export const LibraryPanel = (props: Props) => {
   const q = useCatalog(projectId)
   const [tab, setTab] = useState<Tab["key"]>("skills")
   const [agenticCategory, setAgenticCategory] = useState<LibraryCategory>("skills")
+  const [addOpen, setAddOpen] = useState(false)
+  const [addDefaults, setAddDefaults] = useState<
+    { name?: string; type?: LibraryCategory; source?: string } | undefined
+  >(undefined)
+  const syncM = useSyncMutation()
 
   if (q.isLoading) return <div className="text-sm text-slate-500">Loading catalog…</div>
   if (q.isError) {
@@ -50,7 +56,40 @@ export const LibraryPanel = (props: Props) => {
       <header className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="font-mono">{bundle.catalogPath}</span>
         <CountChip n={bundle.catalog.entries.length} label="entries" />
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="library-action-add"
+            onClick={() => {
+              setAddDefaults(undefined)
+              setAddOpen(true)
+            }}
+            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            + Add entry
+          </button>
+          <button
+            type="button"
+            data-testid="library-action-sync"
+            disabled={syncM.isPending}
+            onClick={() => syncM.mutate({})}
+            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            {syncM.isPending ? "Syncing…" : "Sync all"}
+          </button>
+        </span>
       </header>
+      {syncM.isError ? (
+        <div className="text-xs text-rose-600">
+          {syncM.error instanceof Error ? syncM.error.message : "sync failed"}
+        </div>
+      ) : null}
+      {syncM.data ? (
+        <div className="text-xs text-emerald-700 dark:text-emerald-300">
+          Sync: {syncM.data.outcomes.filter((o) => o.ok).length} ok /{" "}
+          {syncM.data.outcomes.filter((o) => !o.ok).length} failed (of {syncM.data.outcomes.length})
+        </div>
+      ) : null}
       <nav
         role="tablist"
         aria-label="Library categories"
@@ -82,7 +121,7 @@ export const LibraryPanel = (props: Props) => {
 
       {LIBRARY_CATEGORIES.map((cat) => (
         <div key={cat} className={tab === cat ? "" : "hidden"}>
-          <CatalogList bundle={bundle} category={cat} />
+          <CatalogList bundle={bundle} category={cat} projectId={projectId} />
         </div>
       ))}
 
@@ -112,8 +151,23 @@ export const LibraryPanel = (props: Props) => {
             )
           })}
         </nav>
-        <AgenticBrowser category={agenticCategory} />
+        <AgenticBrowser
+          category={agenticCategory}
+          onRegister={(item) => {
+            setAddDefaults({
+              name: item.name,
+              type: agenticCategory,
+              source: item.path,
+            })
+            setAddOpen(true)
+          }}
+        />
       </div>
+      <AddDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        {...(addDefaults ? { defaults: addDefaults } : {})}
+      />
     </div>
   )
 }

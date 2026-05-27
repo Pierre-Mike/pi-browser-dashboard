@@ -1,14 +1,19 @@
 import { describe, expect, it } from "bun:test"
 import {
   CatalogParseError,
+  DuplicateEntryError,
   LIBRARY_CATEGORIES,
   RequiresCycleError,
   expandHome,
   isSafeSegment,
   parseCatalog,
+  parseCatalogDocument,
   parseRequireRef,
   parseSource,
+  removeEntryFromDocument,
   resolveRequires,
+  serializeCatalogDocument,
+  upsertEntryInDocument,
 } from "./library.core"
 
 const SAMPLE = `default_dirs:
@@ -184,5 +189,100 @@ describe("expandHome / isSafeSegment", () => {
     expect(isSafeSegment("..")).toBe(false)
     expect(isSafeSegment("a/b")).toBe(false)
     expect(isSafeSegment("")).toBe(false)
+  })
+})
+
+const DOC_SAMPLE = `# leading comment
+library:
+  skills:
+    - name: align
+      description: align
+      source: /tmp/align/SKILL.md
+  agents: []
+`
+
+describe("catalog document mutation", () => {
+  it("upsert (mode=add) appends a new entry and preserves comments", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    upsertEntryInDocument(doc, {
+      name: "concise",
+      type: "skills",
+      description: "compress",
+      source: "/tmp/concise/SKILL.md",
+    })
+    const out = serializeCatalogDocument(doc)
+    expect(out).toContain("# leading comment")
+    expect(out).toContain("concise")
+    // Round-trip via the plain parser → new entry is present.
+    const parsed = parseCatalog(out)
+    expect(parsed.entries.map((e) => e.name).sort()).toEqual(["align", "concise"])
+  })
+
+  it("upsert (mode=add) throws DuplicateEntryError for an existing name", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    expect(() =>
+      upsertEntryInDocument(doc, {
+        name: "align",
+        type: "skills",
+        description: "x",
+        source: "/y/SKILL.md",
+      }),
+    ).toThrow(DuplicateEntryError)
+  })
+
+  it("upsert (mode=upsert) replaces an existing entry in place", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    upsertEntryInDocument(
+      doc,
+      {
+        name: "align",
+        type: "skills",
+        description: "updated",
+        source: "/new/path/SKILL.md",
+      },
+      "upsert",
+    )
+    const parsed = parseCatalog(serializeCatalogDocument(doc))
+    const updated = parsed.entries.find((e) => e.name === "align")
+    expect(updated?.description).toBe("updated")
+    expect(updated?.source).toBe("/new/path/SKILL.md")
+  })
+
+  it("upsert creates a missing category seq on the fly", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    upsertEntryInDocument(doc, {
+      name: "p1",
+      type: "prompts",
+      description: "x",
+      source: "/p1.md",
+    })
+    const parsed = parseCatalog(serializeCatalogDocument(doc))
+    expect(parsed.entries.find((e) => e.name === "p1")?.type).toBe("prompts")
+  })
+
+  it("removeEntryFromDocument removes by name+type", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    const ok = removeEntryFromDocument(doc, "align", "skills")
+    expect(ok).toBe(true)
+    const parsed = parseCatalog(serializeCatalogDocument(doc))
+    expect(parsed.entries.find((e) => e.name === "align")).toBeUndefined()
+  })
+
+  it("removeEntryFromDocument returns false for unknown entries", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    expect(removeEntryFromDocument(doc, "ghost", "skills")).toBe(false)
+  })
+
+  it("includes requires list when one is provided", () => {
+    const doc = parseCatalogDocument(DOC_SAMPLE)
+    upsertEntryInDocument(doc, {
+      name: "auto",
+      type: "skills",
+      description: "x",
+      source: "/auto.md",
+      requires: ["skill:align"],
+    })
+    const parsed = parseCatalog(serializeCatalogDocument(doc))
+    expect(parsed.entries.find((e) => e.name === "auto")?.requires).toEqual(["skill:align"])
   })
 })

@@ -4,7 +4,15 @@
 // The catalog is the source-of-truth for what's *available*; install status is
 // derived per-call by probing the filesystem in library.repo.ts.
 
-import { parse as parseYaml } from "yaml"
+import {
+  type Document,
+  type YAMLMap,
+  type YAMLSeq,
+  isMap,
+  isSeq,
+  parseDocument,
+  parse as parseYaml,
+} from "yaml"
 
 export const LIBRARY_CATEGORIES = [
   "skills",
@@ -273,3 +281,82 @@ export const isSafeSegment = (id: string): boolean =>
   !id.includes("/") &&
   !id.includes("\\") &&
   !id.includes("\0")
+
+// --- Catalog document mutation -------------------------------------------------
+//
+// For `add` / `remove`, we need to update the on-disk YAML without losing
+// comments, formatting, or key ordering. The plain `parse` we use elsewhere
+// throws away that detail, so the mutation paths go through `yaml.Document`.
+// These helpers stay pure: they take a Document, mutate it in place, and the
+// repo layer is responsible for reading/writing the file.
+
+export const parseCatalogDocument = (text: string): Document =>
+  parseDocument(text === "" ? "library: {}\n" : text)
+
+export const serializeCatalogDocument = (doc: Document): string => doc.toString()
+
+const ensureLibraryMap = (doc: Document): YAMLMap => {
+  const existing = doc.get("library")
+  if (isMap(existing)) return existing
+  const created = doc.createNode({}) as YAMLMap
+  doc.set("library", created)
+  return created
+}
+
+const ensureCategorySeq = (doc: Document, category: LibraryCategory): YAMLSeq => {
+  const library = ensureLibraryMap(doc)
+  const existing = library.get(category)
+  if (isSeq(existing)) return existing
+  const created = doc.createNode([]) as YAMLSeq
+  library.set(category, created)
+  return created
+}
+
+export class DuplicateEntryError extends Error {
+  override readonly name = "DuplicateEntryError"
+}
+
+export const upsertEntryInDocument = (
+  doc: Document,
+  entry: LibraryEntry,
+  mode: "add" | "upsert" = "add",
+): void => {
+  const seq = ensureCategorySeq(doc, entry.type)
+  const existingIdx = (seq.items as unknown[]).findIndex((item) => {
+    if (!isMap(item)) return false
+    const name = item.get("name")
+    return name === entry.name
+  })
+  const node = doc.createNode({
+    name: entry.name,
+    description: entry.description,
+    source: entry.source,
+    ...(entry.requires && entry.requires.length > 0 ? { requires: entry.requires } : {}),
+  })
+  if (existingIdx >= 0) {
+    if (mode === "add") {
+      throw new DuplicateEntryError(`${entry.type}:${entry.name} already in catalog`)
+    }
+    seq.set(existingIdx, node)
+  } else {
+    seq.add(node)
+  }
+}
+
+export const removeEntryFromDocument = (
+  doc: Document,
+  name: string,
+  type: LibraryCategory,
+): boolean => {
+  const library = doc.get("library")
+  if (!isMap(library)) return false
+  const seq = library.get(type)
+  if (!isSeq(seq)) return false
+  const idx = (seq.items as unknown[]).findIndex((item) => {
+    if (!isMap(item)) return false
+    return item.get("name") === name
+  })
+  if (idx < 0) return false
+  seq.delete(idx)
+  return true
+}
