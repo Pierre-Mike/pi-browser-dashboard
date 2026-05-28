@@ -257,6 +257,14 @@ const PTY_PY = [
   "import pty,os,sys,fcntl,termios,struct,signal,select,errno",
   "cmd=sys.argv[1]",
   "sf=sys.argv[2] if len(sys.argv)>2 else ''",
+  // Detach the whole wrapper subtree (wrapper + pty child + zellij client +
+  // zellij server) from the daemon's session/pgid. The daemon dev script runs
+  // under `bun --watch`, which kills the daemon's process tree on every source
+  // edit. Without setsid here a watch-restart cascades into every live zellij
+  // session and the user loses scrollback, shell state, and claude TUIs
+  // running inside. EPERM (already a session leader) is benign — swallow it.
+  "try: os.setsid()",
+  "except OSError: pass",
   "def rs():",
   " try:",
   "  with open(sf) as f:",
