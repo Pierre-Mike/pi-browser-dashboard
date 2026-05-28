@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { type MdAlign, type MdBlock, type MdSpan, parseMarkdown } from "./markdown"
+import { MermaidView } from "./MermaidView"
 
 const ALIGN_CLASS: Record<Exclude<MdAlign, null>, string> = {
   left: "text-left",
@@ -82,6 +83,9 @@ const BlockItem = ({ block }: { block: MdBlock }): React.ReactElement => {
         </blockquote>
       )
     case "code":
+      if (block.lang.toLowerCase() === "mermaid") {
+        return <MermaidView code={block.text} />
+      }
       return (
         <pre className="my-3 px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-x-auto text-[12px] font-mono">
           {block.lang ? (
