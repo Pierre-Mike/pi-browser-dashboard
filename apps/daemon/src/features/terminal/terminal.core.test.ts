@@ -352,6 +352,37 @@ describe("buildChildArgv", () => {
     const linux = buildChildArgv({ cmd: "x", pty: true, platform: "linux", sizefile: "/s" })
     expect(darwin).toEqual(linux)
   })
+
+  it("wrapper calls os.setsid() before pty.fork() so zellij survives daemon restarts", () => {
+    // The daemon runs under `bun --watch`, which kills its whole process tree
+    // on file change. Without setsid the python3 wrapper, the pty child, and
+    // every transitive zellij process share the daemon's session/pgid, so a
+    // watch-restart leaves every session in `EXITED - attach to resurrect`
+    // and the user loses every process running inside (claude TUIs, shell
+    // state, scrollback).
+    //
+    // `pty.fork()` setsids the *child*, but the wrapper itself is still in
+    // the daemon's session. The wrapper must call os.setsid() FIRST so the
+    // whole subtree (wrapper + pty child + zellij client + zellij server) is
+    // detached before bun --watch starts sending kill signals.
+    const argv = buildChildArgv({
+      cmd: "zellij attach foo",
+      pty: true,
+      platform: "darwin",
+      sizefile: "/tmp/pid-term-abc.size",
+    })
+    const py = argv[2] ?? ""
+    expect(py).toContain("os.setsid()")
+    // Order matters: setsid MUST run before pty.fork(), otherwise the parent
+    // wrapper stays in the daemon's session and a signal walking the tree
+    // still reaches it (and the pty child via SIGHUP cascade when the
+    // wrapper dies and the pty master closes).
+    const setsidIdx = py.indexOf("os.setsid()")
+    const forkIdx = py.indexOf("pty.fork()")
+    expect(setsidIdx).toBeGreaterThan(-1)
+    expect(forkIdx).toBeGreaterThan(-1)
+    expect(setsidIdx).toBeLessThan(forkIdx)
+  })
 })
 
 describe("formatSizeFileContent", () => {
