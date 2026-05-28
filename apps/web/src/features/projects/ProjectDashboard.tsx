@@ -59,7 +59,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   }, [project.githubUrl, sessions.length])
 
   const [tab, setTab] = useState<TabKey>("terminal")
-  const fillViewport = tab === "terminal" || tab === "files"
+  const fillViewport = tab === "terminal" || tab === "files" || tab === "claude"
 
   return (
     <div
@@ -223,7 +223,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       <div
         role="tabpanel"
         data-testid="project-tab-panel-claude"
-        className={tab === "claude" ? "flex flex-col gap-2" : "hidden"}
+        className={tab === "claude" ? "flex flex-col flex-1 min-h-0 gap-2" : "hidden"}
       >
         <ClaudeConfigPanel scope="project" projectId={project.id} />
       </div>

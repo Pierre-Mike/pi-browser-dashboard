@@ -58,7 +58,7 @@ const ProjectsPanel = () => {
 
 function IndexPage() {
   const [tab, setTab] = useState<TabKey>("terminal")
-  const fillViewport = tab === "terminal"
+  const fillViewport = tab === "terminal" || tab === "claude"
 
   return (
     <div
@@ -113,7 +113,7 @@ function IndexPage() {
       <div
         role="tabpanel"
         data-testid="dashboard-tab-panel-claude"
-        className={tab === "claude" ? "flex flex-col gap-2" : "hidden"}
+        className={tab === "claude" ? "flex flex-col flex-1 min-h-0 gap-2" : "hidden"}
       >
         <ClaudeConfigPanel scope="global" />
       </div>

@@ -43,7 +43,10 @@ export const ClaudeConfigPanel = (props: Props) => {
     !bundle.claudeMd
 
   return (
-    <div data-testid={`claude-config-panel-${bundle.scope}`} className="flex flex-col gap-3">
+    <div
+      data-testid={`claude-config-panel-${bundle.scope}`}
+      className="flex flex-col flex-1 min-h-0 gap-3"
+    >
       <header className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="font-mono">{bundle.root}</span>
         <CountChip n={bundle.hooks.length} label="hooks" />
@@ -83,19 +86,19 @@ export const ClaudeConfigPanel = (props: Props) => {
           )
         })}
       </nav>
-      <div className={sub === "hooks" ? "" : "hidden"}>
+      <div className={sub === "hooks" ? "flex-1 min-h-0 overflow-auto" : "hidden"}>
         <HooksTab bundle={bundle} />
       </div>
-      <div className={sub === "skills" ? "" : "hidden"}>
+      <div className={sub === "skills" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
         <SkillsTab
           bundle={bundle}
           {...(props.scope === "project" ? { projectId: props.projectId } : {})}
         />
       </div>
-      <div className={sub === "settings" ? "" : "hidden"}>
+      <div className={sub === "settings" ? "flex-1 min-h-0 overflow-auto" : "hidden"}>
         <SettingsTab bundle={bundle} />
       </div>
-      <div className={sub === "claude-md" ? "" : "hidden"}>
+      <div className={sub === "claude-md" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
         <ClaudeMdTab bundle={bundle} />
       </div>
     </div>
@@ -213,8 +216,8 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
     return <div className="text-sm text-slate-500">No skills installed.</div>
   }
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <ul className="md:col-span-1 flex flex-col gap-1 max-h-[60vh] overflow-auto pr-1">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
+      <ul className="md:col-span-1 flex flex-col gap-1 min-h-0 overflow-auto pr-1">
         {bundle.skills.map((s: SkillSummary) => {
           const active = selected === s.id
           return (
@@ -247,7 +250,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
           )
         })}
       </ul>
-      <div className="md:col-span-2">
+      <div className="md:col-span-2 flex flex-col min-h-0">
         {selected === null ? (
           <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-800 rounded-lg py-8 text-center">
             Select a skill to view its SKILL.md.
@@ -259,7 +262,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
             {detailQ.error instanceof Error ? detailQ.error.message : "failed"}
           </div>
         ) : detailQ.data ? (
-          <article className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <article className="flex flex-col min-h-0 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
               <h4 className="text-sm font-semibold">{detailQ.data.name}</h4>
               <span className="text-[10px] text-slate-500 font-mono truncate">
@@ -271,10 +274,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
                 {detailQ.data.description}
               </p>
             ) : null}
-            <div
-              data-testid="claude-config-skill-body"
-              className="max-h-[55vh] overflow-auto"
-            >
+            <div data-testid="claude-config-skill-body" className="flex-1 min-h-0 overflow-auto">
               <MarkdownView text={detailQ.data.body} />
             </div>
           </article>
@@ -364,7 +364,7 @@ const ClaudeMdTab = ({ bundle }: { bundle: ScopeBundle }) => {
   return (
     <div
       data-testid="claude-config-claude-md"
-      className="rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 max-h-[60vh] overflow-auto"
+      className="flex-1 min-h-0 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-auto"
     >
       <MarkdownView text={bundle.claudeMd} />
     </div>
