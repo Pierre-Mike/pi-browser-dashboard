@@ -36,10 +36,7 @@ describe("handleDrop", () => {
 
   it("uploads each file, copies the joined paths to the clipboard, and emits each path", async () => {
     const clipboard = newClipboard()
-    const files = [
-      new File(["a"], "a.txt"),
-      new File(["b"], "b.txt"),
-    ] as const
+    const files = [new File(["a"], "a.txt"), new File(["b"], "b.txt")] as const
     const result = await handleDrop(files, {
       upload: okUploader(["/abs/a.txt", "/abs/b.txt"]),
       clipboard,
@@ -68,11 +65,7 @@ describe("handleDrop", () => {
       if (i === 2) throw new Error("upload_failed: empty_file")
       return `/abs/file-${i}`
     }
-    const files = [
-      new File(["a"], "a.txt"),
-      new File([], "blank"),
-      new File(["c"], "c.txt"),
-    ]
+    const files = [new File(["a"], "a.txt"), new File([], "blank"), new File(["c"], "c.txt")]
     const result = await handleDrop(files, { upload, clipboard })
     expect(result.paths).toEqual(["/abs/file-1", "/abs/file-3"])
     expect(result.errors).toHaveLength(1)

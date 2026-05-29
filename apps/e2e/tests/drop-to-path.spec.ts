@@ -133,7 +133,5 @@ test("drop while the global terminal is active: path is sent over the pty WebSoc
   await dropFile(page, { name: "term-target.md", contents: "# t" })
   const { path } = (await (await uploadResp).json()) as { path: string }
 
-  await expect
-    .poll(() => ptyFrames.some((f) => f.includes(path)), { timeout: 10_000 })
-    .toBeTruthy()
+  await expect.poll(() => ptyFrames.some((f) => f.includes(path)), { timeout: 10_000 }).toBeTruthy()
 })

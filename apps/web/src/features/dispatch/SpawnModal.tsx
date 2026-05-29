@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { api } from "../../lib/api"
 import type { Project } from "../../lib/types"
@@ -36,6 +36,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     [claudeConfig.data, projectConfig.data, project],
   )
 
+  const handleClose = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["claude-config", "project"] })
+    onClose()
+  }, [qc, onClose])
+
   const toggleSkill = (id: string) =>
     setSkills((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
 
@@ -50,11 +55,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
+      if (e.key === "Escape") handleClose()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, onClose])
+  }, [open, handleClose])
 
   useEffect(() => {
     if (!open) return
@@ -75,7 +80,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
       const client = api as any
       await client.dispatch.$post({ json: body })
       qc.invalidateQueries({ queryKey: ["sessions"] })
-      onClose()
+      handleClose()
     } catch (err) {
       console.error("dispatch failed", err)
     } finally {
@@ -90,9 +95,9 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     <div
       data-testid="spawn-modal"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={onClose}
+      onClick={handleClose}
       onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
+        if (e.key === "Escape") handleClose()
       }}
       role="presentation"
     >
@@ -164,7 +169,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={busy}
               className="text-sm rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
@@ -172,7 +177,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </button>
             <button
               type="submit"
-              disabled={busy || intent.trim().length === 0}
+              disabled={busy || prependSkill(skills, intent).trim().length === 0}
               className="text-sm rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 font-medium text-white"
             >
               {busy ? "Spawning…" : "Spawn"}

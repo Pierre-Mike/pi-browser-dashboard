@@ -40,4 +40,21 @@ describe("prependSkill", () => {
   it("leaves the intent alone when it starts with whitespace then a slash", () => {
     expect(prependSkill(["goal"], "   /review the PR")).toBe("   /review the PR")
   })
+
+  // Guard consistency: the submit-button disabled condition must use
+  // prependSkill(skills, intent).trim().length === 0 so that selecting a skill
+  // with an empty intent text box still produces a non-empty dispatchable string.
+  describe("guard consistency — skills selected, intent empty", () => {
+    it("produces a non-empty string when a skill is selected with empty intent", () => {
+      expect(prependSkill(["goal"], "").trim().length).toBeGreaterThan(0)
+    })
+
+    it("produces a non-empty string when multiple skills are selected with empty intent", () => {
+      expect(prependSkill(["goal", "concise"], "").trim().length).toBeGreaterThan(0)
+    })
+
+    it("produces an empty string only when no skills AND empty intent", () => {
+      expect(prependSkill([], "").trim().length).toBe(0)
+    })
+  })
 })

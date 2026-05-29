@@ -20,7 +20,10 @@ const yyyyMmDd = (d: Date): string => {
 // Result: a leaf filename safe to join under baseDir.
 const sanitiseName = (raw: string | undefined): string => {
   const leaf = (raw ?? "").split(/[\\/]/).pop() ?? ""
-  const cleaned = leaf.replace(/\.\./g, "").replace(/[^\w.\-+ ]/g, "_").trim()
+  const cleaned = leaf
+    .replace(/\.\./g, "")
+    .replace(/[^\w.\-+ ]/g, "_")
+    .trim()
   return cleaned.length > 0 ? cleaned : "upload"
 }
 
