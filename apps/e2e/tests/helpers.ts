@@ -201,7 +201,20 @@ export const ensureProjectsTab = async (page: Page): Promise<void> => {
 
 export const waitForCard = async (page: Page, short: string, timeout = 30_000): Promise<void> => {
   await ensureProjectsTab(page)
-  await expect(cardLocator(page, short)).toBeVisible({ timeout })
+  const card = cardLocator(page, short)
+  // The card is delivered by a live SSE push. If the page's event stream was
+  // not yet connected when the session was dispatched, that push is missed and
+  // the card never arrives on its own. Wait a bounded window for the push, then
+  // reload once to force a fresh REST hydration of the registry (deterministic)
+  // before spending the rest of the budget.
+  try {
+    await expect(card).toBeVisible({ timeout: Math.min(timeout, 8_000) })
+    return
+  } catch {
+    await page.reload()
+    await ensureProjectsTab(page)
+    await expect(card).toBeVisible({ timeout })
+  }
 }
 
 export const waitForCardGone = async (
