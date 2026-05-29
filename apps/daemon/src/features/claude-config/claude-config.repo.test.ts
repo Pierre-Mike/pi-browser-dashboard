@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { ConfigRepoTest } from "../../platform/config.repo"
 import { ProjectsRepoLive, ProjectsService } from "../projects/projects.repo"
-import { ClaudeConfigRepoLive, ClaudeConfigService } from "./claude-config.repo"
+import { ClaudeConfigRepoLive, ClaudeConfigService, MAX_TEXT_BYTES } from "./claude-config.repo"
 
 let projectsRoot: string
 let globalClaude: string
@@ -131,5 +131,66 @@ describe("ClaudeConfigRepo readSkill", () => {
     )
     expect(ex._tag).toBe("Left")
     if (ex._tag === "Left") expect(ex.left).toBe("not_found")
+  })
+})
+
+describe("ClaudeConfigRepo read size cap", () => {
+  let capRoot: string
+  let capProjectsRoot: string
+
+  beforeAll(async () => {
+    capProjectsRoot = await mkdtemp(join(tmpdir(), "pid-cap-projects-"))
+    capRoot = await mkdtemp(join(tmpdir(), "pid-cap-global-"))
+
+    // Global: oversized CLAUDE.md and a normal-sized SKILL.md
+    await mkdir(join(capRoot, "skills", "bigskill"), { recursive: true })
+    await mkdir(join(capRoot, "hooks"), { recursive: true })
+    const oversized = "x".repeat(MAX_TEXT_BYTES + 1)
+    await writeFile(join(capRoot, "CLAUDE.md"), oversized)
+    await writeFile(join(capRoot, "skills", "bigskill", "SKILL.md"), oversized)
+
+    // Project: normal-sized CLAUDE.md
+    const projDir = join(capProjectsRoot, "small")
+    await mkdir(join(projDir, ".claude", "skills"), { recursive: true })
+    await mkdir(join(projDir, ".claude", "hooks"), { recursive: true })
+    await writeFile(join(projDir, "CLAUDE.md"), "# small project\n")
+  })
+
+  afterAll(async () => {
+    await rm(capProjectsRoot, { recursive: true, force: true })
+    await rm(capRoot, { recursive: true, force: true })
+  })
+
+  const withCapLayer = <A, E>(fx: Effect.Effect<A, E, ClaudeConfigService>): Promise<A> => {
+    const configLayer = ConfigRepoTest({ projectsRoot: capProjectsRoot, claudeConfigDir: capRoot })
+    const projectsLive = Layer.provide(ProjectsRepoLive, configLayer)
+    const claudeLive = Layer.provide(
+      ClaudeConfigRepoLive,
+      Layer.mergeAll(configLayer, projectsLive),
+    )
+    return Effect.runPromise(Effect.provide(fx, claudeLive))
+  }
+
+  it("truncates CLAUDE.md when over MAX_TEXT_BYTES", async () => {
+    const b = await withCapLayer(Effect.flatMap(ClaudeConfigService, (s) => s.readGlobal()))
+    expect(b.claudeMd).toBeDefined()
+    // content before the truncation notice must not exceed the byte cap
+    const noticeIdx = b.claudeMd?.indexOf("\n\n[truncated") ?? -2
+    expect(noticeIdx).toBeGreaterThan(-1)
+    expect(noticeIdx).toBeLessThanOrEqual(MAX_TEXT_BYTES)
+  })
+
+  it("returns CLAUDE.md intact when under MAX_TEXT_BYTES", async () => {
+    const b = await withCapLayer(Effect.flatMap(ClaudeConfigService, (s) => s.readProject("small")))
+    expect(b.claudeMd).toBe("# small project\n")
+  })
+
+  it("truncates SKILL.md body when over MAX_TEXT_BYTES", async () => {
+    const d = await withCapLayer(
+      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, "bigskill")),
+    )
+    // body is the post-frontmatter portion; the full returned text is truncated
+    const noticeIdx = d.body.indexOf("[truncated")
+    expect(noticeIdx).toBeGreaterThan(-1)
   })
 })
