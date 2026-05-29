@@ -88,6 +88,15 @@ export type SyncInput = {
   projectId?: string | null
 }
 
+export type InitInput = {
+  repoUrl: string
+  branch?: string
+}
+
+export type InitResult = {
+  catalogPath: string
+}
+
 export type SyncOutcome = {
   name: string
   type: LibraryCategory

@@ -43,6 +43,7 @@ export type LibraryError =
   | "duplicate_entry"
   | "git_failed"
   | "io_failed"
+  | "already_initialized"
 
 export type StatusByScope = { readonly global: InstallStatus; readonly local: InstallStatus }
 
@@ -114,7 +115,15 @@ export type SyncOutcome = {
   readonly error?: string
 }
 
+export type InitInput = {
+  readonly repoUrl: string
+  readonly branch?: string
+}
+
 export type LibraryServiceApi = {
+  readonly initLibrary: (
+    input: InitInput,
+  ) => Effect.Effect<{ readonly catalogPath: string }, LibraryError, never>
   readonly readCatalog: (
     projectId: string | null,
   ) => Effect.Effect<CatalogBundle, LibraryError, never>
@@ -378,6 +387,39 @@ export const LibraryRepoLive: Layer.Layer<
       })
 
     return {
+      // First-time setup (the skill's `/library install`): clone a library repo
+      // into the library dir. Refuses if a catalog is already present so we never
+      // clobber an existing install. The cloned repo must contain a library.yaml.
+      initLibrary: (input) =>
+        Effect.gen(function* () {
+          const existing = yield* Effect.promise(() => tryReadText(catalogPath))
+          if (existing !== null) return yield* Effect.fail<LibraryError>("already_initialized")
+          const tmp = yield* Effect.promise(() => makeTempDir("pid-lib-init"))
+          const cleanup = Effect.promise(() => removeDir(tmp))
+          return yield* Effect.gen(function* () {
+            yield* git
+              .clone(input.repoUrl, tmp, {
+                depth: 1,
+                ...(input.branch ? { branch: input.branch } : {}),
+              })
+              .pipe(Effect.catchTag("GitError", () => Effect.fail<LibraryError>("git_failed")))
+            const clonedCatalog = yield* Effect.promise(() =>
+              tryReadText(join(tmp, DEFAULT_CATALOG_PATH)),
+            )
+            if (clonedCatalog === null) return yield* Effect.fail<LibraryError>("source_invalid")
+            try {
+              parseCatalog(clonedCatalog)
+            } catch {
+              return yield* Effect.fail<LibraryError>("catalog_invalid")
+            }
+            yield* Effect.tryPromise({
+              try: () => copyDir(tmp, libraryDir),
+              catch: (): LibraryError => "io_failed",
+            })
+            return { catalogPath }
+          }).pipe(Effect.ensuring(cleanup))
+        }),
+
       readCatalog: (projectId) =>
         Effect.map(readCatalogEffect(projectId), ({ catalog, catalogPath, statusByName }) => ({
           catalog,
@@ -581,9 +623,12 @@ export const LibraryRepoTest = (
     readonly pushEntry?: LibraryServiceApi["pushEntry"]
     readonly removeEntry?: LibraryServiceApi["removeEntry"]
     readonly syncAll?: LibraryServiceApi["syncAll"]
+    readonly initLibrary?: LibraryServiceApi["initLibrary"]
   } = {},
 ): Layer.Layer<LibraryService> =>
   Layer.succeed(LibraryService, {
+    initLibrary:
+      fixtures.initLibrary ?? (() => Effect.succeed({ catalogPath: "/stub/library.yaml" })),
     readCatalog: () =>
       fixtures.catalog
         ? Effect.succeed(fixtures.catalog)

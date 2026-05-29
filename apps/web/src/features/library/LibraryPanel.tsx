@@ -1,8 +1,10 @@
 import { useState } from "react"
 import { AgenticBrowser } from "./AgenticBrowser"
 import { CatalogList } from "./CatalogList"
+import { GlobalSearch } from "./GlobalSearch"
+import { LibrarySetupCard } from "./LibrarySetupCard"
 import { AddDialog } from "./dialogs/AddDialog"
-import { LIBRARY_CATEGORIES, type LibraryCategory } from "./types"
+import { type InstallScope, LIBRARY_CATEGORIES, type LibraryCategory } from "./types"
 import { useCatalog, useSyncMutation } from "./useLibrary"
 
 type Tab = { key: LibraryCategory | "hooks" | "agentic"; label: string }
@@ -29,22 +31,15 @@ export const LibraryPanel = (props: Props) => {
   const [addDefaults, setAddDefaults] = useState<
     { name?: string; type?: LibraryCategory; source?: string } | undefined
   >(undefined)
+  const [syncScope, setSyncScope] = useState<"all" | InstallScope>("all")
+  const [focus, setFocus] = useState<{ category: LibraryCategory; name: string } | null>(null)
   const syncM = useSyncMutation()
 
   if (q.isLoading) return <div className="text-sm text-slate-500">Loading catalog…</div>
   if (q.isError) {
     const msg = q.error instanceof Error ? q.error.message : "unknown error"
     if (msg.includes("HTTP 404")) {
-      return (
-        <div
-          data-testid="library-catalog-missing"
-          className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg"
-        >
-          No <span className="font-mono">library.yaml</span> found. Run{" "}
-          <span className="font-mono">/library install</span> in Claude Code to create the catalog,
-          then refresh.
-        </div>
-      )
+      return <LibrarySetupCard />
     }
     return <div className="text-sm text-rose-600">Failed to load catalog: {msg}</div>
   }
@@ -68,17 +63,48 @@ export const LibraryPanel = (props: Props) => {
           >
             + Add entry
           </button>
-          <button
-            type="button"
-            data-testid="library-action-sync"
-            disabled={syncM.isPending}
-            onClick={() => syncM.mutate({})}
-            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
-          >
-            {syncM.isPending ? "Syncing…" : "Sync all"}
-          </button>
+          <span className="inline-flex items-center rounded border border-slate-300 dark:border-slate-700 overflow-hidden">
+            <select
+              value={syncScope}
+              onChange={(e) => setSyncScope(e.target.value as "all" | InstallScope)}
+              data-testid="library-sync-scope"
+              title={projectId ? undefined : "open a project to sync local"}
+              className="text-xs bg-transparent px-1.5 py-1 focus:outline-none"
+            >
+              <option value="all">all</option>
+              <option value="global">global</option>
+              <option value="local" disabled={projectId === null}>
+                local
+              </option>
+            </select>
+            <button
+              type="button"
+              data-testid="library-action-sync"
+              disabled={syncM.isPending}
+              onClick={() =>
+                syncM.mutate(
+                  syncScope === "all"
+                    ? {}
+                    : {
+                        scope: syncScope,
+                        ...(syncScope === "local" && projectId ? { projectId } : {}),
+                      },
+                )
+              }
+              className="text-xs px-2 py-1 border-l border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              {syncM.isPending ? "Syncing…" : "Sync"}
+            </button>
+          </span>
         </span>
       </header>
+      <GlobalSearch
+        bundle={bundle}
+        onPick={(category, name) => {
+          setTab(category)
+          setFocus({ category, name })
+        }}
+      />
       {syncM.isError ? (
         <div className="text-xs text-rose-600">
           {syncM.error instanceof Error ? syncM.error.message : "sync failed"}
@@ -121,7 +147,12 @@ export const LibraryPanel = (props: Props) => {
 
       {LIBRARY_CATEGORIES.map((cat) => (
         <div key={cat} className={tab === cat ? "flex flex-col flex-1 min-h-0" : "hidden"}>
-          <CatalogList bundle={bundle} category={cat} projectId={projectId} />
+          <CatalogList
+            bundle={bundle}
+            category={cat}
+            projectId={projectId}
+            {...(focus?.category === cat ? { focusName: focus.name } : {})}
+          />
         </div>
       ))}
 
