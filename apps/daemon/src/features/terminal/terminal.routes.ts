@@ -31,6 +31,40 @@ type Bridge = {
   heartbeat: ReturnType<typeof setInterval>
 }
 
+// Minimal child interface for testing closeChildBridge in isolation.
+// `_resolveExited` is test-only scaffolding (not present on Bun.Subprocess).
+export type ChildBridgeForTest = {
+  kill: () => void
+  exited: Promise<number>
+  _resolveExited: () => void
+}
+
+// Exported for unit-testing reap behaviour. Called by onClose after the grace
+// delay — kills the pty wrapper subprocess and awaits exited so Bun reaps it
+// (no zombie). delayMs is configurable so tests can pass 0 and stay fast.
+export const closeChildBridge = async (args: {
+  child: Pick<ChildBridgeForTest, "kill" | "exited">
+  sizedir: string
+  delayMs?: number
+}): Promise<void> => {
+  const { child, sizedir, delayMs = 1_000 } = args
+  await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+  try {
+    child.kill()
+  } catch {
+    // already exited
+  }
+  // Reap the subprocess: the setsid pty wrapper is its own session leader and
+  // SIGTERM only kills the python3 wrapper, leaving it as a zombie until its pty
+  // child exits. Awaiting exited lets Bun reap the process table entry.
+  void child.exited
+  try {
+    rmSync(sizedir, { recursive: true, force: true })
+  } catch {
+    // already gone
+  }
+}
+
 const bridges = new WeakMap<object, Bridge>()
 
 // Idle proxies (Vite dev server, OS NAT) drop WebSockets after 60-120s of
@@ -272,18 +306,7 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         bridges.delete(tokenKey)
         clearInterval(b.heartbeat)
         b.drainAbort.abort()
-        setTimeout(() => {
-          try {
-            b.child.kill()
-          } catch {
-            // already exited
-          }
-          try {
-            rmSync(b.sizedir, { recursive: true, force: true })
-          } catch {
-            // already gone
-          }
-        }, 1_000)
+        void closeChildBridge({ child: b.child, sizedir: b.sizedir })
       },
     }
   })
