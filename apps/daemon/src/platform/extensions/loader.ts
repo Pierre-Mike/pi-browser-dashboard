@@ -8,6 +8,8 @@ import type { ExtensionPermissions } from "./manifest"
 import { checkGrants } from "./permissions"
 import { extensionRegistry } from "./registry"
 import type { ExtensionRegistry, ExtensionScope } from "./registry"
+import { defaultStateFile, grantsAsPermissions, grantsFor, isEnabled, readState } from "./state"
+import type { ExtensionState } from "./state"
 
 export type ExtensionImporter = (
   absPath: string,
@@ -18,6 +20,8 @@ export type LoadExtensionsOptions = {
   registry?: ExtensionRegistry
   granted?: ExtensionPermissions
   importer?: ExtensionImporter
+  stateFile?: string
+  state?: ExtensionState
 }
 
 export type LoadExtensionsResult = {
@@ -64,6 +68,7 @@ export const loadExtensions = async (
   const importer = opts.importer ?? defaultImporter
   const globalRoot = opts.roots?.global ?? defaultGlobalRoot()
   const localRoot = opts.roots?.local ?? defaultLocalRoot()
+  const state: ExtensionState = opts.state ?? readState(opts.stateFile ?? defaultStateFile())
 
   // Global first, local second: when reduced by name, local overrides global.
   const candidates = [...scanRoot(globalRoot, "global"), ...scanRoot(localRoot, "local")]
@@ -107,6 +112,13 @@ export const loadExtensions = async (
   for (const name of order) {
     const cand = byName.get(name)
     if (!cand) continue
+
+    // Disabled extensions are skipped entirely — not registered, not imported.
+    if (!isEnabled(state, name)) {
+      skip(name, "disabled")
+      continue
+    }
+
     // Re-parse the winning candidate's manifest.
     const raw = JSON.parse(readFileSync(join(cand.dir, "manifest.json"), "utf8"))
     const parsed = parseManifest(raw)
@@ -116,7 +128,16 @@ export const loadExtensions = async (
     }
     const manifest = parsed.value
 
-    const grant = checkGrants(manifest, granted)
+    // Merge caller-provided grants with per-ext grants from state (union).
+    const stateGrants = grantsAsPermissions(grantsFor(state, name))
+    const mergedGranted: ExtensionPermissions = {
+      fs: [...(granted.fs ?? []), ...(stateGrants.fs ?? [])],
+      exec: [...(granted.exec ?? []), ...(stateGrants.exec ?? [])],
+      net: [...(granted.net ?? []), ...(stateGrants.net ?? [])],
+      events: (granted.events ?? false) || (stateGrants.events ?? false),
+    }
+
+    const grant = checkGrants(manifest, mergedGranted)
     if (!grant.ok) {
       skip(name, `missing permissions: ${grant.missing.join(", ")}`)
       continue
@@ -126,7 +147,7 @@ export const loadExtensions = async (
       manifest,
       dir: cand.dir,
       registry,
-      granted,
+      granted: mergedGranted,
       scope: cand.scope,
     })
 

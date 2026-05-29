@@ -142,7 +142,7 @@ export const dispatchRpc = async (
   if (required === undefined) {
     return { ok: false, error: `unknown method: ${req.method}`, code: "no_permission" }
   }
-  if (required !== "" && !manifest.permissions.includes(required)) {
+  if (required !== "" && !manifest.granted.includes(required)) {
     return {
       ok: false,
       error: `method ${req.method} requires permission '${required}'`,
@@ -188,12 +188,20 @@ export type RpcBridgeHandle = { destroy: () => void }
  * Wires the RPC bridge to `window.addEventListener("message", ...)`.
  * Sends responses back to `iframe.contentWindow`.
  * Returns a handle with `destroy()` to clean up.
+ *
+ * `granted` overrides `manifest.granted` so callers can pass a fresh snapshot
+ * without constructing a new manifest object each time.
  */
 export const mountRpcBridge = (
   iframeEl: HTMLIFrameElement,
   manifest: ExtensionManifest,
   ctx: { projectId?: string; cwd?: string } = {},
+  granted?: string[],
 ): RpcBridgeHandle => {
+  // Merge granted override into a shallow-cloned manifest so dispatchRpc
+  // sees the up-to-date grant set without mutating the caller's object.
+  const effectiveManifest: ExtensionManifest =
+    granted !== undefined ? { ...manifest, granted } : manifest
   // A sandbox without `allow-same-origin` (our default) runs the frame in an
   // opaque origin, so postMessage events arrive with origin === "null" and the
   // frame can only be targeted with "*". When same-origin IS allowed, pin to
@@ -213,7 +221,13 @@ export const mountRpcBridge = (
     // Only handle messages from this iframe — the authenticated identity gate.
     if (event.source !== iframeEl.contentWindow) return
 
-    const result = await dispatchRpc(event.data, event.origin, expectedOrigin, manifest, ctx)
+    const result = await dispatchRpc(
+      event.data,
+      event.origin,
+      expectedOrigin,
+      effectiveManifest,
+      ctx,
+    )
 
     const rawData = event.data as Record<string, unknown>
     const id = typeof rawData === "object" && rawData !== null ? (rawData.id as string) : ""

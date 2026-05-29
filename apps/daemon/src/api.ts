@@ -6,13 +6,13 @@ import * as claudeConfigRoute from "./features/claude-config/claude-config.route
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as dropsRoute from "./features/drops/drops.routes"
 import * as eventsRoute from "./features/events/events.routes"
+import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
-import { sanitizeManifest } from "./platform/extensions/manifest"
 import { extensionRegistry } from "./platform/extensions/registry"
 
 const DEFAULT_ORIGINS = ["http://localhost:5173"]
@@ -69,10 +69,10 @@ const app = new Hono()
   .route("/library", libraryRoute.app)
   .route("/uploads", uploadsRoute.app)
   .get("/extensions", (c) =>
-    c.json(
-      extensionRegistry.list().map((e) => ({ ...sanitizeManifest(e.manifest), scope: e.scope })),
-    ),
+    c.json(extensionRegistry.list().map((e) => extensionsRoute.extensionListEntry(e))),
   )
+  // Enable/disable/grants management endpoints (POST /extensions/:name/...).
+  .route("/extensions", extensionsRoute.app)
   .get("/extensions/:name/*", async (c) => {
     const name = c.req.param("name")
     const ext = extensionRegistry.get(name)

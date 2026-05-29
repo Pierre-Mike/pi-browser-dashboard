@@ -18,4 +18,7 @@ export type ExtensionManifest = {
   contributes?: ExtensionContributes
   permissions: string[]
   scope: ExtensionScope
+  requested: string[]
+  granted: string[]
+  enabled: boolean
 }

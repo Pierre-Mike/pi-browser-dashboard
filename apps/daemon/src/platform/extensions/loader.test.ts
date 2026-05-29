@@ -7,6 +7,7 @@ import type { ExtensionApi } from "./api"
 import { loadExtensions } from "./loader"
 import type { ExtensionManifest } from "./manifest"
 import { createRegistry } from "./registry"
+import { writeState } from "./state"
 
 type Roots = { global: string; local: string }
 
@@ -203,5 +204,105 @@ describe("loadExtensions", () => {
       importer: async () => pingModule("x"),
     })
     expect(res.loaded).toEqual([])
+  })
+
+  it("(g) disabled ext in state is not loaded or registered", async () => {
+    writeExt(roots.global, "disabled-ext", { name: "disabled-ext" })
+    const registry = createRegistry()
+    const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
+    writeState(stateFile, { "disabled-ext": { enabled: false, grants: {} } })
+    try {
+      const res = await loadExtensions({
+        roots,
+        registry,
+        granted: {},
+        importer: async () => pingModule("should-not-load"),
+        stateFile,
+      })
+      expect(res.loaded).not.toContain("disabled-ext")
+      const skip = res.skipped.find((s) => s.name === "disabled-ext")
+      expect(skip).toBeDefined()
+      expect(skip?.reason).toBe("disabled")
+      expect(registry.get("disabled-ext")).toBeUndefined()
+    } finally {
+      try {
+        rmSync(stateFile, { force: true })
+      } catch {
+        // ignore
+      }
+    }
+  })
+
+  it("(h) state grants allow a permission-requesting ext to mount", async () => {
+    writeExt(roots.global, "fs-ext", {
+      name: "fs-ext",
+      permissions: { fs: ["/tmp"] },
+    })
+    const registry = createRegistry()
+    const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
+    writeState(stateFile, {
+      "fs-ext": { enabled: true, grants: { fs: ["/tmp"] } },
+    })
+    try {
+      const res = await loadExtensions({
+        roots,
+        registry,
+        granted: {},
+        importer: async () => pingModule("fs-ext-ok"),
+        stateFile,
+      })
+      expect(res.loaded).toContain("fs-ext")
+      expect(res.skipped.find((s) => s.name === "fs-ext")).toBeUndefined()
+      expect(registry.get("fs-ext")).toBeDefined()
+    } finally {
+      try {
+        rmSync(stateFile, { force: true })
+      } catch {
+        // ignore
+      }
+    }
+  })
+
+  it("(i) ext with ungranted permission still skipped with missing list when state has no grants", async () => {
+    writeExt(roots.global, "exec-ext", {
+      name: "exec-ext",
+      permissions: { exec: ["rm"] },
+    })
+    const registry = createRegistry()
+    const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
+    writeState(stateFile, { "exec-ext": { enabled: true, grants: {} } })
+    try {
+      const res = await loadExtensions({
+        roots,
+        registry,
+        granted: {},
+        importer: async () => pingModule("never"),
+        stateFile,
+      })
+      expect(res.loaded).not.toContain("exec-ext")
+      const skip = res.skipped.find((s) => s.name === "exec-ext")
+      expect(skip).toBeDefined()
+      expect(skip?.reason).toContain("exec:rm")
+    } finally {
+      try {
+        rmSync(stateFile, { force: true })
+      } catch {
+        // ignore
+      }
+    }
+  })
+
+  it("(j) absent name in state defaults to enabled=true (no state file => all enabled)", async () => {
+    writeExt(roots.global, "no-state-ext", { name: "no-state-ext" })
+    const registry = createRegistry()
+    // Pass an empty state object — absent name means enabled by default
+    const res = await loadExtensions({
+      roots,
+      registry,
+      granted: {},
+      importer: async () => pingModule("no-state-ext-ok"),
+      state: {},
+    })
+    expect(res.loaded).toContain("no-state-ext")
   })
 })

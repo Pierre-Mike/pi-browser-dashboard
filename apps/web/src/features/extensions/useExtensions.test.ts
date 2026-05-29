@@ -12,9 +12,15 @@ describe("ExtensionManifest type", () => {
       tier: "iframe",
       permissions: ["fs"],
       scope: "global",
+      requested: ["fs"],
+      granted: [],
+      enabled: true,
     }
     expect(m.tier).toBe("iframe")
     expect(m.permissions).toContain("fs")
+    expect(m.requested).toContain("fs")
+    expect(m.granted).toEqual([])
+    expect(m.enabled).toBe(true)
   })
 
   it("accepts a manifest with contributes.tabs", () => {
@@ -25,6 +31,9 @@ describe("ExtensionManifest type", () => {
       contributes: { tabs: [{ key: "my-tab", label: "My Tab" }] },
       permissions: [],
       scope: "local",
+      requested: [],
+      granted: [],
+      enabled: true,
     }
     expect(m.contributes?.tabs).toHaveLength(1)
   })
@@ -37,8 +46,12 @@ describe("ExtensionManifest type", () => {
       contributes: { projectPanels: [{ key: "panel" }] },
       permissions: ["events"],
       scope: "global",
+      requested: ["events"],
+      granted: ["events"],
+      enabled: false,
     }
     expect(m.contributes?.projectPanels).toHaveLength(1)
+    expect(m.enabled).toBe(false)
   })
 
   it("permissions is an array of capability key strings", () => {
@@ -48,7 +61,11 @@ describe("ExtensionManifest type", () => {
       tier: "iframe",
       permissions: ["fs", "net", "exec", "events"],
       scope: "global",
+      requested: ["fs", "net", "exec", "events"],
+      granted: ["fs"],
+      enabled: true,
     }
     expect(m.permissions).toEqual(["fs", "net", "exec", "events"])
+    expect(m.granted).toEqual(["fs"])
   })
 })
