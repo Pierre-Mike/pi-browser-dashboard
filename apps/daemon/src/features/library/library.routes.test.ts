@@ -5,6 +5,7 @@ import { LIBRARY_CATEGORIES, type LibraryCategory } from "./library.core"
 import {
   type AgenticListing,
   type CatalogBundle,
+  type LibraryError,
   LibraryRepoTest,
   LibraryService,
 } from "./library.repo"
@@ -77,14 +78,36 @@ const buildApp = () => {
 
 const buildAppWithMutations = (overrides?: {
   installEntry?: Parameters<typeof LibraryRepoTest>[0]
+  fixtures?: Parameters<typeof LibraryRepoTest>[0]
 }) => {
   const fixtures = {
     catalog: sampleCatalog,
     agentic: { skills: sampleAgentic },
     ...(overrides?.installEntry ?? {}),
+    ...(overrides?.fixtures ?? {}),
   }
   const testRuntime = ManagedRuntime.make(LibraryRepoTest(fixtures))
   return new Hono()
+    .post("/init", async (c) => {
+      const body = await c.req.json().catch(() => null)
+      if (!body || typeof body.repoUrl !== "string" || body.repoUrl.trim() === "") {
+        return c.json({ error: "bad_request" }, 400)
+      }
+      const branch =
+        typeof body.branch === "string" && body.branch.trim() !== ""
+          ? body.branch.trim()
+          : undefined
+      const result = await testRuntime.runPromise(
+        Effect.flatMap(LibraryService, (s) =>
+          s.initLibrary({ repoUrl: body.repoUrl.trim(), ...(branch ? { branch } : {}) }),
+        ).pipe(Effect.either),
+      )
+      if (result._tag === "Left") {
+        const status = result.left === "already_initialized" ? 409 : 422
+        return c.json({ error: result.left }, status)
+      }
+      return c.json(result.right)
+    })
     .post("/use", async (c) => {
       const body = await c.req.json()
       const result = await testRuntime.runPromise(
@@ -241,6 +264,37 @@ describe("library routes", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.removed).toBe(true)
+  })
+
+  it("POST /init clones a library repo and returns the catalog path", async () => {
+    const res = await buildAppWithMutations().request("/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoUrl: "https://github.com/me/the-library.git" }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(typeof body.catalogPath).toBe("string")
+  })
+
+  it("POST /init rejects a missing repoUrl with 400", async () => {
+    const res = await buildAppWithMutations().request("/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("POST /init returns 409 when a catalog already exists", async () => {
+    const res = await buildAppWithMutations({
+      fixtures: { initLibrary: () => Effect.fail<LibraryError>("already_initialized") },
+    }).request("/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoUrl: "https://github.com/me/the-library.git" }),
+    })
+    expect(res.status).toBe(409)
   })
 
   it("POST /sync returns an outcomes array", async () => {

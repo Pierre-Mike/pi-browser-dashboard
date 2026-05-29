@@ -7,7 +7,7 @@ import { type InstallScope, type LibraryError, LibraryService } from "./library.
 const errorToStatus = (e: LibraryError): 400 | 403 | 404 | 409 | 422 | 500 => {
   if (e === "forbidden") return 403
   if (e === "not_found" || e === "catalog_not_found" || e === "agentic_repo_missing") return 404
-  if (e === "duplicate_entry") return 409
+  if (e === "duplicate_entry" || e === "already_initialized") return 409
   if (e === "git_failed") return 409
   if (e === "catalog_invalid" || e === "source_invalid" || e === "requires_cycle") return 422
   if (e === "io_failed") return 500
@@ -20,6 +20,21 @@ const isCategory = (s: string | undefined): s is LibraryCategory =>
 const isScope = (s: unknown): s is InstallScope => s === "global" || s === "local"
 
 const app = new Hono()
+  .post("/init", async (c) => {
+    const body = await c.req.json().catch(() => null)
+    if (!body || typeof body.repoUrl !== "string" || body.repoUrl.trim() === "") {
+      return c.json({ error: "bad_request" }, 400)
+    }
+    const branch =
+      typeof body.branch === "string" && body.branch.trim() !== "" ? body.branch.trim() : undefined
+    const result = await appRuntime.runPromise(
+      Effect.flatMap(LibraryService, (s) =>
+        s.initLibrary({ repoUrl: body.repoUrl.trim(), ...(branch ? { branch } : {}) }),
+      ).pipe(Effect.either),
+    )
+    if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
+    return c.json(result.right)
+  })
   .get("/catalog", async (c) => {
     const projectId = c.req.query("projectId") ?? null
     const result = await appRuntime.runPromise(

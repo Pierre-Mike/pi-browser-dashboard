@@ -41,6 +41,53 @@ test.describe("library tab", () => {
     // The local install button is disabled at the global scope (no project context).
     const installLocal = page.locator('[data-testid^="library-action-install-local-"]').first()
     await expect(installLocal).toBeDisabled()
+
+    // Both global and local push affordances are present; local push is
+    // disabled with no project context.
+    const pushGlobal = page.locator('[data-testid^="library-action-push-global-"]').first()
+    await expect(pushGlobal).toBeVisible()
+    const pushLocal = page.locator('[data-testid^="library-action-push-local-"]').first()
+    await expect(pushLocal).toBeVisible()
+    await expect(pushLocal).toBeDisabled()
+  })
+
+  test("scoped sync control exposes all / global / local", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId("dashboard-tab-library").click()
+    await expect(page.getByTestId("library-panel")).toBeVisible({ timeout: 10_000 })
+
+    const scope = page.getByTestId("library-sync-scope")
+    await expect(scope).toBeVisible()
+    await expect(scope.locator("option")).toHaveCount(3)
+    await scope.selectOption("global")
+    await expect(scope).toHaveValue("global")
+    await expect(page.getByTestId("library-action-sync")).toBeEnabled()
+  })
+
+  test("global search surfaces matches across categories and jumps to the entry", async ({
+    page,
+  }) => {
+    await page.goto("/")
+    await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId("dashboard-tab-library").click()
+    await expect(page.getByTestId("library-panel")).toBeVisible({ timeout: 10_000 })
+
+    // Grab the name of the first skill so we can search for it across categories.
+    const firstSkill = page.locator('[data-testid^="library-entry-skills-"]').first()
+    await expect(firstSkill).toBeVisible()
+    const testId = await firstSkill.getAttribute("data-testid")
+    const name = (testId ?? "").replace("library-entry-skills-", "")
+    expect(name.length).toBeGreaterThan(0)
+
+    const search = page.getByTestId("library-global-search")
+    await search.fill(name)
+    const result = page.getByTestId(`library-global-result-skills-${name}`)
+    await expect(result).toBeVisible({ timeout: 5_000 })
+    await result.click()
+
+    // Picking a result selects it in its category tab.
+    await expect(page.getByTestId(`library-detail-skills-${name}`)).toBeVisible({ timeout: 5_000 })
   })
 
   test("panel fills the available viewport height", async ({ page }) => {

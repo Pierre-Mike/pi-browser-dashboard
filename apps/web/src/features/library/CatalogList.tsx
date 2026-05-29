@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { InstallDialog } from "./dialogs/InstallDialog"
 import { RemoveDialog } from "./dialogs/RemoveDialog"
 import type {
@@ -14,6 +14,8 @@ type Props = {
   bundle: CatalogBundle
   category: LibraryCategory
   projectId: string | null
+  // When set (e.g. via the global search), select this entry on mount/change.
+  focusName?: string
 }
 
 type DialogState =
@@ -21,11 +23,20 @@ type DialogState =
   | { kind: "install"; entry: LibraryEntry; scope?: InstallScope }
   | { kind: "remove"; entry: LibraryEntry }
 
-export const CatalogList = ({ bundle, category, projectId }: Props) => {
+export const CatalogList = ({ bundle, category, projectId, focusName }: Props) => {
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" })
   const pushM = usePushMutation()
+
+  // Honour an external focus request (global search jump): clear any active
+  // filter so the entry is visible, then select it.
+  useEffect(() => {
+    if (focusName) {
+      setQuery("")
+      setSelected(focusName)
+    }
+  }, [focusName])
 
   const entries = useMemo(() => {
     const filtered = bundle.catalog.entries.filter((e) => e.type === category)
@@ -267,6 +278,22 @@ const EntryDetail = ({
             title={globalInstalled ? undefined : "install globally first"}
           >
             {pushPending ? "Pushing…" : "Push from global"}
+          </button>
+          <button
+            type="button"
+            data-testid={`library-action-push-local-${entry.name}`}
+            disabled={!localInstalled || pushPending}
+            onClick={() => onPush("local")}
+            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              canLocal
+                ? localInstalled
+                  ? undefined
+                  : "install locally first"
+                : "open a project to push locally"
+            }
+          >
+            {pushPending ? "Pushing…" : "Push from local"}
           </button>
           <button
             type="button"

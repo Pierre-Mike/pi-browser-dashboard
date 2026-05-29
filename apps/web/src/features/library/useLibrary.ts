@@ -4,6 +4,8 @@ import type {
   AddInput,
   AgenticListing,
   CatalogBundle,
+  InitInput,
+  InitResult,
   InstallInput,
   InstallResult,
   LibraryCategory,
@@ -57,6 +59,18 @@ const httpErrorBody = async (res: Response, label: string): Promise<Error> => {
 const invalidateLibrary = (qc: ReturnType<typeof useQueryClient>) => {
   qc.invalidateQueries({ queryKey: ["library", "catalog"] })
   qc.invalidateQueries({ queryKey: ["library", "agentic"] })
+}
+
+export const useInitMutation = () => {
+  const qc = useQueryClient()
+  return useMutation<InitResult, Error, InitInput>({
+    mutationFn: async (input) => {
+      const res = await client.library.init.$post({ json: input })
+      if (!res.ok) throw await httpErrorBody(res, "init")
+      return (await res.json()) as InitResult
+    },
+    onSuccess: () => invalidateLibrary(qc),
+  })
 }
 
 export const useInstallMutation = () => {

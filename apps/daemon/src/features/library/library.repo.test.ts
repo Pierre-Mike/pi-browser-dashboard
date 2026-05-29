@@ -323,3 +323,73 @@ describe("LibraryRepo syncAll", () => {
     expect(await readFile(join(dest, "SKILL.md"), "utf8")).toBe("v2\n")
   })
 })
+
+describe("LibraryRepo initLibrary", () => {
+  it("clones the repo into the library dir when no catalog exists yet", async () => {
+    const freshLib = join(homeShim, "fresh-lib")
+    process.env.PID_LIBRARY_DIR = freshLib
+    try {
+      const recorder = makeGitClientRecorder({
+        cloneContents: async (dst) => {
+          const yaml = [
+            "default_dirs:",
+            "  skills:",
+            "    - default: .claude/skills/",
+            `    - global: ${homeShim}/.claude/skills/`,
+            "library:",
+            "  skills:",
+            "    - name: seed",
+            "      description: seeded",
+            `      source: ${homeShim}/seed/SKILL.md`,
+            "",
+          ].join("\n")
+          await writeFile(join(dst, "library.yaml"), yaml, "utf8")
+        },
+      })
+      const result = await withLayer(
+        Effect.flatMap(LibraryService, (s) =>
+          s.initLibrary({ repoUrl: "https://github.com/me/the-library.git" }),
+        ),
+        recorder,
+      )
+      expect(result.catalogPath).toBe(join(freshLib, "library.yaml"))
+      expect(recorder.calls.find((c) => c.method === "clone")).toBeDefined()
+      // The catalog is now readable through the service.
+      const bundle = await withLayer(Effect.flatMap(LibraryService, (s) => s.readCatalog(null)))
+      expect(bundle.catalog.entries.map((e) => e.name)).toContain("seed")
+    } finally {
+      process.env.PID_LIBRARY_DIR = libraryDir
+    }
+  })
+
+  it("refuses to init when a catalog already exists", async () => {
+    // libraryDir already holds a library.yaml from earlier tests.
+    const err = await withLayer(
+      Effect.flatMap(LibraryService, (s) =>
+        s.initLibrary({ repoUrl: "https://github.com/me/the-library.git" }),
+      ).pipe(Effect.flip),
+    )
+    expect(err).toBe("already_initialized")
+  })
+
+  it("rejects a cloned repo that has no library.yaml", async () => {
+    const freshLib = join(homeShim, "fresh-lib-empty")
+    process.env.PID_LIBRARY_DIR = freshLib
+    try {
+      const recorder = makeGitClientRecorder({
+        cloneContents: async (dst) => {
+          await writeFile(join(dst, "README.md"), "no catalog here\n", "utf8")
+        },
+      })
+      const err = await withLayer(
+        Effect.flatMap(LibraryService, (s) =>
+          s.initLibrary({ repoUrl: "https://github.com/me/not-a-library.git" }),
+        ).pipe(Effect.flip),
+        recorder,
+      )
+      expect(err).toBe("source_invalid")
+    } finally {
+      process.env.PID_LIBRARY_DIR = libraryDir
+    }
+  })
+})
