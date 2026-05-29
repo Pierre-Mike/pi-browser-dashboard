@@ -89,6 +89,30 @@ Pre-commit blocks any commit that touches `apps/*/src/**` without staging a
 test. Pre-push runs the unit + Playwright suite. Bypasses (`SKIP_TDD=1`,
 `SKIP_E2E=1`) exist for docs/dep-only commits — see `AGENTS.md`.
 
+## Authoring an extension
+
+Scaffold a new iframe extension with the `pid-ext` generator:
+
+```bash
+bun run pid-ext my-ext           # local scope → <cwd>/.pid/extensions/my-ext
+bun run pid-ext my-ext --global  # global scope → ~/.pid/extensions/my-ext
+```
+
+This writes two files:
+
+| File | Purpose |
+| --- | --- |
+| `manifest.json` | Extension metadata (name, version, tier, tabs) |
+| `index.html` | Self-contained iframe page; posts `getContext` RPC to the dashboard |
+
+After running the generator, restart the daemon (`bun run dev:daemon`) and open
+the **Extensions** tab in the dashboard — your extension's tab will appear.
+
+To use `listFiles` / `readFile` RPC methods, grant the **fs** capability to
+your extension in the Extensions tab.
+
+A working example lives at [`examples/extensions/hello/`](./examples/extensions/hello/).
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for workflow, code style, and
