@@ -19,6 +19,7 @@ export const useGlobalClaudeConfig = () =>
 export const useProjectClaudeConfig = (projectId: string) =>
   useQuery<ScopeBundle>({
     queryKey: ["claude-config", "project", projectId],
+    enabled: projectId !== "",
     queryFn: async () => {
       const res = await client["claude-config"].projects[":id"].$get({ param: { id: projectId } })
       if (!res.ok) throw new Error(`claude-config project: HTTP ${res.status}`)

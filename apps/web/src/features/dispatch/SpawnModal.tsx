@@ -3,10 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { api } from "../../lib/api"
 import type { Project } from "../../lib/types"
-import { useGlobalClaudeConfig } from "../claude-config/useClaudeConfig"
+import { useGlobalClaudeConfig, useProjectClaudeConfig } from "../claude-config/useClaudeConfig"
 import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
+import { mergeSkillOptions } from "./skillOptions"
 
 type Props = {
   open: boolean
@@ -23,14 +24,17 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const claudeConfig = useGlobalClaudeConfig()
+  const projectConfig = useProjectClaudeConfig(project?.id ?? "")
 
-  const skillOptions = useMemo(() => {
-    const ids = (claudeConfig.data?.skills ?? []).map((s) => s.id)
-    // Always surface the default even if the dir scan hasn't returned yet, so
-    // the picker isn't empty on first paint.
-    if (!ids.includes(DEFAULT_SKILL)) ids.unshift(DEFAULT_SKILL)
-    return ids
-  }, [claudeConfig.data])
+  const skillOptions = useMemo(
+    () =>
+      mergeSkillOptions(
+        DEFAULT_SKILL,
+        claudeConfig.data?.skills,
+        project ? projectConfig.data?.skills : [],
+      ),
+    [claudeConfig.data, projectConfig.data, project],
+  )
 
   const toggleSkill = (id: string) =>
     setSkills((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
