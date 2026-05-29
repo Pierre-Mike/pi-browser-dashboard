@@ -2,8 +2,7 @@ import { useEffect, useState } from "react"
 import { handleDrop } from "./handleDrop"
 import { uploadFile } from "./uploadFile"
 
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
 type Toast = { readonly id: number; readonly text: string; readonly kind: "ok" | "err" }
 
@@ -61,7 +60,7 @@ export const DropZone = () => {
         if (result.paths.length > 0) {
           pushToast(
             result.paths.length === 1
-              ? `Uploaded — path copied`
+              ? "Uploaded — path copied"
               : `Uploaded ${result.paths.length} files — paths copied`,
             "ok",
           )

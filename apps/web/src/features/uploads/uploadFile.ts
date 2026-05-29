@@ -3,8 +3,7 @@ export type UploadDeps = {
   readonly fetch?: typeof fetch
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null
 
 export const uploadFile = async (file: File, deps: UploadDeps): Promise<string> => {
   const form = new FormData()

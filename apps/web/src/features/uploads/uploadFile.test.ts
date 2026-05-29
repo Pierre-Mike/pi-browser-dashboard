@@ -26,7 +26,7 @@ describe("uploadFile", () => {
     const path = await uploadFile(file, { baseUrl: "http://api.example.test", fetch })
     expect(path).toBe("/abs/2026-05-26/uuid-note.txt")
     expect(calls).toHaveLength(1)
-    const call = calls[0]!
+    const call = calls[0] as (typeof calls)[0]
     expect(call.url).toBe("http://api.example.test/uploads")
     expect(call.init?.method).toBe("POST")
     const body = call.init?.body
@@ -45,18 +45,16 @@ describe("uploadFile", () => {
         }),
     )
     const file = new File([], "blank.bin")
-    await expect(
-      uploadFile(file, { baseUrl: "http://api.example.test", fetch }),
-    ).rejects.toThrow(/empty_file/)
+    await expect(uploadFile(file, { baseUrl: "http://api.example.test", fetch })).rejects.toThrow(
+      /empty_file/,
+    )
   })
 
   it("throws when the daemon response is missing the path field", async () => {
-    const { fetch } = stubFetch(
-      () => new Response(JSON.stringify({}), { status: 200 }),
-    )
+    const { fetch } = stubFetch(() => new Response(JSON.stringify({}), { status: 200 }))
     const file = new File(["x"], "x.bin")
-    await expect(
-      uploadFile(file, { baseUrl: "http://api.example.test", fetch }),
-    ).rejects.toThrow(/invalid_response/)
+    await expect(uploadFile(file, { baseUrl: "http://api.example.test", fetch })).rejects.toThrow(
+      /invalid_response/,
+    )
   })
 })

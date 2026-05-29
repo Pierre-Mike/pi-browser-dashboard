@@ -91,18 +91,12 @@ describe("parseMarkdown", () => {
         [{ kind: "text", text: "Layer" }],
         [{ kind: "text", text: "Choice" }],
       ])
-      expect(t.rows).toEqual([
-        [[{ kind: "text", text: "Repo" }], [{ kind: "text", text: "bun" }]],
-      ])
+      expect(t.rows).toEqual([[[{ kind: "text", text: "Repo" }], [{ kind: "text", text: "bun" }]]])
     }
   })
 
   it("parses table column alignment from the separator row", () => {
-    const md = [
-      "| L | C | R |",
-      "| :-- | :--: | --: |",
-      "| a | b | c |",
-    ].join("\n")
+    const md = ["| L | C | R |", "| :-- | :--: | --: |", "| a | b | c |"].join("\n")
     const blocks = parseMarkdown(md)
     const t = blocks[0]
     expect(t?.kind).toBe("table")
