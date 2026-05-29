@@ -1,7 +1,8 @@
 import { Effect } from "effect"
-import app, { websocket } from "./api"
+import app, { mountExtensions, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.repo"
 import { SessionRegistry } from "./features/sessions/sessions.repo"
+import { loadExtensions } from "./platform/extensions/loader"
 import { appRuntime } from "./platform/runtime"
 
 const PORT = Number(process.env.PORT ?? 8787)
@@ -28,6 +29,15 @@ if (ISSUE_POLL_MS > 0) {
   // Fire one tick immediately so the user doesn't wait 2 minutes after boot.
   runTick()
   issueDriverTimer = setInterval(runTick, ISSUE_POLL_MS)
+}
+
+// Discover, permission-gate and mount extensions from the global/local dirs.
+// A failure here must never block daemon boot.
+try {
+  await loadExtensions()
+  mountExtensions(app)
+} catch (err) {
+  console.error("[extensions] load failed", err)
 }
 
 const server = Bun.serve({
