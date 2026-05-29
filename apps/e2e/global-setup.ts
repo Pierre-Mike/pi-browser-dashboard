@@ -179,18 +179,22 @@ export default async function globalSetup(): Promise<void> {
     "<div data-testid='ext-ctx'>waiting</div>",
     "<div data-testid='ext-deny'>waiting</div>",
     "<script>",
-    "var got={};",
+    "var got={ctx:false};var fsOk=false;",
     "function post(){",
     "  if(!got.ctx) parent.postMessage({id:'ctx',method:'getContext'},'*');",
-    "  if(!got.deny) parent.postMessage({id:'deny',method:'listFiles',params:{path:'.'}},'*');",
+    // Keep retrying listFiles until it SUCCEEDS — so when `fs` is granted at
+    // runtime (and ExtensionHost re-mounts the bridge) the next poll flips the
+    // status from denied to ok without a reload. Until then it stays denied.
+    "  if(!fsOk) parent.postMessage({id:'deny',method:'listFiles',params:{path:'.'}},'*');",
     "}",
     "window.addEventListener('message',function(e){",
     "  var d=e.data||{};",
     "  if(d.id==='ctx'){got.ctx=true;document.querySelector(\"[data-testid='ext-ctx']\").textContent=d.ok?('ctx:'+(d.result&&d.result.extensionName)):('ctx-error:'+d.error);}",
-    "  if(d.id==='deny'){got.deny=true;document.querySelector(\"[data-testid='ext-deny']\").textContent=d.ok?'deny-UNEXPECTED-OK':('deny:'+d.error);}",
+    "  if(d.id==='deny'){if(d.ok){fsOk=true;document.querySelector(\"[data-testid='ext-deny']\").textContent='listFiles-ok';}else{document.querySelector(\"[data-testid='ext-deny']\").textContent='deny:'+d.error;}}",
     "});",
-    // Re-post until both replies land — survives any listener-attach race under load.
-    "post();var n=0;var t=setInterval(function(){post();if((got.ctx&&got.deny)||++n>40)clearInterval(t);},150);",
+    // Re-post until ctx lands AND listFiles succeeds (or a long cap) — survives
+    // the listener-attach race and observes a later runtime grant.
+    "post();var n=0;var t=setInterval(function(){post();if((got.ctx&&fsOk)||++n>200)clearInterval(t);},150);",
     "</script></body></html>",
   ].join("")
   writeFileSync(join(fixtureExt, "index.html"), fixtureHtml)

@@ -52,9 +52,10 @@ export const ProjectDashboard = ({ project }: Props) => {
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
 
-  // iframe-tier extensions that contribute a project panel.
+  // Only enabled iframe-tier extensions that contribute a project panel.
   const extPanels = (extensionsQ.data ?? []).filter(
-    (e) => e.tier === "iframe" && (e.contributes?.projectPanels?.length ?? 0) > 0,
+    (e) =>
+      e.enabled !== false && e.tier === "iframe" && (e.contributes?.projectPanels?.length ?? 0) > 0,
   )
 
   const tabs: readonly Tab[] = useMemo(() => {

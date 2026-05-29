@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { ExtensionHost } from "../features/extensions/ExtensionHost"
+import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
 import { useExtensions } from "../features/extensions/useExtensions"
 import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 })
 
-type StaticTabKey = "projects" | "terminal" | "claude" | "library"
+type StaticTabKey = "projects" | "terminal" | "claude" | "library" | "extensions"
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
 // with a static key.
 type TabKey = StaticTabKey | `ext:${string}`
@@ -23,6 +24,7 @@ const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "projects", label: "Projects" },
   { key: "claude", label: "Claude" },
   { key: "library", label: "Library" },
+  { key: "extensions", label: "Extensions" },
 ]
 
 const ProjectsPanel = () => {
@@ -64,8 +66,9 @@ function IndexPage() {
   const [tab, setTab] = useState<TabKey>("terminal")
   const extensionsQ = useExtensions()
   // Only iframe-tier extensions that contribute a top-level tab.
+  // Only enabled iframe-tier extensions that contribute a top-level tab.
   const extTabs = (extensionsQ.data ?? []).filter(
-    (e) => e.tier === "iframe" && (e.contributes?.tabs?.length ?? 0) > 0,
+    (e) => e.enabled !== false && e.tier === "iframe" && (e.contributes?.tabs?.length ?? 0) > 0,
   )
   const fillViewport =
     tab === "terminal" || tab === "claude" || tab === "library" || tab.startsWith("ext:")
@@ -156,6 +159,14 @@ function IndexPage() {
         className={tab === "library" ? "flex flex-col flex-1 min-h-0 gap-2" : "hidden"}
       >
         <LibraryPanel scope="global" />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="dashboard-tab-panel-extensions"
+        className={tab === "extensions" ? "flex flex-col gap-3" : "hidden"}
+      >
+        <ExtensionsPanel />
       </div>
 
       {extTabs.map((e) => {

@@ -8,6 +8,9 @@ const baseManifest = (): ExtensionManifest => ({
   tier: "iframe",
   permissions: [],
   scope: "global",
+  requested: [],
+  granted: [],
+  enabled: true,
 })
 
 const ORIGIN = "http://localhost:8787"
@@ -77,20 +80,31 @@ describe("dispatchRpc — permission gate", () => {
     }
   })
 
-  it("allows listFiles when fs permission is granted", async () => {
-    const manifest = { ...baseManifest(), permissions: ["fs"] }
+  it("allows listFiles when fs is in granted (not just requested)", async () => {
+    // granted=["fs"] → gate passes; no projectId → returns { entries: [] }
+    const manifest = { ...baseManifest(), granted: ["fs"] }
     const req = { id: "7", method: "listFiles", params: { path: "." } }
-    // No real projectId → returns empty entries without hitting the network
     const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest, {})
-    // ok=true because no projectId → returns { entries: [] }
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect((result.result as { entries: unknown[] }).entries).toEqual([])
     }
   })
 
-  it("allows subscribeEvents when events permission is granted", async () => {
-    const manifest = { ...baseManifest(), permissions: ["events"] }
+  it("rejects listFiles when fs is requested but NOT granted", async () => {
+    // requested has fs but granted is empty → must still be denied
+    const manifest = { ...baseManifest(), requested: ["fs"], granted: [] }
+    const req = { id: "7b", method: "listFiles", params: { path: "." } }
+    const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest, {})
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.code).toBe("no_permission")
+      expect(result.error).toContain("fs")
+    }
+  })
+
+  it("allows subscribeEvents when events is in granted", async () => {
+    const manifest = { ...baseManifest(), granted: ["events"] }
     const req = { id: "8", method: "subscribeEvents" }
     const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest)
     expect(result.ok).toBe(true)
