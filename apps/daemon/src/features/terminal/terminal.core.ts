@@ -59,10 +59,20 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 // Layout for the project / global zellij session. Mirrors the drill-in
 // shape (default_tab_template with the tab-bar + status-bar plugins) so the
 // zellij UI is always visible — bare `zellij -s <name>` depends on the
-// user's config to render those bars, and some configs hide them. Unlike
-// the drill-in there is no auto-running command pane; the bare `pane`
-// drops the user at their default shell so they can run `claude` (or
-// anything else) themselves.
+// user's config to render those bars, and some configs hide them. There is
+// no auto-running command pane; the content `pane` drops the user at their
+// default shell so they can run `claude` (or anything else) themselves.
+//
+// The content pane MUST be wrapped in an explicit `tab { … }`. zellij applies
+// default_tab_template only to tabs materialised through a `tab {}` block (and
+// to new tabs opened at runtime); a bare `pane` at the layout root becomes an
+// EMPTY first tab and demotes the template to a new-tabs-only one. The visible
+// symptom is a first terminal tab with no tab bar / status bar — the zellij UI
+// only appears once the user opens a second tab. Verified against zellij 0.43.1
+// with `zellij -n <file> … action dump-layout`: the bare-pane layout dumps
+// `tab name="Tab #1" {}` (empty) plus a new_tab_template carrying the bars,
+// while `tab { pane }` injects the content through the template so tab #1
+// carries the bars too.
 const projectLayoutKdl = (): string =>
   `layout {
     default_tab_template {
@@ -74,7 +84,9 @@ const projectLayoutKdl = (): string =>
             plugin location="zellij:status-bar"
         }
     }
-    pane
+    tab {
+        pane
+    }
 }
 `
 
@@ -178,6 +190,13 @@ export const projectZellijCommand = (args: {
 // identical to running claude bare — which is why an earlier auto-attach
 // shape was reverted.
 //
+// The claude pane MUST be wrapped in an explicit `tab { … }`. zellij applies
+// default_tab_template only to tabs materialised through a `tab {}` block (and
+// to runtime new tabs); a bare `pane` at the layout root becomes an EMPTY first
+// tab with no plugin panes and demotes the template to new-tabs-only — so the
+// drill-in opens with no tab bar / status bar until a second tab is created.
+// See projectLayoutKdl for the dump-layout evidence on zellij 0.43.1.
+//
 // The command is wrapped in `bash -lc`, not run directly as `command="claude"`.
 // Directly invoking `claude` from a zellij pane produces a pty that claude
 // rejects within a few seconds; wrapping in bash gives claude the
@@ -201,8 +220,10 @@ const sessionClaudeLayoutKdl = (short: string): string =>
             plugin location="zellij:status-bar"
         }
     }
-    pane command="bash" {
-        args "-lc" "claude attach ${short}; exec bash -l"
+    tab {
+        pane command="bash" {
+            args "-lc" "claude attach ${short}; exec bash -l"
+        }
     }
 }
 `

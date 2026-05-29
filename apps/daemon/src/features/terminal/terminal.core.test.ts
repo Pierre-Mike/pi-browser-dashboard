@@ -124,6 +124,20 @@ describe("projectZellijCommand", () => {
     expect(cmd).not.toContain("claude")
   })
 
+  it("wraps the content pane in an explicit `tab {}` so the FIRST tab renders the tab bar / status bar (not just new tabs)", () => {
+    // zellij applies default_tab_template only to tabs materialised through a
+    // `tab {}` block (and to new tabs opened at runtime). A bare `pane` at the
+    // layout root becomes an EMPTY first tab with no plugin panes: the user
+    // opens the terminal and sees no tab bar / status bar — only after opening
+    // a SECOND tab does the zellij UI appear. Confirmed via
+    // `zellij -n <file> … action dump-layout` on 0.43.1: the bare-pane layout
+    // dumps `tab name="Tab #1" {}` (empty) plus a new_tab_template carrying the
+    // bars, whereas `tab { pane }` injects the content through the template so
+    // tab #1 carries the bars too.
+    const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
+    expect(cmd).toMatch(/default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{/)
+  })
+
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
     const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
     const attachLines = cmd.split("\n").filter((l) => l.includes("exec zellij"))
@@ -204,6 +218,21 @@ describe("sessionZellijCommand", () => {
     // user on an empty shell pane after the next reconnect.
     expect(cmd).toContain(`pane command="bash"`)
     expect(cmd).not.toContain(`pane command="claude"`)
+  })
+
+  it("wraps the claude pane in an explicit `tab {}` so the FIRST tab renders the tab bar / status bar (not just new tabs)", () => {
+    // Same zellij quirk as the project terminal: a bare `pane command="bash"`
+    // at the layout root materialises an EMPTY first tab (no tab-bar /
+    // status-bar plugin panes) and demotes default_tab_template to a
+    // new-tabs-only template. The drill-in claude pane must live inside an
+    // explicit `tab { … }` so it's injected through the template and the bars
+    // render on the very first (and only) tab the user sees.
+    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
+    expect(cmd).not.toBeNull()
+    if (cmd === null) return
+    expect(cmd).toMatch(
+      /default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{[\s\S]*pane command="bash"/,
+    )
   })
 
   it("survives a failing `claude attach` — falls back to a login shell instead of collapsing the pane", () => {
