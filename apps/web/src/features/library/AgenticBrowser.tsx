@@ -37,14 +37,14 @@ export const AgenticBrowser = ({ category, onRegister }: Props) => {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col flex-1 min-h-0 gap-2">
       <p className="text-xs text-slate-500">
         Browsing{" "}
         <span className="font-mono">
           {listing.repoPath}/{category}
         </span>
       </p>
-      <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+      <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 flex-1 min-h-0 overflow-auto content-start">
         {listing.items.map((item) => (
           <li
             key={item.name}

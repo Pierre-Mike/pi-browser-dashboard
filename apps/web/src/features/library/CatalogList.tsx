@@ -47,7 +47,7 @@ export const CatalogList = ({ bundle, category, projectId }: Props) => {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col flex-1 min-h-0 gap-2">
       <input
         type="text"
         value={query}
@@ -56,8 +56,8 @@ export const CatalogList = ({ bundle, category, projectId }: Props) => {
         data-testid={`library-search-${category}`}
         className="rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs"
       />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <ul className="md:col-span-1 flex flex-col gap-1 max-h-[60vh] overflow-auto pr-1">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
+        <ul className="md:col-span-1 flex flex-col gap-1 min-h-0 overflow-auto pr-1">
           {entries.length === 0 ? (
             <li className="text-xs text-slate-500 py-2">No matches.</li>
           ) : null}
@@ -90,7 +90,7 @@ export const CatalogList = ({ bundle, category, projectId }: Props) => {
             )
           })}
         </ul>
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 min-h-0 overflow-auto">
           {selectedEntry === null ? (
             <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-800 rounded-lg py-8 text-center">
               Select an entry to view details.
