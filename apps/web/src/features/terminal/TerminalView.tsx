@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
+import { shellQuotePath } from "./ptyPath"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 
 type Props = {
@@ -128,7 +129,7 @@ export const TerminalView = (props: Props) => {
     // active, and we don't want to type into hidden ptys.
     const offDrop = subscribeDroppedPaths((path) => {
       if (host.offsetParent === null) return
-      if (ws?.readyState === WebSocket.OPEN) ws.send(path)
+      if (ws?.readyState === WebSocket.OPEN) ws.send(shellQuotePath(path))
     })
 
     const MAX_ATTEMPTS = 8
