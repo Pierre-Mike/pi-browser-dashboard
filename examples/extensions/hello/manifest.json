@@ -1,0 +1,13 @@
+{
+  "name": "hello",
+  "version": "0.0.1",
+  "tier": "iframe",
+  "contributes": {
+    "tabs": [
+      {
+        "id": "main",
+        "label": "hello"
+      }
+    ]
+  }
+}

@@ -17,3 +17,6 @@ bun.lockb
 .claude/plans/
 apps/e2e/test-results/
 apps/e2e/playwright-report/
+
+# Local extensions scaffolded by `bun run pid-ext --local`
+.pid/
