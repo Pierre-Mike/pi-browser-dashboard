@@ -1,0 +1,13 @@
+{
+  "name": "repo-explorer",
+  "version": "0.1.0",
+  "tier": "iframe",
+  "contributes": {
+    "projectPanels": [
+      {
+        "id": "files",
+        "label": "Repo Explorer"
+      }
+    ]
+  }
+}
