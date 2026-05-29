@@ -1,6 +1,6 @@
 import { useMemo } from "react"
-import { type MdAlign, type MdBlock, type MdSpan, parseMarkdown } from "./markdown"
 import { MermaidView } from "./MermaidView"
+import { type MdAlign, type MdBlock, type MdSpan, parseMarkdown } from "./markdown"
 
 const ALIGN_CLASS: Record<Exclude<MdAlign, null>, string> = {
   left: "text-left",
