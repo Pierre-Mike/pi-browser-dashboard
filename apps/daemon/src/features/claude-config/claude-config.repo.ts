@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises"
+import { open, readFile, readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
@@ -13,6 +13,9 @@ import {
   parseSettings,
   parseSkillFrontmatter,
 } from "./claude-config.core"
+
+/** Maximum bytes read from any text file (CLAUDE.md, SKILL.md). Prevents DoS on huge files. */
+export const MAX_TEXT_BYTES = 512 * 1024 // 512 KB
 
 export type ScopeBundle = {
   readonly scope: "global" | "project"
@@ -44,6 +47,18 @@ export class ClaudeConfigService extends Context.Tag("ClaudeConfigService")<
 
 const tryReadText = async (path: string): Promise<string | null> => {
   try {
+    const s = await stat(path)
+    if (s.size > MAX_TEXT_BYTES) {
+      const fh = await open(path, "r")
+      try {
+        const buf = Buffer.allocUnsafe(MAX_TEXT_BYTES)
+        const { bytesRead } = await fh.read(buf, 0, MAX_TEXT_BYTES, 0)
+        const text = buf.subarray(0, bytesRead).toString("utf8")
+        return `${text}\n\n[truncated: file exceeds ${MAX_TEXT_BYTES / 1024} KB limit]`
+      } finally {
+        await fh.close()
+      }
+    }
     return await readFile(path, "utf8")
   } catch {
     return null
