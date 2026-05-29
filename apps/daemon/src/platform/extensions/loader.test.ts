@@ -28,6 +28,10 @@ const writeExt = (
     ...manifest,
   }
   writeFileSync(join(dir, "manifest.json"), JSON.stringify(full))
+  // The loader only imports a daemon entry when one exists on disk (or is
+  // explicitly declared). These fixtures exercise the daemon-side path via the
+  // fake importer, so drop a stub daemon.ts to make the entry "present".
+  writeFileSync(join(dir, "daemon.ts"), "export default () => {}\n")
   return dir
 }
 
@@ -148,6 +152,33 @@ describe("loadExtensions", () => {
     expect(res.loaded).toEqual(["okext"])
     expect(res.skipped.length).toBe(1)
     expect(res.skipped[0]?.reason.length).toBeGreaterThan(0)
+  })
+
+  it("(f) registers a UI-only ext with no daemon entry (iframe tier) without skipping", async () => {
+    // No daemon.ts on disk and no declared daemonEntry → UI-only extension.
+    const dir = join(roots.local, "ui-only")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, "manifest.json"),
+      JSON.stringify({ name: "ui-only", version: "1.0.0", tier: "iframe" }),
+    )
+    const registry = createRegistry()
+    let imported = false
+    const res = await loadExtensions({
+      roots,
+      registry,
+      granted: {},
+      importer: async () => {
+        imported = true
+        return {}
+      },
+    })
+    expect(imported).toBe(false) // never tried to import a non-existent entry
+    expect(res.loaded).toEqual(["ui-only"])
+    expect(res.skipped).toEqual([])
+    // Registered so it lists + serves static assets, but contributes no route.
+    expect(registry.get("ui-only")?.dir).toBe(dir)
+    expect(registry.mounts().some((m) => m.basePath === "/ext/ui-only")).toBe(false)
   })
 
   it("ignores subdirs without a manifest.json", async () => {

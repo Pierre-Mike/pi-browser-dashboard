@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useState } from "react"
 import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
+import { ExtensionHost } from "../features/extensions/ExtensionHost"
+import { useExtensions } from "../features/extensions/useExtensions"
 import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { useProjects } from "../features/projects/useProjects"
@@ -11,10 +13,12 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 })
 
-type TabKey = "projects" | "terminal" | "claude" | "library"
-type Tab = { readonly key: TabKey; readonly label: string }
+type StaticTabKey = "projects" | "terminal" | "claude" | "library"
+// Extension tabs are namespaced (`ext:<name>`) so they can never collide
+// with a static key.
+type TabKey = StaticTabKey | `ext:${string}`
 
-const TABS: readonly Tab[] = [
+const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "terminal", label: "Terminal" },
   { key: "projects", label: "Projects" },
   { key: "claude", label: "Claude" },
@@ -58,7 +62,13 @@ const ProjectsPanel = () => {
 
 function IndexPage() {
   const [tab, setTab] = useState<TabKey>("terminal")
-  const fillViewport = tab === "terminal" || tab === "claude" || tab === "library"
+  const extensionsQ = useExtensions()
+  // Only iframe-tier extensions that contribute a top-level tab.
+  const extTabs = (extensionsQ.data ?? []).filter(
+    (e) => e.tier === "iframe" && (e.contributes?.tabs?.length ?? 0) > 0,
+  )
+  const fillViewport =
+    tab === "terminal" || tab === "claude" || tab === "library" || tab.startsWith("ext:")
 
   return (
     <div
@@ -89,6 +99,28 @@ function IndexPage() {
               }`}
             >
               {t.label}
+            </button>
+          )
+        })}
+        {extTabs.map((e) => {
+          const key: TabKey = `ext:${e.name}`
+          const active = tab === key
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`dashboard-tab-ext-${e.name}`}
+              data-active={active}
+              onClick={() => setTab(key)}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                active
+                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              {e.name}
             </button>
           )
         })}
@@ -125,6 +157,20 @@ function IndexPage() {
       >
         <LibraryPanel scope="global" />
       </div>
+
+      {extTabs.map((e) => {
+        const key: TabKey = `ext:${e.name}`
+        return (
+          <div
+            key={key}
+            role="tabpanel"
+            data-testid={`dashboard-tab-panel-ext-${e.name}`}
+            className={tab === key ? "flex flex-col flex-1 min-h-0" : "hidden"}
+          >
+            <ExtensionHost manifest={e} />
+          </div>
+        )
+      })}
     </div>
   )
 }

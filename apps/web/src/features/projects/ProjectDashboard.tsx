@@ -3,6 +3,8 @@ import { useMemo, useState } from "react"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
+import { ExtensionHost } from "../extensions/ExtensionHost"
+import { useExtensions } from "../extensions/useExtensions"
 import { SessionCard } from "../sessions/SessionCard"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
@@ -13,7 +15,9 @@ type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
 
-type TabKey = "sessions" | "github" | "terminal" | "files" | "claude"
+type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude"
+// Extension-contributed project panels are namespaced (`ext:<name>`).
+type TabKey = StaticTabKey | `ext:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
 
@@ -43,9 +47,15 @@ const Pill = ({ label, value, tone }: { label: string; value: number; tone: stri
 
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
+  const extensionsQ = useExtensions()
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
+
+  // iframe-tier extensions that contribute a project panel.
+  const extPanels = (extensionsQ.data ?? []).filter(
+    (e) => e.tier === "iframe" && (e.contributes?.projectPanels?.length ?? 0) > 0,
+  )
 
   const tabs: readonly Tab[] = useMemo(() => {
     const base: Tab[] = [
@@ -55,8 +65,9 @@ export const ProjectDashboard = ({ project }: Props) => {
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
     base.push({ key: "files", label: "Files" })
     base.push({ key: "claude", label: "Claude" })
+    for (const e of extPanels) base.push({ key: `ext:${e.name}`, label: e.name })
     return base
-  }, [project.githubUrl, sessions.length])
+  }, [project.githubUrl, sessions.length, extPanels])
 
   const [tab, setTab] = useState<TabKey>("terminal")
   const fillViewport = tab === "terminal" || tab === "files" || tab === "claude"
@@ -227,6 +238,20 @@ export const ProjectDashboard = ({ project }: Props) => {
       >
         <ClaudeConfigPanel scope="project" projectId={project.id} />
       </div>
+
+      {extPanels.map((e) => {
+        const key: TabKey = `ext:${e.name}`
+        return (
+          <div
+            key={key}
+            role="tabpanel"
+            data-testid={`project-tab-panel-ext-${e.name}`}
+            className={tab === key ? "flex flex-col flex-1 min-h-0" : "hidden"}
+          >
+            <ExtensionHost manifest={e} projectId={project.id} cwd={project.path} />
+          </div>
+        )
+      })}
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />
     </div>

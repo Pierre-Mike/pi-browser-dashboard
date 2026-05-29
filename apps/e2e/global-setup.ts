@@ -157,6 +157,44 @@ export default async function globalSetup(): Promise<void> {
   const agenticRepoPath = join(sandbox, "agentic")
   mkdirSync(join(agenticRepoPath, "skills"), { recursive: true })
 
+  // Seed a permission-free iframe-tier extension so the extension host
+  // (Phase 2) has something to mount. With no permissions, the daemon's
+  // default-deny grant policy still mounts it; `getContext` works while
+  // `listFiles` (needs `fs`) is rejected by the RPC bridge — exercising both
+  // the happy path and the permission gate. extensions-iframe.spec.ts drives it.
+  const extRoot = join(sandbox, "pid-extensions")
+  const fixtureExt = join(extRoot, "e2e-iframe")
+  mkdirSync(fixtureExt, { recursive: true })
+  writeFileSync(
+    join(fixtureExt, "manifest.json"),
+    JSON.stringify({
+      name: "e2e-iframe",
+      version: "0.0.1",
+      tier: "iframe",
+      contributes: { tabs: [{ id: "e2e", label: "E2E Ext" }] },
+    }),
+  )
+  const fixtureHtml = [
+    "<!doctype html><html><head><meta charset='utf-8'><title>e2e ext</title></head><body>",
+    "<div data-testid='ext-ctx'>waiting</div>",
+    "<div data-testid='ext-deny'>waiting</div>",
+    "<script>",
+    "var got={};",
+    "function post(){",
+    "  if(!got.ctx) parent.postMessage({id:'ctx',method:'getContext'},'*');",
+    "  if(!got.deny) parent.postMessage({id:'deny',method:'listFiles',params:{path:'.'}},'*');",
+    "}",
+    "window.addEventListener('message',function(e){",
+    "  var d=e.data||{};",
+    "  if(d.id==='ctx'){got.ctx=true;document.querySelector(\"[data-testid='ext-ctx']\").textContent=d.ok?('ctx:'+(d.result&&d.result.extensionName)):('ctx-error:'+d.error);}",
+    "  if(d.id==='deny'){got.deny=true;document.querySelector(\"[data-testid='ext-deny']\").textContent=d.ok?'deny-UNEXPECTED-OK':('deny:'+d.error);}",
+    "});",
+    // Re-post until both replies land — survives any listener-attach race under load.
+    "post();var n=0;var t=setInterval(function(){post();if((got.ctx&&got.deny)||++n>40)clearInterval(t);},150);",
+    "</script></body></html>",
+  ].join("")
+  writeFileSync(join(fixtureExt, "index.html"), fixtureHtml)
+
   const daemonEnv = {
     ...process.env,
     CLAUDE_CONFIG_DIR: sandbox,
@@ -165,6 +203,7 @@ export default async function globalSetup(): Promise<void> {
     PID_PROJECTS_ROOT: workspace,
     PID_LIBRARY_DIR: libraryDir,
     PID_AGENTIC_REPO_PATH: agenticRepoPath,
+    PID_EXT_LOCAL_DIR: extRoot,
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
@@ -224,6 +263,7 @@ export default async function globalSetup(): Promise<void> {
       PID_PROJECTS_ROOT: workspace,
       PID_LIBRARY_DIR: libraryDir,
       PID_AGENTIC_REPO_PATH: agenticRepoPath,
+      PID_EXT_LOCAL_DIR: extRoot,
       // Carry stub PATH so helpers.restartDaemon spawns a daemon that can
       // still resolve `claude` to the stub in CI.
       ...(stubBin ? { PATH: pathWithStub ?? "" } : {}),

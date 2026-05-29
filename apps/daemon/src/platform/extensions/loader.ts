@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { sseBus } from "../sse-bus"
@@ -130,15 +130,22 @@ export const loadExtensions = async (
       scope: cand.scope,
     })
 
+    // The daemon entry is OPTIONAL: iframe-tier (UI-only) extensions often ship
+    // no daemon.ts. Only import when the entry file actually exists on disk. A
+    // missing entry means "no daemon-side logic" — still register the extension
+    // so it lists and serves its static assets. An entry that exists but throws
+    // is a real failure and skips the extension.
     const entryPath = join(cand.dir, manifest.daemonEntry ?? "daemon.ts")
-    try {
-      const mod = await importer(entryPath)
-      if (typeof mod.default === "function") {
-        await (mod.default as (a: unknown) => unknown)(api)
+    if (existsSync(entryPath)) {
+      try {
+        const mod = await importer(entryPath)
+        if (typeof mod.default === "function") {
+          await (mod.default as (a: unknown) => unknown)(api)
+        }
+      } catch (err) {
+        skip(name, String(err instanceof Error ? err.message : err))
+        continue
       }
-    } catch (err) {
-      skip(name, String(err instanceof Error ? err.message : err))
-      continue
     }
 
     // Ensure the ext is registered even if it registered no route (so it shows
