@@ -15,12 +15,11 @@ type Props = {
 }
 
 const DEFAULT_SKILL = "goal"
-const NO_SKILL = ""
 
 export const SpawnModal = ({ open, project, onClose }: Props) => {
   const qc = useQueryClient()
   const [intent, setIntent] = useState("")
-  const [skill, setSkill] = useState(DEFAULT_SKILL)
+  const [skills, setSkills] = useState<string[]>([DEFAULT_SKILL])
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const claudeConfig = useGlobalClaudeConfig()
@@ -28,15 +27,18 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   const skillOptions = useMemo(() => {
     const ids = (claudeConfig.data?.skills ?? []).map((s) => s.id)
     // Always surface the default even if the dir scan hasn't returned yet, so
-    // the dropdown isn't blank on first paint.
+    // the picker isn't empty on first paint.
     if (!ids.includes(DEFAULT_SKILL)) ids.unshift(DEFAULT_SKILL)
     return ids
   }, [claudeConfig.data])
 
+  const toggleSkill = (id: string) =>
+    setSkills((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
+
   useEffect(() => {
     if (!open) return
     setIntent("")
-    setSkill(DEFAULT_SKILL)
+    setSkills([DEFAULT_SKILL])
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
   }, [open])
@@ -59,7 +61,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    const text = prependSkill(skill, intent).trim()
+    const text = prependSkill(skills, intent).trim()
     if (!text || busy) return
     setBusy(true)
     try {
@@ -110,23 +112,35 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </span>
           ) : null}
         </div>
-        <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <span className="shrink-0">Skill</span>
-          <select
-            data-testid="spawn-skill"
-            value={skill}
-            onChange={(e) => setSkill(e.target.value)}
-            disabled={busy}
-            className="flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 py-1 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
-          >
-            <option value={NO_SKILL}>(none)</option>
-            {skillOptions.map((id) => (
-              <option key={id} value={id}>
-                /{id}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset
+          data-testid="spawn-skill"
+          className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        >
+          <legend className="shrink-0">Skills (select any)</legend>
+          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+            {skillOptions.map((id) => {
+              const selected = skills.includes(id)
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={selected}
+                  data-skill={id}
+                  data-selected={selected}
+                  onClick={() => toggleSkill(id)}
+                  disabled={busy}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-mono transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    selected
+                      ? "border-sky-500 bg-sky-600 text-white"
+                      : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  /{id}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
         <textarea
           ref={inputRef}
           value={intent}
