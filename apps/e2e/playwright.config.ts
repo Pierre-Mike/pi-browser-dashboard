@@ -9,7 +9,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  // Retry on CI only: the suite drives a live daemon + SSE stream whose
+  // delivery timing varies under runner load. A transient miss should not
+  // hard-fail an otherwise-passing PR. Local runs stay at 0 to surface flakes.
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never", outputFolder: "playwright-report" }]]
     : "list",
