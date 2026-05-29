@@ -43,6 +43,22 @@ test.describe("library tab", () => {
     await expect(installLocal).toBeDisabled()
   })
 
+  test("panel fills the available viewport height", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId("dashboard-tab-library").click()
+
+    const panel = page.getByTestId("library-panel")
+    await expect(panel).toBeVisible({ timeout: 10_000 })
+
+    const viewport = page.viewportSize()
+    const box = await panel.boundingBox()
+    if (!viewport || !box) throw new Error("missing viewport size or panel bounding box")
+    // The panel should fill most of the viewport height rather than collapsing
+    // to its content height.
+    expect(box.height).toBeGreaterThan(viewport.height * 0.7)
+  })
+
   test("agentic repo sub-tab lists items with register affordance", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })

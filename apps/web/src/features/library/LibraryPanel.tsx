@@ -52,7 +52,7 @@ export const LibraryPanel = (props: Props) => {
   if (!bundle) return null
 
   return (
-    <div data-testid="library-panel" className="flex flex-col gap-3">
+    <div data-testid="library-panel" className="flex flex-col flex-1 min-h-0 gap-3">
       <header className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="font-mono">{bundle.catalogPath}</span>
         <CountChip n={bundle.catalog.entries.length} label="entries" />
@@ -120,16 +120,16 @@ export const LibraryPanel = (props: Props) => {
       </nav>
 
       {LIBRARY_CATEGORIES.map((cat) => (
-        <div key={cat} className={tab === cat ? "" : "hidden"}>
+        <div key={cat} className={tab === cat ? "flex flex-col flex-1 min-h-0" : "hidden"}>
           <CatalogList bundle={bundle} category={cat} projectId={projectId} />
         </div>
       ))}
 
-      <div className={tab === "hooks" ? "" : "hidden"}>
+      <div className={tab === "hooks" ? "flex-1 min-h-0 overflow-auto" : "hidden"}>
         <HooksPlaceholder />
       </div>
 
-      <div className={tab === "agentic" ? "flex flex-col gap-2" : "hidden"}>
+      <div className={tab === "agentic" ? "flex flex-col flex-1 min-h-0 gap-2" : "hidden"}>
         <nav className="flex items-center gap-1 text-xs">
           <span className="text-slate-500 mr-1">Category:</span>
           {LIBRARY_CATEGORIES.map((cat) => {
