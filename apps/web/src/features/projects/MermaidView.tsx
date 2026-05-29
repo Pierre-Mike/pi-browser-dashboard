@@ -1,6 +1,21 @@
+import DOMPurify from "dompurify"
 import { useEffect, useId, useRef, useState } from "react"
 
 type Props = { code: string }
+
+let initialized = false
+
+function initializeMermaid(mermaid: { initialize: (cfg: object) => void }) {
+  if (!initialized) {
+    initialized = true
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: document.documentElement.classList.contains("dark") ? "dark" : "default",
+      fontFamily: "inherit",
+    })
+  }
+}
 
 export const MermaidView = ({ code }: Props) => {
   const rawId = useId()
@@ -13,15 +28,13 @@ export const MermaidView = ({ code }: Props) => {
     const run = async () => {
       try {
         const { default: mermaid } = await import("mermaid")
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict",
-          theme: document.documentElement.classList.contains("dark") ? "dark" : "default",
-          fontFamily: "inherit",
-        })
+        initializeMermaid(mermaid)
         const { svg } = await mermaid.render(idRef.current, code)
         if (cancelled) return
-        if (hostRef.current) hostRef.current.innerHTML = svg
+        if (hostRef.current)
+          hostRef.current.innerHTML = DOMPurify.sanitize(svg, {
+            USE_PROFILES: { svg: true, svgFilters: true },
+          })
         setError(null)
       } catch (e) {
         if (cancelled) return
@@ -40,9 +53,7 @@ export const MermaidView = ({ code }: Props) => {
         data-testid="mermaid-error"
         className="my-3 px-3 py-2 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs font-mono whitespace-pre-wrap"
       >
-        <div className="text-[10px] uppercase tracking-wide mb-1 opacity-70">
-          mermaid error
-        </div>
+        <div className="text-[10px] uppercase tracking-wide mb-1 opacity-70">mermaid error</div>
         {error}
         <pre className="mt-2 opacity-80">{code}</pre>
       </div>

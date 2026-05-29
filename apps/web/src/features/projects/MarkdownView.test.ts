@@ -26,11 +26,25 @@ describe("MermaidView", () => {
   })
 
   it("renders into a dom node via ref + innerHTML (not dangerouslySetInnerHTML on React tree)", () => {
-    expect(mermaidSrc).toContain("hostRef.current.innerHTML = svg")
+    expect(mermaidSrc).toMatch(/hostRef\.current\.innerHTML\s*=\s*DOMPurify\.sanitize\(/)
+  })
+
+  it("sanitizes svg output through DOMPurify before injecting into DOM", () => {
+    expect(mermaidSrc).toMatch(/import DOMPurify from ["']dompurify["']/)
+    expect(mermaidSrc).toMatch(/DOMPurify\.sanitize\(svg,/)
+    expect(mermaidSrc).toMatch(/USE_PROFILES.*svg:\s*true/)
   })
 
   it("uses strict security level so user-provided diagram text cannot inject html", () => {
     expect(mermaidSrc).toMatch(/securityLevel:\s*["']strict["']/)
+  })
+
+  it("initializes mermaid at module level with a run-once guard, not inside every render effect", () => {
+    // The initialize call must be outside any function / arrow function that is
+    // used as a useEffect callback — we look for a top-level `initialized` flag.
+    expect(mermaidSrc).toMatch(/let initialized/)
+    // initialize should be guarded so it runs only once
+    expect(mermaidSrc).toMatch(/if\s*\(!initialized\)/)
   })
 
   it("exposes a stable testid for the rendered diagram", () => {
