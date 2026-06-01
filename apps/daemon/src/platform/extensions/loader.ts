@@ -8,7 +8,7 @@ import type { ExtensionPermissions } from "./manifest"
 import { checkGrants } from "./permissions"
 import { extensionRegistry } from "./registry"
 import type { ExtensionRegistry, ExtensionScope } from "./registry"
-import { defaultStateFile, grantsAsPermissions, grantsFor, isEnabled, readState } from "./state"
+import { grantsAsPermissions, grantsFor, isEnabled, readState, stateFileFor } from "./state"
 import type { ExtensionState } from "./state"
 
 export type ExtensionImporter = (
@@ -68,7 +68,22 @@ export const loadExtensions = async (
   const importer = opts.importer ?? defaultImporter
   const globalRoot = opts.roots?.global ?? defaultGlobalRoot()
   const localRoot = opts.roots?.local ?? defaultLocalRoot()
-  const state: ExtensionState = opts.state ?? readState(opts.stateFile ?? defaultStateFile())
+
+  // State is resolved per candidate so local extensions read their project's
+  // state file and global ones the shared file. opts.state / opts.stateFile,
+  // when provided, override every candidate (used by tests). Files are cached
+  // so each distinct state file is read at most once per load.
+  const stateCache = new Map<string, ExtensionState>()
+  const stateFor = (cand: Candidate): ExtensionState => {
+    if (opts.state) return opts.state
+    const file = opts.stateFile ?? stateFileFor(cand)
+    let s = stateCache.get(file)
+    if (!s) {
+      s = readState(file)
+      stateCache.set(file, s)
+    }
+    return s
+  }
 
   // Global first, local second: when reduced by name, local overrides global.
   const candidates = [...scanRoot(globalRoot, "global"), ...scanRoot(localRoot, "local")]
@@ -112,6 +127,8 @@ export const loadExtensions = async (
   for (const name of order) {
     const cand = byName.get(name)
     if (!cand) continue
+
+    const state = stateFor(cand)
 
     // Disabled extensions are skipped entirely — not registered, not imported.
     if (!isEnabled(state, name)) {

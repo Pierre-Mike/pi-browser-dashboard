@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { app } from "../../api"
 import type { ExtensionManifest } from "../../platform/extensions/manifest"
 import { extensionRegistry } from "../../platform/extensions/registry"
+import { readState } from "../../platform/extensions/state"
 
 // Routes are exercised through the mounted api.ts `app` so the test also
 // covers the /extensions mount + enriched GET /extensions listing.
@@ -81,6 +82,24 @@ describe("extension management routes", () => {
     expect(res.status).toBe(200)
     const entry = await listEntry("alpha")
     expect((entry?.granted as string[]).sort()).toEqual(["events", "fs"])
+  })
+
+  it("local ext grants persist to the project's .pid state file, not a shared one", async () => {
+    // Drop the env override so the route uses scope-based resolution.
+    // biome-ignore lint/performance/noDelete: exercise the real per-project path
+    delete process.env.PID_EXT_STATE_FILE
+    // A realistic local install dir: <project>/.pid/extensions/<name>.
+    const extDir = join(stateDir, ".pid", "extensions", "alpha")
+    extensionRegistry.register({ manifest: mk("alpha"), dir: extDir, scope: "local" })
+
+    const res = await post("/extensions/alpha/grants", { fs: ["/data"] })
+    expect(res.status).toBe(200)
+
+    // State lands beside the extensions dir, scoped to this project only.
+    const projectStateFile = join(stateDir, ".pid", "extensions-state.json")
+    expect(readState(projectStateFile).alpha?.grants).toEqual({ fs: ["/data"] })
+    // And the GET listing reflects it.
+    expect(((await listEntry("alpha"))?.granted as string[]) ?? []).toContain("fs")
   })
 
   it("404s for an unknown extension", async () => {
