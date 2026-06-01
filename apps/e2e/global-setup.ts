@@ -162,7 +162,12 @@ export default async function globalSetup(): Promise<void> {
   // default-deny grant policy still mounts it; `getContext` works while
   // `listFiles` (needs `fs`) is rejected by the RPC bridge — exercising both
   // the happy path and the permission gate. extensions-iframe.spec.ts drives it.
+  // Registered as a GLOBAL extension so it surfaces on the home dashboard and
+  // in the unscoped /extensions listing (local extensions are now per-project
+  // and only show for the repo they live in). PID_EXT_STATE_FILE keeps its
+  // enable/grant state inside the sandbox instead of the runner's real home.
   const extRoot = join(sandbox, "pid-extensions")
+  const extStateFile = join(sandbox, "extensions-state.json")
   const fixtureExt = join(extRoot, "e2e-iframe")
   mkdirSync(fixtureExt, { recursive: true })
   writeFileSync(
@@ -207,7 +212,8 @@ export default async function globalSetup(): Promise<void> {
     PID_PROJECTS_ROOT: workspace,
     PID_LIBRARY_DIR: libraryDir,
     PID_AGENTIC_REPO_PATH: agenticRepoPath,
-    PID_EXT_LOCAL_DIR: extRoot,
+    PID_EXT_GLOBAL_DIR: extRoot,
+    PID_EXT_STATE_FILE: extStateFile,
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
@@ -267,7 +273,8 @@ export default async function globalSetup(): Promise<void> {
       PID_PROJECTS_ROOT: workspace,
       PID_LIBRARY_DIR: libraryDir,
       PID_AGENTIC_REPO_PATH: agenticRepoPath,
-      PID_EXT_LOCAL_DIR: extRoot,
+      PID_EXT_GLOBAL_DIR: extRoot,
+      PID_EXT_STATE_FILE: extStateFile,
       // Carry stub PATH so helpers.restartDaemon spawns a daemon that can
       // still resolve `claude` to the stub in CI.
       ...(stubBin ? { PATH: pathWithStub ?? "" } : {}),
