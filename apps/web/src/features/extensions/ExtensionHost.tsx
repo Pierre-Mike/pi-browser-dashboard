@@ -19,7 +19,11 @@ type Props = {
  */
 export const ExtensionHost = ({ manifest, projectId, cwd }: Props) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const src = `${base}/extensions/${manifest.name}/index.html`
+  // Carry projectId so the daemon can serve a project-local extension's assets
+  // (a local ext isn't in the shared registry; the id resolves its dir).
+  const src = projectId
+    ? `${base}/extensions/${manifest.name}/index.html?projectId=${encodeURIComponent(projectId)}`
+    : `${base}/extensions/${manifest.name}/index.html`
   // Stable string key so the effect dependency comparison works correctly.
   const grantedKey = manifest.granted.slice().sort().join(",")
 

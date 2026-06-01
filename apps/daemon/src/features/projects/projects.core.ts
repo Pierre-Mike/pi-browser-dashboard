@@ -34,6 +34,16 @@ export const resolveProjectPath = (root: string, input: string | undefined): Res
   return { ok: true, absPath, relPath: back }
 }
 
+// Resolve a project id (a directory name under projectsRoot) to its absolute
+// path, rejecting anything that isn't a plain single segment — leading dots,
+// path separators, and NUL bytes — so a crafted id can't escape projectsRoot.
+export const projectPathFromId = (projectsRoot: string, id: string): string | null => {
+  if (!id || id.startsWith(".") || id.includes("/") || id.includes("\\") || id.includes("\0")) {
+    return null
+  }
+  return resolve(projectsRoot, id)
+}
+
 // Heuristic binary detection: scan the first N bytes for a NUL. Matches the
 // approach used by git and ripgrep — cheap, no false negatives on real binaries,
 // and short-circuits as soon as one is found.

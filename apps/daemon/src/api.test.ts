@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { app } from "./api"
 import type { ExtensionManifest } from "./platform/extensions/manifest"
+import { clearProjectExtensionsCache } from "./platform/extensions/project-extensions"
 import { extensionRegistry } from "./platform/extensions/registry"
 
 const mk = (name: string): ExtensionManifest => ({
@@ -44,6 +45,75 @@ describe("GET /extensions", () => {
     // permissions are a key summary, not raw values
     expect(body[0]?.permissions).toEqual(["fs", "events"])
     expect(JSON.stringify(body)).not.toContain("/secret/path")
+  })
+})
+
+describe("GET /extensions?projectId (per-project local scoping)", () => {
+  let projectsRoot: string
+  let savedRoot: string | undefined
+
+  const installLocal = (projectId: string, name: string): string => {
+    const extDir = join(projectsRoot, projectId, ".pid", "extensions", name)
+    mkdirSync(extDir, { recursive: true })
+    writeFileSync(
+      join(extDir, "manifest.json"),
+      JSON.stringify({ name, version: "0.1.0", tier: "iframe" }),
+    )
+    writeFileSync(join(extDir, "index.html"), `<title>${name}</title>`)
+    return extDir
+  }
+
+  beforeEach(() => {
+    clearProjectExtensionsCache()
+    projectsRoot = mkdtempSync(join(tmpdir(), "pid-proots-"))
+    savedRoot = process.env.PID_PROJECTS_ROOT
+    process.env.PID_PROJECTS_ROOT = projectsRoot
+  })
+
+  afterEach(() => {
+    clearProjectExtensionsCache()
+    if (savedRoot === undefined) Reflect.deleteProperty(process.env, "PID_PROJECTS_ROOT")
+    else process.env.PID_PROJECTS_ROOT = savedRoot
+    try {
+      rmSync(projectsRoot, { recursive: true, force: true })
+    } catch {
+      // ignore
+    }
+  })
+
+  it("includes a project's local extension only when its projectId is passed", async () => {
+    installLocal("proj-a", "repo-explorer")
+
+    const scoped = (await (await app.request("/extensions?projectId=proj-a")).json()) as Array<
+      Record<string, unknown>
+    >
+    expect(scoped.map((e) => e.name)).toContain("repo-explorer")
+    expect(scoped.find((e) => e.name === "repo-explorer")?.scope).toBe("local")
+
+    // No projectId → globals only → the local panel must NOT appear.
+    const unscoped = (await (await app.request("/extensions")).json()) as Array<
+      Record<string, unknown>
+    >
+    expect(unscoped.map((e) => e.name)).not.toContain("repo-explorer")
+  })
+
+  it("does not leak project A's local extension into project B", async () => {
+    installLocal("proj-a", "repo-explorer")
+    const forB = (await (await app.request("/extensions?projectId=proj-b")).json()) as Array<
+      Record<string, unknown>
+    >
+    expect(forB.map((e) => e.name)).not.toContain("repo-explorer")
+  })
+
+  it("serves a project-local extension's assets when ?projectId is given", async () => {
+    installLocal("proj-a", "repo-explorer")
+    const ok = await app.request("/extensions/repo-explorer/index.html?projectId=proj-a")
+    expect(ok.status).toBe(200)
+    expect(await ok.text()).toBe("<title>repo-explorer</title>")
+
+    // Without projectId the local asset is unreachable (404).
+    const missing = await app.request("/extensions/repo-explorer/index.html")
+    expect(missing.status).toBe(404)
   })
 })
 

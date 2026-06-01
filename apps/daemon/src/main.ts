@@ -31,10 +31,13 @@ if (ISSUE_POLL_MS > 0) {
   issueDriverTimer = setInterval(runTick, ISSUE_POLL_MS)
 }
 
-// Discover, permission-gate and mount extensions from the global/local dirs.
-// A failure here must never block daemon boot.
+// Discover, permission-gate and mount GLOBAL extensions into the shared
+// registry at boot. Local (per-project) extensions are NOT scanned here — they
+// are discovered on demand per project by resolveProjectExtensions so a panel
+// installed in one repo never leaks into another (local:null skips the local
+// scan). A failure here must never block daemon boot.
 try {
-  await loadExtensions()
+  await loadExtensions({ roots: { local: null } })
   mountExtensions(app)
 } catch (err) {
   console.error("[extensions] load failed", err)

@@ -17,10 +17,16 @@ export class ConfigService extends Context.Tag("ConfigService")<
   ConfigServiceApi
 >() {}
 
+// The projects root, resolved the same way buildConfig() does. Exported so
+// non-Effect code (e.g. the plain Hono extensions routes) can map a projectId
+// to its path without standing up the ConfigService.
+export const defaultProjectsRoot = (): string =>
+  process.env.PID_PROJECTS_ROOT ?? join(homedir(), "Github")
+
 const buildConfig = (): PidConfig => {
   const home = homedir()
   return {
-    projectsRoot: process.env.PID_PROJECTS_ROOT ?? join(home, "Github"),
+    projectsRoot: defaultProjectsRoot(),
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
     appPort: Number(process.env.PORT ?? 8787),
   }

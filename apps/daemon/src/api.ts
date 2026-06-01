@@ -9,11 +9,15 @@ import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
+import { projectPathFromId } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
+import { defaultProjectsRoot } from "./platform/config.repo"
+import { resolveProjectExtensions } from "./platform/extensions/project-extensions"
 import { extensionRegistry } from "./platform/extensions/registry"
+import type { LoadedExtension } from "./platform/extensions/registry"
 
 const DEFAULT_ORIGINS = ["http://localhost:5173"]
 
@@ -40,6 +44,18 @@ const extMime = (rel: string): string => {
   if (dot === -1) return "application/octet-stream"
   return EXT_MIME_BY_EXT[rel.toLowerCase().slice(dot + 1)] ?? "application/octet-stream"
 }
+// Discover the local extensions installed in a given project (by id). Returns
+// [] for an absent/invalid id or a project with no local extensions. Used to
+// scope panels: a local extension only surfaces for the project it lives in.
+const localExtensionsForProject = async (
+  projectId: string | undefined,
+): Promise<readonly LoadedExtension[]> => {
+  if (!projectId) return []
+  const path = projectPathFromId(defaultProjectsRoot(), projectId)
+  if (!path) return []
+  return resolveProjectExtensions(path)
+}
+
 const extraOrigins = (process.env.PID_CORS_ORIGINS ?? "")
   .split(",")
   .map((s) => s.trim())
@@ -68,14 +84,25 @@ const app = new Hono()
   .route("/claude-config", claudeConfigRoute.app)
   .route("/library", libraryRoute.app)
   .route("/uploads", uploadsRoute.app)
-  .get("/extensions", (c) =>
-    c.json(extensionRegistry.list().map((e) => extensionsRoute.extensionListEntry(e))),
-  )
+  .get("/extensions", async (c) => {
+    // Globals apply to every project; locals are scoped to ?projectId. When a
+    // local and a global share a name, the local wins for that project.
+    const byName = new Map<string, LoadedExtension>()
+    for (const e of extensionRegistry.list()) byName.set(e.manifest.name, e)
+    for (const e of await localExtensionsForProject(c.req.query("projectId"))) {
+      byName.set(e.manifest.name, e)
+    }
+    return c.json([...byName.values()].map((e) => extensionsRoute.extensionListEntry(e)))
+  })
   // Enable/disable/grants management endpoints (POST /extensions/:name/...).
   .route("/extensions", extensionsRoute.app)
   .get("/extensions/:name/*", async (c) => {
     const name = c.req.param("name")
-    const ext = extensionRegistry.get(name)
+    // A project-local extension is not in the shared registry, so when the
+    // iframe carries ?projectId we resolve its dir from that project first and
+    // fall back to a same-named global only if the project has no such local.
+    const locals = await localExtensionsForProject(c.req.query("projectId"))
+    const ext = locals.find((e) => e.manifest.name === name) ?? extensionRegistry.get(name)
     if (!ext) return c.json({ error: "not_found" }, 404)
     // Everything after /extensions/<name>/ is the requested asset path.
     const prefix = `/extensions/${name}/`

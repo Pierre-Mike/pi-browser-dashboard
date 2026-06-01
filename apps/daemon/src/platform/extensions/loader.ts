@@ -16,7 +16,10 @@ export type ExtensionImporter = (
 ) => Promise<{ default?: (...args: never[]) => unknown }>
 
 export type LoadExtensionsOptions = {
-  roots?: { global?: string; local?: string }
+  // A root set to null is skipped entirely (not scanned). Omitting a root falls
+  // back to its default location; this is how callers scan only one scope, e.g.
+  // production boot loads globals only and project panels load locals only.
+  roots?: { global?: string | null; local?: string | null }
   registry?: ExtensionRegistry
   granted?: ExtensionPermissions
   importer?: ExtensionImporter
@@ -66,8 +69,9 @@ export const loadExtensions = async (
   const registry = opts.registry ?? extensionRegistry
   const granted = opts.granted ?? {}
   const importer = opts.importer ?? defaultImporter
-  const globalRoot = opts.roots?.global ?? defaultGlobalRoot()
-  const localRoot = opts.roots?.local ?? defaultLocalRoot()
+  const globalRoot =
+    opts.roots?.global === null ? null : (opts.roots?.global ?? defaultGlobalRoot())
+  const localRoot = opts.roots?.local === null ? null : (opts.roots?.local ?? defaultLocalRoot())
 
   // State is resolved per candidate so local extensions read their project's
   // state file and global ones the shared file. opts.state / opts.stateFile,
@@ -86,7 +90,10 @@ export const loadExtensions = async (
   }
 
   // Global first, local second: when reduced by name, local overrides global.
-  const candidates = [...scanRoot(globalRoot, "global"), ...scanRoot(localRoot, "local")]
+  const candidates = [
+    ...(globalRoot ? scanRoot(globalRoot, "global") : []),
+    ...(localRoot ? scanRoot(localRoot, "local") : []),
+  ]
 
   const loaded: string[] = []
   const skipped: { name: string; reason: string }[] = []

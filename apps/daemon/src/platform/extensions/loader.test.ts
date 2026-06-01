@@ -338,6 +338,34 @@ describe("loadExtensions", () => {
     }
   })
 
+  it("(l) a null root is skipped entirely — local:null loads globals only", async () => {
+    writeExt(roots.global, "g-only", { name: "g-only" })
+    writeExt(roots.local, "l-skipped", { name: "l-skipped" })
+    const registry = createRegistry()
+    const res = await loadExtensions({
+      roots: { global: roots.global, local: null },
+      registry,
+      granted: {},
+      importer: async () => pingModule("g"),
+    })
+    expect(res.loaded).toEqual(["g-only"])
+    expect(registry.get("l-skipped")).toBeUndefined()
+  })
+
+  it("(m) global:null loads locals only", async () => {
+    writeExt(roots.global, "g-skipped", { name: "g-skipped" })
+    writeExt(roots.local, "l-only", { name: "l-only" })
+    const registry = createRegistry()
+    const res = await loadExtensions({
+      roots: { global: null, local: roots.local },
+      registry,
+      granted: {},
+      importer: async () => pingModule("l"),
+    })
+    expect(res.loaded).toEqual(["l-only"])
+    expect(registry.get("g-skipped")).toBeUndefined()
+  })
+
   it("(j) absent name in state defaults to enabled=true (no state file => all enabled)", async () => {
     writeExt(roots.global, "no-state-ext", { name: "no-state-ext" })
     const registry = createRegistry()

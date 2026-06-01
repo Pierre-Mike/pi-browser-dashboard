@@ -47,7 +47,7 @@ const Pill = ({ label, value, tone }: { label: string; value: number; tone: stri
 
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
-  const extensionsQ = useExtensions()
+  const extensionsQ = useExtensions(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)

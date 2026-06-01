@@ -7,6 +7,7 @@ import {
   parseGitHead,
   parseGithubOrigin,
   parseGithubUrl,
+  projectPathFromId,
   resolveProjectPath,
   sortEntries,
 } from "./projects.core"
@@ -46,6 +47,21 @@ describe("resolveProjectPath", () => {
 
   it("rejects NUL bytes", () => {
     expect(resolveProjectPath(ROOT, "src/\0bad")).toEqual({ ok: false, reason: "invalid" })
+  })
+})
+
+describe("projectPathFromId", () => {
+  const PROOT = "/home/u/Github"
+  it("resolves a plain id to a child of projectsRoot", () => {
+    expect(projectPathFromId(PROOT, "my-repo")).toBe("/home/u/Github/my-repo")
+  })
+  it("rejects empty, dot-prefixed, and separator-bearing ids", () => {
+    expect(projectPathFromId(PROOT, "")).toBeNull()
+    expect(projectPathFromId(PROOT, ".hidden")).toBeNull()
+    expect(projectPathFromId(PROOT, "..")).toBeNull()
+    expect(projectPathFromId(PROOT, "a/b")).toBeNull()
+    expect(projectPathFromId(PROOT, "a\\b")).toBeNull()
+    expect(projectPathFromId(PROOT, "a\0b")).toBeNull()
   })
 })
 
