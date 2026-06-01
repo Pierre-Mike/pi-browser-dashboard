@@ -111,7 +111,15 @@ the **Extensions** tab in the dashboard — your extension's tab will appear.
 To use `listFiles` / `readFile` RPC methods, grant the **fs** capability to
 your extension in the Extensions tab.
 
-A working example lives at [`examples/extensions/hello/`](./examples/extensions/hello/).
+Worked examples live in [`examples/extensions/`](./examples/extensions/):
+
+- [`hello/`](./examples/extensions/hello/) — the minimal scaffold output; calls
+  `getContext` and renders it.
+- [`repo-explorer/`](./examples/extensions/repo-explorer/) — a project panel that
+  browses the repo's file tree over the RPC bridge. Demonstrates project-scoped
+  context and the permission model: it stays inert until you grant **fs** in the
+  Extensions tab, then lists files (click a directory to descend). Copy it into
+  `~/.pid/extensions/` or a project's `.pid/extensions/` to try it.
 
 ## Contributing
 
