@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   grantsFor,
@@ -9,6 +9,7 @@ import {
   readState,
   setEnabled,
   setGrants,
+  stateFileFor,
   writeState,
 } from "./state"
 
@@ -140,6 +141,50 @@ describe("grantsFor", () => {
   it("returns stored grants", () => {
     const state = { myext: { enabled: true, grants: { fs: ["/tmp"], events: true } } }
     expect(grantsFor(state, "myext")).toEqual({ fs: ["/tmp"], events: true })
+  })
+})
+
+describe("stateFileFor", () => {
+  const savedEnv = process.env.PID_EXT_STATE_FILE
+
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      // biome-ignore lint/performance/noDelete: keep env clean for sibling tests
+      delete process.env.PID_EXT_STATE_FILE
+    } else {
+      process.env.PID_EXT_STATE_FILE = savedEnv
+    }
+  })
+
+  it("global scope resolves to the shared home state file", () => {
+    // biome-ignore lint/performance/noDelete: ensure no override is in effect
+    delete process.env.PID_EXT_STATE_FILE
+    expect(stateFileFor({ scope: "global", dir: "/anything/here" })).toBe(
+      join(homedir(), ".pid/extensions-state.json"),
+    )
+  })
+
+  it("local scope resolves to the project's .pid directory, not home", () => {
+    // biome-ignore lint/performance/noDelete: ensure no override is in effect
+    delete process.env.PID_EXT_STATE_FILE
+    const dir = "/projA/.pid/extensions/my-ext"
+    expect(stateFileFor({ scope: "local", dir })).toBe("/projA/.pid/extensions-state.json")
+  })
+
+  it("local extensions in different projects resolve to different state files", () => {
+    // biome-ignore lint/performance/noDelete: ensure no override is in effect
+    delete process.env.PID_EXT_STATE_FILE
+    const a = stateFileFor({ scope: "local", dir: "/projA/.pid/extensions/shared" })
+    const b = stateFileFor({ scope: "local", dir: "/projB/.pid/extensions/shared" })
+    expect(a).not.toBe(b)
+  })
+
+  it("PID_EXT_STATE_FILE overrides both scopes", () => {
+    process.env.PID_EXT_STATE_FILE = "/override/state.json"
+    expect(stateFileFor({ scope: "global", dir: "/x" })).toBe("/override/state.json")
+    expect(stateFileFor({ scope: "local", dir: "/projA/.pid/extensions/e" })).toBe(
+      "/override/state.json",
+    )
   })
 })
 

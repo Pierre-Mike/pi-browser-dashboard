@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { Hono } from "hono"
 import type { ExtensionApi } from "./api"
 import { loadExtensions } from "./loader"
@@ -289,6 +289,52 @@ describe("loadExtensions", () => {
       } catch {
         // ignore
       }
+    }
+  })
+
+  it("(k) local ext state is per-project: a disable in project A does not propagate to project B", async () => {
+    // Without an explicit state/stateFile, the loader resolves a LOCAL ext's
+    // state from <project>/.pid/extensions-state.json. Guard against a leaked
+    // env override from a sibling test.
+    const savedEnv = process.env.PID_EXT_STATE_FILE
+    // biome-ignore lint/performance/noDelete: a real override would defeat the test
+    delete process.env.PID_EXT_STATE_FILE
+    const emptyGlobal = mkdtempSync(join(tmpdir(), "pid-ext-g-empty-"))
+    const projA = mkdtempSync(join(tmpdir(), "pid-proj-a-"))
+    const projB = mkdtempSync(join(tmpdir(), "pid-proj-b-"))
+    cleanups.push(emptyGlobal, projA, projB)
+
+    // Both projects ship the SAME-named local extension.
+    const localA = join(projA, ".pid/extensions")
+    const localB = join(projB, ".pid/extensions")
+    writeExt(localA, "shared", { name: "shared" })
+    writeExt(localB, "shared", { name: "shared" })
+
+    // Disable it ONLY in project A's own state file.
+    writeState(join(dirname(localA), "extensions-state.json"), {
+      shared: { enabled: false, grants: {} },
+    })
+
+    try {
+      const resA = await loadExtensions({
+        roots: { global: emptyGlobal, local: localA },
+        registry: createRegistry(),
+        granted: {},
+        importer: async () => pingModule("shared"),
+      })
+      expect(resA.loaded).not.toContain("shared")
+      expect(resA.skipped.find((s) => s.name === "shared")?.reason).toBe("disabled")
+
+      // Project B has no state file → the disable must NOT leak across projects.
+      const resB = await loadExtensions({
+        roots: { global: emptyGlobal, local: localB },
+        registry: createRegistry(),
+        granted: {},
+        importer: async () => pingModule("shared"),
+      })
+      expect(resB.loaded).toContain("shared")
+    } finally {
+      if (savedEnv !== undefined) process.env.PID_EXT_STATE_FILE = savedEnv
     }
   })
 

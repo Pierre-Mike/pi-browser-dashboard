@@ -2,13 +2,13 @@ import { Hono } from "hono"
 import { sanitizeManifest } from "../../platform/extensions/manifest"
 import { extensionRegistry } from "../../platform/extensions/registry"
 import {
-  defaultStateFile,
   grantsFor,
   isEnabled,
   permissionKeysFromGrants,
   readState,
   setEnabled,
   setGrants,
+  stateFileFor,
 } from "../../platform/extensions/state"
 import type { ExtensionGrants } from "../../platform/extensions/state"
 import { sseBus } from "../../platform/sse-bus"
@@ -16,13 +16,12 @@ import { sseBus } from "../../platform/sse-bus"
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 
-const stateFile = (): string => defaultStateFile()
-
 const app = new Hono()
   .post("/:name/enable", (c) => {
     const name = c.req.param("name")
-    if (!extensionRegistry.get(name)) return c.json({ error: "not_found" }, 404)
-    const state = setEnabled(stateFile(), name, true)
+    const entry = extensionRegistry.get(name)
+    if (!entry) return c.json({ error: "not_found" }, 404)
+    const state = setEnabled(stateFileFor(entry), name, true)
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,
@@ -32,8 +31,9 @@ const app = new Hono()
   })
   .post("/:name/disable", (c) => {
     const name = c.req.param("name")
-    if (!extensionRegistry.get(name)) return c.json({ error: "not_found" }, 404)
-    const state = setEnabled(stateFile(), name, false)
+    const entry = extensionRegistry.get(name)
+    if (!entry) return c.json({ error: "not_found" }, 404)
+    const state = setEnabled(stateFileFor(entry), name, false)
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,
@@ -43,7 +43,8 @@ const app = new Hono()
   })
   .post("/:name/grants", async (c) => {
     const name = c.req.param("name")
-    if (!extensionRegistry.get(name)) return c.json({ error: "not_found" }, 404)
+    const entry = extensionRegistry.get(name)
+    if (!entry) return c.json({ error: "not_found" }, 404)
     let body: unknown
     try {
       body = await c.req.json()
@@ -70,7 +71,7 @@ const app = new Hono()
     if (Array.isArray(exec)) grants.exec = exec as string[]
     if (Array.isArray(net)) grants.net = net as string[]
     if (typeof events === "boolean") grants.events = events
-    const state = setGrants(stateFile(), name, grants)
+    const state = setGrants(stateFileFor(entry), name, grants)
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,
@@ -84,7 +85,7 @@ export { app }
 export const extensionListEntry = (
   e: ReturnType<typeof extensionRegistry.list>[number],
 ): Record<string, unknown> => {
-  const state = readState(stateFile())
+  const state = readState(stateFileFor(e))
   const sanitized = sanitizeManifest(e.manifest)
   const grants = grantsFor(state, e.manifest.name)
   return {
