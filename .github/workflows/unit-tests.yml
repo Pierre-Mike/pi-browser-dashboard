@@ -15,6 +15,28 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: biome ci (lint + format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Biome ci
+        run: bun run lint:ci
+
   bun-test:
     name: bun test (daemon)
     runs-on: ubuntu-latest
