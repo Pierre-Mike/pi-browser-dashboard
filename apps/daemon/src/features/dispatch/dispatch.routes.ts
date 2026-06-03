@@ -48,5 +48,4 @@ export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
 
 const app = buildDispatchApp(appRuntime)
 
-export const testApp = app
 export { app }

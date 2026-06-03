@@ -20,3 +20,4 @@ apps/e2e/playwright-report/
 
 # Local extensions scaffolded by `bun run pid-ext --local`
 .pid/
+.fallow/

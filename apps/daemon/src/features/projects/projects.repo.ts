@@ -27,12 +27,12 @@ export type Project = {
   readonly githubRepo?: string
 }
 
-export type FileListing = {
+type FileListing = {
   readonly path: string
   readonly entries: readonly FileEntry[]
 }
 
-export type FileContent = {
+type FileContent = {
   readonly path: string
   readonly size: number
   readonly isBinary: boolean
@@ -45,14 +45,14 @@ export type FileError = "not_found" | "not_a_directory" | "not_a_file" | "forbid
 const MAX_READ_BYTES = 1_000_000 // 1 MB hard cap on text previews
 const MAX_RAW_BYTES = 50_000_000 // 50 MB hard cap on raw media streams
 
-export type RawFile = {
+type RawFile = {
   readonly absPath: string
   readonly relPath: string
   readonly size: number
   readonly mime: string
 }
 
-export type ProjectsServiceApi = {
+type ProjectsServiceApi = {
   readonly list: () => Effect.Effect<readonly Project[], never, never>
   readonly listDir: (
     id: string,

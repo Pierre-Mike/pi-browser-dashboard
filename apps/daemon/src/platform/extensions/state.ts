@@ -13,9 +13,6 @@ export type ExtensionGrants = {
 
 export type ExtensionState = Record<string, { enabled: boolean; grants: ExtensionGrants }>
 
-export const defaultStateFile = (): string =>
-  process.env.PID_EXT_STATE_FILE ?? join(homedir(), ".pid/extensions-state.json")
-
 // Resolve the state file that holds an extension's enabled/grants record.
 //
 // State is scoped to match where the extension lives, so a LOCAL extension's

@@ -148,7 +148,3 @@ export const fetchGithubSummary = async (cwd: string): Promise<GithubProjectSumm
   cache.set(cwd, { at: Date.now(), value })
   return value
 }
-
-export const _resetGithubCacheForTests = (): void => {
-  cache.clear()
-}

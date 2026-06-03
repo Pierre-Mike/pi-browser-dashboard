@@ -83,5 +83,4 @@ const app = new Hono().get("/", (c) => {
   })
 })
 
-export const testApp = app
 export { app }

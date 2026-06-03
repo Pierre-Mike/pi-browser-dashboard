@@ -8,7 +8,7 @@ export type PidConfig = {
   readonly appPort: number
 }
 
-export type ConfigServiceApi = {
+type ConfigServiceApi = {
   readonly get: () => Effect.Effect<PidConfig, never, never>
 }
 

@@ -9,13 +9,13 @@ import type { ExtensionManifest } from "./types"
 
 // ---------- protocol types ----------
 
-export type RpcRequest = {
+type RpcRequest = {
   id: string
   method: string
   params?: unknown
 }
 
-export type RpcResponse = {
+type RpcResponse = {
   id: string
   ok: boolean
   result?: unknown

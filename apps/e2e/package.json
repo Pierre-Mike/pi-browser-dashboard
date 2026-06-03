@@ -9,10 +9,6 @@
     "install:browser": "playwright install chromium",
     "setup:auth": "bash scripts/setup-auth.sh"
   },
-  "dependencies": {
-    "@pid/daemon": "workspace:*",
-    "@pid/web": "workspace:*"
-  },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@types/bun": "^1.3.14",

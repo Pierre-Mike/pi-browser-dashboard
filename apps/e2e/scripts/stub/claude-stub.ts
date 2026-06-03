@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url"
 
 // ---- paths / fs ------------------------------------------------------------
 
-export const configDir = (): string => {
+const configDir = (): string => {
   const dir = process.env.CLAUDE_CONFIG_DIR
   if (!dir) {
     process.stderr.write("[claude-stub] CLAUDE_CONFIG_DIR not set\n")
@@ -83,7 +83,7 @@ export type StubRoster = {
   workers: Record<string, StubWorker>
 }
 
-export type StubState = {
+type StubState = {
   state: "working" | "done" | "failed" | "stopped" | "idle" | "needs_input"
   intent: string
   name?: string

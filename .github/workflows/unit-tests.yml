@@ -39,3 +39,30 @@ jobs:
 
       - name: Run unit tests
         run: bun run test
+
+  dead-code:
+    name: fallow audit (dead code)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Audit changed files for dead code
+        run: |
+          git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
+          bun run dead-code:audit -- --base "origin/${{ github.base_ref }}"

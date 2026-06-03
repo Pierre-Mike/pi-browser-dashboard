@@ -50,7 +50,7 @@ const absolutePosition = (
   return { x, y }
 }
 
-export const newGroupId = (existing: ReadonlyArray<GroupableNode>): string => {
+const newGroupId = (existing: ReadonlyArray<GroupableNode>): string => {
   const taken = new Set(existing.map((n) => n.id))
   let i = 1
   for (;;) {

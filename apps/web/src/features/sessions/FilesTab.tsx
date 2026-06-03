@@ -3,7 +3,7 @@ import { useMemo, useState } from "react"
 import { api } from "../../lib/api"
 import { parseUnifiedDiff, summarizeDiff } from "./diffParse"
 
-export type SessionFiles = {
+type SessionFiles = {
   short: string
   changed: boolean
   files: Array<{ path: string; status: string; oldPath?: string }>
