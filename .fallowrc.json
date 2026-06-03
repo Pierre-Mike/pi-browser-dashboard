@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "src/main.ts",
+    "src/main.tsx",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "global-setup.ts",
+    "global-teardown.ts",
+    "playwright.config.ts"
+  ],
+  "workspaces": {
+    "packages": ["apps/*"]
+  },
+  "duplicates": {
+    "minOccurrences": 3
+  },
+  "rules": {}
+}
