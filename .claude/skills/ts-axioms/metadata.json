@@ -1,0 +1,19 @@
+{
+  "triggers": [
+    "set up TypeScript project",
+    "set up linting",
+    "configure Biome",
+    "configure ESLint",
+    "set up pre-commit hooks",
+    "configure husky",
+    "configure Lefthook",
+    "functional core imperative shell",
+    "Effect-TS",
+    "effect layers",
+    "dependency injection TypeScript",
+    "co-located tests",
+    "engineering principles",
+    "tooling stack",
+    "architecture TypeScript"
+  ]
+}
