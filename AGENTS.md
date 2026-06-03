@@ -334,15 +334,18 @@ The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every c
 
 This repo enforces TDD at three layers; do not bypass without a written reason.
 
-1. **Pre-commit (`.githooks/pre-commit` → `scripts/check-tests-touched.sh`)**
-   Blocks any commit that touches `apps/*/src/**` without staging a `*.spec.ts` /
+1. **Pre-commit (`lefthook.yml` → `biome` + `scripts/check-tests-touched.sh`)**
+   `biome` auto-fixes the staged files (`--write`) and re-stages them
+   (`stage_fixed`) — the lint-staged equivalent. The TDD gate then blocks any
+   commit that touches `apps/*/src/**` without staging a `*.spec.ts` /
    `*.test.ts` / `*.spec.tsx` / `*.test.tsx`. Bypass: `SKIP_TDD=1 git commit …` or
    `git commit --no-verify …` — docs/deps/config only.
 
-2. **Pre-push (`.githooks/pre-push`)**
-   Runs `bun run test:e2e` (full Playwright suite) before every push. Failures
-   abort the push, so a red branch never reaches the remote and no PR is opened
-   on broken code. Bypass: `SKIP_E2E=1 git push …` or `git push --no-verify …`.
+2. **Pre-push (`lefthook.yml` → feature-test floor → `bun run test` → e2e)**
+   Runs the daemon unit suite and `bun run test:e2e` (full Playwright suite)
+   before every push. Failures abort the push, so a red branch never reaches the
+   remote and no PR is opened on broken code. Bypass: `SKIP_E2E=1 git push …` or
+   `git push --no-verify …`.
 
 3. **PR e2e workflow (`.github/workflows/pr-e2e.yml`)**
    Runs on every PR against `main`: `bun install` → `lint:ci` → Playwright. The
@@ -353,7 +356,9 @@ This repo enforces TDD at three layers; do not bypass without a written reason.
    `apps/e2e/playwright.config.ts` (`screenshot: { mode: "on", fullPage: true }`).
 
 The local hooks activate automatically via `package.json` `prepare` →
-`git config core.hooksPath .githooks`. Run `bun install` once after cloning.
+`lefthook install` (configured in `lefthook.yml`). Run `bun install` once after
+cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
+`core.hooksPath`; wire new gates as `lefthook.yml` jobs.
 
 ## Engineering axioms (inherited)
 

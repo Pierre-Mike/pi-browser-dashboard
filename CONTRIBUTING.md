@@ -8,7 +8,7 @@ For architecture and the rationale behind stack choices, read `AGENTS.md`.
 ## Setup
 
 ```bash
-bun install   # also wires .githooks/ via the `prepare` script
+bun install   # also wires git hooks via `prepare` → `lefthook install`
 bun run dev   # daemon + web together
 ```
 
