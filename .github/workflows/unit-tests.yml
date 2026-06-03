@@ -44,6 +44,7 @@ jobs:
     name: fallow audit (dead code)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name == 'pull_request'
     env:
       CI: "true"
 
@@ -62,4 +63,6 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Audit changed files for dead code
-        run: bun run dead-code:audit
+        run: |
+          git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
+          bun run dead-code:audit -- --base "origin/${{ github.base_ref }}"
