@@ -39,3 +39,27 @@ jobs:
 
       - name: Run unit tests
         run: bun run test
+
+  dead-code:
+    name: fallow audit (dead code)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Audit changed files for dead code
+        run: bun run dead-code:audit
