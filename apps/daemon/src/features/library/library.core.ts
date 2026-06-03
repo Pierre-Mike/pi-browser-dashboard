@@ -24,8 +24,6 @@ export const LIBRARY_CATEGORIES = [
 ] as const
 export type LibraryCategory = (typeof LIBRARY_CATEGORIES)[number]
 
-export type RequireRef = `${LibraryCategory | "skill" | "agent" | "tool" | "prompt"}:${string}`
-
 export type LibraryEntry = {
   readonly name: string
   readonly type: LibraryCategory
@@ -44,7 +42,6 @@ export type Catalog = {
   readonly entries: readonly LibraryEntry[]
 }
 
-export type SourceKind = "local" | "github"
 export type ParsedSource =
   | { readonly kind: "local"; readonly absPath: string; readonly dir: string }
   | {

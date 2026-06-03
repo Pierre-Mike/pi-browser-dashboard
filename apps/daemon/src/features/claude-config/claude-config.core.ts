@@ -1,17 +1,6 @@
 // Pure parsers for Claude Code config (settings.json, skills, hooks).
 // No I/O — file reads live in claude-config.repo.ts.
 
-export type HookEvent =
-  | "Stop"
-  | "SubagentStop"
-  | "Notification"
-  | "PreToolUse"
-  | "PostToolUse"
-  | "UserPromptSubmit"
-  | "PreCompact"
-  | "SessionStart"
-  | "SessionEnd"
-
 export type HookEntry = {
   readonly event: string
   readonly matcher?: string

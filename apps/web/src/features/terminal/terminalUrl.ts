@@ -6,8 +6,6 @@
 // user runs `claude attach <short>` themselves from inside zellij when they
 // want the session TUI.
 // Pure so the test pins the exact path/query the daemon expects.
-export type TerminalKind = "session" | "project" | "global"
-
 export type TerminalWsUrlInput =
   | {
       readonly baseUrl: string

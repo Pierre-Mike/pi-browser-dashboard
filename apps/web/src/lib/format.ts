@@ -68,12 +68,3 @@ const PALETTE: Record<SessionStateValue, Tone> = {
 }
 
 export const stateColor = (state: SessionStateValue): Tone => PALETTE[state] ?? PALETTE.idle
-
-export const STATE_ORDER: readonly SessionStateValue[] = [
-  "needs_input",
-  "working",
-  "idle",
-  "done",
-  "failed",
-  "stopped",
-] as const

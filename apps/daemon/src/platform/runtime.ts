@@ -45,7 +45,3 @@ const AppLayer = Layer.mergeAll(
 )
 
 export const appRuntime = ManagedRuntime.make(AppLayer)
-
-export const shutdownRuntime = async (): Promise<void> => {
-  await appRuntime.dispose()
-}
