@@ -67,7 +67,7 @@ apps/
   e2e/      # Playwright suite.
 scripts/    # TDD floor + feature-test gate.
 .claude/loops/  # host-level launchd scripts (issue-driver pipeline)
-.githooks/  # pre-commit + pre-push (test-touched + e2e).
+lefthook.yml  # pre-commit (biome + test-touched) + pre-push (unit + e2e).
 .github/    # CI workflows + issue/PR templates.
 AGENTS.md   # Architecture, surface area, deferred work.
 ```

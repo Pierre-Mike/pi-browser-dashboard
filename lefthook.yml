@@ -1,0 +1,33 @@
+# Single git-hook runner for the repo (replaces the hand-rolled .githooks/).
+# Wired automatically by `bun install` via the `prepare` script → `lefthook install`.
+#
+# Bypass everything:  LEFTHOOK=0 git …   or   git … --no-verify
+# Per-gate bypass env vars are noted on each job below.
+
+pre-commit:
+  piped: true # run in order, abort on first failure
+  jobs:
+    # lint-staged equivalent: auto-fix the staged files with Biome, then
+    # re-stage them so the fixes land in the same commit (no second commit).
+    - name: biome
+      glob: "*.{ts,tsx,js,jsx,json,jsonc}"
+      run: bunx biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+    # TDD gate: a change under apps/*/src/** must stage a *.test.ts / *.spec.ts.
+    # Bypass: SKIP_TDD=1 git commit …
+    - name: tdd-gate
+      run: ./scripts/check-tests-touched.sh
+
+pre-push:
+  piped: true
+  jobs:
+    # Standing invariant: every apps/daemon/src/features/<feature>/ folder ships
+    # at least one co-located test. Bypass: SKIP_FEATURE_TEST_FLOOR=1 git push …
+    - name: feature-test-floor
+      run: ./scripts/check-feature-tests.sh
+    # Fast daemon unit suite.
+    - name: unit
+      run: bun run test
+    # Full Playwright e2e suite. Bypass: SKIP_E2E=1 git push …
+    - name: e2e
+      run: ./scripts/check-e2e.sh
