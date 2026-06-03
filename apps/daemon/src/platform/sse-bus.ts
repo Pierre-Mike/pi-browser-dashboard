@@ -1,6 +1,6 @@
 export type SseEvent = { readonly type: string; readonly data: unknown }
-export type SseSubscriber = (event: SseEvent) => void
-export type Unsubscribe = () => void
+type SseSubscriber = (event: SseEvent) => void
+type Unsubscribe = () => void
 
 type Bus = {
   readonly subscribe: (cb: SseSubscriber) => Unsubscribe

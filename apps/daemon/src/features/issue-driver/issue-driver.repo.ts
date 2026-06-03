@@ -67,7 +67,7 @@ export type IssueDriverStatus = {
   readonly processed: readonly IssueKey[]
 }
 
-export type IssueDriverApi = {
+type IssueDriverApi = {
   readonly tick: () => Effect.Effect<void, never, never>
   readonly status: () => Effect.Effect<IssueDriverStatus, never, never>
   readonly pause: (paused: boolean) => Effect.Effect<void, never, never>

@@ -52,7 +52,7 @@ export type RawFile = {
   readonly mime: string
 }
 
-export type ProjectsServiceApi = {
+type ProjectsServiceApi = {
   readonly list: () => Effect.Effect<readonly Project[], never, never>
   readonly listDir: (
     id: string,

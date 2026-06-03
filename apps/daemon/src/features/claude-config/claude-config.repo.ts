@@ -30,7 +30,7 @@ export type ScopeBundle = {
 
 export type ClaudeConfigError = "not_found" | "forbidden"
 
-export type ClaudeConfigServiceApi = {
+type ClaudeConfigServiceApi = {
   readonly readGlobal: () => Effect.Effect<ScopeBundle, never, never>
   readonly readProject: (projectId: string) => Effect.Effect<ScopeBundle, ClaudeConfigError, never>
   readonly readSkill: (

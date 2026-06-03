@@ -44,7 +44,7 @@ export type CanvasSnapshot = {
   readonly viewport?: CanvasViewport
 }
 
-export type ServerFrame =
+type ServerFrame =
   | {
       readonly kind: "snapshot"
       readonly snapshot: CanvasSnapshot
@@ -52,7 +52,7 @@ export type ServerFrame =
     }
   | { readonly kind: "error"; readonly message: string }
 
-export type ClientFrame =
+type ClientFrame =
   | { readonly kind: "snapshot"; readonly snapshot: CanvasSnapshot }
   | { readonly kind: "request" }
 

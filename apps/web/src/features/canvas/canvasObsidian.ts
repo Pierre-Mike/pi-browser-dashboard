@@ -122,7 +122,7 @@ const sameFrame = <N, E>(a: HistoryFrame<N, E>, b: HistoryFrame<N, E>): boolean 
   return canvasHistoryKey(a) === canvasHistoryKey(b)
 }
 
-export const canvasHistoryKey = <N, E>(frame: HistoryFrame<N, E>): string => {
+const canvasHistoryKey = <N, E>(frame: HistoryFrame<N, E>): string => {
   const stripped = {
     nodes: frame.nodes.map((n) => {
       const { selected: _s, dragging: _d, measured: _m, ...rest } = n as Record<string, unknown>
