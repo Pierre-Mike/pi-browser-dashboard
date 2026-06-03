@@ -47,7 +47,7 @@ for (let i = 1; i < args.length; i++) {
   } else if (arg === "--tier") {
     const next = args[i + 1]
     if (!next || next.startsWith("--")) {
-      console.error(`error: --tier requires a value (e.g. --tier iframe)`)
+      console.error("error: --tier requires a value (e.g. --tier iframe)")
       process.exit(1)
     }
     if (next !== "iframe") {
@@ -104,5 +104,5 @@ for (const file of result.files) {
 
 console.warn("")
 console.warn(
-  `Next: restart the daemon (bun run dev:daemon) then open the Extensions tab in the dashboard.`,
+  "Next: restart the daemon (bun run dev:daemon) then open the Extensions tab in the dashboard.",
 )
