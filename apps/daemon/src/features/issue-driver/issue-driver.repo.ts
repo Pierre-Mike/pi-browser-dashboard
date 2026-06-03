@@ -59,7 +59,7 @@ export class GhIssueClient extends Context.Tag("GhIssueClient")<
   GhIssueClientApi
 >() {}
 
-export type IssueDriverStatus = {
+type IssueDriverStatus = {
   readonly paused: boolean
   readonly lastTickAt: number | null
   readonly lastError: string | null
