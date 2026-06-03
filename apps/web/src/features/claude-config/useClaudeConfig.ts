@@ -28,11 +28,15 @@ export const useProjectClaudeConfig = (projectId: string) =>
     staleTime: 10_000,
   })
 
-export const useSkillDetail = (
-  scope: "global" | "project",
-  projectId: string | null,
-  skillId: string | null,
-) =>
+export const useSkillDetail = ({
+  scope,
+  projectId,
+  skillId,
+}: {
+  scope: "global" | "project"
+  projectId: string | null
+  skillId: string | null
+}) =>
   useQuery<SkillDetail>({
     queryKey: ["claude-config", "skill", scope, projectId, skillId],
     enabled: skillId !== null && (scope === "global" || projectId !== null),

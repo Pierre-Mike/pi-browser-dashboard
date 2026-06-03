@@ -4,9 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import {
+  copyDir,
   GitClient,
   GitError,
-  copyDir,
   makeGitClientRecorder,
   makeTempDir,
   removeDir,
@@ -81,7 +81,9 @@ describe("GitClient recorder", () => {
       },
     })
     const dst = await makeTempDir("pid-git-rec")
-    await Effect.runPromise(rec.client.clone("https://example.com/r.git", dst, { depth: 1 }))
+    await Effect.runPromise(
+      rec.client.clone({ url: "https://example.com/r.git", dst, opts: { depth: 1 } }),
+    )
     expect(rec.calls[0]?.method).toBe("clone")
     expect(await readFile(join(dst, "marker"), "utf8")).toBe("cloned")
     await removeDir(dst)
@@ -90,14 +92,18 @@ describe("GitClient recorder", () => {
   it("records pullFastForward and commitAndPush calls", async () => {
     const rec = makeGitClientRecorder()
     await Effect.runPromise(rec.client.pullFastForward("/tmp/foo"))
-    const sha = await Effect.runPromise(rec.client.commitAndPush("/tmp/foo", ["a"], "test"))
+    const sha = await Effect.runPromise(
+      rec.client.commitAndPush({ dir: "/tmp/foo", files: ["a"], message: "test" }),
+    )
     expect(sha).toBe("stub-sha")
     expect(rec.calls.map((c) => c.method)).toEqual(["pullFastForward", "commitAndPush"])
   })
 
   it("propagates GitError from a failing clone", async () => {
     const rec = makeGitClientRecorder({ failClone: true })
-    const ex = await Effect.runPromise(rec.client.clone("u", "/tmp/x", {}).pipe(Effect.either))
+    const ex = await Effect.runPromise(
+      rec.client.clone({ url: "u", dst: "/tmp/x", opts: {} }).pipe(Effect.either),
+    )
     expect(ex._tag).toBe("Left")
     if (ex._tag === "Left") expect(ex.left).toBeInstanceOf(GitError)
   })
@@ -105,7 +111,7 @@ describe("GitClient recorder", () => {
   it("propagates GitError from a failing push", async () => {
     const rec = makeGitClientRecorder({ failPush: true })
     const ex = await Effect.runPromise(
-      rec.client.commitAndPush("/tmp/x", ["a"], "m").pipe(Effect.either),
+      rec.client.commitAndPush({ dir: "/tmp/x", files: ["a"], message: "m" }).pipe(Effect.either),
     )
     expect(ex._tag).toBe("Left")
   })

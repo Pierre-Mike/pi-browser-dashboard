@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import type { CanvasSnapshot } from "./canvas.types"
 import {
+  colorFor,
   type DuplicableEdge,
   type DuplicableNode,
-  colorFor,
   duplicateSelection,
   fromJsonCanvas,
   newHistory,

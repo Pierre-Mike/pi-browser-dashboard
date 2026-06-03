@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useProjects } from "../projects/useProjects"
 import { PaletteModal } from "./PaletteModal"
-import { type PaletteEntry, type PaletteHandle, installPalette } from "./palette"
+import { installPalette, type PaletteEntry, type PaletteHandle } from "./palette"
 
 export const PaletteController = () => {
   const projectsQ = useProjects()

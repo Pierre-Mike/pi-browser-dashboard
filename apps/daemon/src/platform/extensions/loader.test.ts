@@ -16,11 +16,15 @@ const makeRoots = (): Roots => ({
   local: mkdtempSync(join(tmpdir(), "pid-ext-l-")),
 })
 
-const writeExt = (
-  root: string,
-  name: string,
-  manifest: Partial<ExtensionManifest> & { name: string },
-): string => {
+const writeExt = ({
+  root,
+  name,
+  manifest,
+}: {
+  root: string
+  name: string
+  manifest: Partial<ExtensionManifest> & { name: string }
+}): string => {
   const dir = join(root, name)
   mkdirSync(dir, { recursive: true })
   const full: Record<string, unknown> = {
@@ -65,7 +69,7 @@ const pingModule = (label: string) => ({
 
 describe("loadExtensions", () => {
   it("(a) loads a granted ext, mounts its route reachable via mountExtensions", async () => {
-    const dir = writeExt(roots.global, "alpha", { name: "alpha" })
+    const dir = writeExt({ root: roots.global, name: "alpha", manifest: { name: "alpha" } })
     const registry = createRegistry()
     const importer = async (abs: string) => {
       expect(abs).toBe(join(dir, "daemon.ts"))
@@ -88,9 +92,13 @@ describe("loadExtensions", () => {
   })
 
   it("(b) skips an ext requesting an un-granted permission", async () => {
-    writeExt(roots.global, "needy", {
+    writeExt({
+      root: roots.global,
       name: "needy",
-      permissions: { exec: ["rm"] },
+      manifest: {
+        name: "needy",
+        permissions: { exec: ["rm"] },
+      },
     })
     const registry = createRegistry()
     const res = await loadExtensions({
@@ -107,8 +115,16 @@ describe("loadExtensions", () => {
   })
 
   it("(c) local same-name overrides global (dir + version win)", async () => {
-    const gdir = writeExt(roots.global, "dup", { name: "dup", version: "1.0.0" })
-    const ldir = writeExt(roots.local, "dup", { name: "dup", version: "2.0.0" })
+    const gdir = writeExt({
+      root: roots.global,
+      name: "dup",
+      manifest: { name: "dup", version: "1.0.0" },
+    })
+    const ldir = writeExt({
+      root: roots.local,
+      name: "dup",
+      manifest: { name: "dup", version: "2.0.0" },
+    })
     const registry = createRegistry()
     const importer = async (abs: string) => {
       if (abs.startsWith(gdir)) return pingModule("global")
@@ -124,8 +140,8 @@ describe("loadExtensions", () => {
   })
 
   it("(d) a throwing importer does not crash the loader; others still load", async () => {
-    const aDir = writeExt(roots.global, "good", { name: "good" })
-    writeExt(roots.global, "bad", { name: "bad" })
+    const aDir = writeExt({ root: roots.global, name: "good", manifest: { name: "good" } })
+    writeExt({ root: roots.global, name: "bad", manifest: { name: "bad" } })
     const registry = createRegistry()
     const importer = async (abs: string) => {
       if (abs.startsWith(aDir)) return pingModule("good")
@@ -139,7 +155,7 @@ describe("loadExtensions", () => {
   })
 
   it("(e) an invalid manifest.json is skipped without affecting others", async () => {
-    const okDir = writeExt(roots.global, "okext", { name: "okext" })
+    const okDir = writeExt({ root: roots.global, name: "okext", manifest: { name: "okext" } })
     // invalid: bad name
     const badDir = join(roots.global, "weird")
     mkdirSync(badDir, { recursive: true })
@@ -184,7 +200,7 @@ describe("loadExtensions", () => {
 
   it("ignores subdirs without a manifest.json", async () => {
     mkdirSync(join(roots.global, "empty"), { recursive: true })
-    writeExt(roots.global, "real", { name: "real" })
+    writeExt({ root: roots.global, name: "real", manifest: { name: "real" } })
     const registry = createRegistry()
     const res = await loadExtensions({
       roots,
@@ -207,7 +223,7 @@ describe("loadExtensions", () => {
   })
 
   it("(g) disabled ext in state is not loaded or registered", async () => {
-    writeExt(roots.global, "disabled-ext", { name: "disabled-ext" })
+    writeExt({ root: roots.global, name: "disabled-ext", manifest: { name: "disabled-ext" } })
     const registry = createRegistry()
     const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
     writeState(stateFile, { "disabled-ext": { enabled: false, grants: {} } })
@@ -234,9 +250,13 @@ describe("loadExtensions", () => {
   })
 
   it("(h) state grants allow a permission-requesting ext to mount", async () => {
-    writeExt(roots.global, "fs-ext", {
+    writeExt({
+      root: roots.global,
       name: "fs-ext",
-      permissions: { fs: ["/tmp"] },
+      manifest: {
+        name: "fs-ext",
+        permissions: { fs: ["/tmp"] },
+      },
     })
     const registry = createRegistry()
     const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
@@ -264,9 +284,13 @@ describe("loadExtensions", () => {
   })
 
   it("(i) ext with ungranted permission still skipped with missing list when state has no grants", async () => {
-    writeExt(roots.global, "exec-ext", {
+    writeExt({
+      root: roots.global,
       name: "exec-ext",
-      permissions: { exec: ["rm"] },
+      manifest: {
+        name: "exec-ext",
+        permissions: { exec: ["rm"] },
+      },
     })
     const registry = createRegistry()
     const stateFile = join(tmpdir(), `pid-loader-state-${Math.random().toString(36).slice(2)}.json`)
@@ -307,8 +331,8 @@ describe("loadExtensions", () => {
     // Both projects ship the SAME-named local extension.
     const localA = join(projA, ".pid/extensions")
     const localB = join(projB, ".pid/extensions")
-    writeExt(localA, "shared", { name: "shared" })
-    writeExt(localB, "shared", { name: "shared" })
+    writeExt({ root: localA, name: "shared", manifest: { name: "shared" } })
+    writeExt({ root: localB, name: "shared", manifest: { name: "shared" } })
 
     // Disable it ONLY in project A's own state file.
     writeState(join(dirname(localA), "extensions-state.json"), {
@@ -339,7 +363,7 @@ describe("loadExtensions", () => {
   })
 
   it("(j) absent name in state defaults to enabled=true (no state file => all enabled)", async () => {
-    writeExt(roots.global, "no-state-ext", { name: "no-state-ext" })
+    writeExt({ root: roots.global, name: "no-state-ext", manifest: { name: "no-state-ext" } })
     const registry = createRegistry()
     // Pass an empty state object — absent name means enabled by default
     const res = await loadExtensions({

@@ -13,8 +13,8 @@ test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
     await page.goto(`/sessions/${short}`)
 
     // Switch to the canvas tab.
@@ -89,8 +89,8 @@ test("canvas tab — edge label input appears when an edge is selected", async (
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
     await page.goto(`/sessions/${short}`)
     await page.getByTestId("tab-canvas").click()
     await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })

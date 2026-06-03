@@ -1,8 +1,14 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "ignore": ["dist", "node_modules", ".vite", "apps/web/src/routeTree.gen.ts"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/.vite",
+      "!**/apps/web/src/routeTree.gen.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -21,9 +27,20 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "complexity": {
+        "useMaxParams": { "level": "error", "options": { "max": 2 } }
+      },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } }
+        "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } },
+        "noUnknownAtRules": "off",
+        "noArrayIndexKey": "off"
+      },
+      "a11y": {
+        "noNoninteractiveElementToInteractiveRole": "off",
+        "useAriaPropsSupportedByRole": "off",
+        "noStaticElementInteractions": "off",
+        "useButtonType": "off"
       },
       "style": {
         "useConst": "error",

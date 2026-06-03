@@ -1,5 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query"
 import {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   type Connection,
   Controls,
@@ -11,19 +14,12 @@ import {
   type NodeChange,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
   useReactFlow,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../../lib/api"
 import type { SessionState } from "../../lib/types"
-import { EditableBoxNode } from "./EditableBoxNode"
-import { EditableFileNode } from "./EditableFileNode"
-import { EditableGroupNode } from "./EditableGroupNode"
-import { EditableLinkNode } from "./EditableLinkNode"
 import { snapshotFromReactFlow } from "./canvas.types"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
 import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
@@ -34,13 +30,13 @@ import {
 } from "./canvasGrouping"
 import {
   type ArrowDirection,
-  OBSIDIAN_COLORS,
-  type ObsidianColor,
   colorFor,
   duplicateSelection,
   fromJsonCanvas,
   newHistory,
   normalizeArrow,
+  OBSIDIAN_COLORS,
+  type ObsidianColor,
   parseJsonCanvas,
   pushHistory,
   redo as redoHistory,
@@ -48,6 +44,10 @@ import {
   toJsonCanvas,
   undo as undoHistory,
 } from "./canvasObsidian"
+import { EditableBoxNode } from "./EditableBoxNode"
+import { EditableFileNode } from "./EditableFileNode"
+import { EditableGroupNode } from "./EditableGroupNode"
+import { EditableLinkNode } from "./EditableLinkNode"
 import { type SyncStatus, useCanvasSync } from "./useCanvasSync"
 
 type Props = { readonly session: SessionState }
@@ -334,8 +334,10 @@ const CanvasInner = ({ session }: Props) => {
     setNodes((prev) => {
       const selectedIds = prev.filter((n) => n.selected).map((n) => n.id)
       if (selectedIds.length < 2) return prev
-      const { nodes: next } = groupSelectedNodes(prev.map(toGroupable), selectedIds, {
-        label: "Group",
+      const { nodes: next } = groupSelectedNodes({
+        nodes: prev.map(toGroupable),
+        selectedIds,
+        opts: { label: "Group" },
       })
       return next.map((n) => {
         const original = prev.find((p) => p.id === n.id)
@@ -463,7 +465,7 @@ const CanvasInner = ({ session }: Props) => {
           selected: n.selected,
           data: n.data as Record<string, unknown> | undefined,
         }))
-        const aligned = alignNodes(arrangeable, selectedIds, axis)
+        const aligned = alignNodes({ nodes: arrangeable, selectedIds, axis })
         return prev.map((n, i) => {
           const next = aligned[i]
           return next ? ({ ...n, position: next.position } as Node) : n
@@ -485,7 +487,7 @@ const CanvasInner = ({ session }: Props) => {
           height: typeof n.height === "number" ? n.height : (n.measured?.height ?? null),
           selected: n.selected,
         }))
-        const distributed = distributeNodes(arrangeable, selectedIds, axis)
+        const distributed = distributeNodes({ nodes: arrangeable, selectedIds, axis })
         return prev.map((n, i) => {
           const next = distributed[i]
           return next ? ({ ...n, position: next.position } as Node) : n

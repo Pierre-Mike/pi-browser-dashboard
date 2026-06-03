@@ -6,7 +6,15 @@ import type { FileContent, FileListing } from "../../lib/types"
 const baseUrl = (): string =>
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
-export const useProjectDir = (projectId: string, path: string, enabled = true) =>
+export const useProjectDir = ({
+  projectId,
+  path,
+  enabled = true,
+}: {
+  projectId: string
+  path: string
+  enabled?: boolean
+}) =>
   useQuery<FileListing>({
     queryKey: ["project-dir", projectId, path],
     enabled,

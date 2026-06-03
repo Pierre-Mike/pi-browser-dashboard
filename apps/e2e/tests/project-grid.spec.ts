@@ -19,10 +19,10 @@ test("two sessions on same cwd group under one ProjectSection", async ({ page })
 
   try {
     await page.goto("/")
-    await waitForCard(page, a.short, 20_000)
-    await waitForCard(page, b.short, 20_000)
-    await waitForSettled(page, a.short)
-    await waitForSettled(page, b.short)
+    await waitForCard({ page, short: a.short, timeout: 20_000 })
+    await waitForCard({ page, short: b.short, timeout: 20_000 })
+    await waitForSettled({ page, short: a.short })
+    await waitForSettled({ page, short: b.short })
 
     const section = page.locator('[data-testid="project-section"][data-project-id="proj-a"]')
     await expect(section).toHaveCount(1)

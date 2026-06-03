@@ -6,12 +6,12 @@
 
 import {
   type Document,
-  type YAMLMap,
-  type YAMLSeq,
   isMap,
   isSeq,
   parseDocument,
   parse as parseYaml,
+  type YAMLMap,
+  type YAMLSeq,
 } from "yaml"
 
 export const LIBRARY_CATEGORIES = [
@@ -313,11 +313,15 @@ export class DuplicateEntryError extends Error {
   override readonly name = "DuplicateEntryError"
 }
 
-export const upsertEntryInDocument = (
-  doc: Document,
-  entry: LibraryEntry,
-  mode: "add" | "upsert" = "add",
-): void => {
+export const upsertEntryInDocument = ({
+  doc,
+  entry,
+  mode = "add",
+}: {
+  doc: Document
+  entry: LibraryEntry
+  mode?: "add" | "upsert"
+}): void => {
   const seq = ensureCategorySeq(doc, entry.type)
   const existingIdx = (seq.items as unknown[]).findIndex((item) => {
     if (!isMap(item)) return false
@@ -340,11 +344,15 @@ export const upsertEntryInDocument = (
   }
 }
 
-export const removeEntryFromDocument = (
-  doc: Document,
-  name: string,
-  type: LibraryCategory,
-): boolean => {
+export const removeEntryFromDocument = ({
+  doc,
+  name,
+  type,
+}: {
+  doc: Document
+  name: string
+  type: LibraryCategory
+}): boolean => {
   const library = doc.get("library")
   if (!isMap(library)) return false
   const seq = library.get(type)

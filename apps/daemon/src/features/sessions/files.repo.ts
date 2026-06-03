@@ -71,7 +71,15 @@ const defaultGitRunner: GitRunner = async (args, cwd) => {
 // preferred diff target. Fallbacks let the diff still render for unusual repos.
 const BASE_CANDIDATES = ["origin/main", "origin/master", "main", "master", "HEAD"] as const
 
-const verifyRef = (git: GitRunner, cwd: string, ref: string): Effect.Effect<boolean, FilesError> =>
+const verifyRef = ({
+  git,
+  cwd,
+  ref,
+}: {
+  git: GitRunner
+  cwd: string
+  ref: string
+}): Effect.Effect<boolean, FilesError> =>
   Effect.tryPromise({
     try: async () => {
       const { code } = await git(["rev-parse", "--verify", "--quiet", ref], cwd)
@@ -83,17 +91,21 @@ const verifyRef = (git: GitRunner, cwd: string, ref: string): Effect.Effect<bool
 const pickBase = (git: GitRunner, cwd: string): Effect.Effect<string, FilesError> =>
   Effect.gen(function* () {
     for (const ref of BASE_CANDIDATES) {
-      const ok = yield* verifyRef(git, cwd, ref)
+      const ok = yield* verifyRef({ git, cwd, ref })
       if (ok) return ref
     }
     return yield* Effect.fail(new FilesError({ reason: "no_base_ref" }))
   })
 
-const runGit = (
-  git: GitRunner,
-  args: readonly string[],
-  cwd: string,
-): Effect.Effect<GitOutput, FilesError> =>
+const runGit = ({
+  git,
+  args,
+  cwd,
+}: {
+  git: GitRunner
+  args: readonly string[]
+  cwd: string
+}): Effect.Effect<GitOutput, FilesError> =>
   Effect.tryPromise({
     try: () => git(args, cwd),
     catch: () => new FilesError({ reason: "spawn_failed" }),
@@ -105,7 +117,11 @@ const computeDiff = (
 ): Effect.Effect<WorktreeDiff, FilesError> =>
   Effect.gen(function* () {
     // Reject paths that aren't actually a git worktree before invoking diff.
-    const insideRes = yield* runGit(git, ["rev-parse", "--is-inside-work-tree"], worktreePath)
+    const insideRes = yield* runGit({
+      git,
+      args: ["rev-parse", "--is-inside-work-tree"],
+      cwd: worktreePath,
+    })
     if (insideRes.code !== 0 || insideRes.stdout.trim() !== "true") {
       return yield* Effect.fail(new FilesError({ reason: "not_a_worktree" }))
     }
@@ -115,7 +131,11 @@ const computeDiff = (
     // PLUS uncommitted/working-tree edits, while ignoring commits the user
     // hasn't authored (e.g. unrelated main movement). `git diff <commit>`
     // already includes the working tree.
-    const nameStatusOut = yield* runGit(git, ["diff", "--name-status", "-z", base], worktreePath)
+    const nameStatusOut = yield* runGit({
+      git,
+      args: ["diff", "--name-status", "-z", base],
+      cwd: worktreePath,
+    })
     if (nameStatusOut.code !== 0) {
       return yield* Effect.fail(
         new FilesError({ reason: "git_failed", stderr: nameStatusOut.stderr }),
@@ -123,15 +143,15 @@ const computeDiff = (
     }
     const tracked = parseNameStatus(nameStatusOut.stdout)
 
-    const untrackedOut = yield* runGit(
+    const untrackedOut = yield* runGit({
       git,
-      ["ls-files", "--others", "--exclude-standard", "-z"],
-      worktreePath,
-    )
+      args: ["ls-files", "--others", "--exclude-standard", "-z"],
+      cwd: worktreePath,
+    })
     const untracked = untrackedOut.code === 0 ? parseUntracked(untrackedOut.stdout) : []
     const files = mergeChanges(tracked, untracked)
 
-    const diffOut = yield* runGit(git, ["diff", base], worktreePath)
+    const diffOut = yield* runGit({ git, args: ["diff", base], cwd: worktreePath })
     const truncatedDiff =
       diffOut.code === 0
         ? truncateDiff(diffOut.stdout, MAX_DIFF_BYTES)

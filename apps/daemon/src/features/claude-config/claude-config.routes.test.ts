@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test"
 import { Effect, ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import type { SkillDetail } from "./claude-config.core"
-import { ClaudeConfigRepoTest, ClaudeConfigService } from "./claude-config.repo"
 import type { ScopeBundle } from "./claude-config.repo"
+import { ClaudeConfigRepoTest, ClaudeConfigService } from "./claude-config.repo"
 
 const sampleGlobal: ScopeBundle = {
   scope: "global",
@@ -66,9 +66,9 @@ const buildApp = () => {
     .get("/global/skills/:skillId", async (c) => {
       const skillId = c.req.param("skillId")
       const result = await testRuntime.runPromise(
-        Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, skillId)).pipe(
-          Effect.either,
-        ),
+        Effect.flatMap(ClaudeConfigService, (s) =>
+          s.readSkill({ scope: "global", projectId: null, skillId }),
+        ).pipe(Effect.either),
       )
       if (result._tag === "Left")
         return c.json({ error: result.left }, result.left === "forbidden" ? 403 : 404)

@@ -9,13 +9,17 @@ const boxes: GroupableNode[] = [
 
 describe("groupSelected", () => {
   it("returns a noop result when nothing is selected", () => {
-    const out = groupSelected(boxes, [])
+    const out = groupSelected({ nodes: boxes, selectedIds: [] })
     expect(out.groupId).toBeNull()
     expect(out.nodes).toEqual(boxes)
   })
 
   it("creates a group node containing the selected boxes", () => {
-    const out = groupSelected(boxes, ["a", "b"], { groupId: "g1", label: "Cluster" })
+    const out = groupSelected({
+      nodes: boxes,
+      selectedIds: ["a", "b"],
+      opts: { groupId: "g1", label: "Cluster" },
+    })
     expect(out.groupId).toBe("g1")
 
     const group = out.nodes.find((n) => n.id === "g1")
@@ -29,7 +33,7 @@ describe("groupSelected", () => {
   })
 
   it("rewrites child positions to be relative to the group origin", () => {
-    const out = groupSelected(boxes, ["a", "b"], { groupId: "g1" })
+    const out = groupSelected({ nodes: boxes, selectedIds: ["a", "b"], opts: { groupId: "g1" } })
     const group = out.nodes.find((n) => n.id === "g1")
     const a = out.nodes.find((n) => n.id === "a")
     const b = out.nodes.find((n) => n.id === "b")
@@ -47,7 +51,7 @@ describe("groupSelected", () => {
   })
 
   it("puts the group node before its children so React Flow renders parent-first", () => {
-    const out = groupSelected(boxes, ["a", "b"], { groupId: "g1" })
+    const out = groupSelected({ nodes: boxes, selectedIds: ["a", "b"], opts: { groupId: "g1" } })
     const order = out.nodes.map((n) => n.id)
     expect(order.indexOf("g1")).toBeLessThan(order.indexOf("a"))
     expect(order.indexOf("g1")).toBeLessThan(order.indexOf("b"))
@@ -59,7 +63,7 @@ describe("groupSelected", () => {
       { id: "x", position: { x: 10, y: 10 }, parentId: "g0", extent: "parent" as const },
       { id: "y", position: { x: 500, y: 500 } },
     ]
-    const out = groupSelected(seeded, ["x", "y"], { groupId: "g1" })
+    const out = groupSelected({ nodes: seeded, selectedIds: ["x", "y"], opts: { groupId: "g1" } })
     // x is already grouped — only y should land in g1.
     const y = out.nodes.find((n) => n.id === "y")
     const x = out.nodes.find((n) => n.id === "x")
@@ -70,7 +74,11 @@ describe("groupSelected", () => {
 
 describe("ungroupNode", () => {
   it("drops the group and promotes children back to absolute coordinates", () => {
-    const grouped = groupSelected(boxes, ["a", "b"], { groupId: "g1" }).nodes
+    const grouped = groupSelected({
+      nodes: boxes,
+      selectedIds: ["a", "b"],
+      opts: { groupId: "g1" },
+    }).nodes
     const flat = ungroupNode(grouped, "g1")
     expect(flat.find((n) => n.id === "g1")).toBeUndefined()
     const a = flat.find((n) => n.id === "a")

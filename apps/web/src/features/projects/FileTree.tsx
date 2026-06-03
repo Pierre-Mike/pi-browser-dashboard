@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import type { FileContent, FileEntry } from "../../lib/types"
 import { CanvasView } from "./CanvasView"
+import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
-import { type FileKind, basenameOf, classifyFile } from "./fileKind"
 import { formatSize, joinPath } from "./treeUtil"
 import { projectRawUrl, useProjectDir, useProjectFile } from "./useProjectFiles"
 
@@ -48,7 +48,7 @@ const matchesFilter = (name: string, filter: string): boolean => {
 
 const DirNode = ({ projectId, path, name, depth, selected, filter, onPick }: NodeProps) => {
   const [open, setOpen] = useState(depth === 0 || filter !== "")
-  const q = useProjectDir(projectId, path, open)
+  const q = useProjectDir({ projectId, path, enabled: open })
   const indent = depth * 12
   return (
     <div>

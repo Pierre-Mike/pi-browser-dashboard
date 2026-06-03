@@ -34,7 +34,12 @@ export const ExtensionHost = ({ manifest, projectId, cwd }: Props) => {
     // those messages. The listener only reads event.source/contentWindow when a
     // message actually arrives (by which point the frame has loaded), so early
     // attachment is safe.
-    const bridge = mountRpcBridge(iframe, manifest, { projectId, cwd }, manifest.granted)
+    const bridge = mountRpcBridge({
+      iframeEl: iframe,
+      manifest,
+      ctx: { projectId, cwd },
+      granted: manifest.granted,
+    })
     return () => bridge.destroy()
   }, [manifest, projectId, cwd, grantedKey])
 

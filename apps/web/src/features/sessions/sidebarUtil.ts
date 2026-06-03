@@ -10,11 +10,15 @@ export type SidebarBucket = {
   pinned: boolean
 }
 
-export const bucketProjects = (
-  projects: readonly Project[],
-  sessions: readonly SessionState[],
-  pinnedIds: ReadonlySet<string> = new Set(),
-): readonly SidebarBucket[] => {
+export const bucketProjects = ({
+  projects,
+  sessions,
+  pinnedIds = new Set(),
+}: {
+  projects: readonly Project[]
+  sessions: readonly SessionState[]
+  pinnedIds?: ReadonlySet<string>
+}): readonly SidebarBucket[] => {
   const byPath = new Map<string, Project>()
   for (const p of projects) byPath.set(p.path, p)
 

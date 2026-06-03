@@ -33,7 +33,7 @@ test("click project bar on grid → navigate to /projects/$id dashboard", async 
     await expect(dash).toContainText("proj-dash")
     await expect(dash).toContainText(projectPath)
 
-    await waitForCard(page, short, 20_000)
+    await waitForCard({ page, short, timeout: 20_000 })
     await expect(dash.locator(cardLocator(page, short))).toHaveCount(1)
 
     // Spawn button is available on the dashboard.

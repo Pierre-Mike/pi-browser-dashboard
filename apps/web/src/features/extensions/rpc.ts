@@ -98,13 +98,19 @@ export type DispatchResult =
  * @param manifest The extension's sanitized manifest (permissions array)
  * @param ctx      Runtime context (projectId, cwd)
  */
-export const dispatchRpc = async (
-  rawData: unknown,
-  origin: string,
-  expectedOrigin: string,
-  manifest: ExtensionManifest,
-  ctx: { projectId?: string; cwd?: string } = {},
-): Promise<DispatchResult> => {
+export const dispatchRpc = async ({
+  rawData,
+  origin,
+  expectedOrigin,
+  manifest,
+  ctx = {},
+}: {
+  rawData: unknown
+  origin: string
+  expectedOrigin: string
+  manifest: ExtensionManifest
+  ctx?: { projectId?: string; cwd?: string }
+}): Promise<DispatchResult> => {
   // Origin check
   if (origin !== expectedOrigin) {
     return { ok: false, error: `bad origin: ${origin}`, code: "bad_origin" }
@@ -192,12 +198,17 @@ export type RpcBridgeHandle = { destroy: () => void }
  * `granted` overrides `manifest.granted` so callers can pass a fresh snapshot
  * without constructing a new manifest object each time.
  */
-export const mountRpcBridge = (
-  iframeEl: HTMLIFrameElement,
-  manifest: ExtensionManifest,
-  ctx: { projectId?: string; cwd?: string } = {},
-  granted?: string[],
-): RpcBridgeHandle => {
+export const mountRpcBridge = ({
+  iframeEl,
+  manifest,
+  ctx = {},
+  granted,
+}: {
+  iframeEl: HTMLIFrameElement
+  manifest: ExtensionManifest
+  ctx?: { projectId?: string; cwd?: string }
+  granted?: string[]
+}): RpcBridgeHandle => {
   // Merge granted override into a shallow-cloned manifest so dispatchRpc
   // sees the up-to-date grant set without mutating the caller's object.
   const effectiveManifest: ExtensionManifest =
@@ -221,13 +232,13 @@ export const mountRpcBridge = (
     // Only handle messages from this iframe — the authenticated identity gate.
     if (event.source !== iframeEl.contentWindow) return
 
-    const result = await dispatchRpc(
-      event.data,
-      event.origin,
+    const result = await dispatchRpc({
+      rawData: event.data,
+      origin: event.origin,
       expectedOrigin,
-      effectiveManifest,
+      manifest: effectiveManifest,
       ctx,
-    )
+    })
 
     const rawData = event.data as Record<string, unknown>
     const id = typeof rawData === "object" && rawData !== null ? (rawData.id as string) : ""

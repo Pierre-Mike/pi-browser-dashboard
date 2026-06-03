@@ -47,8 +47,8 @@ test("dispatch via sidebar + button: card appears in grid, reaches done", async 
   const { short } = (await resp.json()) as { short: string }
 
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
     await expect(cardLocator(page, short)).toContainText(short)
   } finally {
     rmSession(short)
@@ -59,8 +59,8 @@ test("dispatch via daemon API: card appears, reaches done", async ({ page }) => 
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
   } finally {
     rmSession(short)
   }

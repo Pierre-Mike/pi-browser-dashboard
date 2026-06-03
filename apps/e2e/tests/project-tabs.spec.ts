@@ -51,7 +51,7 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
     // Switch to Sessions.
     await sessionsTab.click()
     await expect(sessionsTab).toHaveAttribute("data-active", "true")
-    await waitForCard(page, short, 20_000)
+    await waitForCard({ page, short, timeout: 20_000 })
     await expect(cardLocator(page, short)).toBeVisible()
     await expect(page.getByTestId("project-terminal")).toBeHidden()
 

@@ -98,11 +98,15 @@ type StubState = {
   tempo?: string | null
 }
 
-export const upsertWorker = (
-  roster: StubRoster,
-  short: string,
-  worker: StubWorker,
-): StubRoster => ({
+export const upsertWorker = ({
+  roster,
+  short,
+  worker,
+}: {
+  roster: StubRoster
+  short: string
+  worker: StubWorker
+}): StubRoster => ({
   ...roster,
   updatedAt: Date.now(),
   workers: { ...roster.workers, [short]: worker },
@@ -193,14 +197,18 @@ const cmdDispatch = (rest: ReadonlyArray<string>): void => {
   // 1) roster.json — add this worker
   const rfile = rosterPath(dir)
   const cur = readJsonOr<StubRoster>(rfile, emptyRoster())
-  const next = upsertWorker(cur, short, {
-    pid: process.pid,
-    sessionId: sid,
-    cwd,
-    startedAt,
-    attempt: 1,
-    cliVersion: "stub-0.0.0",
-    dispatch: { agent, seed: { intent } },
+  const next = upsertWorker({
+    roster: cur,
+    short,
+    worker: {
+      pid: process.pid,
+      sessionId: sid,
+      cwd,
+      startedAt,
+      attempt: 1,
+      cliVersion: "stub-0.0.0",
+      dispatch: { agent, seed: { intent } },
+    },
   })
   writeJsonAtomic(rfile, next)
 

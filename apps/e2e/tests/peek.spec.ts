@@ -9,8 +9,8 @@ test("Peek button → POST /peek → peek-summary renders (success or error UX)"
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
 
     const card = cardLocator(page, short)
     const peekResp = page.waitForResponse(

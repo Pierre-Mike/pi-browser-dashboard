@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import {
-  FAST_CRASH_MS,
-  GLOBAL_ZELLIJ_SESSION,
-  HEARTBEAT_PAYLOAD,
   buildChildArgv,
   cleanZellijEnv,
+  FAST_CRASH_MS,
   formatSizeFileContent,
+  GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
+  HEARTBEAT_PAYLOAD,
   parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,

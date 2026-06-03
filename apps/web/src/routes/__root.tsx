@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router"
+import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { PaletteController } from "../features/palette/PaletteController"
 import { Sidebar } from "../features/sessions/Sidebar"
 import { DropZone } from "../features/uploads/DropZone"

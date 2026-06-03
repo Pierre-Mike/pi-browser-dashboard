@@ -118,6 +118,6 @@ export const mountExtensions = (appInstance: Hono): void => {
 }
 
 export type AppType = typeof app
-export { app }
 export { websocket } from "./platform/ws"
+export { app }
 export default app

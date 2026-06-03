@@ -110,7 +110,9 @@ describe("ClaudeConfigRepo readProject", () => {
 describe("ClaudeConfigRepo readSkill", () => {
   it("returns body and frontmatter for a global skill", async () => {
     const d = await withLayer(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, "concise")),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "global", projectId: null, skillId: "concise" }),
+      ),
     )
     expect(d.frontmatter.name).toBe("concise")
     expect(d.body.trim()).toBe("body")
@@ -118,16 +120,18 @@ describe("ClaudeConfigRepo readSkill", () => {
 
   it("returns body for a project skill", async () => {
     const d = await withLayer(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("project", "demo", "tdd")),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "project", projectId: "demo", skillId: "tdd" }),
+      ),
     )
     expect(d.frontmatter.description).toBe("write tests first")
   })
 
   it("fails for unknown skill", async () => {
     const ex = await withLayer(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, "ghost")).pipe(
-        Effect.either,
-      ),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "global", projectId: null, skillId: "ghost" }),
+      ).pipe(Effect.either),
     )
     expect(ex._tag).toBe("Left")
     if (ex._tag === "Left") expect(ex.left).toBe("not_found")
@@ -187,7 +191,9 @@ describe("ClaudeConfigRepo read size cap", () => {
 
   it("truncates SKILL.md body when over MAX_TEXT_BYTES", async () => {
     const d = await withCapLayer(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, "bigskill")),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "global", projectId: null, skillId: "bigskill" }),
+      ),
     )
     // body is the post-frontmatter portion; the full returned text is truncated
     const noticeIdx = d.body.indexOf("[truncated")

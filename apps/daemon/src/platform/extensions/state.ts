@@ -54,14 +54,30 @@ export const writeState = (file: string, state: ExtensionState): void => {
   writeFileSync(file, JSON.stringify(state, null, 2))
 }
 
-export const setEnabled = (file: string, name: string, enabled: boolean): ExtensionState => {
+export const setEnabled = ({
+  file,
+  name,
+  enabled,
+}: {
+  file: string
+  name: string
+  enabled: boolean
+}): ExtensionState => {
   const state = readState(file)
   state[name] = { enabled, grants: state[name]?.grants ?? {} }
   writeState(file, state)
   return state
 }
 
-export const setGrants = (file: string, name: string, grants: ExtensionGrants): ExtensionState => {
+export const setGrants = ({
+  file,
+  name,
+  grants,
+}: {
+  file: string
+  name: string
+  grants: ExtensionGrants
+}): ExtensionState => {
   const state = readState(file)
   state[name] = { enabled: state[name]?.enabled ?? true, grants }
   writeState(file, state)

@@ -31,8 +31,8 @@ test("daemon restart: SSE watchdog reconnects, post-restart deltas reach the UI"
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
 
     await killDaemon()
     await startDaemon()
@@ -49,7 +49,7 @@ test("daemon restart: SSE watchdog reconnects, post-restart deltas reach the UI"
 
     // Watchdog (25s threshold + 5s poll) → up to 30s until client reconnects
     // and a fresh /sessions fetch lands.
-    await waitForCardGone(page, short, 45_000)
+    await waitForCardGone({ page, short, timeout: 45_000 })
   } finally {
     try {
       await page.request.get(`${DAEMON}/sessions`, { timeout: 1_000 })

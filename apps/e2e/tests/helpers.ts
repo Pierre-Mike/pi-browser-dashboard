@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { type Locator, type Page, expect } from "@playwright/test"
+import { expect, type Locator, type Page } from "@playwright/test"
 
 const DAEMON_PORT = Number(process.env.PID_E2E_DAEMON_PORT ?? 18787)
 
@@ -199,7 +199,15 @@ export const ensureProjectsTab = async (page: Page): Promise<void> => {
   }
 }
 
-export const waitForCard = async (page: Page, short: string, timeout = 30_000): Promise<void> => {
+export const waitForCard = async ({
+  page,
+  short,
+  timeout = 30_000,
+}: {
+  page: Page
+  short: string
+  timeout?: number
+}): Promise<void> => {
   await ensureProjectsTab(page)
   const card = cardLocator(page, short)
   // The card is delivered by a live SSE push. If the page's event stream was
@@ -217,31 +225,44 @@ export const waitForCard = async (page: Page, short: string, timeout = 30_000): 
   }
 }
 
-export const waitForCardGone = async (
-  page: Page,
-  short: string,
+export const waitForCardGone = async ({
+  page,
+  short,
   timeout = 30_000,
-): Promise<void> => {
+}: {
+  page: Page
+  short: string
+  timeout?: number
+}): Promise<void> => {
   await ensureProjectsTab(page)
   await expect(cardLocator(page, short)).toHaveCount(0, { timeout })
 }
 
 export type CardState = "working" | "idle" | "done" | "needs_input" | "failed" | "stopped"
 
-export const waitForState = async (
-  page: Page,
-  short: string,
-  state: CardState,
+export const waitForState = async ({
+  page,
+  short,
+  state,
   timeout = 60_000,
-): Promise<void> => {
+}: {
+  page: Page
+  short: string
+  state: CardState
+  timeout?: number
+}): Promise<void> => {
   await expect(cardLocator(page, short)).toHaveAttribute("data-state", state, { timeout })
 }
 
-export const waitForSettled = async (
-  page: Page,
-  short: string,
+export const waitForSettled = async ({
+  page,
+  short,
   timeout = 90_000,
-): Promise<void> => {
+}: {
+  page: Page
+  short: string
+  timeout?: number
+}): Promise<void> => {
   await expect(cardLocator(page, short)).toHaveAttribute("data-state", /^(idle|done|failed)$/, {
     timeout,
   })

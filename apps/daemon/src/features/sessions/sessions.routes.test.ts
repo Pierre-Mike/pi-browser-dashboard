@@ -35,7 +35,15 @@ type ShellSpy = {
 }
 
 const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellRepo> => {
-  const record = (op: "stop" | "rm" | "peek" | "send", id: string, keys?: string) => {
+  const record = ({
+    op,
+    id,
+    keys,
+  }: {
+    op: "stop" | "rm" | "peek" | "send"
+    id: string
+    keys?: string
+  }) => {
     spy.calls.push(keys === undefined ? { op, id } : { op, id, keys })
   }
   const failIfRequested = (
@@ -50,19 +58,19 @@ const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellRepo> => {
   const api: ShellRepoApi = {
     dispatch: () => Effect.fail(new ShellError({ message: "dispatch not used in this test" })),
     stop: (id) => {
-      record("stop", id)
+      record({ op: "stop", id })
       return failIfRequested("stop") ?? Effect.void
     },
     rm: (id) => {
-      record("rm", id)
+      record({ op: "rm", id })
       return failIfRequested("rm") ?? Effect.void
     },
     peek: (id) => {
-      record("peek", id)
+      record({ op: "peek", id })
       return failIfRequested("peek") ?? Effect.succeed(spy.peekReturn)
     },
     send: ({ id, keys }) => {
-      record("send", id, keys)
+      record({ op: "send", id, keys })
       return failIfRequested("send") ?? Effect.void
     },
   }
@@ -96,11 +104,15 @@ const newSpy = (): ShellSpy => ({ calls: [], failNext: null, peekReturn: "" })
 
 const newFilesStub = (): FilesStub => ({ diffByPath: new Map(), failWith: undefined })
 
-const buildHarness = (
-  sessions: Map<string, SessionState>,
-  spy: ShellSpy,
-  filesStub: FilesStub = newFilesStub(),
-) => {
+const buildHarness = ({
+  sessions,
+  spy,
+  filesStub = newFilesStub(),
+}: {
+  sessions: Map<string, SessionState>
+  spy: ShellSpy
+  filesStub?: FilesStub
+}) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions),
     buildShellLayer(spy),
@@ -117,7 +129,7 @@ describe("GET /sessions", () => {
       ["ab12", makeSession({ short: "ab12", state: "working" })],
       ["cd34", makeSession({ short: "cd34", state: "idle" })],
     ])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/")
       expect(res.status).toBe(200)
@@ -129,7 +141,7 @@ describe("GET /sessions", () => {
   })
 
   it("returns an empty array when the registry is empty", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
       const res = await app.request("/")
       expect(res.status).toBe(200)
@@ -143,7 +155,7 @@ describe("GET /sessions", () => {
 describe("GET /sessions/:id", () => {
   it("returns the single session JSON when the id is known", async () => {
     const sessions = new Map([["ab12", makeSession({ short: "ab12", state: "needs_input" })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12")
       expect(res.status).toBe(200)
@@ -156,7 +168,7 @@ describe("GET /sessions/:id", () => {
   })
 
   it("returns 404 + structured error for an unknown id", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
       const res = await app.request("/missing")
       expect(res.status).toBe(404)
@@ -177,7 +189,7 @@ describe("GET /sessions/:id/transcript", () => {
   })
 
   it("returns 404 not_found when the session is unknown", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
       const res = await app.request("/missing/transcript")
       expect(res.status).toBe(404)
@@ -189,7 +201,7 @@ describe("GET /sessions/:id/transcript", () => {
 
   it("returns 404 no_transcript when linkScanPath is absent", async () => {
     const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: undefined })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/transcript")
       expect(res.status).toBe(404)
@@ -202,7 +214,7 @@ describe("GET /sessions/:id/transcript", () => {
   it("returns 404 transcript_read_failed (ENOENT) when the file is missing", async () => {
     const missing = join(scratch, "nope.jsonl")
     const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: missing })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/transcript")
       expect(res.status).toBe(404)
@@ -224,7 +236,7 @@ describe("GET /sessions/:id/transcript", () => {
       ].join("\n")}\n`,
     )
     const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: file })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/transcript")
       expect(res.status).toBe(200)
@@ -247,7 +259,7 @@ describe("GET /sessions/:id/transcript", () => {
     const file = join(scratch, "broken.jsonl")
     await writeFile(file, ["{not json", JSON.stringify({ ok: true })].join("\n"))
     const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: file })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/transcript")
       expect(res.status).toBe(200)
@@ -268,7 +280,7 @@ describe("GET /sessions/:id/transcript", () => {
     await mkdir(scratch, { recursive: true })
     await writeFile(file, lines.join("\n"))
     const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: file })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/transcript")
       const body = (await res.json()) as {
@@ -287,7 +299,7 @@ describe("GET /sessions/:id/transcript", () => {
 
 describe("GET /sessions/:id/files", () => {
   it("returns 404 not_found when the session is unknown", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
       const res = await app.request("/missing/files")
       expect(res.status).toBe(404)
@@ -299,7 +311,7 @@ describe("GET /sessions/:id/files", () => {
 
   it("returns an empty diff payload for non-isolated sessions (no worktreePath)", async () => {
     const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: undefined })]])
-    const { app, dispose } = buildHarness(sessions, newSpy())
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
     try {
       const res = await app.request("/ab12/files")
       expect(res.status).toBe(200)
@@ -329,7 +341,11 @@ describe("GET /sessions/:id/files", () => {
       truncated: false,
       changed: true,
     })
-    const { app, dispose } = buildHarness(sessions, newSpy(), filesStub)
+    const { app, dispose } = buildHarness({
+      sessions,
+      spy: newSpy(),
+      filesStub: filesStub,
+    })
     try {
       const res = await app.request("/ab12/files")
       expect(res.status).toBe(200)
@@ -356,7 +372,11 @@ describe("GET /sessions/:id/files", () => {
     const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: wt })]])
     const filesStub = newFilesStub()
     filesStub.failWith = new FilesError({ reason: "no_base_ref" })
-    const { app, dispose } = buildHarness(sessions, newSpy(), filesStub)
+    const { app, dispose } = buildHarness({
+      sessions,
+      spy: newSpy(),
+      filesStub: filesStub,
+    })
     try {
       const res = await app.request("/ab12/files")
       expect(res.status).toBe(500)
@@ -373,7 +393,7 @@ describe("GET /sessions/:id/files", () => {
 describe("POST /sessions/:id/stop", () => {
   it("invokes ShellRepo.stop and returns ok", async () => {
     const spy = newSpy()
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/stop", { method: "POST" })
       expect(res.status).toBe(200)
@@ -387,7 +407,7 @@ describe("POST /sessions/:id/stop", () => {
   it("returns 500 stop_failed when the shell call rejects", async () => {
     const spy = newSpy()
     spy.failNext = { op: "stop" }
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/stop", { method: "POST" })
       expect(res.status).toBe(500)
@@ -402,7 +422,7 @@ describe("POST /sessions/:id/peek", () => {
   it("returns the peek summary on success", async () => {
     const spy = newSpy()
     spy.peekReturn = "all green"
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/peek", { method: "POST" })
       expect(res.status).toBe(200)
@@ -416,7 +436,7 @@ describe("POST /sessions/:id/peek", () => {
   it("returns 500 peek_failed on shell failure", async () => {
     const spy = newSpy()
     spy.failNext = { op: "peek" }
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/peek", { method: "POST" })
       expect(res.status).toBe(500)
@@ -430,7 +450,7 @@ describe("POST /sessions/:id/peek", () => {
 describe("POST /sessions/:id/rm", () => {
   it("invokes ShellRepo.rm and returns ok", async () => {
     const spy = newSpy()
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/rm", { method: "POST" })
       expect(res.status).toBe(200)
@@ -444,7 +464,7 @@ describe("POST /sessions/:id/rm", () => {
   it("returns 500 rm_failed on shell failure", async () => {
     const spy = newSpy()
     spy.failNext = { op: "rm" }
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
       const res = await app.request("/ab12/rm", { method: "POST" })
       expect(res.status).toBe(500)
@@ -456,11 +476,15 @@ describe("POST /sessions/:id/rm", () => {
 })
 
 describe("POST /sessions/:id/send", () => {
-  const post = async (
-    app: ReturnType<typeof buildSessionsApp>,
-    id: string,
-    body: unknown,
-  ): Promise<Response> =>
+  const post = async ({
+    app,
+    id,
+    body,
+  }: {
+    app: ReturnType<typeof buildSessionsApp>
+    id: string
+    body: unknown
+  }): Promise<Response> =>
     app.request(`/${id}/send`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -468,9 +492,9 @@ describe("POST /sessions/:id/send", () => {
     })
 
   it("rejects a missing keys field with 400 bad_keys", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
-      const res = await post(app, "ab12", {})
+      const res = await post({ app, id: "ab12", body: {} })
       expect(res.status).toBe(400)
       const body = (await res.json()) as { error: string }
       expect(body.error).toBe("bad_keys")
@@ -480,9 +504,9 @@ describe("POST /sessions/:id/send", () => {
   })
 
   it("rejects an empty keys string with 400 bad_keys", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
-      const res = await post(app, "ab12", { keys: "" })
+      const res = await post({ app, id: "ab12", body: { keys: "" } })
       expect(res.status).toBe(400)
     } finally {
       await dispose()
@@ -490,9 +514,9 @@ describe("POST /sessions/:id/send", () => {
   })
 
   it("rejects a non-string keys field with 400 bad_keys", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
-      const res = await post(app, "ab12", { keys: 42 })
+      const res = await post({ app, id: "ab12", body: { keys: 42 } })
       expect(res.status).toBe(400)
     } finally {
       await dispose()
@@ -500,9 +524,9 @@ describe("POST /sessions/:id/send", () => {
   })
 
   it("rejects a keys payload over 4096 bytes with 413 keys_too_long", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
-      const res = await post(app, "ab12", { keys: "x".repeat(4097) })
+      const res = await post({ app, id: "ab12", body: { keys: "x".repeat(4097) } })
       expect(res.status).toBe(413)
       const body = (await res.json()) as { error: string }
       expect(body.error).toBe("keys_too_long")
@@ -513,9 +537,9 @@ describe("POST /sessions/:id/send", () => {
 
   it("accepts a keys payload at exactly the 4096-byte cap", async () => {
     const spy = newSpy()
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
-      const res = await post(app, "ab12", { keys: "x".repeat(4096) })
+      const res = await post({ app, id: "ab12", body: { keys: "x".repeat(4096) } })
       expect(res.status).toBe(200)
       expect(spy.calls[0]?.op).toBe("send")
       expect((spy.calls[0] as { keys: string }).keys.length).toBe(4096)
@@ -526,9 +550,9 @@ describe("POST /sessions/:id/send", () => {
 
   it("forwards keys to ShellRepo.send and returns ok", async () => {
     const spy = newSpy()
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
-      const res = await post(app, "ab12", { keys: "hello\n" })
+      const res = await post({ app, id: "ab12", body: { keys: "hello\n" } })
       expect(res.status).toBe(200)
       expect(await res.json()).toEqual({ ok: true, short: "ab12" })
       expect(spy.calls).toEqual([{ op: "send", id: "ab12", keys: "hello\n" }])
@@ -540,9 +564,9 @@ describe("POST /sessions/:id/send", () => {
   it("returns 500 send_failed on shell failure", async () => {
     const spy = newSpy()
     spy.failNext = { op: "send" }
-    const { app, dispose } = buildHarness(new Map(), spy)
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
-      const res = await post(app, "ab12", { keys: "x" })
+      const res = await post({ app, id: "ab12", body: { keys: "x" } })
       expect(res.status).toBe(500)
       expect(await res.json()).toEqual({ error: "send_failed", short: "ab12" })
     } finally {
@@ -551,9 +575,9 @@ describe("POST /sessions/:id/send", () => {
   })
 
   it("tolerates a non-JSON body and returns 400 bad_keys (no crash)", async () => {
-    const { app, dispose } = buildHarness(new Map(), newSpy())
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
     try {
-      const res = await post(app, "ab12", "not-json-at-all")
+      const res = await post({ app, id: "ab12", body: "not-json-at-all" })
       expect(res.status).toBe(400)
     } finally {
       await dispose()

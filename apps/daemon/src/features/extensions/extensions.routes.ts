@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { sanitizeManifest } from "../../platform/extensions/manifest"
 import { extensionRegistry } from "../../platform/extensions/registry"
+import type { ExtensionGrants } from "../../platform/extensions/state"
 import {
   grantsFor,
   isEnabled,
@@ -10,7 +11,6 @@ import {
   setGrants,
   stateFileFor,
 } from "../../platform/extensions/state"
-import type { ExtensionGrants } from "../../platform/extensions/state"
 import { sseBus } from "../../platform/sse-bus"
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -21,7 +21,7 @@ const app = new Hono()
     const name = c.req.param("name")
     const entry = extensionRegistry.get(name)
     if (!entry) return c.json({ error: "not_found" }, 404)
-    const state = setEnabled(stateFileFor(entry), name, true)
+    const state = setEnabled({ file: stateFileFor(entry), name, enabled: true })
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,
@@ -33,7 +33,7 @@ const app = new Hono()
     const name = c.req.param("name")
     const entry = extensionRegistry.get(name)
     if (!entry) return c.json({ error: "not_found" }, 404)
-    const state = setEnabled(stateFileFor(entry), name, false)
+    const state = setEnabled({ file: stateFileFor(entry), name, enabled: false })
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,
@@ -71,7 +71,7 @@ const app = new Hono()
     if (Array.isArray(exec)) grants.exec = exec as string[]
     if (Array.isArray(net)) grants.net = net as string[]
     if (typeof events === "boolean") grants.events = events
-    const state = setGrants(stateFileFor(entry), name, grants)
+    const state = setGrants({ file: stateFileFor(entry), name, grants })
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({
       name,

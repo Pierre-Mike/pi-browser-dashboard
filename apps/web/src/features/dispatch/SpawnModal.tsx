@@ -28,11 +28,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
 
   const skillOptions = useMemo(
     () =>
-      mergeSkillOptions(
-        DEFAULT_SKILL,
-        claudeConfig.data?.skills,
-        project ? projectConfig.data?.skills : [],
-      ),
+      mergeSkillOptions({
+        defaultSkill: DEFAULT_SKILL,
+        globalSkills: claudeConfig.data?.skills,
+        projectSkills: project ? projectConfig.data?.skills : [],
+      }),
     [claudeConfig.data, projectConfig.data, project],
   )
 

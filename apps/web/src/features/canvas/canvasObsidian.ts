@@ -76,6 +76,7 @@ export const renderInlineMarkdown = (text: string): string => {
   // `inline code`
   out = out.replace(/`([^`]+)`/g, (_, body: string) => `<code>${body}</code>`)
   // [label](url)
+  // biome-ignore lint/complexity/useMaxParams: regex replace callback — positional args required by String.replace API
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_full, label: string, raw: string) => {
     const href = safeHref(raw)
     // Drop the link entirely when the scheme isn't whitelisted — we keep the

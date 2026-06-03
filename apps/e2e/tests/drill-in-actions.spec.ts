@@ -1,10 +1,10 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
 
-const openDrillIn = async (page: Parameters<typeof waitForCard>[0], short: string) => {
+const openDrillIn = async (page: Page, short: string) => {
   await page.goto("/")
-  await waitForCard(page, short, 20_000)
-  await waitForSettled(page, short)
+  await waitForCard({ page, short, timeout: 20_000 })
+  await waitForSettled({ page, short })
   await cardLocator(page, short).locator("a", { hasText: short }).first().click()
   await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
   // Wait for header to stabilize before clicking action buttons.

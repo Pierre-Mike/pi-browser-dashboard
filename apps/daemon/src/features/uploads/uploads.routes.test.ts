@@ -1,15 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs"
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { buildUploadsApp } from "./uploads.routes"
 
 const newTmpBase = (): string => mkdtempSync(join(tmpdir(), "pid-uploads-test-"))
 
-const harness = (overrides?: {
-  readonly now?: () => Date
-  readonly uuid?: () => string
-}) => {
+const harness = (overrides?: { readonly now?: () => Date; readonly uuid?: () => string }) => {
   const baseDir = newTmpBase()
   let uuidCounter = 0
   const app = buildUploadsApp({

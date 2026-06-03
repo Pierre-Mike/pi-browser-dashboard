@@ -24,7 +24,11 @@ export const Sidebar = () => {
     )
   }
 
-  const buckets = bucketProjects(projectsQ.data ?? [], sessionsQ.data ?? [], pinnedIds)
+  const buckets = bucketProjects({
+    projects: projectsQ.data ?? [],
+    sessions: sessionsQ.data ?? [],
+    pinnedIds,
+  })
   const totalSessions = buckets.reduce((n, b) => n + b.sessions.length, 0)
 
   return (
