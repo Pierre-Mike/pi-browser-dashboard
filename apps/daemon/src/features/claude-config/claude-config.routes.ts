@@ -15,9 +15,9 @@ const app = new Hono()
   .get("/global/skills/:skillId", async (c) => {
     const skillId = c.req.param("skillId")
     const result = await appRuntime.runPromise(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("global", null, skillId)).pipe(
-        Effect.either,
-      ),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "global", projectId: null, skillId }),
+      ).pipe(Effect.either),
     )
     if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
     return c.json(result.right)
@@ -34,9 +34,9 @@ const app = new Hono()
     const id = c.req.param("id")
     const skillId = c.req.param("skillId")
     const result = await appRuntime.runPromise(
-      Effect.flatMap(ClaudeConfigService, (s) => s.readSkill("project", id, skillId)).pipe(
-        Effect.either,
-      ),
+      Effect.flatMap(ClaudeConfigService, (s) =>
+        s.readSkill({ scope: "project", projectId: id, skillId }),
+      ).pipe(Effect.either),
     )
     if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
     return c.json(result.right)

@@ -14,11 +14,15 @@ const writeRoster = async (cfg: string, workers: Record<string, unknown>): Promi
   )
 }
 
-const writeState = async (
-  cfg: string,
-  short: string,
-  body: Record<string, unknown>,
-): Promise<void> => {
+const writeState = async ({
+  cfg,
+  short,
+  body,
+}: {
+  cfg: string
+  short: string
+  body: Record<string, unknown>
+}): Promise<void> => {
   await mkdir(join(cfg, "jobs", short), { recursive: true })
   await writeFile(join(cfg, "jobs", short, "state.json"), JSON.stringify(body))
 }
@@ -115,10 +119,14 @@ describe("SessionRegistry — initial reconciliation", () => {
 
   it("merges state.json on top of roster-seeded fields", async () => {
     await writeRoster(cfg, { ab12: { sessionId: "sess-1", cwd: "/repo" } })
-    await writeState(cfg, "ab12", {
-      state: "working",
-      detail: "compiling",
-      createdAt: "2024-01-01T00:00:00.000Z",
+    await writeState({
+      cfg,
+      short: "ab12",
+      body: {
+        state: "working",
+        detail: "compiling",
+        createdAt: "2024-01-01T00:00:00.000Z",
+      },
     })
     const api = await startRegistry()
     // The state.json read fires on watcher attach but resolves async; give it
@@ -160,11 +168,11 @@ describe("SessionRegistry — roster delta", () => {
 describe("SessionRegistry — state.json delta", () => {
   it("publishes session.state when a watched state.json changes", async () => {
     await writeRoster(cfg, { ab12: {} })
-    await writeState(cfg, "ab12", { state: "idle" })
+    await writeState({ cfg, short: "ab12", body: { state: "idle" } })
     const api = await startRegistry()
     await wait(200) // initial state.json read settles
     const events = recordSse((e) => e.type === "session.state")
-    await writeState(cfg, "ab12", { state: "working", detail: "now" })
+    await writeState({ cfg, short: "ab12", body: { state: "working", detail: "now" } })
     await wait(POLL_WAIT_MS)
     expect(events.length).toBeGreaterThanOrEqual(1)
     const latest = events[events.length - 1]?.data as {
@@ -178,7 +186,7 @@ describe("SessionRegistry — state.json delta", () => {
 
   it("does not clobber the in-memory snapshot when state.json is mid-write (empty file)", async () => {
     await writeRoster(cfg, { ab12: {} })
-    await writeState(cfg, "ab12", { state: "working" })
+    await writeState({ cfg, short: "ab12", body: { state: "working" } })
     const api = await startRegistry()
     await wait(POLL_WAIT_MS)
     // Truncate the file mid-write. readJsonWithRetry returns null after 5 *

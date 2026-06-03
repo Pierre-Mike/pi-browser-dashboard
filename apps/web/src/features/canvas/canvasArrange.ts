@@ -27,11 +27,15 @@ const h = (n: ArrangeableNode): number => n.height ?? 60
  * - centerX: same horizontal midpoint
  * - centerY: same vertical midpoint
  */
-export const alignNodes = (
-  nodes: ReadonlyArray<ArrangeableNode>,
-  selectedIds: ReadonlyArray<string>,
-  axis: Axis,
-): ReadonlyArray<ArrangeableNode> => {
+export const alignNodes = ({
+  nodes,
+  selectedIds,
+  axis,
+}: {
+  nodes: ReadonlyArray<ArrangeableNode>
+  selectedIds: ReadonlyArray<string>
+  axis: Axis
+}): ReadonlyArray<ArrangeableNode> => {
   const sel = new Set(selectedIds)
   const targets = nodes.filter((n) => sel.has(n.id))
   if (targets.length < 2) return nodes
@@ -90,11 +94,15 @@ export const alignNodes = (
  * least three nodes — the two outermost are anchors and the rest get evenly
  * spaced between them by midpoint.
  */
-export const distributeNodes = (
-  nodes: ReadonlyArray<ArrangeableNode>,
-  selectedIds: ReadonlyArray<string>,
-  axis: "horizontal" | "vertical",
-): ReadonlyArray<ArrangeableNode> => {
+export const distributeNodes = ({
+  nodes,
+  selectedIds,
+  axis,
+}: {
+  nodes: ReadonlyArray<ArrangeableNode>
+  selectedIds: ReadonlyArray<string>
+  axis: "horizontal" | "vertical"
+}): ReadonlyArray<ArrangeableNode> => {
   const sel = new Set(selectedIds)
   const targets = nodes.filter((n) => sel.has(n.id))
   if (targets.length < 3) return nodes

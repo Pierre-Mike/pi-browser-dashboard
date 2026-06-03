@@ -1,10 +1,10 @@
-import { readFile, readdir, stat } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
 import {
-  type FileEntry,
   compareProjectsByCommit,
+  type FileEntry,
   looksBinary,
   mimeFromPath,
   parseGitCommitTimestamp,

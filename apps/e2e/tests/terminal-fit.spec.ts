@@ -20,8 +20,8 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
   })
 
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
 
     await cardLocator(page, short).locator("a", { hasText: short }).first().click()
     await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))

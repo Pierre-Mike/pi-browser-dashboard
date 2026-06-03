@@ -4,7 +4,7 @@ import { Context, Effect, Layer, type Scope } from "effect"
 import { resolveConfigDir } from "../../platform/config-dir"
 import { type FsWatchUnsubscribe, watchFile } from "../../platform/fswatch.repo"
 import { sseBus } from "../../platform/sse-bus"
-import { type ParsedRoster, type SessionState, parseRoster, parseState } from "./sessions.core"
+import { type ParsedRoster, parseRoster, parseState, type SessionState } from "./sessions.core"
 
 const MAX_PARSE_RETRIES = 5
 const PARSE_RETRY_MS = 50
@@ -56,11 +56,15 @@ type RegistryState = {
   rosterWatcher: FsWatchUnsubscribe | null
 }
 
-const reconcileRoster = async (
-  reg: RegistryState,
-  configDir: string,
-  parsed: ParsedRoster,
-): Promise<void> => {
+const reconcileRoster = async ({
+  reg,
+  configDir,
+  parsed,
+}: {
+  reg: RegistryState
+  configDir: string
+  parsed: ParsedRoster
+}): Promise<void> => {
   const presentShorts = new Set(parsed.workers.map((w) => w.short))
 
   // Removed sessions
@@ -98,7 +102,7 @@ const reconcileRoster = async (
     }
     reg.sessions.set(worker.short, seed)
     sseBus.publish({ type: "session.created", data: seed })
-    attachStateWatcher(reg, configDir, worker.short)
+    attachStateWatcher({ reg, configDir, short: worker.short })
   }
 
   sseBus.publish({
@@ -107,11 +111,15 @@ const reconcileRoster = async (
   })
 }
 
-const refreshState = async (
-  reg: RegistryState,
-  configDir: string,
-  short: string,
-): Promise<void> => {
+const refreshState = async ({
+  reg,
+  configDir,
+  short,
+}: {
+  reg: RegistryState
+  configDir: string
+  short: string
+}): Promise<void> => {
   const filePath = statePathFor(configDir, short)
   let json: unknown
   try {
@@ -140,13 +148,21 @@ const refreshState = async (
   sseBus.publish({ type: "session.state", data: merged })
 }
 
-const attachStateWatcher = (reg: RegistryState, configDir: string, short: string): void => {
+const attachStateWatcher = ({
+  reg,
+  configDir,
+  short,
+}: {
+  reg: RegistryState
+  configDir: string
+  short: string
+}): void => {
   if (reg.stateWatchers.has(short)) return
   const filePath = statePathFor(configDir, short)
   // Initial read.
-  void refreshState(reg, configDir, short)
+  void refreshState({ reg, configDir, short })
   const unsub = watchFile(filePath, () => {
-    void refreshState(reg, configDir, short)
+    void refreshState({ reg, configDir, short })
   })
   reg.stateWatchers.set(short, unsub)
 }
@@ -162,10 +178,14 @@ const refreshRoster = async (reg: RegistryState, configDir: string): Promise<voi
   }
   if (json === null) {
     // Treat missing roster as empty.
-    await reconcileRoster(reg, configDir, {
-      supervisorPid: undefined,
-      updatedAt: undefined,
-      workers: [],
+    await reconcileRoster({
+      reg,
+      configDir,
+      parsed: {
+        supervisorPid: undefined,
+        updatedAt: undefined,
+        workers: [],
+      },
     })
     return
   }
@@ -176,7 +196,7 @@ const refreshRoster = async (reg: RegistryState, configDir: string): Promise<voi
     console.error("[sessions.repo] failed to parse roster.json", err)
     return
   }
-  await reconcileRoster(reg, configDir, parsed)
+  await reconcileRoster({ reg, configDir, parsed })
 }
 
 const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> =>

@@ -36,8 +36,8 @@ test.describe("send-keys (real auth)", () => {
     await page.goto("/")
     const { short } = await dispatchDirect()
     try {
-      await waitForCard(page, short, 20_000)
-      await waitForSettled(page, short)
+      await waitForCard({ page, short, timeout: 20_000 })
+      await waitForSettled({ page, short })
 
       const statePath = join(sandbox, "jobs", short, "state.json")
       const updatedAtOf = (): string | undefined => {

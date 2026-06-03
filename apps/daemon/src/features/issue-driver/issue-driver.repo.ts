@@ -15,14 +15,14 @@ import { Context, Data, Effect, Layer, Ref } from "effect"
 import { ShellRepo } from "../../platform/shell.repo"
 import { ProjectsService } from "../projects/projects.repo"
 import {
-  type Issue,
-  type IssueKey,
-  type SchedulerState,
   formatTddPrompt,
   goalText,
-  isVagueIssue,
+  type Issue,
+  type IssueKey,
   issueKey,
+  isVagueIssue,
   pickEligible,
+  type SchedulerState,
 } from "./issue-driver.core"
 
 export class GhError extends Data.TaggedError("GhError")<{

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test"
 import {
-  type Issue,
-  type SchedulerState,
   branchName,
   formatTddPrompt,
   goalText,
-  isVagueIssue,
+  type Issue,
   issueKey,
+  isVagueIssue,
   parseIssueListJson,
   pickEligible,
+  type SchedulerState,
   slugify,
 } from "./issue-driver.core"
 

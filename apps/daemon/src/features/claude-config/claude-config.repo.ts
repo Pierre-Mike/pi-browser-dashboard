@@ -1,4 +1,4 @@
-import { open, readFile, readdir, stat } from "node:fs/promises"
+import { open, readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
@@ -6,12 +6,12 @@ import { ProjectsService } from "../projects/projects.repo"
 import {
   type HookEntry,
   type HookScript,
-  type SettingsSummary,
-  type SkillDetail,
-  type SkillSummary,
   isSafeSegment,
   parseSettings,
   parseSkillFrontmatter,
+  type SettingsSummary,
+  type SkillDetail,
+  type SkillSummary,
 } from "./claude-config.core"
 
 /** Maximum bytes read from any text file (CLAUDE.md, SKILL.md). Prevents DoS on huge files. */
@@ -33,11 +33,15 @@ export type ClaudeConfigError = "not_found" | "forbidden"
 type ClaudeConfigServiceApi = {
   readonly readGlobal: () => Effect.Effect<ScopeBundle, never, never>
   readonly readProject: (projectId: string) => Effect.Effect<ScopeBundle, ClaudeConfigError, never>
-  readonly readSkill: (
-    scope: "global" | "project",
-    projectId: string | null,
-    skillId: string,
-  ) => Effect.Effect<SkillDetail, ClaudeConfigError, never>
+  readonly readSkill: ({
+    scope,
+    projectId,
+    skillId,
+  }: {
+    scope: "global" | "project"
+    projectId: string | null
+    skillId: string
+  }) => Effect.Effect<SkillDetail, ClaudeConfigError, never>
 }
 
 export class ClaudeConfigService extends Context.Tag("ClaudeConfigService")<
@@ -114,11 +118,15 @@ const listHookScripts = async (hooksDir: string): Promise<readonly HookScript[]>
   return out
 }
 
-const readBundle = async (
-  scope: "global" | "project",
-  root: string,
-  claudeMdPath: string,
-): Promise<ScopeBundle> => {
+const readBundle = async ({
+  scope,
+  root,
+  claudeMdPath,
+}: {
+  scope: "global" | "project"
+  root: string
+  claudeMdPath: string
+}): Promise<ScopeBundle> => {
   const settingsPath = join(root, "settings.json")
   const settingsLocalPath = join(root, "settings.local.json")
   const skillsDir = join(root, "skills")
@@ -171,15 +179,23 @@ export const ClaudeConfigRepoLive: Layer.Layer<
 
     return {
       readGlobal: () =>
-        Effect.promise(() => readBundle("global", globalRoot, join(globalRoot, "CLAUDE.md"))),
+        Effect.promise(() =>
+          readBundle({
+            scope: "global",
+            root: globalRoot,
+            claudeMdPath: join(globalRoot, "CLAUDE.md"),
+          }),
+        ),
 
       readProject: (projectId) =>
         Effect.gen(function* () {
           const paths = yield* resolveProjectPaths(projectId)
-          return yield* Effect.promise(() => readBundle("project", paths.root, paths.claudeMd))
+          return yield* Effect.promise(() =>
+            readBundle({ scope: "project", root: paths.root, claudeMdPath: paths.claudeMd }),
+          )
         }),
 
-      readSkill: (scope, projectId, skillId) =>
+      readSkill: ({ scope, projectId, skillId }) =>
         Effect.gen(function* () {
           if (!isSafeSegment(skillId)) return yield* Effect.fail<ClaudeConfigError>("forbidden")
           const root =
@@ -229,7 +245,7 @@ export const ClaudeConfigRepoTest = (
       const b = bundles.projects?.[id]
       return b ? Effect.succeed(b) : Effect.fail<ClaudeConfigError>("not_found")
     },
-    readSkill: (_scope, _projectId, skillId) => {
+    readSkill: ({ skillId }) => {
       const d = bundles.skills?.[skillId]
       return d ? Effect.succeed(d) : Effect.fail<ClaudeConfigError>("not_found")
     },

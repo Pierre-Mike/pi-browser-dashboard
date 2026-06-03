@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { AgenticBrowser } from "./AgenticBrowser"
 import { CatalogList } from "./CatalogList"
+import { AddDialog } from "./dialogs/AddDialog"
 import { GlobalSearch } from "./GlobalSearch"
 import { LibrarySetupCard } from "./LibrarySetupCard"
-import { AddDialog } from "./dialogs/AddDialog"
 import { type InstallScope, LIBRARY_CATEGORIES, type LibraryCategory } from "./types"
 import { useCatalog, useSyncMutation } from "./useLibrary"
 

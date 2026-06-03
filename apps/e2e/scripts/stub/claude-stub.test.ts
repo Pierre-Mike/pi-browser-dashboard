@@ -47,14 +47,18 @@ describe("roster mutation", () => {
     const r = emptyRoster()
     const before = r.updatedAt
     // Wait at least 1ms so Date.now() advances.
-    const next = upsertWorker(r, "abc", {
-      pid: 1,
-      sessionId: "s1",
-      cwd: "/x",
-      startedAt: 0,
-      attempt: 1,
-      cliVersion: "stub-0.0.0",
-      dispatch: { seed: { intent: "hi" } },
+    const next = upsertWorker({
+      roster: r,
+      short: "abc",
+      worker: {
+        pid: 1,
+        sessionId: "s1",
+        cwd: "/x",
+        startedAt: 0,
+        attempt: 1,
+        cliVersion: "stub-0.0.0",
+        dispatch: { seed: { intent: "hi" } },
+      },
     })
     expect(next.workers.abc?.sessionId).toBe("s1")
     expect(next.updatedAt).toBeGreaterThanOrEqual(before)

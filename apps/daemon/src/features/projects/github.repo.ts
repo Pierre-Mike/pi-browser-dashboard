@@ -31,11 +31,15 @@ type Cached = { at: number; value: GithubProjectSummary }
 const CACHE_MS = 30_000
 const cache = new Map<string, Cached>()
 
-const runGh = async (
-  args: readonly string[],
-  cwd: string,
+const runGh = async ({
+  args,
+  cwd,
   timeoutMs = 10_000,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+}: {
+  args: readonly string[]
+  cwd: string
+  timeoutMs?: number
+}): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
   const proc = Bun.spawn({
     cmd: ["gh", ...args],
     cwd,
@@ -110,8 +114,11 @@ export const fetchGithubSummary = async (cwd: string): Promise<GithubProjectSumm
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value
 
   const [prRes, runRes] = await Promise.all([
-    runGh(["pr", "list", "--state", "open", "--limit", "20", "--json", PR_FIELDS.join(",")], cwd),
-    runGh(["run", "list", "--limit", "10", "--json", RUN_FIELDS.join(",")], cwd),
+    runGh({
+      args: ["pr", "list", "--state", "open", "--limit", "20", "--json", PR_FIELDS.join(",")],
+      cwd,
+    }),
+    runGh({ args: ["run", "list", "--limit", "10", "--json", RUN_FIELDS.join(",")], cwd }),
   ])
 
   let prs: GithubPullRequest[] = []

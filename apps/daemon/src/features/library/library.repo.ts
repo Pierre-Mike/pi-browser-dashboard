@@ -1,14 +1,14 @@
-import { readFile, readdir, stat, writeFile } from "node:fs/promises"
+import { readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
 import { ProjectsService } from "../projects/projects.repo"
 import {
+  copyDir,
   GitClient,
   type GitClientApi,
   type GitError,
-  copyDir,
   makeTempDir,
   removeDir,
 } from "./installer"
@@ -16,16 +16,16 @@ import {
   type Catalog,
   CatalogParseError,
   DuplicateEntryError,
+  expandHome,
   type InstallStatus,
+  isSafeSegment,
   LIBRARY_CATEGORIES,
   type LibraryCategory,
   type LibraryEntry,
-  RequiresCycleError,
-  expandHome,
-  isSafeSegment,
   parseCatalog,
   parseCatalogDocument,
   parseSource,
+  RequiresCycleError,
   removeEntryFromDocument,
   resolveRequires,
   serializeCatalogDocument,
@@ -193,11 +193,15 @@ const probeScope = async (
   return out
 }
 
-const computeStatusByName = async (
-  catalog: Catalog,
-  homeDir: string,
-  projectRoot: string | null,
-): Promise<Record<string, StatusByScope>> => {
+const computeStatusByName = async ({
+  catalog,
+  homeDir,
+  projectRoot,
+}: {
+  catalog: Catalog
+  homeDir: string
+  projectRoot: string | null
+}): Promise<Record<string, StatusByScope>> => {
   const byCategory = new Map<LibraryCategory, LibraryEntry[]>()
   for (const e of catalog.entries) {
     const list = byCategory.get(e.type) ?? []
@@ -251,29 +255,42 @@ const readCatalogFile = async (catalogPath: string): Promise<ReadCatalogResult> 
 
 // Resolve the destination directory for a (category, scope) pair. For local
 // scope a project root must be supplied; for global it uses ~ expansion.
-const resolveDestDir = (
-  catalog: Catalog,
-  category: LibraryCategory,
-  scope: InstallScope,
-  homeDir: string,
-  projectRoot: string | null,
-): string | LibraryError => {
+const resolveDestDir = ({
+  catalog,
+  category,
+  scope,
+  homeDir,
+  projectRoot,
+}: {
+  catalog: Catalog
+  category: LibraryCategory
+  scope: InstallScope
+  homeDir: string
+  projectRoot: string | null
+}): string | LibraryError => {
   const dirs = catalog.defaultDirs[category]
   if (scope === "global") return expandHome(dirs.global, homeDir)
   if (!projectRoot) return "not_found"
   return join(projectRoot, dirs.default)
 }
 
-const installOne = async (
-  entry: LibraryEntry,
-  catalog: Catalog,
-  scope: InstallScope,
-  homeDir: string,
-  projectRoot: string | null,
-  git: GitClientApi,
-): Promise<{ ok: true; dest: string } | { ok: false; error: LibraryError; message?: string }> => {
+const installOne = async ({
+  entry,
+  catalog,
+  scope,
+  homeDir,
+  projectRoot,
+  git,
+}: {
+  entry: LibraryEntry
+  catalog: Catalog
+  scope: InstallScope
+  homeDir: string
+  projectRoot: string | null
+  git: GitClientApi
+}): Promise<{ ok: true; dest: string } | { ok: false; error: LibraryError; message?: string }> => {
   if (!isSafeSegment(entry.name)) return { ok: false, error: "forbidden" }
-  const destOrErr = resolveDestDir(catalog, entry.type, scope, homeDir, projectRoot)
+  const destOrErr = resolveDestDir({ catalog, category: entry.type, scope, homeDir, projectRoot })
   if (typeof destOrErr !== "string" || destOrErr.length === 0) {
     return { ok: false, error: destOrErr as LibraryError }
   }
@@ -290,7 +307,9 @@ const installOne = async (
     const tmp = await makeTempDir("pid-lib-install")
     try {
       const cloneResult = await Effect.runPromise(
-        git.clone(parsed.cloneUrl, tmp, { depth: 1, branch: parsed.branch }).pipe(Effect.either),
+        git
+          .clone({ url: parsed.cloneUrl, dst: tmp, opts: { depth: 1, branch: parsed.branch } })
+          .pipe(Effect.either),
       )
       if (cloneResult._tag === "Left") {
         return { ok: false, error: "git_failed", message: cloneResult.left.message }
@@ -366,7 +385,7 @@ export const LibraryRepoLive: Layer.Layer<
           catch: (): LibraryError => "io_failed",
         })
         yield* git
-          .commitAndPush(libraryDir, [DEFAULT_CATALOG_PATH], commitMessage)
+          .commitAndPush({ dir: libraryDir, files: [DEFAULT_CATALOG_PATH], message: commitMessage })
           .pipe(Effect.catchTag("GitError", () => Effect.fail<LibraryError>("git_failed")))
       })
 
@@ -376,7 +395,7 @@ export const LibraryRepoLive: Layer.Layer<
         const result = yield* Effect.promise(() => readCatalogFile(catalogPath))
         if (result._tag === "err") return yield* Effect.fail(result.error)
         const statusByName = yield* Effect.promise(() =>
-          computeStatusByName(result.catalog, homeDir, projectRoot),
+          computeStatusByName({ catalog: result.catalog, homeDir, projectRoot }),
         )
         return {
           catalog: result.catalog,
@@ -398,9 +417,13 @@ export const LibraryRepoLive: Layer.Layer<
           const cleanup = Effect.promise(() => removeDir(tmp))
           return yield* Effect.gen(function* () {
             yield* git
-              .clone(input.repoUrl, tmp, {
-                depth: 1,
-                ...(input.branch ? { branch: input.branch } : {}),
+              .clone({
+                url: input.repoUrl,
+                dst: tmp,
+                opts: {
+                  depth: 1,
+                  ...(input.branch ? { branch: input.branch } : {}),
+                },
               })
               .pipe(Effect.catchTag("GitError", () => Effect.fail<LibraryError>("git_failed")))
             const clonedCatalog = yield* Effect.promise(() =>
@@ -473,7 +496,7 @@ export const LibraryRepoLive: Layer.Layer<
           const destinations: string[] = []
           for (const e of chain) {
             const result = yield* Effect.promise(() =>
-              installOne(e, catalog, input.scope, homeDir, projectRoot, git),
+              installOne({ entry: e, catalog, scope: input.scope, homeDir, projectRoot, git }),
             )
             if (!result.ok) {
               return yield* Effect.fail<LibraryError>(result.error)
@@ -491,14 +514,17 @@ export const LibraryRepoLive: Layer.Layer<
           yield* mutateCatalog((text) => {
             const doc = parseCatalogDocument(text)
             try {
-              upsertEntryInDocument(doc, {
-                name: input.name,
-                type: input.type,
-                description: input.description,
-                source: input.source,
-                ...(input.requires && input.requires.length > 0
-                  ? { requires: input.requires }
-                  : {}),
+              upsertEntryInDocument({
+                doc,
+                entry: {
+                  name: input.name,
+                  type: input.type,
+                  description: input.description,
+                  source: input.source,
+                  ...(input.requires && input.requires.length > 0
+                    ? { requires: input.requires }
+                    : {}),
+                },
               })
             } catch (e) {
               if (e instanceof DuplicateEntryError) return "duplicate_entry" as LibraryError
@@ -526,7 +552,13 @@ export const LibraryRepoLive: Layer.Layer<
           if (input.scope === "local" && !projectRoot) {
             return yield* Effect.fail<LibraryError>("not_found")
           }
-          const destOrErr = resolveDestDir(catalog, input.type, input.scope, homeDir, projectRoot)
+          const destOrErr = resolveDestDir({
+            catalog,
+            category: input.type,
+            scope: input.scope,
+            homeDir,
+            projectRoot,
+          })
           if (typeof destOrErr !== "string") {
             return yield* Effect.fail<LibraryError>(destOrErr)
           }
@@ -547,7 +579,7 @@ export const LibraryRepoLive: Layer.Layer<
           const tmp = yield* Effect.promise(() => makeTempDir("pid-lib-push"))
           try {
             yield* git
-              .clone(parsed.cloneUrl, tmp, { depth: 1, branch: parsed.branch })
+              .clone({ url: parsed.cloneUrl, dst: tmp, opts: { depth: 1, branch: parsed.branch } })
               .pipe(Effect.catchTag("GitError", () => Effect.fail<LibraryError>("git_failed")))
             const subDir = parsed.dir === "" ? tmp : join(tmp, parsed.dir)
             yield* Effect.tryPromise({
@@ -555,7 +587,11 @@ export const LibraryRepoLive: Layer.Layer<
               catch: (): LibraryError => "io_failed",
             })
             const sha = yield* git
-              .commitAndPush(tmp, [parsed.dir || "."], `library: push ${input.type}:${input.name}`)
+              .commitAndPush({
+                dir: tmp,
+                files: [parsed.dir || "."],
+                message: `library: push ${input.type}:${input.name}`,
+              })
               .pipe(Effect.catchTag("GitError", () => Effect.fail<LibraryError>("git_failed")))
             return { commitSha: sha }
           } finally {
@@ -568,14 +604,20 @@ export const LibraryRepoLive: Layer.Layer<
           if (!isSafeSegment(input.name)) return yield* Effect.fail<LibraryError>("forbidden")
           yield* mutateCatalog((text) => {
             const doc = parseCatalogDocument(text)
-            const removed = removeEntryFromDocument(doc, input.name, input.type)
+            const removed = removeEntryFromDocument({ doc, name: input.name, type: input.type })
             if (!removed) return "not_found" as LibraryError
             return serializeCatalogDocument(doc)
           }, `library: remove ${input.type}:${input.name}`)
 
           if (input.deleteLocal) {
             const { catalog, projectRoot } = yield* readCatalogEffect(input.projectId)
-            const destOrErr = resolveDestDir(catalog, input.type, input.scope, homeDir, projectRoot)
+            const destOrErr = resolveDestDir({
+              catalog,
+              category: input.type,
+              scope: input.scope,
+              homeDir,
+              projectRoot,
+            })
             if (typeof destOrErr === "string") {
               const target = join(destOrErr, input.name)
               yield* Effect.tryPromise({
@@ -597,7 +639,7 @@ export const LibraryRepoLive: Layer.Layer<
               const status = statusByName[`${entry.type}:${entry.name}`]
               if (status?.[scope] !== "installed") continue
               const result = yield* Effect.promise(() =>
-                installOne(entry, catalog, scope, homeDir, projectRoot, git),
+                installOne({ entry, catalog, scope, homeDir, projectRoot, git }),
               )
               outcomes.push({
                 name: entry.name,

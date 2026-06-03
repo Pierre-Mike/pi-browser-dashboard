@@ -4,7 +4,7 @@ import { cardLocator, dispatchDirect, waitForCard, waitForCardGone } from "./hel
 test("spawn → Delete (two-click confirm) → card gone", async ({ page }) => {
   await page.goto("/")
   const { short } = await dispatchDirect()
-  await waitForCard(page, short, 20_000)
+  await waitForCard({ page, short, timeout: 20_000 })
 
   const deleteBtn = cardLocator(page, short).getByTestId("delete")
   await deleteBtn.click()
@@ -12,5 +12,5 @@ test("spawn → Delete (two-click confirm) → card gone", async ({ page }) => {
   await expect(deleteBtn).toHaveText(/Confirm/i)
   await deleteBtn.click()
 
-  await waitForCardGone(page, short, 30_000)
+  await waitForCardGone({ page, short, timeout: 30_000 })
 })

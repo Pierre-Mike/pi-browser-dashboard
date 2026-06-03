@@ -1,15 +1,15 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { sseBus } from "../sse-bus"
 import { createExtensionApi } from "./api"
-import { parseManifest } from "./manifest"
 import type { ExtensionPermissions } from "./manifest"
+import { parseManifest } from "./manifest"
 import { checkGrants } from "./permissions"
-import { extensionRegistry } from "./registry"
 import type { ExtensionRegistry, ExtensionScope } from "./registry"
-import { grantsAsPermissions, grantsFor, isEnabled, readState, stateFileFor } from "./state"
+import { extensionRegistry } from "./registry"
 import type { ExtensionState } from "./state"
+import { grantsAsPermissions, grantsFor, isEnabled, readState, stateFileFor } from "./state"
 
 export type ExtensionImporter = (
   absPath: string,

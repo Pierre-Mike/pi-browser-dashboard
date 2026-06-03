@@ -12,8 +12,8 @@ test("send-keys: panel → presets → free-form all POST /send and report sent"
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
 
     const card = cardLocator(page, short)
     const panel = card.getByTestId("send-panel")

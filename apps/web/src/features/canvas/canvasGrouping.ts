@@ -75,11 +75,15 @@ export type GroupResult = {
  * node is itself a group or already has a parent, it's left in place so the
  * caller can show feedback. We still proceed with the rest.
  */
-export const groupSelected = (
-  nodes: ReadonlyArray<GroupableNode>,
-  selectedIds: ReadonlyArray<string>,
-  opts: { readonly label?: string; readonly groupId?: string } = {},
-): GroupResult => {
+export const groupSelected = ({
+  nodes,
+  selectedIds,
+  opts = {},
+}: {
+  nodes: ReadonlyArray<GroupableNode>
+  selectedIds: ReadonlyArray<string>
+  opts?: { readonly label?: string; readonly groupId?: string }
+}): GroupResult => {
   if (selectedIds.length === 0) return { nodes, groupId: null }
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const selection = selectedIds

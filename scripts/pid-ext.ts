@@ -11,12 +11,12 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
-import { buildScaffold } from "../apps/daemon/src/platform/extensions/scaffold"
 import type {
   ScaffoldOptions,
   ScaffoldScope,
   ScaffoldTier,
 } from "../apps/daemon/src/platform/extensions/scaffold"
+import { buildScaffold } from "../apps/daemon/src/platform/extensions/scaffold"
 
 const args = process.argv.slice(2)
 

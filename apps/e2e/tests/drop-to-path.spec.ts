@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs"
-import { type Page, expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 import { dispatchDirect, ensureProject, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Dispatch a synthetic `drop` DragEvent at the document root carrying one
@@ -81,8 +81,8 @@ test("drop while a session is open: absolute path is appended into the ChatCompo
   await page.goto("/")
   const { short } = await dispatchDirect()
   try {
-    await waitForCard(page, short, 20_000)
-    await waitForSettled(page, short)
+    await waitForCard({ page, short, timeout: 20_000 })
+    await waitForSettled({ page, short })
     await page.goto(`/sessions/${short}`)
 
     // Session view defaults to the Terminal tab; the ChatComposer lives behind

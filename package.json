@@ -2,7 +2,9 @@
   "name": "@pid/root",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "bun run dev:daemon & bun run dev:web & wait",
     "dev:daemon": "cd apps/daemon && bun run dev",
@@ -20,7 +22,7 @@
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.4.16",
     "fallow": "^2.88.1",
     "typescript": "^5.6.3"
   }

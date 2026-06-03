@@ -210,7 +210,7 @@ type SkillsTabProps = { bundle: ScopeBundle; projectId?: string }
 const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
   const [selected, setSelected] = useState<string | null>(null)
   const scope = bundle.scope
-  const detailQ = useSkillDetail(scope, projectId ?? null, selected)
+  const detailQ = useSkillDetail({ scope, projectId: projectId ?? null, skillId: selected })
 
   if (bundle.skills.length === 0) {
     return <div className="text-sm text-slate-500">No skills installed.</div>
@@ -284,13 +284,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
   )
 }
 
-const SettingsBlock = ({
-  title,
-  settings,
-}: {
-  title: string
-  settings: SettingsSummary
-}) => (
+const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsSummary }) => (
   <section className="rounded-md border border-slate-200 dark:border-slate-800 overflow-hidden">
     <header className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
       <span className="text-xs font-semibold">{title}</span>

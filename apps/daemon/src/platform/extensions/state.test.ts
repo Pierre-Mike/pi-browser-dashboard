@@ -77,44 +77,44 @@ describe("writeState", () => {
 
 describe("setEnabled", () => {
   it("writes enabled=true and reads back", () => {
-    setEnabled(file, "myext", true)
+    setEnabled({ file, name: "myext", enabled: true })
     const s = readState(file)
     expect(s.myext?.enabled).toBe(true)
   })
 
   it("writes enabled=false and reads back", () => {
-    setEnabled(file, "myext", false)
+    setEnabled({ file, name: "myext", enabled: false })
     const s = readState(file)
     expect(s.myext?.enabled).toBe(false)
   })
 
   it("preserves existing grants when toggling enabled", () => {
     writeState(file, { myext: { enabled: true, grants: { fs: ["/tmp"] } } })
-    setEnabled(file, "myext", false)
+    setEnabled({ file, name: "myext", enabled: false })
     expect(readState(file).myext?.grants).toEqual({ fs: ["/tmp"] })
   })
 
   it("returns the updated state", () => {
-    const result = setEnabled(file, "myext", false)
+    const result = setEnabled({ file, name: "myext", enabled: false })
     expect(result.myext?.enabled).toBe(false)
   })
 })
 
 describe("setGrants", () => {
   it("writes grants and reads back", () => {
-    setGrants(file, "myext", { fs: ["/tmp"], events: true })
+    setGrants({ file, name: "myext", grants: { fs: ["/tmp"], events: true } })
     const s = readState(file)
     expect(s.myext?.grants).toEqual({ fs: ["/tmp"], events: true })
   })
 
   it("preserves existing enabled when updating grants", () => {
     writeState(file, { myext: { enabled: false, grants: {} } })
-    setGrants(file, "myext", { exec: ["ls"] })
+    setGrants({ file, name: "myext", grants: { exec: ["ls"] } })
     expect(readState(file).myext?.enabled).toBe(false)
   })
 
   it("returns the updated state", () => {
-    const result = setGrants(file, "myext", { net: ["api.example.com"] })
+    const result = setGrants({ file, name: "myext", grants: { net: ["api.example.com"] } })
     expect(result.myext?.grants).toEqual({ net: ["api.example.com"] })
   })
 })

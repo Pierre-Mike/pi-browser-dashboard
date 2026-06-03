@@ -14,7 +14,10 @@
   },
   "ignoreExports": [
     { "file": "apps/daemon/src/features/canvas/canvas.routes.ts", "exports": ["app"] },
-    { "file": "apps/daemon/src/features/claude-config/claude-config.routes.ts", "exports": ["app"] },
+    {
+      "file": "apps/daemon/src/features/claude-config/claude-config.routes.ts",
+      "exports": ["app"]
+    },
     { "file": "apps/daemon/src/features/dispatch/dispatch.routes.ts", "exports": ["app"] },
     { "file": "apps/daemon/src/features/drops/drops.routes.ts", "exports": ["app"] },
     { "file": "apps/daemon/src/features/events/events.routes.ts", "exports": ["app"] },

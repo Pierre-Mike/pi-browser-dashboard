@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { TranscriptMessage } from "../../lib/types"
-import { type Block, asString, flattenContent } from "./flattenContent"
+import { asString, type Block, flattenContent } from "./flattenContent"
 
 type Props = { messages: readonly TranscriptMessage[] }
 

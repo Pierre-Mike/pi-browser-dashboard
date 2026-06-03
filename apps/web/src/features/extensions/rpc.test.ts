@@ -19,7 +19,12 @@ const BAD_ORIGIN = "http://evil.example.com"
 describe("dispatchRpc — origin validation", () => {
   it("rejects a message from a different origin", async () => {
     const req = { id: "1", method: "getContext" }
-    const result = await dispatchRpc(req, BAD_ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: BAD_ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("bad_origin")
@@ -29,7 +34,12 @@ describe("dispatchRpc — origin validation", () => {
 
   it("accepts a message from the matching origin", async () => {
     const req = { id: "1", method: "getContext" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(true)
   })
 })
@@ -37,7 +47,12 @@ describe("dispatchRpc — origin validation", () => {
 describe("dispatchRpc — size cap", () => {
   it("rejects a message exceeding 256 KB", async () => {
     const bigPayload = { id: "2", method: "getContext", params: "x".repeat(260 * 1024) }
-    const result = await dispatchRpc(bigPayload, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: bigPayload,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("oversize")
@@ -46,7 +61,12 @@ describe("dispatchRpc — size cap", () => {
 
   it("accepts a message within size limit", async () => {
     const req = { id: "3", method: "getContext" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(true)
   })
 })
@@ -54,7 +74,12 @@ describe("dispatchRpc — size cap", () => {
 describe("dispatchRpc — permission gate", () => {
   it("rejects listFiles when fs permission not granted", async () => {
     const req = { id: "4", method: "listFiles", params: { path: "." } }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
@@ -64,7 +89,12 @@ describe("dispatchRpc — permission gate", () => {
 
   it("rejects readFile when fs permission not granted", async () => {
     const req = { id: "5", method: "readFile", params: { path: "README.md" } }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
@@ -73,7 +103,12 @@ describe("dispatchRpc — permission gate", () => {
 
   it("rejects subscribeEvents when events permission not granted", async () => {
     const req = { id: "6", method: "subscribeEvents" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
@@ -84,7 +119,13 @@ describe("dispatchRpc — permission gate", () => {
     // granted=["fs"] → gate passes; no projectId → returns { entries: [] }
     const manifest = { ...baseManifest(), granted: ["fs"] }
     const req = { id: "7", method: "listFiles", params: { path: "." } }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest, {})
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest,
+      ctx: {},
+    })
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect((result.result as { entries: unknown[] }).entries).toEqual([])
@@ -95,7 +136,13 @@ describe("dispatchRpc — permission gate", () => {
     // requested has fs but granted is empty → must still be denied
     const manifest = { ...baseManifest(), requested: ["fs"], granted: [] }
     const req = { id: "7b", method: "listFiles", params: { path: "." } }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest, {})
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest,
+      ctx: {},
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
@@ -106,7 +153,12 @@ describe("dispatchRpc — permission gate", () => {
   it("allows subscribeEvents when events is in granted", async () => {
     const manifest = { ...baseManifest(), granted: ["events"] }
     const req = { id: "8", method: "subscribeEvents" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, manifest)
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest,
+    })
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect((result.result as { subscribed: boolean }).subscribed).toBe(true)
@@ -117,9 +169,12 @@ describe("dispatchRpc — permission gate", () => {
 describe("dispatchRpc — getContext", () => {
   it("returns projectId and cwd from context", async () => {
     const req = { id: "9", method: "getContext" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest(), {
-      projectId: "proj-123",
-      cwd: "/home/user/project",
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+      ctx: { projectId: "proj-123", cwd: "/home/user/project" },
     })
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -132,7 +187,12 @@ describe("dispatchRpc — getContext", () => {
 
   it("returns null for projectId/cwd when not provided", async () => {
     const req = { id: "10", method: "getContext" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(true)
     if (result.ok) {
       const r = result.result as Record<string, unknown>
@@ -145,7 +205,12 @@ describe("dispatchRpc — getContext", () => {
 describe("dispatchRpc — unknown method", () => {
   it("rejects unknown method with no_permission code", async () => {
     const req = { id: "11", method: "launchMissile" }
-    const result = await dispatchRpc(req, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
@@ -155,12 +220,22 @@ describe("dispatchRpc — unknown method", () => {
 
 describe("dispatchRpc — malformed message", () => {
   it("rejects a non-object message", async () => {
-    const result = await dispatchRpc("not-an-object", ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: "not-an-object",
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
   })
 
   it("rejects a message without id or method", async () => {
-    const result = await dispatchRpc({ foo: "bar" }, ORIGIN, ORIGIN, baseManifest())
+    const result = await dispatchRpc({
+      rawData: { foo: "bar" },
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
     expect(result.ok).toBe(false)
   })
 })

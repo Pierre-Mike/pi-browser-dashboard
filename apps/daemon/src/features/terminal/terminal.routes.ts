@@ -2,19 +2,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
-import { Hono } from "hono"
 import type { Context } from "hono"
+import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { upgradeWebSocket } from "../../platform/ws"
 import { ProjectsService } from "../projects/projects.repo"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import {
-  GLOBAL_ZELLIJ_SESSION,
-  HEARTBEAT_PAYLOAD,
   buildChildArgv,
   cleanZellijEnv,
   formatSizeFileContent,
+  GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
+  HEARTBEAT_PAYLOAD,
   parseClientMessage,
   projectZellijCommand,
   sessionZellijCommand,
@@ -78,7 +78,15 @@ const HEARTBEAT_INTERVAL_MS = 20_000
 const DEFAULT_COLS = 120
 const DEFAULT_ROWS = 32
 
-const clampDim = (raw: string | undefined, fallback: number, max: number): number => {
+const clampDim = ({
+  raw,
+  fallback,
+  max,
+}: {
+  raw: string | undefined
+  fallback: number
+  max: number
+}): number => {
   if (!raw) return fallback
   const n = Number.parseInt(raw, 10)
   if (!Number.isFinite(n) || n <= 0) return fallback
@@ -121,11 +129,15 @@ const spawnChild = (args: {
   )
 }
 
-const pipeStream = async (
-  stream: ReadableStream<Uint8Array>,
-  send: (chunk: Uint8Array) => void,
-  signal: AbortSignal,
-): Promise<void> => {
+const pipeStream = async ({
+  stream,
+  send,
+  signal,
+}: {
+  stream: ReadableStream<Uint8Array>
+  send: (chunk: Uint8Array) => void
+  signal: AbortSignal
+}): Promise<void> => {
   const reader = stream.getReader()
   try {
     while (!signal.aborted) {
@@ -171,8 +183,8 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
     // The browser sends its current xterm dims at connect-time. Without a
     // resize channel from the browser these are the only chance to size the
     // child correctly — passed via env (pipes) or stty (pty wrapper).
-    const cols = clampDim(c.req.query("cols"), DEFAULT_COLS, 400)
-    const rows = clampDim(c.req.query("rows"), DEFAULT_ROWS, 200)
+    const cols = clampDim({ raw: c.req.query("cols"), fallback: DEFAULT_COLS, max: 400 })
+    const rows = clampDim({ raw: c.req.query("rows"), fallback: DEFAULT_ROWS, max: 200 })
     const tokenKey = {}
     return {
       onOpen: async (_evt, ws) => {
@@ -223,8 +235,8 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
             // ws closed
           }
         }
-        void pipeStream(child.stdout, send, drainAbort.signal)
-        void pipeStream(child.stderr, send, drainAbort.signal)
+        void pipeStream({ stream: child.stdout, send, signal: drainAbort.signal })
+        void pipeStream({ stream: child.stderr, send, signal: drainAbort.signal })
 
         void child.exited.then((code) => {
           // Detect the "zellij attach panicked on startup" loop: client panics

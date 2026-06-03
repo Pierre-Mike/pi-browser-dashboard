@@ -17,22 +17,38 @@ export class GitError extends Data.TaggedError("GitError")<{
 }> {}
 
 export type GitClientApi = {
-  readonly clone: (
-    url: string,
-    dst: string,
-    opts?: { branch?: string; depth?: number },
-  ) => Effect.Effect<void, GitError, never>
+  readonly clone: ({
+    url,
+    dst,
+    opts,
+  }: {
+    url: string
+    dst: string
+    opts?: { branch?: string; depth?: number }
+  }) => Effect.Effect<void, GitError, never>
   readonly pullFastForward: (dir: string) => Effect.Effect<void, GitError, never>
-  readonly commitAndPush: (
-    dir: string,
-    files: readonly string[],
-    message: string,
-  ) => Effect.Effect<string, GitError, never>
+  readonly commitAndPush: ({
+    dir,
+    files,
+    message,
+  }: {
+    dir: string
+    files: readonly string[]
+    message: string
+  }) => Effect.Effect<string, GitError, never>
 }
 
 export class GitClient extends Context.Tag("GitClient")<GitClient, GitClientApi>() {}
 
-const runGit = (cwd: string | null, args: readonly string[], timeoutMs = 60_000) =>
+const runGit = ({
+  cwd,
+  args,
+  timeoutMs = 60_000,
+}: {
+  cwd: string | null
+  args: readonly string[]
+  timeoutMs?: number
+}) =>
   Effect.tryPromise({
     try: async () => {
       const proc = Bun.spawn({
@@ -70,27 +86,27 @@ const runGit = (cwd: string | null, args: readonly string[], timeoutMs = 60_000)
   })
 
 export const GitClientLive: Layer.Layer<GitClient> = Layer.succeed(GitClient, {
-  clone: (url, dst, opts) =>
+  clone: ({ url, dst, opts }) =>
     Effect.gen(function* () {
       const args = ["clone"]
       if (opts?.depth !== undefined) args.push("--depth", String(opts.depth))
       if (opts?.branch) args.push("-b", opts.branch)
       args.push(url, dst)
-      yield* runGit(null, args).pipe(Effect.asVoid)
+      yield* runGit({ cwd: null, args }).pipe(Effect.asVoid)
     }),
-  pullFastForward: (dir) => runGit(dir, ["pull", "--ff-only"]).pipe(Effect.asVoid),
-  commitAndPush: (dir, files, message) =>
+  pullFastForward: (dir) => runGit({ cwd: dir, args: ["pull", "--ff-only"] }).pipe(Effect.asVoid),
+  commitAndPush: ({ dir, files, message }) =>
     Effect.gen(function* () {
       // Stage only the requested files so unrelated dirty state isn't swept up.
-      yield* runGit(dir, ["add", "--", ...files])
+      yield* runGit({ cwd: dir, args: ["add", "--", ...files] })
       // `commit --allow-empty=never` keeps us honest if nothing actually changed.
-      const status = yield* runGit(dir, ["status", "--porcelain", "--", ...files])
+      const status = yield* runGit({ cwd: dir, args: ["status", "--porcelain", "--", ...files] })
       if (status === "") {
         return ""
       }
-      yield* runGit(dir, ["commit", "-m", message])
-      const sha = yield* runGit(dir, ["rev-parse", "HEAD"])
-      yield* runGit(dir, ["push"])
+      yield* runGit({ cwd: dir, args: ["commit", "-m", message] })
+      const sha = yield* runGit({ cwd: dir, args: ["rev-parse", "HEAD"] })
+      yield* runGit({ cwd: dir, args: ["push"] })
       return sha
     }),
 })
@@ -111,7 +127,7 @@ export const makeGitClientRecorder = (opts?: {
   const calls: { method: string; args: readonly unknown[] }[] = []
   return {
     client: {
-      clone: (url, dst, options) =>
+      clone: ({ url, dst, opts: options }) =>
         Effect.gen(function* () {
           calls.push({ method: "clone", args: [url, dst, options] })
           if (opts?.failClone) {
@@ -126,7 +142,7 @@ export const makeGitClientRecorder = (opts?: {
         Effect.sync(() => {
           calls.push({ method: "pullFastForward", args: [dir] })
         }),
-      commitAndPush: (dir, files, message) =>
+      commitAndPush: ({ dir, files, message }) =>
         Effect.gen(function* () {
           calls.push({ method: "commitAndPush", args: [dir, files, message] })
           if (opts?.failPush) {
