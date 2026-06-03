@@ -26,5 +26,4 @@ const app = new Hono()
     return c.json({ paused })
   })
 
-export const testApp = app
 export { app }

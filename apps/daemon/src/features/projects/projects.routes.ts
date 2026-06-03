@@ -92,5 +92,4 @@ const app = new Hono()
     return c.json(summary)
   })
 
-export const testApp = app
 export { app }

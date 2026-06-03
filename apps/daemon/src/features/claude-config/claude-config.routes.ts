@@ -42,5 +42,4 @@ const app = new Hono()
     return c.json(result.right)
   })
 
-export const testApp = app
 export { app }

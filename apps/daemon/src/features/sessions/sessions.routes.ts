@@ -179,5 +179,4 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
 
 const app = buildSessionsApp(appRuntime)
 
-export const testApp = app
 export { app }

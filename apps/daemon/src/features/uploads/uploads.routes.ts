@@ -67,5 +67,4 @@ const app = buildUploadsApp({
   uuid: defaultUuid,
 })
 
-export const testApp = app
 export { app }
