@@ -21,3 +21,6 @@ apps/e2e/playwright-report/
 # Local extensions scaffolded by `bun run pid-ext --local`
 .pid/
 .fallow/
+
+# Stale Lefthook stubs — hooks install to .git/hooks (see lefthook.yml, #136)
+.githooks/
