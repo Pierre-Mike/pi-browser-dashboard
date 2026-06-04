@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { fetchGithubSummary } from "./github.repo"
+import { contentDispositionAttachment } from "./projects.core"
 import type { FileError } from "./projects.repo"
 import { ProjectsService } from "./projects.repo"
 
@@ -67,15 +68,19 @@ const app = new Hono()
     if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
     const { absPath, size, mime } = result.right
     const file = Bun.file(absPath)
-    return new Response(file.stream(), {
-      status: 200,
-      headers: {
-        "Content-Type": mime,
-        "Content-Length": String(size),
-        "Cache-Control": "private, max-age=30",
-        "X-Content-Type-Options": "nosniff",
-      },
-    })
+    // `?download=1` flips the response from inline rendering to a forced
+    // download that keeps the original filename (Content-Disposition wins
+    // cross-origin, where the <a download> attribute is ignored).
+    const headers: Record<string, string> = {
+      "Content-Type": mime,
+      "Content-Length": String(size),
+      "Cache-Control": "private, max-age=30",
+      "X-Content-Type-Options": "nosniff",
+    }
+    if (c.req.query("download") === "1") {
+      headers["Content-Disposition"] = contentDispositionAttachment(path)
+    }
+    return new Response(file.stream(), { status: 200, headers })
   })
   .get("/:id/github", async (c) => {
     const id = c.req.param("id")

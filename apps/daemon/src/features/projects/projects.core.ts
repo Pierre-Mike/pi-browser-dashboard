@@ -1,6 +1,6 @@
 // Pure helpers for the projects feature. No I/O.
 
-import { isAbsolute, normalize, relative, resolve, sep } from "node:path"
+import { basename, isAbsolute, normalize, relative, resolve, sep } from "node:path"
 
 export type FileEntry = {
   readonly name: string
@@ -180,6 +180,26 @@ const MIME_BY_EXT: Readonly<Record<string, string>> = {
   webm: "video/webm",
   ogv: "video/ogg",
   pdf: "application/pdf",
+}
+
+// RFC 5987 value encoding: percent-encode everything `encodeURIComponent`
+// would, then additionally escape the chars it leaves bare but the grammar
+// forbids, and restore the few it over-encodes. Used for the `filename*` token.
+const encodeRFC5987 = (s: string): string =>
+  encodeURIComponent(s)
+    .replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%(7C|60|5E)/g, (_m, h: string) => String.fromCharCode(Number.parseInt(h, 16)))
+
+// Build a `Content-Disposition` header value that forces a download while
+// preserving the original filename. Emits the RFC 6266 dual-token form: an
+// ASCII-sanitised `filename=` for legacy agents plus a UTF-8 `filename*=`
+// (RFC 5987) so non-ASCII names survive. Always derives the name from the
+// basename so directory segments never leak into the header, and falls back to
+// "download" when no basename is present.
+export const contentDispositionAttachment = (path: string): string => {
+  const name = basename(path) || "download"
+  const ascii = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_")
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987(name)}`
 }
 
 export const mimeFromPath = (relPath: string): string => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test"
 import {
   compareProjectsByCommit,
+  contentDispositionAttachment,
   looksBinary,
   mimeFromPath,
   parseGitCommitTimestamp,
@@ -12,6 +13,38 @@ import {
 } from "./projects.core"
 
 const ROOT = "/repos/demo"
+
+describe("contentDispositionAttachment", () => {
+  it("forces attachment and preserves the basename for an ASCII name", () => {
+    expect(contentDispositionAttachment("notes/report.pdf")).toBe(
+      `attachment; filename="report.pdf"; filename*=UTF-8''report.pdf`,
+    )
+  })
+
+  it("strips directory segments so only the filename is offered", () => {
+    expect(contentDispositionAttachment("a/b/c/data.json")).toBe(
+      `attachment; filename="data.json"; filename*=UTF-8''data.json`,
+    )
+  })
+
+  it("sanitises quotes and backslashes in the ASCII fallback", () => {
+    expect(contentDispositionAttachment(`weird"name\\.txt`)).toBe(
+      `attachment; filename="weird_name_.txt"; filename*=UTF-8''weird%22name%5C.txt`,
+    )
+  })
+
+  it("encodes non-ASCII names via RFC 5987 while keeping an ASCII fallback", () => {
+    expect(contentDispositionAttachment("café.txt")).toBe(
+      `attachment; filename="caf_.txt"; filename*=UTF-8''caf%C3%A9.txt`,
+    )
+  })
+
+  it("falls back to 'download' when no basename is present", () => {
+    expect(contentDispositionAttachment("")).toBe(
+      `attachment; filename="download"; filename*=UTF-8''download`,
+    )
+  })
+})
 
 describe("resolveProjectPath", () => {
   it("treats empty input as the project root", () => {
