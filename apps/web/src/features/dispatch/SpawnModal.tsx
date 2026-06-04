@@ -8,6 +8,7 @@ import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
 import { mergeSkillOptions } from "./skillOptions"
+import { SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
 
 type Props = {
   open: boolean
@@ -106,7 +107,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         role="presentation"
-        className="w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-4 flex flex-col gap-3"
+        className={SPAWN_MODAL_SHELL}
       >
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold">
@@ -126,7 +127,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
         >
           <legend className="shrink-0">Skills (select any)</legend>
-          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+          <div className={SPAWN_SKILLS_CONTAINER}>
             {skillOptions.map((id) => {
               const selected = skills.includes(id)
               return (
