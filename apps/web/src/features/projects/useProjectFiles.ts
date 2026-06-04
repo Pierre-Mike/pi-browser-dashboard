@@ -51,3 +51,14 @@ export const projectRawUrl = (projectId: string, path: string): string => {
   url.searchParams.set("path", path)
   return url.toString()
 }
+
+// Same endpoint as `projectRawUrl`, but with `download=1` so the daemon sends a
+// `Content-Disposition: attachment` header. That forces a download of the file
+// under its original name — which the `<a download>` attribute alone cannot
+// guarantee cross-origin (daemon on :8787, web on its own port).
+export const projectDownloadUrl = (projectId: string, path: string): string => {
+  const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/raw`)
+  url.searchParams.set("path", path)
+  url.searchParams.set("download", "1")
+  return url.toString()
+}

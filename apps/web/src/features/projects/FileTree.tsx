@@ -4,7 +4,7 @@ import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
 import { formatSize, joinPath } from "./treeUtil"
-import { projectRawUrl, useProjectDir, useProjectFile } from "./useProjectFiles"
+import { projectDownloadUrl, projectRawUrl, useProjectDir, useProjectFile } from "./useProjectFiles"
 
 type Props = {
   projectId: string
@@ -183,12 +183,16 @@ const Breadcrumbs = ({ path }: { path: string }) => {
 const ToolbarButton = ({
   onClick,
   href,
+  download,
   children,
   testId,
   title,
 }: {
   onClick?: () => void
   href?: string
+  // When set, the anchor downloads (with this as the suggested filename)
+  // instead of opening in a new tab.
+  download?: string
   children: React.ReactNode
   testId?: string
   title?: string
@@ -199,7 +203,8 @@ const ToolbarButton = ({
     return (
       <a
         href={href}
-        target="_blank"
+        download={download}
+        target={download ? undefined : "_blank"}
         rel="noreferrer noopener"
         className={cls}
         data-testid={testId}
@@ -375,6 +380,8 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
   if (!f) return null
   const kind: FileKind = classifyFile(f.path, f.isBinary)
   const rawUrl = projectRawUrl(projectId, f.path)
+  const downloadUrl = projectDownloadUrl(projectId, f.path)
+  const fileName = basenameOf(f.path)
   return (
     <div
       data-testid="file-preview"
@@ -398,6 +405,14 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[10px] text-slate-400 tabular-nums mr-1">{formatSize(f.size)}</span>
+          <ToolbarButton
+            href={downloadUrl}
+            download={fileName}
+            testId="file-download"
+            title={`Download ${fileName}`}
+          >
+            ↓ Download
+          </ToolbarButton>
           <ToolbarButton onClick={copyPath} testId="file-copy-path" title="Copy path">
             {copied ? "Copied" : "Copy path"}
           </ToolbarButton>
