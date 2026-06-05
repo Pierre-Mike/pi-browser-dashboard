@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
+import { apiBase } from "../../lib/apiBase"
 import { handleDrop } from "./handleDrop"
 import { uploadFile } from "./uploadFile"
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
+const API_BASE = apiBase()
 
 type Toast = { readonly id: number; readonly text: string; readonly kind: "ok" | "err" }
 

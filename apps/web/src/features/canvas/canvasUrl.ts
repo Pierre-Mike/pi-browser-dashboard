@@ -9,6 +9,8 @@ export type CanvasWsUrlInput = {
 export const canvasWsUrl = ({ baseUrl, id }: CanvasWsUrlInput): string => {
   const u = new URL(baseUrl)
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:"
-  u.pathname = `/canvas/${id}/ws`
+  // Preserve any base path (e.g. the `/__api` same-origin proxy prefix).
+  const prefix = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")
+  u.pathname = `${prefix}/canvas/${id}/ws`
   return u.toString()
 }

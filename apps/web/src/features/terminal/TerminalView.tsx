@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
+import { apiBase } from "../../lib/apiBase"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
@@ -10,9 +11,6 @@ type Props = {
   readonly reconnectTitle: string
   readonly testId?: string
 } & ({ readonly kind: "session" | "project"; readonly id: string } | { readonly kind: "global" })
-
-const apiBase = (): string =>
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
 // Server → client control frames are JSON text starting with '{'. Inline
 // errors / exit notices that the daemon paints into the terminal start with

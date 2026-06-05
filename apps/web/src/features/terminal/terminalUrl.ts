@@ -27,10 +27,17 @@ const pathFor = (input: TerminalWsUrlInput): string => {
   return "/terminal/global"
 }
 
+// Preserve any path the base carries (e.g. the `/__api` same-origin proxy
+// prefix) instead of clobbering it — then append the daemon route.
+const withBasePath = (u: URL, path: string): string => {
+  const prefix = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "")
+  return `${prefix}${path}`
+}
+
 export const terminalWsUrl = (input: TerminalWsUrlInput): string => {
   const u = new URL(input.baseUrl)
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:"
-  u.pathname = pathFor(input)
+  u.pathname = withBasePath(u, pathFor(input))
   u.searchParams.set("cols", String(input.cols))
   u.searchParams.set("rows", String(input.rows))
   return u.toString()
@@ -54,7 +61,7 @@ export const terminalKillUrl = (input: TerminalKillUrlInput): string => {
   const u = new URL(input.baseUrl)
   // Always http(s) for the DELETE — never coerce to ws://.
   if (u.protocol !== "http:" && u.protocol !== "https:") u.protocol = "http:"
-  u.pathname = killPathFor(input)
+  u.pathname = withBasePath(u, killPathFor(input))
   u.search = ""
   return u.toString()
 }

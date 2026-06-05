@@ -16,10 +16,22 @@ export default defineConfig({
     // hostnames (plus any PID_ALLOWED_HOSTS) instead of Vite's 403 host check.
     allowedHosts: parseAllowedHosts(process.env),
     proxy: {
-      // Only proxy paths the SPA cannot own. `/sessions`, `/dispatch`,
-      // `/projects` are SPA routes — proxying them swallows hard refreshes
-      // and returns daemon JSON. The client uses absolute VITE_API_URL for
-      // API calls, so no proxy entry is needed for those.
+      // `/sessions`, `/dispatch`, `/projects` are SPA routes that collide with
+      // identically-named daemon REST routes — they can only coexist on the
+      // same origin behind a prefix. The client routes ALL daemon traffic
+      // (REST, SSE, WebSockets) through `/__api`, which the SPA never owns;
+      // strip the prefix and forward to the daemon. `ws: true` carries the
+      // terminal/canvas sockets, so the whole app works over the tunnel from a
+      // single public origin (no CORS, no mixed content). e2e/direct callers
+      // set VITE_API_URL straight at the daemon and bypass this entirely.
+      "/__api": {
+        target: DAEMON,
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/__api/, ""),
+      },
+      // SSE stays at the root `/events` path (sse.ts hits it same-origin; it is
+      // not an SPA route, so no prefix is needed).
       "/events": {
         target: DAEMON,
         changeOrigin: true,

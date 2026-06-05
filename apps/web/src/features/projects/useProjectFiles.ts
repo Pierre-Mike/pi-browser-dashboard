@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
+import { apiBase as baseUrl } from "../../lib/apiBase"
 import type { FileContent, FileListing } from "../../lib/types"
 
 // The hc client's path-param + query-string shape is awkward for these
 // endpoints; bypass it and hit the configured base URL directly.
-const baseUrl = (): string =>
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
 export const useProjectDir = ({
   projectId,

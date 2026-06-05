@@ -58,6 +58,19 @@ describe("terminalWsUrl", () => {
     expect(u.pathname).toBe("/terminal/global")
   })
 
+  it("preserves a base path prefix (e.g. the /__api tunnel proxy) before the route", () => {
+    const url = terminalWsUrl({
+      baseUrl: "https://abc.trycloudflare.com/__api",
+      kind: "global",
+      cols: 80,
+      rows: 24,
+    })
+    const u = new URL(url)
+    expect(u.protocol).toBe("wss:")
+    expect(u.host).toBe("abc.trycloudflare.com")
+    expect(u.pathname).toBe("/__api/terminal/global")
+  })
+
   it("encodes ids with special chars in the path segment", () => {
     const url = terminalWsUrl({
       baseUrl: "http://x",
@@ -99,5 +112,12 @@ describe("terminalKillUrl", () => {
   it("preserves https → https (does NOT cross over to ws/wss like the WS builder)", () => {
     const url = terminalKillUrl({ baseUrl: "https://daemon.example", kind: "global" })
     expect(new URL(url).protocol).toBe("https:")
+  })
+
+  it("preserves a base path prefix (e.g. the /__api tunnel proxy)", () => {
+    const url = terminalKillUrl({ baseUrl: "https://abc.trycloudflare.com/__api", kind: "global" })
+    const u = new URL(url)
+    expect(u.pathname).toBe("/__api/terminal/global")
+    expect(u.search).toBe("")
   })
 })

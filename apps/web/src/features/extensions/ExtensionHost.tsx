@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react"
+import { apiBase } from "../../lib/apiBase"
 import { mountRpcBridge } from "./rpc"
 import type { ExtensionManifest } from "./types"
 
-const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
+const base = apiBase()
 
 type Props = {
   manifest: ExtensionManifest
