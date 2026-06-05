@@ -12,6 +12,7 @@ import * as libraryRoute from "./features/library/library.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
+import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
 import { extensionRegistry } from "./platform/extensions/registry"
 
@@ -63,6 +64,7 @@ const app = new Hono()
   .route("/drops", dropsRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
+  .route("/tunnel", tunnelRoute.app)
   .route("/canvas", canvasRoute.app)
   .route("/issue-driver", issueDriverRoute.app)
   .route("/claude-config", claudeConfigRoute.app)

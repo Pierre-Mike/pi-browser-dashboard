@@ -6,6 +6,8 @@ export type PidConfig = {
   readonly projectsRoot: string
   readonly claudeConfigDir: string
   readonly appPort: number
+  /** Local port the Cloudflare quick-tunnel exposes publicly (the dashboard). */
+  readonly tunnelPort: number
 }
 
 type ConfigServiceApi = {
@@ -23,6 +25,8 @@ const buildConfig = (): PidConfig => {
     projectsRoot: process.env.PID_PROJECTS_ROOT ?? join(home, "Github"),
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
     appPort: Number(process.env.PORT ?? 8787),
+    // Default to the web dashboard dev port so the tunnel URL serves the UI.
+    tunnelPort: Number(process.env.PID_TUNNEL_PORT ?? process.env.PID_WEB_PORT ?? 5173),
   }
 }
 

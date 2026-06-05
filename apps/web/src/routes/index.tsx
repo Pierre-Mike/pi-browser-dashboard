@@ -9,12 +9,13 @@ import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { useProjects } from "../features/projects/useProjects"
 import { ProjectGrid } from "../features/sessions/ProjectGrid"
 import { useSessions } from "../features/sessions/useSessions"
+import { TunnelPanel } from "../features/tunnel/TunnelPanel"
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
 })
 
-type StaticTabKey = "projects" | "terminal" | "claude" | "library" | "extensions"
+type StaticTabKey = "projects" | "terminal" | "claude" | "library" | "extensions" | "tunnel"
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
 // with a static key.
 type TabKey = StaticTabKey | `ext:${string}`
@@ -25,6 +26,7 @@ const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "claude", label: "Claude" },
   { key: "library", label: "Library" },
   { key: "extensions", label: "Extensions" },
+  { key: "tunnel", label: "Tunnel" },
 ]
 
 const ProjectsPanel = () => {
@@ -167,6 +169,14 @@ function IndexPage() {
         className={tab === "extensions" ? "flex flex-col gap-3" : "hidden"}
       >
         <ExtensionsPanel />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="dashboard-tab-panel-tunnel"
+        className={tab === "tunnel" ? "flex flex-col gap-3" : "hidden"}
+      >
+        <TunnelPanel />
       </div>
 
       {extTabs.map((e) => {

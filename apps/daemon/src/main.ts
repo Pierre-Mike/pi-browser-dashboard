@@ -2,11 +2,15 @@ import { Effect } from "effect"
 import app, { mountExtensions, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.repo"
 import { SessionRegistry } from "./features/sessions/sessions.repo"
+import { TunnelService } from "./features/tunnel/tunnel.repo"
 import { loadExtensions } from "./platform/extensions/loader"
 import { appRuntime } from "./platform/runtime"
 
 const PORT = Number(process.env.PORT ?? 8787)
 const ISSUE_POLL_MS = Number(process.env.PID_ISSUE_POLL_MS ?? 120_000)
+// Every boot starts one Cloudflare quick-tunnel. Set PID_TUNNEL_AUTOSTART=0 to
+// opt out (e.g. tests / offline dev).
+const TUNNEL_AUTOSTART = (process.env.PID_TUNNEL_AUTOSTART ?? "1") !== "0"
 
 // Touch the runtime so SessionRegistryLive is constructed (and its watchers
 // armed) before the first request arrives.
@@ -49,9 +53,24 @@ const server = Bun.serve({
 
 console.error(`daemon up: http://localhost:${server.port}`)
 
+// Bring up a single Cloudflare quick-tunnel so the dashboard is reachable from
+// a public URL on every boot. cloudflared failures (e.g. not installed) must
+// never block the daemon — the tunnel state just reports the error and the UI
+// surfaces it.
+if (TUNNEL_AUTOSTART) {
+  void appRuntime
+    .runPromise(Effect.flatMap(TunnelService, (s) => s.start()))
+    .then((st) => {
+      if (st.status === "running") console.error(`tunnel up: ${st.url}`)
+      else console.error(`[tunnel] not running: ${st.error ?? st.status}`)
+    })
+    .catch((err) => console.error("[tunnel] start failed", err))
+}
+
 const shutdown = async (): Promise<void> => {
   if (issueDriverTimer) clearInterval(issueDriverTimer)
   server.stop()
+  await appRuntime.runPromise(Effect.flatMap(TunnelService, (s) => s.stop())).catch(() => undefined)
   await appRuntime.dispose()
   process.exit(0)
 }

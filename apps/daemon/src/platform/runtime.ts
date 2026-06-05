@@ -7,6 +7,7 @@ import { LibraryRepoLive } from "../features/library/library.repo"
 import { ProjectsRepoLive } from "../features/projects/projects.repo"
 import { FilesRepoLive } from "../features/sessions/files.repo"
 import { SessionRegistryLive } from "../features/sessions/sessions.repo"
+import { TunnelRepoLive } from "../features/tunnel/tunnel.repo"
 import { ConfigRepoLive } from "./config.repo"
 import { ShellRepoLive } from "./shell.repo"
 
@@ -22,6 +23,7 @@ const LibraryLive = Layer.provide(
   LibraryRepoLive,
   Layer.mergeAll(ConfigRepoLive, ProjectsLive, GitClientLive),
 )
+const TunnelLive = Layer.provide(TunnelRepoLive, ConfigRepoLive)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
     globalCap: ISSUE_DRIVER_GLOBAL_CAP,
@@ -42,6 +44,7 @@ const AppLayer = Layer.mergeAll(
   ClaudeConfigLive,
   LibraryLive,
   IssueDriverLive,
+  TunnelLive,
 )
 
 export const appRuntime = ManagedRuntime.make(AppLayer)
