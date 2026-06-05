@@ -20,6 +20,7 @@ export const TunnelPanel = () => {
   const start = useStartTunnel()
   const stop = useStopTunnel()
   const [copied, setCopied] = useState(false)
+  const [revealed, setRevealed] = useState(false)
 
   const state = q.data
   const status: TunnelStatus = state?.status ?? "stopped"
@@ -64,12 +65,24 @@ export const TunnelPanel = () => {
         <span className="sr-only">Cloudflare URL</span>
         <input
           data-testid="tunnel-url"
-          type="text"
+          type={revealed ? "text" : "password"}
           readOnly
           value={url}
           placeholder={running ? "" : "No active tunnel"}
+          autoComplete="off"
           className="flex-1 font-mono text-xs rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 px-2 py-1.5"
         />
+        <button
+          type="button"
+          data-testid="tunnel-reveal"
+          onClick={() => setRevealed((v) => !v)}
+          disabled={!running || !url}
+          aria-pressed={revealed}
+          aria-label={revealed ? "Hide URL" : "Reveal URL"}
+          className="text-xs rounded border border-slate-300 dark:border-slate-700 px-2 py-1.5 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          {revealed ? "Hide" : "Reveal"}
+        </button>
         <button
           type="button"
           data-testid="tunnel-copy"
