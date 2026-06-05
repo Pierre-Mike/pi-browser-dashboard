@@ -38,7 +38,7 @@ jobs:
         run: bun run lint:ci
 
   bun-test:
-    name: bun test (daemon)
+    name: bun test (daemon + web)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -61,6 +61,9 @@ jobs:
 
       - name: Run unit tests
         run: bun run test
+
+      - name: Run web unit tests
+        run: bun run test:web
 
   dead-code:
     name: fallow audit (dead code)
