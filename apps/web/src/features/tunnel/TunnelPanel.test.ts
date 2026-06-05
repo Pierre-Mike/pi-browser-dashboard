@@ -11,6 +11,11 @@ describe("TunnelPanel", () => {
     expect(src).toContain('data-testid="tunnel-open"')
   })
 
+  it("masks the URL like a password with a reveal toggle", () => {
+    expect(src).toContain('data-testid="tunnel-reveal"')
+    expect(src).toContain('type={revealed ? "text" : "password"}')
+  })
+
   it("wires start/stop to the tunnel hooks", () => {
     expect(src).toContain("useStartTunnel")
     expect(src).toContain("useStopTunnel")
