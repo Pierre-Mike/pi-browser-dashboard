@@ -18,16 +18,21 @@ export default defineConfig({
     proxy: {
       // `/sessions`, `/dispatch`, `/projects` are SPA routes that collide with
       // identically-named daemon REST routes — they can only coexist on the
-      // same origin behind a prefix. The client routes ALL daemon traffic
-      // (REST, SSE, WebSockets) through `/__api`, which the SPA never owns;
-      // strip the prefix and forward to the daemon. `ws: true` carries the
-      // terminal/canvas sockets, so the whole app works over the tunnel from a
-      // single public origin (no CORS, no mixed content). e2e/direct callers
-      // set VITE_API_URL straight at the daemon and bypass this entirely.
+      // same origin behind a prefix. The client routes daemon HTTP traffic
+      // (REST + uploads + extension assets) through `/__api`, which the SPA
+      // never owns; strip the prefix and forward to the daemon. This keeps
+      // those requests same-origin (no CORS, no mixed content) over the tunnel.
+      // e2e/direct callers set VITE_API_URL straight at the daemon and bypass
+      // this entirely.
+      //
+      // NOTE: deliberately NO `ws: true`. node-http-proxy (Vite's proxy engine)
+      // cannot complete a WebSocket upgrade against the Bun daemon — REST
+      // forwards fine but the WS handshake hangs and the socket closes before
+      // it opens. So terminal/canvas WebSockets connect straight to the daemon
+      // (see wsBase() in src/lib/apiBase.ts), not through this proxy.
       "/__api": {
         target: DAEMON,
         changeOrigin: true,
-        ws: true,
         rewrite: (path) => path.replace(/^\/__api/, ""),
       },
       // SSE stays at the root `/events` path (sse.ts hits it same-origin; it is
