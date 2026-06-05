@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { apiBase } from "../../lib/apiBase"
+import { wsBase } from "../../lib/apiBase"
 import { type CanvasSnapshot, emptyCanvas, snapshotFromReactFlow } from "./canvas.types"
 import { canvasShouldSend, canvasStableKey } from "./canvasSync"
 import { canvasWsUrl } from "./canvasUrl"
@@ -132,7 +132,7 @@ export const useCanvasSync = (short: string): CanvasSyncApi => {
   }, [])
 
   const connect = useCallback(() => {
-    const url = canvasWsUrl({ baseUrl: apiBase(), id: short })
+    const url = canvasWsUrl({ baseUrl: wsBase(), id: short })
     setStatus("connecting")
     const ws = new WebSocket(url)
     wsRef.current = ws

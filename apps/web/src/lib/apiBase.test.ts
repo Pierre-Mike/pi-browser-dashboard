@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { API_PREFIX, computeApiBase } from "./apiBase"
+import { API_PREFIX, computeApiBase, computeWsBase } from "./apiBase"
 
 describe("computeApiBase", () => {
   it("returns VITE_API_URL verbatim when set (direct daemon, no prefix)", () => {
@@ -22,5 +22,19 @@ describe("computeApiBase", () => {
 
   it("falls back to the local daemon when there is no window", () => {
     expect(computeApiBase(undefined, null)).toBe("http://localhost:8787")
+  })
+})
+
+describe("computeWsBase", () => {
+  // WebSockets bypass the /__api same-origin proxy (node-http-proxy can't
+  // upgrade against the Bun daemon) and hit the daemon directly.
+  it("connects straight to the local daemon, NOT a same-origin /__api prefix", () => {
+    const base = computeWsBase(undefined)
+    expect(base).toBe("http://localhost:8787")
+    expect(base).not.toContain(API_PREFIX)
+  })
+
+  it("honours VITE_API_URL verbatim when set (e2e / explicit daemon)", () => {
+    expect(computeWsBase("http://localhost:18787")).toBe("http://localhost:18787")
   })
 })

@@ -2,7 +2,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
-import { apiBase } from "../../lib/apiBase"
+import { wsBase } from "../../lib/apiBase"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
@@ -88,9 +88,9 @@ export const TerminalView = (props: Props) => {
       lastRows = term.rows
       const url =
         kind === "global"
-          ? terminalWsUrl({ baseUrl: apiBase(), kind: "global", cols: term.cols, rows: term.rows })
+          ? terminalWsUrl({ baseUrl: wsBase(), kind: "global", cols: term.cols, rows: term.rows })
           : terminalWsUrl({
-              baseUrl: apiBase(),
+              baseUrl: wsBase(),
               kind,
               id,
               cols: term.cols,
@@ -175,8 +175,8 @@ export const TerminalView = (props: Props) => {
     try {
       const url =
         kind === "global"
-          ? terminalKillUrl({ baseUrl: apiBase(), kind: "global" })
-          : terminalKillUrl({ baseUrl: apiBase(), kind, id })
+          ? terminalKillUrl({ baseUrl: wsBase(), kind: "global" })
+          : terminalKillUrl({ baseUrl: wsBase(), kind, id })
       try {
         await fetch(url, { method: "DELETE" })
       } catch {
