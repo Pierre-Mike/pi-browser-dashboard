@@ -1,5 +1,6 @@
 import type { Edge, Node } from "@xyflow/react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { apiBase } from "../../lib/apiBase"
 import { type CanvasSnapshot, emptyCanvas, snapshotFromReactFlow } from "./canvas.types"
 import { canvasShouldSend, canvasStableKey } from "./canvasSync"
 import { canvasWsUrl } from "./canvasUrl"
@@ -16,9 +17,6 @@ type ServerFrame =
       readonly origin: "self" | "remote"
     }
   | { readonly kind: "error"; readonly message: string }
-
-const apiBase = (): string =>
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
 
 const snapshotToReactFlow = (snap: CanvasSnapshot): { nodes: Node[]; edges: Edge[] } => ({
   nodes: snap.nodes.map((n) => {

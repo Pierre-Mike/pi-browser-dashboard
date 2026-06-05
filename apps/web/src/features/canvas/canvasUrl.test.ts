@@ -15,4 +15,12 @@ describe("canvasWsUrl", () => {
     expect(u.protocol).toBe("wss:")
     expect(u.pathname).toBe("/canvas/x/ws")
   })
+
+  it("preserves a base path prefix (e.g. the /__api tunnel proxy)", () => {
+    const url = canvasWsUrl({ baseUrl: "https://abc.trycloudflare.com/__api", id: "x" })
+    const u = new URL(url)
+    expect(u.protocol).toBe("wss:")
+    expect(u.host).toBe("abc.trycloudflare.com")
+    expect(u.pathname).toBe("/__api/canvas/x/ws")
+  })
 })

@@ -4,7 +4,6 @@
 // at the network surface only.
 import type { AppType } from "@pid/daemon/types"
 import { hc } from "hono/client"
+import { apiBase } from "./apiBase"
 
-const base = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787"
-
-export const api = hc<AppType>(base)
+export const api = hc<AppType>(apiBase())
