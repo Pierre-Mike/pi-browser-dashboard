@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { clampLimit, gitLog, gitStatus } from "./git.repo"
@@ -43,6 +43,16 @@ describe("gitStatus", () => {
 
   it("reports not_a_repo outside a git repository", async () => {
     const res = await gitStatus(notRepo)
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.error).toBe("not_a_repo")
+  })
+
+  it("does not walk up into an enclosing repo for a non-repo subdir", async () => {
+    // repo/sub has no .git of its own; we must NOT report repo's status.
+    const sub = join(repo, "sub")
+    await mkdir(sub, { recursive: true })
+    const res = await gitStatus(sub)
     expect(res.ok).toBe(false)
     if (res.ok) return
     expect(res.error).toBe("not_a_repo")

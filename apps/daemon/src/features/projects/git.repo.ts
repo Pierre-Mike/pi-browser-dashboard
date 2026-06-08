@@ -2,6 +2,8 @@
 // parsers in git.core.ts. Read-only commands only (status, log) — these back
 // the extension RPC's repo-context contract.
 
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import {
   GIT_LOG_FORMAT,
   type GitLogEntry,
@@ -20,6 +22,10 @@ export type GitResult<A> = { ok: true; value: A } | { ok: false; error: GitError
 // Run a git subcommand against repoPath, returning stdout on success. Times out
 // so a wedged repo can't stall the request.
 const runGit = async (repoPath: string, args: readonly string[]): Promise<GitResult<string>> => {
+  // Scope to the project dir itself — a project root carries a `.git` dir (or a
+  // `.git` file for worktrees/submodules). Without this, git would walk up and
+  // report an enclosing repository when the project isn't a repo of its own.
+  if (!existsSync(join(repoPath, ".git"))) return { ok: false, error: "not_a_repo" }
   try {
     const proc = Bun.spawn({
       cmd: ["git", "-C", repoPath, ...args],
