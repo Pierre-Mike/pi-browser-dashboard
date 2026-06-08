@@ -53,7 +53,7 @@ const app = new Hono()
     }
     if (!isRecord(body)) return c.json({ error: "invalid_body" }, 400)
     // Validate body shape — only known permission keys, correct value types.
-    const { fs, exec, net, events } = body
+    const { fs, exec, net, events, git } = body
     if (fs !== undefined && (!Array.isArray(fs) || !fs.every((v) => typeof v === "string"))) {
       return c.json({ error: "invalid_body" }, 400)
     }
@@ -66,11 +66,15 @@ const app = new Hono()
     if (events !== undefined && typeof events !== "boolean") {
       return c.json({ error: "invalid_body" }, 400)
     }
+    if (git !== undefined && typeof git !== "boolean") {
+      return c.json({ error: "invalid_body" }, 400)
+    }
     const grants: ExtensionGrants = {}
     if (Array.isArray(fs)) grants.fs = fs as string[]
     if (Array.isArray(exec)) grants.exec = exec as string[]
     if (Array.isArray(net)) grants.net = net as string[]
     if (typeof events === "boolean") grants.events = events
+    if (typeof git === "boolean") grants.git = git
     const state = setGrants({ file: stateFileFor(entry), name, grants })
     sseBus.publish({ type: "ext:state-changed", data: { name } })
     return c.json({

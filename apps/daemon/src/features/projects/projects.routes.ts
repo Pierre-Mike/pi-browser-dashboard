@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { type GitError, gitLog, gitStatus } from "./git.repo"
 import { fetchGithubSummary } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
 import type { FileError } from "./projects.repo"
@@ -19,6 +20,18 @@ const errorToStatus = (e: FileError): 400 | 403 | 404 | 413 => {
       return 404
   }
 }
+
+const gitErrorToStatus = (e: GitError): 404 | 500 => (e === "not_a_repo" ? 404 : 500)
+
+// Resolve a project id to its absolute path, or null when unknown.
+const projectPath = (id: string): Promise<string | null> =>
+  appRuntime.runPromise(
+    Effect.gen(function* () {
+      const svc = yield* ProjectsService
+      const list = yield* svc.list()
+      return list.find((p) => p.id === id)?.path ?? null
+    }),
+  )
 
 const app = new Hono()
   .get("/", async (c) => {
@@ -95,6 +108,22 @@ const app = new Hono()
     if (!project.githubUrl) return c.json({ error: "project has no github origin" }, 400)
     const summary = await fetchGithubSummary(project.path)
     return c.json(summary)
+  })
+  .get("/:id/git/status", async (c) => {
+    const path = await projectPath(c.req.param("id"))
+    if (!path) return c.json({ error: "project not found" }, 404)
+    const res = await gitStatus(path)
+    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
+    return c.json(res.value)
+  })
+  .get("/:id/git/log", async (c) => {
+    const path = await projectPath(c.req.param("id"))
+    if (!path) return c.json({ error: "project not found" }, 404)
+    const limitRaw = c.req.query("limit")
+    const limit = limitRaw !== undefined ? Number(limitRaw) : undefined
+    const res = await gitLog(path, limit)
+    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
+    return c.json({ commits: res.value })
   })
 
 export { app }

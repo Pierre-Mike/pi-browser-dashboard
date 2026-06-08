@@ -45,4 +45,14 @@ describe("checkGrants", () => {
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.missing).toEqual(["events"])
   })
+
+  it("missing git when requested but not granted", () => {
+    const res = checkGrants(mk({ git: true }), {})
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.missing).toEqual(["git"])
+  })
+
+  it("ok when git is requested and granted", () => {
+    expect(checkGrants(mk({ git: true }), { git: true })).toEqual({ ok: true })
+  })
 })

@@ -4,7 +4,7 @@ import type { ExtensionManifest } from "./types"
 import { useExtensions } from "./useExtensions"
 
 // Known capability keys exposed in the management UI.
-const CAPABILITIES = ["fs", "exec", "net", "events"] as const
+const CAPABILITIES = ["fs", "exec", "net", "events", "git"] as const
 type Capability = (typeof CAPABILITIES)[number]
 
 const TIER_COLORS: Record<string, string> = {
@@ -36,17 +36,19 @@ const ExtRow = ({ ext }: ExtRowProps) => {
     const hasExec = ext.granted.includes("exec")
     const hasNet = ext.granted.includes("net")
     const hasEvents = ext.granted.includes("events")
+    const hasGit = ext.granted.includes("git")
 
     const newGrants: Record<string, string[] | boolean> = {
       fs: hasFs ? ["*"] : [],
       exec: hasExec ? ["*"] : [],
       net: hasNet ? ["*"] : [],
       events: hasEvents,
+      git: hasGit,
     }
 
-    // Toggle the target cap.
-    if (cap === "events") {
-      newGrants.events = !hasEvents
+    // Toggle the target cap (events/git are booleans; fs/exec/net are lists).
+    if (cap === "events" || cap === "git") {
+      newGrants[cap] = !ext.granted.includes(cap)
     } else {
       const had = ext.granted.includes(cap)
       newGrants[cap] = had ? [] : ["*"]

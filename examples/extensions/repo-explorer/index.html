@@ -35,11 +35,17 @@
         color: #6b7280; font-size: 0.85rem; line-height: 1.5;
       }
       code { background: rgba(125, 125, 125, 0.16); padding: 0 0.25rem; border-radius: 3px; }
+      .git {
+        font-family: ui-monospace, monospace; font-size: 0.8rem;
+        margin-bottom: 0.5rem; color: #6b7280;
+      }
+      .git .branch { color: #0ea5e9; font-weight: 600; }
     </style>
   </head>
   <body>
     <h2>Repo Explorer</h2>
     <div class="ctx" id="ctx">Loading project context&hellip;</div>
+    <div class="git" id="git"></div>
 
     <div class="bar">
       <button id="up" title="Parent directory">&uarr; up</button>
@@ -53,6 +59,7 @@
       repo-explorer demonstrates the full iframe-extension surface:
         • getContext      → the project this panel is scoped to (no permission)
         • listFiles(path) → browse the repo tree (requires the "fs" capability)
+        • gitStatus()     → branch + dirty file count (requires the "git" capability)
 
       It is contributed as a projectPanel, so the dashboard mounts it inside a
       project's view and passes that project's id/cwd into the RPC context.
@@ -64,6 +71,7 @@
 
     <script>
       const ctxEl = document.getElementById("ctx")
+      const gitEl = document.getElementById("git")
       const cwdEl = document.getElementById("cwd")
       const bodyEl = document.getElementById("body")
       const upBtn = document.getElementById("up")
@@ -162,6 +170,27 @@
           ctxEl.textContent = "context error: " + err.message
         })
 
+      // Repo-context contract: show the current branch + dirty file count.
+      // Needs the "git" capability — silently skipped until granted.
+      function loadGitStatus() {
+        rpc("gitStatus")
+          .then((s) => {
+            const dirty = (s.entries || []).length
+            const branch = s.branch || "(detached)"
+            gitEl.innerHTML =
+              'on <span class="branch"></span> · ' +
+              (dirty === 0 ? "clean" : dirty + " uncommitted change" + (dirty === 1 ? "" : "s"))
+            gitEl.querySelector(".branch").textContent = branch
+          })
+          .catch((err) => {
+            gitEl.textContent = /permission/i.test(err.message)
+              ? "grant the “git” capability to see branch status"
+              : ""
+          })
+      }
+
+      refreshBtn.addEventListener("click", loadGitStatus)
+      loadGitStatus()
       load(".")
     </script>
   </body>

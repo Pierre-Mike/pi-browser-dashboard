@@ -9,6 +9,7 @@ export type ExtensionGrants = {
   exec?: string[]
   net?: string[]
   events?: boolean
+  git?: boolean
 }
 
 export type ExtensionState = Record<string, { enabled: boolean; grants: ExtensionGrants }>
@@ -98,5 +99,6 @@ export const permissionKeysFromGrants = (grants: ExtensionGrants): string[] => {
   if (grants.exec && grants.exec.length > 0) keys.push("exec")
   if (grants.net && grants.net.length > 0) keys.push("net")
   if (grants.events) keys.push("events")
+  if (grants.git) keys.push("git")
   return keys
 }

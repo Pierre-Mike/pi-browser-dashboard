@@ -150,6 +150,52 @@ describe("dispatchRpc — permission gate", () => {
     }
   })
 
+  it("rejects gitStatus when git permission not granted", async () => {
+    const req = { id: "g1", method: "gitStatus" }
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.code).toBe("no_permission")
+      expect(result.error).toContain("git")
+    }
+  })
+
+  it("rejects gitLog when git permission not granted", async () => {
+    const req = { id: "g2", method: "gitLog", params: { limit: 5 } }
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest: baseManifest(),
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe("no_permission")
+  })
+
+  it("passes the git gate but errors without a projectId in context", async () => {
+    // granted=["git"] → permission gate passes; handler then needs a projectId.
+    const manifest = { ...baseManifest(), granted: ["git"] }
+    const req = { id: "g3", method: "gitStatus" }
+    const result = await dispatchRpc({
+      rawData: req,
+      origin: ORIGIN,
+      expectedOrigin: ORIGIN,
+      manifest,
+      ctx: {},
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      // Past the permission gate — fails in the handler, not the gate.
+      expect(result.code).toBe("error")
+      expect(result.error).toContain("projectId")
+    }
+  })
+
   it("allows subscribeEvents when events is in granted", async () => {
     const manifest = { ...baseManifest(), granted: ["events"] }
     const req = { id: "8", method: "subscribeEvents" }

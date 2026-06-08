@@ -38,6 +38,7 @@ export const checkGrants = (
   checkList({ cap: "exec", requested: req.exec, granted: granted.exec, missing })
   checkList({ cap: "net", requested: req.net, granted: granted.net, missing })
   if (req.events && !granted.events) missing.push("events")
+  if (req.git && !granted.git) missing.push("git")
 
   return missing.length === 0 ? { ok: true } : { ok: false, missing }
 }

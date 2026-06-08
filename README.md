@@ -108,8 +108,16 @@ This writes two files:
 After running the generator, restart the daemon (`bun run dev:daemon`) and open
 the **Extensions** tab in the dashboard — your extension's tab will appear.
 
-To use `listFiles` / `readFile` RPC methods, grant the **fs** capability to
-your extension in the Extensions tab.
+The iframe RPC bridge exposes the project's repo context, each method gated by a
+capability you grant per-extension in the Extensions tab:
+
+| RPC method | Capability | Returns |
+| --- | --- | --- |
+| `getContext()` | _(none)_ | the project id + cwd this panel is scoped to |
+| `listFiles({path})` / `readFile({path})` | `fs` | repo file tree / file contents |
+| `gitStatus()` | `git` | current branch, ahead/behind, dirty entries |
+| `gitLog({limit})` | `git` | recent commits (hash, author, date, subject) |
+| `subscribeEvents()` | `events` | pointer to the daemon SSE stream |
 
 Worked examples live in [`examples/extensions/`](./examples/extensions/):
 
@@ -118,7 +126,8 @@ Worked examples live in [`examples/extensions/`](./examples/extensions/):
 - [`repo-explorer/`](./examples/extensions/repo-explorer/) — a project panel that
   browses the repo's file tree over the RPC bridge. Demonstrates project-scoped
   context and the permission model: it stays inert until you grant **fs** in the
-  Extensions tab, then lists files (click a directory to descend). Copy it into
+  Extensions tab, then lists files (click a directory to descend). Grant **git**
+  to also show the current branch and uncommitted-change count. Copy it into
   `~/.pid/extensions/` or a project's `.pid/extensions/` to try it.
 
 ## Contributing

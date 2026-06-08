@@ -5,6 +5,8 @@ export type ExtensionPermissions = {
   exec?: string[]
   net?: string[]
   events?: boolean
+  // Read-only repo introspection (git status / log) via the scoped daemon API.
+  git?: boolean
 }
 
 export type ExtensionContributes = {
@@ -103,6 +105,7 @@ export const sanitizeManifest = (m: ExtensionManifest): SanitizedManifest => {
     if (p.exec && p.exec.length > 0) keys.push("exec")
     if (p.net && p.net.length > 0) keys.push("net")
     if (p.events) keys.push("events")
+    if (p.git) keys.push("git")
   }
   const out: SanitizedManifest = {
     name: m.name,
