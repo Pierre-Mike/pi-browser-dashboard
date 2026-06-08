@@ -16,6 +16,18 @@ const GIT_TIMEOUT_MS = 5_000
 const DEFAULT_LOG_LIMIT = 20
 const MAX_LOG_LIMIT = 200
 
+// Strip GIT_* env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, …) so the spawn
+// discovers the repo from `-C <repoPath>` alone. Without this, an ambient
+// GIT_DIR — e.g. when the daemon or a test runs inside a git hook — would
+// override `-C` and make every call report the wrong repository.
+const cleanGitEnv = (): Record<string, string> => {
+  const env: Record<string, string> = {}
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && !k.startsWith("GIT_")) env[k] = v
+  }
+  return env
+}
+
 export type GitError = "not_a_repo" | "git_failed" | "timeout"
 export type GitResult<A> = { ok: true; value: A } | { ok: false; error: GitError }
 
@@ -32,6 +44,7 @@ const runGit = async (repoPath: string, args: readonly string[]): Promise<GitRes
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",
+      env: cleanGitEnv(),
     })
     let timedOut = false
     const timer = setTimeout(() => {

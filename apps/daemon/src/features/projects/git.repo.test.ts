@@ -4,8 +4,23 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { clampLimit, gitLog, gitStatus } from "./git.repo"
 
+// Scrub GIT_* so fixture setup builds the temp repo even when the test itself
+// runs inside a git hook (which exports GIT_DIR/GIT_WORK_TREE).
+const cleanEnv = (): Record<string, string> => {
+  const env: Record<string, string> = {}
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && !k.startsWith("GIT_")) env[k] = v
+  }
+  return env
+}
+
 const git = async (cwd: string, args: string[]): Promise<void> => {
-  const proc = Bun.spawn({ cmd: ["git", "-C", cwd, ...args], stdout: "ignore", stderr: "ignore" })
+  const proc = Bun.spawn({
+    cmd: ["git", "-C", cwd, ...args],
+    stdout: "ignore",
+    stderr: "ignore",
+    env: cleanEnv(),
+  })
   await proc.exited
 }
 
@@ -46,6 +61,22 @@ describe("gitStatus", () => {
     expect(res.ok).toBe(false)
     if (res.ok) return
     expect(res.error).toBe("not_a_repo")
+  })
+
+  it("ignores an ambient GIT_DIR and reads the repo at the given path", async () => {
+    // Simulate running inside a git hook, which exports GIT_DIR for the OUTER
+    // repo. The scoped API must still report the repo at repoPath, not GIT_DIR.
+    const prev = process.env.GIT_DIR
+    process.env.GIT_DIR = join(notRepo, "nonexistent.git")
+    try {
+      const res = await gitStatus(repo)
+      expect(res.ok).toBe(true)
+      if (!res.ok) return
+      expect(res.value.branch).toBe("main")
+    } finally {
+      if (prev === undefined) delete process.env.GIT_DIR
+      else process.env.GIT_DIR = prev
+    }
   })
 
   it("does not walk up into an enclosing repo for a non-repo subdir", async () => {
