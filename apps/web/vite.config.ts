@@ -25,14 +25,17 @@ export default defineConfig({
       // e2e/direct callers set VITE_API_URL straight at the daemon and bypass
       // this entirely.
       //
-      // NOTE: deliberately NO `ws: true`. node-http-proxy (Vite's proxy engine)
-      // cannot complete a WebSocket upgrade against the Bun daemon — REST
-      // forwards fine but the WS handshake hangs and the socket closes before
-      // it opens. So terminal/canvas WebSockets connect straight to the daemon
-      // (see wsBase() in src/lib/apiBase.ts), not through this proxy.
+      // `ws: true` so terminal/canvas WebSockets ride this same prefix (see
+      // wsBase() in src/lib/apiBase.ts). node-http-proxy relays the upstream
+      // `101 Switching Protocols` via Node's `httpServer.on("upgrade")` event,
+      // which only fires when Vite runs under Node — never Bun (the dev/preview
+      // scripts are kept off `--bun`; guarded by src/devRuntime.test.ts). This
+      // is what lets the terminal work over the Cloudflare tunnel, which only
+      // exposes this Vite origin, never the daemon's :8787.
       "/__api": {
         target: DAEMON,
         changeOrigin: true,
+        ws: true,
         rewrite: (path) => path.replace(/^\/__api/, ""),
       },
       // SSE stays at the root `/events` path (sse.ts hits it same-origin; it is

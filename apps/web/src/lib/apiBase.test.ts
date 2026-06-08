@@ -26,15 +26,31 @@ describe("computeApiBase", () => {
 })
 
 describe("computeWsBase", () => {
-  // WebSockets bypass the /__api same-origin proxy (node-http-proxy can't
-  // upgrade against the Bun daemon) and hit the daemon directly.
-  it("connects straight to the local daemon, NOT a same-origin /__api prefix", () => {
-    const base = computeWsBase(undefined)
+  // WebSockets route through the same-origin /__api proxy, exactly like REST.
+  // Running Vite under Node (not Bun) lets http-proxy relay the WS upgrade, so
+  // terminals/canvas work over the Cloudflare tunnel — the tunnel only exposes
+  // the Vite origin, never the daemon's :8787.
+  it("routes through the same origin under /__api when in a browser (tunnel)", () => {
+    expect(computeWsBase(undefined, "https://abc.trycloudflare.com")).toBe(
+      `https://abc.trycloudflare.com${API_PREFIX}`,
+    )
+  })
+
+  it("uses the same-origin /__api prefix for plain localhost dev too", () => {
+    expect(computeWsBase(undefined, "http://localhost:5173")).toBe(
+      `http://localhost:5173${API_PREFIX}`,
+    )
+  })
+
+  it("falls back to the local daemon when there is no window", () => {
+    const base = computeWsBase(undefined, null)
     expect(base).toBe("http://localhost:8787")
     expect(base).not.toContain(API_PREFIX)
   })
 
   it("honours VITE_API_URL verbatim when set (e2e / explicit daemon)", () => {
-    expect(computeWsBase("http://localhost:18787")).toBe("http://localhost:18787")
+    expect(computeWsBase("http://localhost:18787", "https://abc.trycloudflare.com")).toBe(
+      "http://localhost:18787",
+    )
   })
 })
