@@ -30,19 +30,22 @@ export const apiBase = (): string =>
     typeof window !== "undefined" ? window.location.origin : null,
   )
 
-// WebSocket base — deliberately NOT the same-origin `/__api` HTTP proxy.
-// Vite's dev proxy (node-http-proxy) cannot complete a WebSocket upgrade
-// against the Bun daemon: REST forwards fine, but the WS handshake hangs and
-// the socket closes before it opens. So terminal/canvas sockets connect
-// straight to the daemon, exactly as they did before the `/__api` prefix
-// existed. `VITE_API_URL` still wins (e2e); otherwise the local daemon.
+// WebSocket base — same-origin `/__api`, identical to the HTTP base above.
+// terminal/canvas sockets route through Vite's `/__api` proxy (which has
+// `ws: true`), so they ride the same tunnel origin as every other request.
+// This works because the dev/preview server runs Vite under Node, not Bun:
+// http-proxy relays the upstream `101 Switching Protocols` via Node's
+// `httpServer.on("upgrade")` event, which Bun's node:http layer does not drive
+// (see devRuntime.test.ts). The tunnel only exposes the Vite origin — never the
+// daemon's :8787 — so a same-origin WS is the only one that reaches it.
 //
-// Consequence: live terminals/canvas need direct access to the daemon
-// (local/LAN). Over the Cloudflare tunnel — which only exposes the Vite web
-// origin — they stay unavailable, the same as before. Routing them through the
-// tunnel would require the daemon (not Vite) to terminate the WebSocket.
-export const computeWsBase = (envUrl: string | undefined): string =>
-  envUrl ?? "http://localhost:8787"
+// `VITE_API_URL` still wins (e2e points it straight at the daemon, no prefix),
+// and the no-window path falls back to the local daemon.
+export const computeWsBase = (envUrl: string | undefined, origin: string | null): string =>
+  computeApiBase(envUrl, origin)
 
 export const wsBase = (): string =>
-  computeWsBase(import.meta.env.VITE_API_URL as string | undefined)
+  computeWsBase(
+    import.meta.env.VITE_API_URL as string | undefined,
+    typeof window !== "undefined" ? window.location.origin : null,
+  )
