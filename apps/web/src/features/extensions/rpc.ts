@@ -33,6 +33,8 @@ const METHOD_PERMISSION: Record<string, string> = {
   listFiles: "fs",
   readFile: "fs",
   subscribeEvents: "events",
+  gitStatus: "git",
+  gitLog: "git",
 }
 
 // ---------- method implementations ----------
@@ -82,6 +84,31 @@ const handleSubscribeEvents = (): unknown => ({
   subscribed: true,
   note: "Events are pushed via SSE — connect to /events for the stream.",
 })
+
+const handleGitStatus = async (ctx: DispatchContext): Promise<unknown> => {
+  const projectId = ctx.projectId
+  if (!projectId) throw new Error("gitStatus: no projectId in context")
+  // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
+  const client = api as any
+  const res = await client.projects[projectId].git.status.$get()
+  if (!res.ok) throw new Error(`gitStatus: HTTP ${res.status}`)
+  return res.json()
+}
+
+const handleGitLog = async (params: unknown, ctx: DispatchContext): Promise<unknown> => {
+  const projectId = ctx.projectId
+  if (!projectId) throw new Error("gitLog: no projectId in context")
+  const limit =
+    typeof params === "object" && params !== null && "limit" in params
+      ? String((params as Record<string, unknown>).limit)
+      : undefined
+  // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
+  const client = api as any
+  const query = limit !== undefined ? { limit } : {}
+  const res = await client.projects[projectId].git.log.$get({ query })
+  if (!res.ok) throw new Error(`gitLog: HTTP ${res.status}`)
+  return res.json()
+}
 
 // ---------- pure dispatcher ----------
 
@@ -172,6 +199,12 @@ export const dispatchRpc = async ({
         break
       case "subscribeEvents":
         result = handleSubscribeEvents()
+        break
+      case "gitStatus":
+        result = await handleGitStatus(dispCtx)
+        break
+      case "gitLog":
+        result = await handleGitLog(req.params, dispCtx)
         break
       default:
         return { ok: false, error: `unhandled method: ${req.method}`, code: "error" }

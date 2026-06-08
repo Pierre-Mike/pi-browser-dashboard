@@ -3,7 +3,8 @@ import { api } from "../../lib/api"
 
 export type TunnelStatus = "stopped" | "starting" | "running" | "error"
 
-export interface TunnelState {
+// Local to this hook — not exported (no external consumer).
+interface TunnelState {
   readonly status: TunnelStatus
   readonly url: string | null
   readonly error?: string
