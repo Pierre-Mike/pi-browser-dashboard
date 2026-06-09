@@ -3,6 +3,7 @@ import { useState } from "react"
 import { stateColor } from "../../lib/format"
 import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
+import { NotifyToggle } from "../notifications/NotifyToggle"
 import { useProjects } from "../projects/useProjects"
 import { bucketProjects, sessionLabel } from "./sidebarUtil"
 import { usePinnedProjects } from "./usePinnedProjects"
@@ -44,9 +45,12 @@ export const Sidebar = () => {
         >
           Projects
         </Link>
-        <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
-          {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
+            {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
+          </span>
+          <NotifyToggle />
+        </div>
       </div>
       <nav className="flex-1 py-1 divide-y divide-slate-100 dark:divide-slate-900/70">
         {buckets.length === 0 ? (

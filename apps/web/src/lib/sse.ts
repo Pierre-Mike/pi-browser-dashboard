@@ -1,5 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
-import type { SessionState } from "./types"
+import { notifyEnabled, showNotification } from "../features/notifications/notifier"
+import { decideNotification } from "../features/notifications/sessionNotify"
+import type { SessionState, SessionStateValue } from "./types"
 
 type SsePatcher = {
   close: () => void
@@ -35,6 +37,11 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
   let es: EventSource | null = null
   let lastEventAt = Date.now()
   let closed = false
+  // Last observed state per session, so we can detect the *edge* into a
+  // terminal state and notify only on a transition we actually witnessed.
+  // Persists across watchdog reconnects (this closure lives for the app's
+  // lifetime), so a reconnect doesn't re-notify already-finished sessions.
+  const lastStates = new Map<string, SessionStateValue>()
 
   const log = (name: string, data?: unknown) => {
     if (
@@ -66,6 +73,14 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
       const payload = parse<SessionState>((ev as MessageEvent).data)
       if (!payload) return
       mark("session.state", { short: payload.short, state: payload.state })
+
+      const prevState = lastStates.get(payload.short)
+      lastStates.set(payload.short, payload.state)
+      if (notifyEnabled()) {
+        const note = decideNotification(prevState, payload)
+        if (note) showNotification(note)
+      }
+
       queryClient.setQueryData<SessionState[]>(["sessions"], (prev) => upsertList(prev, payload))
       queryClient.setQueryData<SessionState>(["sessions", payload.short], payload)
       queryClient.invalidateQueries({ queryKey: ["transcript", payload.short] })
