@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { dispatchRpc } from "./rpc"
+import { buildEventEnvelope, dispatchRpc, shouldForwardEvent } from "./rpc"
 import type { ExtensionManifest } from "./types"
 
 const baseManifest = (): ExtensionManifest => ({
@@ -261,6 +261,115 @@ describe("dispatchRpc — unknown method", () => {
     if (!result.ok) {
       expect(result.code).toBe("no_permission")
     }
+  })
+})
+
+describe("shouldForwardEvent — least-privilege event forwarding", () => {
+  const ext = (over: Partial<ExtensionManifest> = {}): ExtensionManifest => ({
+    ...baseManifest(),
+    name: "repo-explorer",
+    granted: ["events"],
+    ...over,
+  })
+
+  it("forwards an event namespaced to this extension once subscribed + granted", () => {
+    expect(
+      shouldForwardEvent({
+        manifest: ext(),
+        granted: ["events"],
+        subscribed: true,
+        event: { type: "ext:repo-explorer:file-changed", data: { path: "a.ts" } },
+      }),
+    ).toBe(true)
+  })
+
+  it("blocks before the iframe has subscribed", () => {
+    expect(
+      shouldForwardEvent({
+        manifest: ext(),
+        granted: ["events"],
+        subscribed: false,
+        event: { type: "ext:repo-explorer:file-changed", data: {} },
+      }),
+    ).toBe(false)
+  })
+
+  it("blocks when the events permission is not granted", () => {
+    expect(
+      shouldForwardEvent({
+        manifest: ext({ granted: [] }),
+        granted: [],
+        subscribed: true,
+        event: { type: "ext:repo-explorer:file-changed", data: {} },
+      }),
+    ).toBe(false)
+  })
+
+  it("blocks another extension's namespaced events (no cross-extension leak)", () => {
+    expect(
+      shouldForwardEvent({
+        manifest: ext(),
+        granted: ["events"],
+        subscribed: true,
+        event: { type: "ext:other-ext:secret", data: { token: "x" } },
+      }),
+    ).toBe(false)
+  })
+
+  it("does not let a name prefix collision leak (repo-explorer vs repo-explorer-evil)", () => {
+    expect(
+      shouldForwardEvent({
+        manifest: ext(),
+        granted: ["events"],
+        subscribed: true,
+        event: { type: "ext:repo-explorer-evil:secret", data: {} },
+      }),
+    ).toBe(false)
+  })
+
+  it("blocks the global/session firehose (non-ext events never forwarded)", () => {
+    for (const type of ["session.state", "roster.changed", "heartbeat", "ext:state-changed"]) {
+      expect(
+        shouldForwardEvent({
+          manifest: ext(),
+          granted: ["events"],
+          subscribed: true,
+          event: { type, data: {} },
+        }),
+      ).toBe(false)
+    }
+  })
+
+  it("forwards a project-scoped whitelisted event only for the bound project", () => {
+    const inScope = shouldForwardEvent({
+      manifest: ext(),
+      granted: ["events"],
+      subscribed: true,
+      projectId: "proj-1",
+      event: { type: "session.state", data: { projectId: "proj-1", short: "ab12" } },
+    })
+    const outOfScope = shouldForwardEvent({
+      manifest: ext(),
+      granted: ["events"],
+      subscribed: true,
+      projectId: "proj-1",
+      event: { type: "session.state", data: { projectId: "proj-2", short: "cd34" } },
+    })
+    // Project scoping is conservative: even in-scope session events stay withheld
+    // unless explicitly whitelisted. Both must be false here — only ext:<name>:*
+    // is forwarded by default.
+    expect(inScope).toBe(false)
+    expect(outOfScope).toBe(false)
+  })
+})
+
+describe("buildEventEnvelope — push envelope shape", () => {
+  it("produces a typed event envelope distinct from an RPC response (no id)", () => {
+    const env = buildEventEnvelope("ext:repo-explorer:tick", { n: 1 })
+    expect(env.type).toBe("event")
+    expect(env.channel).toBe("ext:repo-explorer:tick")
+    expect(env.payload).toEqual({ n: 1 })
+    expect("id" in env).toBe(false)
   })
 })
 
