@@ -412,6 +412,43 @@ describe("buildChildArgv", () => {
     expect(forkIdx).toBeGreaterThan(-1)
     expect(setsidIdx).toBeLessThan(forkIdx)
   })
+
+  it("seeds the pty winsize in the CHILD before exec so `claude attach` never sees 0×0", () => {
+    // The bug: `Couldn't attach to <short> — EUNKNOWN: malformed request:
+    // Too small: expected number to be >=1`. The supervisor validates attach
+    // requests with cols/rows .min(1); a just-(re)attached terminal whose pty
+    // still reports 0×0 trips it. It surfaced "a lot when going back to a
+    // session" because reattach is exactly when the race is live.
+    //
+    // The parent applies TIOCSWINSZ on the master fd via the SIGWINCH handler
+    // ap(), but that runs AFTER pty.fork() returns — meanwhile the forked
+    // child has already exec'd `bash -lc 'claude attach <short>'`, and
+    // `claude attach` reads the winsize at startup. If it reads before the
+    // parent's ioctl lands, it sees 0×0 and the supervisor rejects the attach.
+    //
+    // Fix: the CHILD seeds its own controlling-tty winsize (fd 0) from the
+    // sizefile via rs() BEFORE execvp. The sizefile is always written with
+    // clamped ≥1 dims (DEFAULT 120×32, never 0), so `claude attach` always
+    // reads a valid geometry. Synchronous in the child → no race with the
+    // parent's ioctl, which still owns live resizes via SIGWINCH.
+    const argv = buildChildArgv({
+      cmd: "claude attach abcd1234; exec bash -l",
+      pty: true,
+      platform: "darwin",
+      sizefile: "/tmp/pid-term-abc.size",
+    })
+    const py = argv[2] ?? ""
+    const forkIdx = py.indexOf("pty.fork()")
+    const childIdx = py.indexOf("if pid==0:")
+    const execIdx = py.indexOf("os.execvp")
+    expect(forkIdx).toBeGreaterThan(-1)
+    expect(childIdx).toBeGreaterThan(forkIdx)
+    expect(execIdx).toBeGreaterThan(childIdx)
+    // The child seeds winsize on its controlling tty (fd 0) before exec.
+    const childSeed = py.indexOf("fcntl.ioctl(0,termios.TIOCSWINSZ")
+    expect(childSeed).toBeGreaterThan(childIdx)
+    expect(childSeed).toBeLessThan(execIdx)
+  })
 })
 
 describe("formatSizeFileContent", () => {

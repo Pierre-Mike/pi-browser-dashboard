@@ -295,6 +295,18 @@ const PTY_PY = [
   "  return 24,80",
   "pid,fd=pty.fork()",
   "if pid==0:",
+  // Seed the controlling-tty winsize from the sizefile BEFORE exec. The parent
+  // applies TIOCSWINSZ on the master fd, but only after pty.fork() returns and
+  // installs the SIGWINCH handler — a window in which the just-exec'd child can
+  // already be running `claude attach <short>`, which reads winsize at startup.
+  // If it reads 0×0 the supervisor rejects the attach with "malformed request:
+  // Too small: expected number to be >=1". rs() defaults to 24×80 and the route
+  // always writes ≥1 dims, so fd 0 (the slave — the child's controlling tty)
+  // gets a valid geometry here, synchronously, race-free. The parent's ap()
+  // still owns live resizes via SIGWINCH on the master fd.
+  " r,c=rs()",
+  " try: fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',r,c,0,0))",
+  " except Exception: pass",
   " try: os.execvp('bash',['bash','-lc',cmd])",
   " except Exception as e:",
   "  sys.stderr.write('exec failed: '+str(e)+chr(10))",
