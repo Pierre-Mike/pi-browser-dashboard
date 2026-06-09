@@ -5,6 +5,7 @@
 // into a window message listener for use in ExtensionHost.
 
 import { api } from "../../lib/api"
+import { type BusEvent, extensionEventBroker } from "../../lib/extensionEvents"
 import type { ExtensionManifest } from "./types"
 
 // ---------- protocol types ----------
@@ -21,6 +22,21 @@ type RpcResponse = {
   result?: unknown
   error?: string
 }
+
+// Push envelope: host → iframe, NOT a reply to any request. The iframe tells
+// events apart from RPC responses by the `type: "event"` discriminant (and the
+// absence of an `id`).
+export type EventEnvelope = {
+  type: "event"
+  channel: string
+  payload: unknown
+}
+
+export const buildEventEnvelope = (channel: string, payload: unknown): EventEnvelope => ({
+  type: "event",
+  channel,
+  payload,
+})
 
 // ---------- limits ----------
 
@@ -82,7 +98,7 @@ const handleReadFile = async (params: unknown, ctx: DispatchContext): Promise<un
 
 const handleSubscribeEvents = (): unknown => ({
   subscribed: true,
-  note: "Events are pushed via SSE — connect to /events for the stream.",
+  note: "Subscribed — namespaced ext:<name>:* events are now pushed to this frame.",
 })
 
 const handleGitStatus = async (ctx: DispatchContext): Promise<unknown> => {
@@ -219,6 +235,44 @@ export const dispatchRpc = async ({
   }
 }
 
+// ---------- pure event-forwarding decision ----------
+
+const EVENTS_PERMISSION = "events"
+
+/**
+ * Pure least-privilege gate deciding whether a single daemon SSE event may be
+ * pushed into a given extension iframe. Deny-by-default:
+ *
+ *  - the iframe must have called `subscribeEvents` (`subscribed`),
+ *  - the `events` permission must be granted,
+ *  - the event channel must be namespaced to THIS extension: exactly
+ *    `ext:<name>:<suffix>` (a non-empty suffix). This blocks other extensions'
+ *    events, lifecycle/control events (`ext:state-changed`, `ext:skipped`), and
+ *    the entire global/session firehose.
+ *
+ * `projectId` is accepted so future curated, project-scoped whitelisting can be
+ * added here without touching the shell; today nothing outside the extension's
+ * own namespace is forwarded, so no other project's/session's data can leak.
+ */
+export const shouldForwardEvent = ({
+  manifest,
+  granted,
+  subscribed,
+  event,
+}: {
+  manifest: ExtensionManifest
+  granted: string[]
+  subscribed: boolean
+  projectId?: string
+  event: BusEvent
+}): boolean => {
+  if (!subscribed) return false
+  if (!granted.includes(EVENTS_PERMISSION)) return false
+  // Must be this extension's namespace: `ext:<name>:` with a real suffix.
+  const prefix = `ext:${manifest.name}:`
+  return event.type.startsWith(prefix) && event.type.length > prefix.length
+}
+
 // ---------- DOM wiring ----------
 
 export type RpcBridgeHandle = { destroy: () => void }
@@ -261,6 +315,11 @@ export const mountRpcBridge = ({
   const expectedOrigin = allowsSameOrigin ? srcOrigin : "null"
   const targetOrigin = allowsSameOrigin ? srcOrigin : "*"
 
+  // Per-bridge subscription state: events are only pushed AFTER the iframe has
+  // called subscribeEvents (constraint 3). Re-mounting the bridge (e.g. on a
+  // grant change) starts unsubscribed again, so a frame must re-subscribe.
+  let subscribed = false
+
   const handler = async (event: MessageEvent): Promise<void> => {
     // Only handle messages from this iframe — the authenticated identity gate.
     if (event.source !== iframeEl.contentWindow) return
@@ -276,6 +335,11 @@ export const mountRpcBridge = ({
     const rawData = event.data as Record<string, unknown>
     const id = typeof rawData === "object" && rawData !== null ? (rawData.id as string) : ""
 
+    // A successful subscribeEvents call registers interest for THIS frame.
+    if (result.ok && typeof rawData === "object" && rawData?.method === "subscribeEvents") {
+      subscribed = true
+    }
+
     const response: RpcResponse = result.ok
       ? { id, ok: true, result: result.result }
       : { id, ok: false, error: result.error }
@@ -283,6 +347,38 @@ export const mountRpcBridge = ({
     iframeEl.contentWindow?.postMessage(response, targetOrigin)
   }
 
+  // Tap the shared SSE broker. Each event is gated by the pure
+  // shouldForwardEvent decision, then pushed as an `event` envelope. Respect the
+  // same 256 KB cap the inbound path enforces.
+  const onBusEvent = (busEvent: BusEvent): void => {
+    if (
+      !shouldForwardEvent({
+        manifest: effectiveManifest,
+        granted: effectiveManifest.granted,
+        subscribed,
+        projectId: ctx.projectId,
+        event: busEvent,
+      })
+    ) {
+      return
+    }
+    const envelope = buildEventEnvelope(busEvent.type, busEvent.data)
+    let serialized: string
+    try {
+      serialized = JSON.stringify(envelope)
+    } catch {
+      return
+    }
+    if (serialized.length > MAX_MESSAGE_BYTES) return
+    iframeEl.contentWindow?.postMessage(envelope, targetOrigin)
+  }
+
   window.addEventListener("message", handler)
-  return { destroy: () => window.removeEventListener("message", handler) }
+  const unsubscribeBus = extensionEventBroker.subscribe(onBusEvent)
+  return {
+    destroy: () => {
+      window.removeEventListener("message", handler)
+      unsubscribeBus()
+    },
+  }
 }

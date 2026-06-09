@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { notifyEnabled, showNotification } from "../features/notifications/notifier"
 import { decideNotification } from "../features/notifications/sessionNotify"
+import { extensionEventBroker } from "./extensionEvents"
 import type { SessionState, SessionStateValue } from "./types"
 
 type SsePatcher = {
@@ -84,6 +85,17 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
       queryClient.setQueryData<SessionState[]>(["sessions"], (prev) => upsertList(prev, payload))
       queryClient.setQueryData<SessionState>(["sessions", payload.short], payload)
       queryClient.invalidateQueries({ queryKey: ["transcript", payload.short] })
+    })
+
+    // Namespaced extension events arrive collapsed onto a single "ext" event
+    // (see events.routes.ts). Relay them into the in-process broker so each
+    // extension iframe taps THIS one EventSource rather than opening its own.
+    // Per-iframe least-privilege gating happens in the RPC bridge.
+    next.addEventListener("ext", (ev) => {
+      mark("ext")
+      const payload = parse<{ channel: string; payload: unknown }>((ev as MessageEvent).data)
+      if (!payload || typeof payload.channel !== "string") return
+      extensionEventBroker.relay({ type: payload.channel, data: payload.payload })
     })
 
     next.addEventListener("session.created", () => {

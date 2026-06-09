@@ -109,6 +109,38 @@ describe("GET /events (SSE)", () => {
     }
   })
 
+  it("wraps ext:<name>:* events under a single 'ext' SSE event so the web EventSource can tap them with one listener", async () => {
+    const res = await app.request("/")
+    const stream = openSseStream(res)
+    try {
+      await stream.read(1)
+      sseBus.publish({ type: "ext:repo-explorer:file-changed", data: { path: "a.ts" } })
+      const [evt] = await stream.read(1)
+      expect(evt?.event).toBe("ext")
+      expect(JSON.parse(evt?.data ?? "null")).toEqual({
+        channel: "ext:repo-explorer:file-changed",
+        payload: { path: "a.ts" },
+      })
+    } finally {
+      await stream.close()
+    }
+  })
+
+  it("leaves non-ext event names (session.*, ext:state-changed) under their own event name", async () => {
+    const res = await app.request("/")
+    const stream = openSseStream(res)
+    try {
+      await stream.read(1)
+      sseBus.publish({ type: "ext:state-changed", data: { name: "x" } })
+      const [evt] = await stream.read(1)
+      // Lifecycle control event keeps its own name (it is NOT a namespaced
+      // ext:<name>:<suffix> channel), so existing listeners are unaffected.
+      expect(evt?.event).toBe("ext:state-changed")
+    } finally {
+      await stream.close()
+    }
+  })
+
   it("assigns strictly monotonic ids so reconnects with Last-Event-ID can resume", async () => {
     const res = await app.request("/")
     const stream = openSseStream(res)
