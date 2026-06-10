@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { ageMs, parseRoster, parseState } from "./sessions.core"
+import {
+  ageMs,
+  backfillRosterFields,
+  mergeStateWithPrior,
+  parseRoster,
+  parseState,
+  type RosterWorker,
+  seedFromWorker,
+} from "./sessions.core"
 
 describe("parseState — additional coverage", () => {
   test("downcases and trims a known state string before matching", () => {
@@ -135,6 +143,74 @@ describe("parseRoster", () => {
       agent: "general",
       intent: "do thing",
     })
+  })
+})
+
+const worker = (overrides: Partial<RosterWorker> = {}): RosterWorker => ({
+  short: "ab12",
+  sessionId: "sess-1",
+  cwd: "/repo",
+  intent: "do thing",
+  startedAt: undefined,
+  agent: undefined,
+  ...overrides,
+})
+
+describe("seedFromWorker", () => {
+  test("seeds an idle session carrying the roster fields", () => {
+    const s = seedFromWorker(worker())
+    expect(s).toMatchObject({
+      short: "ab12",
+      state: "idle",
+      intent: "do thing",
+      sessionId: "sess-1",
+      cwd: "/repo",
+    })
+  })
+})
+
+describe("backfillRosterFields", () => {
+  test("fills roster fields the session is missing", () => {
+    const existing = parseState({ short: "ab12", json: { state: "done" } })
+    const merged = backfillRosterFields({ existing, worker: worker() })
+    expect(merged).toMatchObject({ state: "done", intent: "do thing", sessionId: "sess-1" })
+  })
+
+  test("returns null when the session already has every field", () => {
+    const existing = parseState({
+      short: "ab12",
+      json: { state: "done", intent: "mine", sessionId: "sess-9", cwd: "/elsewhere" },
+    })
+    expect(backfillRosterFields({ existing, worker: worker() })).toBeNull()
+  })
+
+  test("never overwrites fields the session already has", () => {
+    const existing = parseState({
+      short: "ab12",
+      json: { state: "done", intent: "mine", sessionId: "sess-9" },
+    })
+    const merged = backfillRosterFields({ existing, worker: worker() })
+    expect(merged).toMatchObject({ intent: "mine", sessionId: "sess-9", cwd: "/repo" })
+  })
+})
+
+describe("mergeStateWithPrior", () => {
+  test("state.json wins but roster-derived fields survive omission", () => {
+    const prior = seedFromWorker(worker())
+    const parsed = parseState({ short: "ab12", json: { state: "working", detail: "busy" } })
+    const merged = mergeStateWithPrior({ parsed, prior })
+    expect(merged).toMatchObject({
+      state: "working",
+      detail: "busy",
+      intent: "do thing",
+      sessionId: "sess-1",
+      cwd: "/repo",
+    })
+  })
+
+  test("works without a prior session", () => {
+    const parsed = parseState({ short: "ab12", json: { state: "working" } })
+    expect(mergeStateWithPrior({ parsed, prior: undefined }).state).toBe("working")
   })
 })
 

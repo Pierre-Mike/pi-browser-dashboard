@@ -141,6 +141,43 @@ describe("SessionRegistry — initial reconciliation", () => {
   })
 })
 
+describe("SessionRegistry — jobs dir scan", () => {
+  it("seeds sessions from jobs/*/state.json on boot even without a roster entry", async () => {
+    await writeState({
+      cfg,
+      short: "old1",
+      body: { state: "done", detail: "shipped", sessionId: "sess-old", cwd: "/repo" },
+    })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const one = api.getOne("old1")
+    expect(one?.state).toBe("done")
+    expect(one?.detail).toBe("shipped")
+    expect(one?.sessionId).toBe("sess-old")
+  })
+
+  it("removes a rosterless session when its job dir is deleted (claude rm)", async () => {
+    await writeState({ cfg, short: "old1", body: { state: "done" } })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const events = recordSse((e) => e.type === "session.removed")
+    await rm(join(cfg, "jobs", "old1"), { recursive: true, force: true })
+    await wait(POLL_WAIT_MS)
+    expect(events).toEqual([{ type: "session.removed", data: { short: "old1" } }])
+    expect(api.getOne("old1")).toBeUndefined()
+  })
+
+  it("keeps a roster-tracked session when state.json is briefly absent", async () => {
+    await writeRoster(cfg, { ab12: {} })
+    await writeState({ cfg, short: "ab12", body: { state: "working" } })
+    const api = await startRegistry()
+    await wait(200)
+    await rm(join(cfg, "jobs", "ab12", "state.json"), { force: true })
+    await wait(POLL_WAIT_MS)
+    expect(api.getOne("ab12")?.short).toBe("ab12")
+  })
+})
+
 describe("SessionRegistry — roster delta", () => {
   it("publishes session.created + roster.changed when a new worker appears", async () => {
     const api = await startRegistry()
@@ -162,6 +199,19 @@ describe("SessionRegistry — roster delta", () => {
     await wait(POLL_WAIT_MS)
     expect(events).toEqual([{ type: "session.removed", data: { short: "ab12" } }])
     expect(api.getOne("ab12")).toBeUndefined()
+  })
+
+  it("retains a session whose state.json persists when its worker leaves the roster", async () => {
+    await writeRoster(cfg, { ab12: {} })
+    await writeState({ cfg, short: "ab12", body: { state: "done", detail: "PR merged" } })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const events = recordSse((e) => e.type === "session.removed")
+    await writeRoster(cfg, {})
+    await wait(POLL_WAIT_MS)
+    expect(events).toEqual([])
+    expect(api.getOne("ab12")?.state).toBe("done")
+    expect(api.getOne("ab12")?.detail).toBe("PR merged")
   })
 })
 
