@@ -108,6 +108,30 @@ describe("bucketProjects", () => {
     const out = bucketProjects({ projects: [proj()], sessions: [sess()] })
     expect(out[0]?.pinned).toBe(false)
   })
+
+  it("sorts sessions inside a bucket by updatedAt desc (recent first)", () => {
+    const out = bucketProjects({
+      projects: [proj()],
+      sessions: [
+        sess({ short: "old", updatedAt: "2026-06-01T10:00:00Z" }),
+        sess({ short: "new", updatedAt: "2026-06-09T10:00:00Z" }),
+        sess({ short: "mid", updatedAt: "2026-06-05T10:00:00Z" }),
+      ],
+    })
+    expect(out[0]?.sessions.map((s) => s.short)).toEqual(["new", "mid", "old"])
+  })
+
+  it("sinks sessions with unparseable updatedAt below dated ones, keeping input order", () => {
+    const out = bucketProjects({
+      projects: [proj()],
+      sessions: [
+        sess({ short: "blank-a", updatedAt: "" }),
+        sess({ short: "dated", updatedAt: "2026-06-09T10:00:00Z" }),
+        sess({ short: "blank-b", updatedAt: "" }),
+      ],
+    })
+    expect(out[0]?.sessions.map((s) => s.short)).toEqual(["dated", "blank-a", "blank-b"])
+  })
 })
 
 describe("sessionLabel", () => {
