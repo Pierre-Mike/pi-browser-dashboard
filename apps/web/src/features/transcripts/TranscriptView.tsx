@@ -1,25 +1,9 @@
 import { useState } from "react"
 import type { TranscriptMessage } from "../../lib/types"
-import { asString, type Block, flattenContent } from "./flattenContent"
+import { asString } from "./flattenContent"
+import { type PairedBlock, pairTranscript, type ToolResultInfo } from "./pairTranscript"
 
 type Props = { messages: readonly TranscriptMessage[] }
-
-const extractRole = (m: TranscriptMessage): string => {
-  if (m.message && typeof m.message === "object") {
-    const role = (m.message as Record<string, unknown>).role
-    if (typeof role === "string") return role
-  }
-  return m.type
-}
-
-const extractContent = (m: TranscriptMessage): unknown => {
-  if (m.content !== undefined) return m.content
-  if (m.message && typeof m.message === "object") {
-    return (m.message as Record<string, unknown>).content
-  }
-  if (typeof m.text === "string") return m.text
-  return null
-}
 
 const timeStr = (iso: string | undefined): string => {
   if (!iso) return ""
@@ -78,17 +62,44 @@ const toolPreview = (name: string, input: unknown): string => {
   }
 }
 
-const ToolCall = ({ name, input }: { name: string; input: unknown }) => {
+const StatusBadge = ({ result }: { result?: ToolResultInfo }) => {
+  if (!result) {
+    return (
+      <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 px-1.5 py-px text-[9px] uppercase tracking-wide">
+        pending
+      </span>
+    )
+  }
+  return result.isError ? (
+    <span className="shrink-0 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-1.5 py-px text-[9px] uppercase tracking-wide">
+      error
+    </span>
+  ) : (
+    <span className="shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-px text-[9px] uppercase tracking-wide">
+      ok
+    </span>
+  )
+}
+
+const ToolCall = ({
+  name,
+  input,
+  result,
+}: {
+  name: string
+  input: unknown
+  result?: ToolResultInfo
+}) => {
   const [open, setOpen] = useState(false)
   const inputStr = asString(input)
   const preview = toolPreview(name, input)
   const icon = TOOL_ICON[name] ?? "▸"
   return (
-    <div className="mt-1.5 text-[11px]">
+    <div className="mt-1.5 text-[11px] rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 max-w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-left max-w-full"
+        className="flex w-full items-center gap-1.5 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-left rounded-md"
       >
         <span className="text-slate-400 shrink-0 w-3 text-center">{open ? "▾" : "▸"}</span>
         <span className="shrink-0 font-mono" aria-hidden>
@@ -98,15 +109,39 @@ const ToolCall = ({ name, input }: { name: string; input: unknown }) => {
           {name}
         </span>
         {!open && preview ? (
-          <span className="font-mono text-slate-500 dark:text-slate-400 truncate min-w-0">
+          <span className="font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1">
             {preview}
           </span>
-        ) : null}
+        ) : (
+          <span className="flex-1" />
+        )}
+        <StatusBadge result={result} />
       </button>
       {open ? (
-        <pre className="mt-1 rounded bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">
-          {inputStr}
-        </pre>
+        <div className="border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex flex-col gap-1.5">
+          <div>
+            <div className="text-[9px] uppercase tracking-wide text-slate-400 mb-0.5">
+              Arguments
+            </div>
+            <pre className="rounded bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">
+              {inputStr}
+            </pre>
+          </div>
+          {result ? (
+            <div>
+              <div className="text-[9px] uppercase tracking-wide text-slate-400 mb-0.5">Result</div>
+              <pre
+                className={`rounded p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words border ${
+                  result.isError
+                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 border-rose-200 dark:border-rose-900"
+                    : "bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800"
+                }`}
+              >
+                {result.text}
+              </pre>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )
@@ -203,14 +238,14 @@ const simpleHash = (s: string): string => {
   return (h >>> 0).toString(36)
 }
 
-const blockKey = (b: Block, idx: number): string => {
+const blockKey = (b: PairedBlock, idx: number): string => {
   if (b.kind === "text") return `text-${simpleHash(b.text.slice(0, 50))}`
   if (b.kind === "thinking") return `thinking-${simpleHash(b.text.slice(0, 50))}`
   if (b.kind === "tool_use") return `tool_use-${b.id || b.name}`
   return `tool_result-${simpleHash(b.text.slice(0, 50))}-${idx}`
 }
 
-const UserBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
+const UserBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <div className="flex flex-col items-end w-full min-w-0">
       <div className="w-full rounded-2xl rounded-tr-sm bg-sky-500 text-white px-3.5 py-2 shadow-sm text-right">
@@ -235,7 +270,7 @@ const UserBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
   </div>
 )
 
-const AssistantBubble = ({ blocks, time }: { blocks: Block[]; time: string }) => (
+const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <Avatar kind="assistant" />
     <div className="flex flex-col items-start w-full min-w-0">
@@ -258,7 +293,9 @@ const AssistantBubble = ({ blocks, time }: { blocks: Block[]; time: string }) =>
               return <Thinking key={blockKey(b, i)} text={b.text} />
             }
             if (b.kind === "tool_use") {
-              return <ToolCall key={blockKey(b, i)} name={b.name} input={b.input} />
+              return (
+                <ToolCall key={blockKey(b, i)} name={b.name} input={b.input} result={b.result} />
+              )
             }
             return <ToolResult key={blockKey(b, i)} text={b.text} isError={b.isError} />
           })
@@ -281,60 +318,37 @@ const ResultBubble = ({ text, time }: { text: string; time: string }) => (
 )
 
 export const TranscriptView = ({ messages }: Props) => {
+  const items = pairTranscript(messages)
   return (
     <div className="flex flex-col gap-2.5">
-      {messages.map((m, i) => {
-        const role = extractRole(m)
-        const time = timeStr(m.timestamp)
-        const blocks = flattenContent(extractContent(m))
+      {items.map((item, i) => {
+        const time = timeStr(item.timestamp)
+        const key = `msg-${item.timestamp || i}-${item.kind}`
 
-        // Skip JSONL housekeeping rows that have no chat-visible content:
-        // system events, queue-operation, ai-title, agent-name, permission-mode,
-        // last-prompt, stop_hook_summary, turn_duration, etc.
-        const isChatRole = role === "user" || role === "assistant" || role === "result"
-        const isResultType = m.type === "result"
-        if (!isChatRole && !isResultType) return null
-
-        if (role === "user") {
-          // Drop empty/null user rows (e.g. supervisor housekeeping with role:"user").
-          if (blocks.length === 0) return null
-          // User-side messages may carry tool_result blocks (model-supplied). If the message is
-          // purely tool_results, render them as a small standalone block instead of a user bubble.
-          const allToolResults = blocks.every((b) => b.kind === "tool_result")
-          if (allToolResults) {
-            return (
-              <div
-                key={`msg-${m.timestamp || i}-tool_results`}
-                className="flex justify-start gap-2 pl-9"
-              >
-                <div className="flex flex-col items-start w-full min-w-0">
-                  {blocks.map((b, j) =>
-                    b.kind === "tool_result" ? (
-                      <ToolResult key={blockKey(b, j)} text={b.text} isError={b.isError} />
-                    ) : null,
-                  )}
-                </div>
-              </div>
-            )
-          }
-          return <UserBubble key={`msg-${m.timestamp || i}-user`} blocks={blocks} time={time} />
+        if (item.kind === "user") {
+          return <UserBubble key={key} blocks={item.blocks} time={time} />
         }
 
-        if (role === "assistant") {
-          if (blocks.length === 0) return null
+        if (item.kind === "assistant") {
+          return <AssistantBubble key={key} blocks={item.blocks} time={time} />
+        }
+
+        if (item.kind === "tool_results") {
+          // Orphaned tool_results with no visible tool_use to fold into.
           return (
-            <AssistantBubble
-              key={`msg-${m.timestamp || i}-assistant`}
-              blocks={blocks}
-              time={time}
-            />
+            <div key={key} className="flex justify-start gap-2 pl-9">
+              <div className="flex flex-col items-start w-full min-w-0">
+                {item.blocks.map((b, j) =>
+                  b.kind === "tool_result" ? (
+                    <ToolResult key={blockKey(b, j)} text={b.text} isError={b.isError} />
+                  ) : null,
+                )}
+              </div>
+            </div>
           )
         }
 
-        // result
-        const text = typeof m.result === "string" ? m.result : asString(extractContent(m))
-        if (!text || text === "null") return null
-        return <ResultBubble key={`msg-${m.timestamp || i}-result`} text={text} time={time} />
+        return <ResultBubble key={key} text={item.text} time={time} />
       })}
     </div>
   )

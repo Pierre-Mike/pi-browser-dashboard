@@ -55,4 +55,13 @@ describe("flattenContent", () => {
       { kind: "tool_result", text: "done", isError: false },
     ])
   })
+
+  test("carries tool_use_id through to the tool_result block", () => {
+    const blocks = flattenContent([
+      { type: "tool_result", tool_use_id: "toolu_01", content: "ok", is_error: false },
+    ])
+    expect(blocks).toEqual([
+      { kind: "tool_result", text: "ok", isError: false, toolUseId: "toolu_01" },
+    ])
+  })
 })
