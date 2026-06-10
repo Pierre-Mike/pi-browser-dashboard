@@ -114,7 +114,7 @@ test.describe("library tab", () => {
 
     await page.getByTestId("library-tab-agentic").click()
     // The skills category should be active by default and show items if the
-    // agentic repo is present at /Users/pierre-mikel/Github/agentic.
+    // agentic repo is present (PID_AGENTIC_REPO_PATH, default ~/Github/agentic).
     const items = page.locator('[data-testid^="agentic-item-skills-"]')
     // Either there are items (agentic repo exists) or an empty-state banner.
     // We don't hard-fail on missing repo — just confirm we render *something*.

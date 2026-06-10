@@ -57,6 +57,7 @@ from the dispatch bar or via `claude --bg "<prompt>"` in any directory.
 | `PID_DAEMON_URL`     | `http://localhost:8787`  | Web → daemon URL (used by the dev proxy) |
 | `PID_WEB_PORT`       | `5173`                   | Vite dev server port                    |
 | `CLAUDE_CONFIG_DIR`  | `~/.claude`              | Claude Code config root the daemon watches |
+| `PID_AGENTIC_REPO_PATH` | `~/Github/agentic`    | Optional skills/agents catalog repo for the Library tab; the tab shows an empty state if absent |
 
 ## Repo layout
 
