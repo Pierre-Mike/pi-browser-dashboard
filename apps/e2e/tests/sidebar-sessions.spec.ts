@@ -10,6 +10,10 @@ test("sidebar: collapse hides sessions, right-click delete removes one", async (
   const row = page.locator(`[data-testid="sidebar-session"][data-short="${short}"]`)
   await expect(row).toBeVisible({ timeout: 20_000 })
 
+  // Pagination kicks in above SESSION_PAGE_SIZE (5) sessions — with a single
+  // session there must be no "Show N more" button.
+  await expect(page.getByTestId("sidebar-session-more")).toHaveCount(0)
+
   // The session list and its header toggle share a bucket key.
   const list = page.locator('[data-testid="sidebar-session-list"]', { has: row })
   const bucketKey = await list.getAttribute("data-bucket-key")

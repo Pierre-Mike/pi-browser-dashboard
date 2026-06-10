@@ -7,7 +7,15 @@ import { NotifyToggle } from "../notifications/NotifyToggle"
 import { useProjects } from "../projects/useProjects"
 import { clampMenuPosition } from "./contextMenu"
 import { MENU_HEIGHT, MENU_WIDTH, SessionContextMenu } from "./SessionContextMenu"
-import { activeProjectId, bucketProjects, sessionLabel } from "./sidebarUtil"
+import {
+  activeProjectId,
+  bucketProjects,
+  growLimit,
+  SESSION_PAGE_SIZE,
+  sessionLabel,
+  sessionMoreLabel,
+  sessionWindow,
+} from "./sidebarUtil"
 import { useCollapsedBuckets } from "./useCollapsedBuckets"
 import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
@@ -25,6 +33,11 @@ export const Sidebar = () => {
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin } = usePinnedProjects()
   const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
+  // Per-bucket visible-session cap; ephemeral on purpose — a fresh load
+  // snaps every project back to the latest SESSION_PAGE_SIZE sessions.
+  const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({})
+  const showMore = (key: string) =>
+    setSessionLimits((prev) => ({ ...prev, [key]: growLimit(prev[key] ?? SESSION_PAGE_SIZE) }))
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
     return (
@@ -69,6 +82,10 @@ export const Sidebar = () => {
             const isNonGit = b.project !== null && !b.project.isGitRepo
             const collapsed = isCollapsed(b.key)
             const projectActive = b.project !== null && b.project.id === activeProject
+            const { visible, hiddenCount } = sessionWindow({
+              sessions: b.sessions,
+              limit: sessionLimits[b.key] ?? SESSION_PAGE_SIZE,
+            })
             return (
               <div key={b.key} className="px-1.5 py-1.5">
                 <div
@@ -204,7 +221,7 @@ export const Sidebar = () => {
                         collapsed ? "invisible" : ""
                       }`}
                     >
-                      {b.sessions.map((s) => {
+                      {visible.map((s) => {
                         const tone = stateColor(s.state)
                         const active = s.short === activeShort
                         return (
@@ -254,6 +271,20 @@ export const Sidebar = () => {
                           </li>
                         )
                       })}
+                      {hiddenCount > 0 ? (
+                        <li>
+                          <button
+                            type="button"
+                            onClick={() => showMore(b.key)}
+                            data-testid="sidebar-session-more"
+                            data-bucket-key={b.key}
+                            data-hidden-count={hiddenCount}
+                            className="w-full text-left pl-2 pr-1.5 py-1 rounded text-[11px] leading-tight text-slate-400 dark:text-slate-500 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-slate-50 dark:hover:bg-slate-900/60"
+                          >
+                            {sessionMoreLabel(hiddenCount)}
+                          </button>
+                        </li>
+                      ) : null}
                     </ul>
                   </div>
                 ) : null}
