@@ -271,6 +271,13 @@ export const resolveRequires = (entryName: string, catalog: Catalog): readonly L
 export const expandHome = (p: string, homeDir: string): string =>
   p.startsWith("~") ? `${homeDir}${p.slice(1)}` : p
 
+const DEFAULT_AGENTIC_REPO = "~/Github/agentic"
+
+// PID_AGENTIC_REPO_PATH wins; otherwise the agentic checkout is assumed
+// to live next to the user's other clones under ~/Github.
+export const resolveAgenticRepoPath = (envPath: string | undefined, homeDir: string): string =>
+  envPath ?? expandHome(DEFAULT_AGENTIC_REPO, homeDir)
+
 // Coerce arbitrary id to a safe path segment (mirrors claude-config.core).
 export const isSafeSegment = (id: string): boolean =>
   id.length > 0 &&

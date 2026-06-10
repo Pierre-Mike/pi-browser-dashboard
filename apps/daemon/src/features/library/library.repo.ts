@@ -27,6 +27,7 @@ import {
   parseSource,
   RequiresCycleError,
   removeEntryFromDocument,
+  resolveAgenticRepoPath,
   resolveRequires,
   serializeCatalogDocument,
   upsertEntryInDocument,
@@ -146,7 +147,6 @@ export class LibraryService extends Context.Tag("LibraryService")<
   LibraryServiceApi
 >() {}
 
-const DEFAULT_AGENTIC_REPO = "/Users/pierre-mikel/Github/agentic"
 const DEFAULT_LIBRARY_DIR = "~/.claude/skills/library/"
 const DEFAULT_CATALOG_PATH = "library.yaml"
 
@@ -344,7 +344,7 @@ export const LibraryRepoLive: Layer.Layer<
 
     const libraryDir = process.env.PID_LIBRARY_DIR ?? expandHome(DEFAULT_LIBRARY_DIR, homeDir)
     const catalogPath = join(libraryDir, DEFAULT_CATALOG_PATH)
-    const agenticRepoPath = process.env.PID_AGENTIC_REPO_PATH ?? DEFAULT_AGENTIC_REPO
+    const agenticRepoPath = resolveAgenticRepoPath(process.env.PID_AGENTIC_REPO_PATH, homeDir)
 
     const resolveProjectRoot = (projectId: string | null | undefined) =>
       Effect.gen(function* () {

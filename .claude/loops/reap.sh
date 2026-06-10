@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Repo root is two levels up from this script (.claude/loops/).
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 exec >>".claude/auto-pr.log" 2>&1
 echo "[$(date -u +%FT%TZ)] event=reap"
-
-cd /Users/pierre-mikel/Github/pi-browser-dashboard
 
 for wt_path in .claude/worktrees/*/; do
   [ -d "$wt_path" ] || continue

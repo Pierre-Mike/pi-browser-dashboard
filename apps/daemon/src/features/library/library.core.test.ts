@@ -11,6 +11,7 @@ import {
   parseSource,
   RequiresCycleError,
   removeEntryFromDocument,
+  resolveAgenticRepoPath,
   resolveRequires,
   serializeCatalogDocument,
   upsertEntryInDocument,
@@ -183,6 +184,12 @@ describe("expandHome / isSafeSegment", () => {
   it("expands ~ prefix", () => {
     expect(expandHome("~/.claude/skills/", "/h")).toBe("/h/.claude/skills/")
     expect(expandHome("/abs/.claude/skills/", "/h")).toBe("/abs/.claude/skills/")
+  })
+  it("resolveAgenticRepoPath prefers env override", () => {
+    expect(resolveAgenticRepoPath("/custom/agentic", "/h")).toBe("/custom/agentic")
+  })
+  it("resolveAgenticRepoPath defaults under the user's home dir", () => {
+    expect(resolveAgenticRepoPath(undefined, "/h")).toBe("/h/Github/agentic")
   })
   it("isSafeSegment rejects path-traversal segments", () => {
     expect(isSafeSegment("ok")).toBe(true)
