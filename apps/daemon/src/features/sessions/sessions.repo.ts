@@ -54,6 +54,17 @@ type RegistryState = {
   readonly sessions: Map<string, SessionState>
   readonly stateWatchers: Map<string, FsWatchUnsubscribe>
   rosterWatcher: FsWatchUnsubscribe | null
+  rosterShorts: ReadonlySet<string>
+}
+
+const removeSession = ({ reg, short }: { reg: RegistryState; short: string }): void => {
+  reg.sessions.delete(short)
+  const stop = reg.stateWatchers.get(short)
+  if (stop) {
+    stop()
+    reg.stateWatchers.delete(short)
+  }
+  sseBus.publish({ type: "session.removed", data: { short } })
 }
 
 const reconcileRoster = async ({
@@ -66,23 +77,40 @@ const reconcileRoster = async ({
   parsed: ParsedRoster
 }): Promise<void> => {
   const presentShorts = new Set(parsed.workers.map((w) => w.short))
+  reg.rosterShorts = presentShorts
 
-  // Removed sessions
+  // Removed sessions. A worker dropping out of the roster only means the
+  // supervisor no longer runs it — the job dir (state.json, transcript link)
+  // persists until the user runs `claude rm`. Keep those sessions listed;
+  // only forget ones whose state.json is gone too.
   for (const short of Array.from(reg.sessions.keys())) {
-    if (!presentShorts.has(short)) {
-      reg.sessions.delete(short)
-      const stop = reg.stateWatchers.get(short)
-      if (stop) {
-        stop()
-        reg.stateWatchers.delete(short)
-      }
-      sseBus.publish({ type: "session.removed", data: { short } })
-    }
+    if (presentShorts.has(short)) continue
+    if (fs.existsSync(statePathFor(configDir, short))) continue
+    removeSession({ reg, short })
   }
 
   // Added sessions
   for (const worker of parsed.workers) {
-    if (reg.sessions.has(worker.short)) continue
+    const existing = reg.sessions.get(worker.short)
+    if (existing) {
+      // Jobs-dir scan may have seeded this session from state.json before the
+      // roster was read — backfill roster-only fields it couldn't know.
+      const merged: SessionState = {
+        ...existing,
+        intent: existing.intent ?? worker.intent,
+        sessionId: existing.sessionId ?? worker.sessionId,
+        cwd: existing.cwd ?? worker.cwd,
+      }
+      if (
+        merged.intent !== existing.intent ||
+        merged.sessionId !== existing.sessionId ||
+        merged.cwd !== existing.cwd
+      ) {
+        reg.sessions.set(worker.short, merged)
+        sseBus.publish({ type: "session.state", data: merged })
+      }
+      continue
+    }
     // Seed with minimal info from roster; state.json watcher fills the rest.
     const seed: SessionState = {
       short: worker.short,
@@ -128,7 +156,15 @@ const refreshState = async ({
     console.error("[sessions.repo] failed to read state.json", short, err)
     return
   }
-  if (json === null) return
+  if (json === null) {
+    // state.json gone for a session the supervisor no longer tracks either:
+    // the user removed the job (`claude rm`). Roster-tracked sessions keep
+    // their snapshot — the file may simply not exist yet (spawn in flight).
+    if (!reg.rosterShorts.has(short) && reg.sessions.has(short) && !fs.existsSync(filePath)) {
+      removeSession({ reg, short })
+    }
+    return
+  }
   let parsed: SessionState
   try {
     parsed = parseState({ short, json })
@@ -165,6 +201,22 @@ const attachStateWatcher = ({
     void refreshState({ reg, configDir, short })
   })
   reg.stateWatchers.set(short, unsub)
+}
+
+// Seed the registry from jobs/*/state.json so sessions the supervisor no
+// longer tracks (daemon restart, supervisor restart) stay listed until the
+// user removes them with `claude rm`.
+const scanJobsDir = ({ reg, configDir }: { reg: RegistryState; configDir: string }): void => {
+  let entries: string[]
+  try {
+    entries = fs.readdirSync(path.join(configDir, "jobs"))
+  } catch {
+    return // no jobs dir yet
+  }
+  for (const short of entries) {
+    if (!fs.existsSync(statePathFor(configDir, short))) continue
+    attachStateWatcher({ reg, configDir, short })
+  }
 }
 
 const refreshRoster = async (reg: RegistryState, configDir: string): Promise<void> => {
@@ -206,9 +258,11 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       sessions: new Map(),
       stateWatchers: new Map(),
       rosterWatcher: null,
+      rosterShorts: new Set(),
     }
 
     // Initial sync + watcher arm.
+    scanJobsDir({ reg, configDir })
     yield* Effect.promise(() => refreshRoster(reg, configDir))
     reg.rosterWatcher = watchFile(rosterPathFor(configDir), () => {
       void refreshRoster(reg, configDir)
