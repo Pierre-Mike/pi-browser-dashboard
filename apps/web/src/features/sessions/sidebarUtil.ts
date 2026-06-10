@@ -10,6 +10,11 @@ export type SidebarBucket = {
   pinned: boolean
 }
 
+const sessionRecency = (s: SessionState): number => {
+  const t = Date.parse(s.updatedAt)
+  return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
+}
+
 export const bucketProjects = ({
   projects,
   sessions,
@@ -57,6 +62,9 @@ export const bucketProjects = ({
 
   for (const b of byKey.values()) {
     if (b.project && pinnedIds.has(b.project.id)) b.pinned = true
+    // Recent activity on top; unparseable timestamps sink (stable sort keeps
+    // their relative input order).
+    b.sessions.sort((x, y) => sessionRecency(y) - sessionRecency(x))
   }
 
   const out = [...byKey.values()]

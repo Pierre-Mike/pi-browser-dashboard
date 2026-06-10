@@ -5,9 +5,14 @@ import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { NotifyToggle } from "../notifications/NotifyToggle"
 import { useProjects } from "../projects/useProjects"
+import { clampMenuPosition } from "./contextMenu"
+import { MENU_HEIGHT, MENU_WIDTH, SessionContextMenu } from "./SessionContextMenu"
 import { bucketProjects, sessionLabel } from "./sidebarUtil"
+import { useCollapsedBuckets } from "./useCollapsedBuckets"
 import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
+
+type SessionMenu = { short: string; x: number; y: number }
 
 export const Sidebar = () => {
   const sessionsQ = useSessions()
@@ -15,7 +20,9 @@ export const Sidebar = () => {
   const params = useParams({ strict: false }) as { id?: string }
   const activeShort = params.id
   const [spawnProject, setSpawnProject] = useState<Project | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin } = usePinnedProjects()
+  const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
     return (
@@ -58,12 +65,32 @@ export const Sidebar = () => {
         ) : (
           buckets.map((b) => {
             const isNonGit = b.project !== null && !b.project.isGitRepo
+            const collapsed = isCollapsed(b.key)
             return (
               <div key={b.key} className="px-1.5 py-1.5">
                 <div
                   className="group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-900/60"
                   title={b.pathHint}
                 >
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(b.key)}
+                    data-testid="sidebar-collapse-toggle"
+                    data-bucket-key={b.key}
+                    data-collapsed={collapsed ? "true" : "false"}
+                    aria-expanded={!collapsed}
+                    title={
+                      collapsed ? `Show sessions in ${b.title}` : `Hide sessions in ${b.title}`
+                    }
+                    aria-label={
+                      collapsed ? `Show sessions in ${b.title}` : `Hide sessions in ${b.title}`
+                    }
+                    className={`shrink-0 inline-flex items-center justify-center w-4 h-4 rounded text-[9px] leading-none text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-transform duration-200 ${
+                      collapsed ? "-rotate-90" : ""
+                    }`}
+                  >
+                    ▼
+                  </button>
                   {b.project ? (
                     <Link
                       to="/projects/$id"
@@ -150,44 +177,73 @@ export const Sidebar = () => {
                   ) : null}
                 </div>
                 {b.sessions.length > 0 ? (
-                  <ul className="mt-0.5 ml-3.5 pl-2 border-l border-slate-200 dark:border-slate-800 flex flex-col gap-px">
-                    {b.sessions.map((s) => {
-                      const tone = stateColor(s.state)
-                      const active = s.short === activeShort
-                      return (
-                        <li key={s.short}>
-                          <Link
-                            to="/sessions/$id"
-                            params={{ id: s.short }}
-                            data-testid="sidebar-session"
-                            data-short={s.short}
-                            data-active={active ? "true" : "false"}
-                            className={`relative flex items-center gap-2 pl-2 pr-1.5 py-1 rounded text-[11.5px] leading-tight ${
-                              active
-                                ? "bg-sky-100 dark:bg-sky-900/50 text-sky-900 dark:text-sky-100 font-medium shadow-[inset_2px_0_0_0] shadow-sky-500"
-                                : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/60"
-                            }`}
-                            title={s.detail}
-                          >
-                            <span
-                              className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`}
-                              aria-hidden
-                            />
-                            <span className="truncate flex-1">{sessionLabel(s)}</span>
-                            <span
-                              className={`text-[9px] uppercase tracking-wide shrink-0 ${
+                  <div
+                    data-testid="sidebar-session-list"
+                    data-bucket-key={b.key}
+                    data-collapsed={collapsed ? "true" : "false"}
+                    // grid-rows 1fr→0fr is the pure-CSS slide: the inner
+                    // min-h-0 row shrinks to nothing and back, animated.
+                    className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+                      collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+                    }`}
+                  >
+                    <ul
+                      className={`min-h-0 overflow-hidden mt-0.5 ml-3.5 pl-2 border-l border-slate-200 dark:border-slate-800 flex flex-col gap-px ${
+                        collapsed ? "invisible" : ""
+                      }`}
+                    >
+                      {b.sessions.map((s) => {
+                        const tone = stateColor(s.state)
+                        const active = s.short === activeShort
+                        return (
+                          <li key={s.short}>
+                            <Link
+                              to="/sessions/$id"
+                              params={{ id: s.short }}
+                              data-testid="sidebar-session"
+                              data-short={s.short}
+                              data-active={active ? "true" : "false"}
+                              onContextMenu={(e) => {
+                                e.preventDefault()
+                                setSessionMenu({
+                                  short: s.short,
+                                  ...clampMenuPosition({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    menuWidth: MENU_WIDTH,
+                                    menuHeight: MENU_HEIGHT,
+                                    viewportWidth: window.innerWidth,
+                                    viewportHeight: window.innerHeight,
+                                  }),
+                                })
+                              }}
+                              className={`relative flex items-center gap-2 pl-2 pr-1.5 py-1 rounded text-[11.5px] leading-tight ${
                                 active
-                                  ? "text-sky-700 dark:text-sky-300"
-                                  : "text-slate-400 dark:text-slate-500"
+                                  ? "bg-sky-100 dark:bg-sky-900/50 text-sky-900 dark:text-sky-100 font-medium shadow-[inset_2px_0_0_0] shadow-sky-500"
+                                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/60"
                               }`}
+                              title={s.detail}
                             >
-                              {tone.label}
-                            </span>
-                          </Link>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                              <span
+                                className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`}
+                                aria-hidden
+                              />
+                              <span className="truncate flex-1">{sessionLabel(s)}</span>
+                              <span
+                                className={`text-[9px] uppercase tracking-wide shrink-0 ${
+                                  active
+                                    ? "text-sky-700 dark:text-sky-300"
+                                    : "text-slate-400 dark:text-slate-500"
+                                }`}
+                              >
+                                {tone.label}
+                              </span>
+                            </Link>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
                 ) : null}
               </div>
             )
@@ -205,6 +261,14 @@ export const Sidebar = () => {
         project={spawnProject}
         onClose={() => setSpawnProject(null)}
       />
+      {sessionMenu ? (
+        <SessionContextMenu
+          short={sessionMenu.short}
+          x={sessionMenu.x}
+          y={sessionMenu.y}
+          onClose={() => setSessionMenu(null)}
+        />
+      ) : null}
     </aside>
   )
 }
