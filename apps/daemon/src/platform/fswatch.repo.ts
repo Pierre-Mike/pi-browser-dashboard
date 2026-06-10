@@ -4,7 +4,7 @@ export type FsWatchUnsubscribe = () => void
 
 const POLL_INTERVAL_MS = 500
 
-type StatSig = {
+export type StatSig = {
   readonly exists: boolean
   readonly mtimeMs: number
   readonly size: number
@@ -13,7 +13,7 @@ type StatSig = {
 
 const NONEXISTENT: StatSig = { exists: false, mtimeMs: 0, size: 0, ino: 0 }
 
-const statSig = (filePath: string): StatSig => {
+export const statSig = (filePath: string): StatSig => {
   try {
     const s = fs.statSync(filePath)
     return { exists: true, mtimeMs: s.mtimeMs, size: s.size, ino: s.ino }
@@ -22,7 +22,7 @@ const statSig = (filePath: string): StatSig => {
   }
 }
 
-const sigEqual = (a: StatSig, b: StatSig): boolean =>
+export const sigEqual = (a: StatSig, b: StatSig): boolean =>
   a.exists === b.exists && a.mtimeMs === b.mtimeMs && a.size === b.size && a.ino === b.ino
 
 /**

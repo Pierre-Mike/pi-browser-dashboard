@@ -2,7 +2,13 @@ import fs from "node:fs"
 import path from "node:path"
 import { Context, Effect, Layer, type Scope } from "effect"
 import { resolveConfigDir } from "../../platform/config-dir"
-import { type FsWatchUnsubscribe, watchFile } from "../../platform/fswatch.repo"
+import {
+  type FsWatchUnsubscribe,
+  type StatSig,
+  sigEqual,
+  statSig,
+  watchFile,
+} from "../../platform/fswatch.repo"
 import { sseBus } from "../../platform/sse-bus"
 import {
   backfillRosterFields,
@@ -45,8 +51,8 @@ const readJsonWithRetry = async (filePath: string): Promise<unknown | null> => {
 }
 
 export type SessionRegistryApi = {
-  readonly snapshot: () => ReadonlyArray<SessionState>
-  readonly getOne: (short: string) => SessionState | undefined
+  readonly snapshot: () => Promise<ReadonlyArray<SessionState>>
+  readonly getOne: (short: string) => Promise<SessionState | undefined>
 }
 
 export class SessionRegistry extends Context.Tag("SessionRegistry")<
@@ -61,8 +67,14 @@ const statePathFor = (configDir: string, short: string): string =>
 type RegistryState = {
   readonly sessions: Map<string, SessionState>
   readonly stateWatchers: Map<string, FsWatchUnsubscribe>
+  // Last stat signature seen by a completed read of each watched file. A read
+  // records the sig it observed *before* reading, and only once processing
+  // finished — so an in-flight read never masks a fresh-on-read reconcile.
+  readonly readSigs: Map<string, StatSig>
   rosterWatcher: FsWatchUnsubscribe | null
   rosterShorts: ReadonlySet<string>
+  // Serializes refresh-on-read passes so concurrent HTTP reads share one.
+  freshen: Promise<void>
 }
 
 const removeSession = ({ reg, short }: { reg: RegistryState; short: string }): void => {
@@ -153,6 +165,9 @@ const refreshState = async ({
   short: string
 }): Promise<void> => {
   const filePath = statePathFor(configDir, short)
+  // Sig observed before the read: if the file changes mid-read, the recorded
+  // sig differs from disk and the next refresh-on-read pass re-reads it.
+  const sig = statSig(filePath)
   let json: unknown
   try {
     json = await readJsonWithRetry(filePath)
@@ -161,6 +176,7 @@ const refreshState = async ({
     return
   }
   if (json === null) {
+    reg.readSigs.set(filePath, sig)
     forgetIfJobRemoved({ reg, short, filePath })
     return
   }
@@ -168,12 +184,14 @@ const refreshState = async ({
   try {
     parsed = parseState({ short, json })
   } catch (err) {
+    reg.readSigs.set(filePath, sig)
     console.error("[sessions.repo] failed to parse state.json", short, err)
     return
   }
   // Preserve any roster-derived fields if state.json hasn't filled them yet.
   const merged = mergeStateWithPrior({ parsed, prior: reg.sessions.get(short) })
   reg.sessions.set(short, merged)
+  reg.readSigs.set(filePath, sig)
   sseBus.publish({ type: "session.state", data: merged })
 }
 
@@ -232,6 +250,7 @@ const scanJobsDir = ({ reg, configDir }: { reg: RegistryState; configDir: string
 
 const refreshRoster = async (reg: RegistryState, configDir: string): Promise<void> => {
   const filePath = rosterPathFor(configDir)
+  const sig = statSig(filePath)
   let json: unknown
   try {
     json = await readJsonWithRetry(filePath)
@@ -240,6 +259,7 @@ const refreshRoster = async (reg: RegistryState, configDir: string): Promise<voi
     return
   }
   if (json === null) {
+    reg.readSigs.set(filePath, sig)
     // Treat missing roster as empty.
     await reconcileRoster({
       reg,
@@ -256,10 +276,38 @@ const refreshRoster = async (reg: RegistryState, configDir: string): Promise<voi
   try {
     parsed = parseRoster(json)
   } catch (err) {
+    reg.readSigs.set(filePath, sig)
     console.error("[sessions.repo] failed to parse roster.json", err)
     return
   }
   await reconcileRoster({ reg, configDir, parsed })
+  reg.readSigs.set(filePath, sig)
+}
+
+// Reconcile anything that changed on disk since the watchers last fired.
+// Watchers give low-latency push updates, but reads can't depend on them:
+// long-running Bun processes have been observed to lose their entire timer
+// subsystem (sockets keep serving, every setInterval/setTimeout stops), which
+// froze the registry until restart. Reads re-check the disk themselves.
+const ensureFresh = async (reg: RegistryState, configDir: string): Promise<void> => {
+  // New job dirs first — sessions created since boot (or since the last
+  // pass) get a watcher; their missing readSigs entry forces the awaited
+  // state read below.
+  scanJobsDir({ reg, configDir })
+  const rosterPath = rosterPathFor(configDir)
+  const lastRoster = reg.readSigs.get(rosterPath)
+  if (!lastRoster || !sigEqual(statSig(rosterPath), lastRoster)) {
+    await refreshRoster(reg, configDir)
+  }
+  const pending: Promise<void>[] = []
+  for (const short of reg.stateWatchers.keys()) {
+    const filePath = statePathFor(configDir, short)
+    const last = reg.readSigs.get(filePath)
+    if (!last || !sigEqual(statSig(filePath), last)) {
+      pending.push(refreshState({ reg, configDir, short }))
+    }
+  }
+  await Promise.all(pending)
 }
 
 const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> =>
@@ -268,8 +316,10 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
     const reg: RegistryState = {
       sessions: new Map(),
       stateWatchers: new Map(),
+      readSigs: new Map(),
       rosterWatcher: null,
       rosterShorts: new Set(),
+      freshen: Promise.resolve(),
     }
 
     // Initial sync + watcher arm.
@@ -292,9 +342,25 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       }),
     )
 
+    const freshenOnRead = (): Promise<void> => {
+      const run = (): Promise<void> =>
+        ensureFresh(reg, configDir).catch((err) => {
+          console.error("[sessions.repo] refresh-on-read failed", err)
+        })
+      // `run` never rejects, so the chain stays clean for the next read.
+      reg.freshen = reg.freshen.then(run)
+      return reg.freshen
+    }
+
     return {
-      snapshot: () => Array.from(reg.sessions.values()),
-      getOne: (short: string) => reg.sessions.get(short),
+      snapshot: async () => {
+        await freshenOnRead()
+        return Array.from(reg.sessions.values())
+      },
+      getOne: async (short: string) => {
+        await freshenOnRead()
+        return reg.sessions.get(short)
+      },
     }
   })
 

@@ -329,7 +329,7 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
   const session = await appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
-      return reg.getOne(id)
+      return yield* Effect.promise(() => reg.getOne(id))
     }),
   )
   if (!session) return { ok: false, reason: `session ${id} not found` }
@@ -398,7 +398,7 @@ const resolveSessionKillName = async (id: string): Promise<string | null> => {
   const session = await appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
-      return reg.getOne(id)
+      return yield* Effect.promise(() => reg.getOne(id))
     }),
   )
   if (!session) return null

@@ -36,8 +36,8 @@ const POLL_WAIT_MS = 1200
 type SseRecord = { type: string; data: unknown }
 
 type RegistryApi = {
-  readonly snapshot: () => ReadonlyArray<SessionState>
-  readonly getOne: (short: string) => SessionState | undefined
+  readonly snapshot: () => Promise<ReadonlyArray<SessionState>>
+  readonly getOne: (short: string) => Promise<SessionState | undefined>
 }
 
 type SessionState = {
@@ -96,7 +96,7 @@ afterEach(async () => {
 describe("SessionRegistry — initial reconciliation", () => {
   it("treats a missing roster.json as empty", async () => {
     const api = await startRegistry()
-    expect(api.snapshot()).toEqual([])
+    expect(await api.snapshot()).toEqual([])
   })
 
   it("seeds sessions from roster.json on boot, before state.json arrives", async () => {
@@ -108,7 +108,7 @@ describe("SessionRegistry — initial reconciliation", () => {
       },
     })
     const api = await startRegistry()
-    const snap = api.snapshot()
+    const snap = await api.snapshot()
     expect(snap).toHaveLength(1)
     expect(snap[0]?.short).toBe("ab12")
     expect(snap[0]?.state).toBe("idle")
@@ -132,7 +132,7 @@ describe("SessionRegistry — initial reconciliation", () => {
     // The state.json read fires on watcher attach but resolves async; give it
     // a tick so the merged snapshot is in.
     await wait(200)
-    const one = api.getOne("ab12")
+    const one = await api.getOne("ab12")
     expect(one?.state).toBe("working")
     expect(one?.detail).toBe("compiling")
     // Roster-derived fields survive when state.json doesn't repeat them.
@@ -150,7 +150,7 @@ describe("SessionRegistry — jobs dir scan", () => {
     })
     const api = await startRegistry()
     await wait(200) // initial state.json read settles
-    const one = api.getOne("old1")
+    const one = await api.getOne("old1")
     expect(one?.state).toBe("done")
     expect(one?.detail).toBe("shipped")
     expect(one?.sessionId).toBe("sess-old")
@@ -164,7 +164,7 @@ describe("SessionRegistry — jobs dir scan", () => {
     await rm(join(cfg, "jobs", "old1"), { recursive: true, force: true })
     await wait(POLL_WAIT_MS)
     expect(events).toEqual([{ type: "session.removed", data: { short: "old1" } }])
-    expect(api.getOne("old1")).toBeUndefined()
+    expect(await api.getOne("old1")).toBeUndefined()
   })
 
   it("keeps a roster-tracked session when state.json is briefly absent", async () => {
@@ -174,7 +174,7 @@ describe("SessionRegistry — jobs dir scan", () => {
     await wait(200)
     await rm(join(cfg, "jobs", "ab12", "state.json"), { force: true })
     await wait(POLL_WAIT_MS)
-    expect(api.getOne("ab12")?.short).toBe("ab12")
+    expect((await api.getOne("ab12"))?.short).toBe("ab12")
   })
 })
 
@@ -188,7 +188,7 @@ describe("SessionRegistry — roster delta", () => {
     await wait(POLL_WAIT_MS)
     expect(events.filter((e) => e.type === "session.created")).toHaveLength(1)
     expect(events.filter((e) => e.type === "roster.changed").length).toBeGreaterThanOrEqual(1)
-    expect(api.getOne("ab12")?.short).toBe("ab12")
+    expect((await api.getOne("ab12"))?.short).toBe("ab12")
   })
 
   it("publishes session.removed and stops tracking when a worker leaves the roster", async () => {
@@ -198,7 +198,7 @@ describe("SessionRegistry — roster delta", () => {
     await writeRoster(cfg, {})
     await wait(POLL_WAIT_MS)
     expect(events).toEqual([{ type: "session.removed", data: { short: "ab12" } }])
-    expect(api.getOne("ab12")).toBeUndefined()
+    expect(await api.getOne("ab12")).toBeUndefined()
   })
 
   it("retains a session whose state.json persists when its worker leaves the roster", async () => {
@@ -210,8 +210,8 @@ describe("SessionRegistry — roster delta", () => {
     await writeRoster(cfg, {})
     await wait(POLL_WAIT_MS)
     expect(events).toEqual([])
-    expect(api.getOne("ab12")?.state).toBe("done")
-    expect(api.getOne("ab12")?.detail).toBe("PR merged")
+    expect((await api.getOne("ab12"))?.state).toBe("done")
+    expect((await api.getOne("ab12"))?.detail).toBe("PR merged")
   })
 })
 
@@ -231,7 +231,7 @@ describe("SessionRegistry — state.json delta", () => {
     }
     expect(latest.state).toBe("working")
     expect(latest.detail).toBe("now")
-    expect(api.getOne("ab12")?.state).toBe("working")
+    expect((await api.getOne("ab12"))?.state).toBe("working")
   })
 
   it("does not clobber the in-memory snapshot when state.json is mid-write (empty file)", async () => {
@@ -244,6 +244,39 @@ describe("SessionRegistry — state.json delta", () => {
     // anything — the prior snapshot stays intact.
     await writeFile(join(cfg, "jobs", "ab12", "state.json"), "")
     await wait(POLL_WAIT_MS)
-    expect(api.getOne("ab12")?.state).toBe("working")
+    expect((await api.getOne("ab12"))?.state).toBe("working")
+  })
+})
+
+// Reads must stay correct even when the runtime's timers stop firing
+// (observed in production: Bun's timer subsystem died after hours of uptime —
+// sockets kept serving but every 500ms poll watcher froze, so sessions
+// created afterwards never appeared until a daemon restart). snapshot() and
+// getOne() therefore reconcile on-disk changes before returning, without
+// waiting for a poll cycle.
+describe("SessionRegistry — refresh on read (timer-independent)", () => {
+  it("reflects a roster worker added after boot on an immediate read", async () => {
+    const api = await startRegistry()
+    await writeRoster(cfg, { ab12: { sessionId: "s1", cwd: "/repo" } })
+    const snap = await api.snapshot()
+    expect(snap.map((s) => s.short)).toContain("ab12")
+  })
+
+  it("reflects a state.json change on an immediate read", async () => {
+    await writeRoster(cfg, { ab12: {} })
+    await writeState({ cfg, short: "ab12", body: { state: "idle" } })
+    const api = await startRegistry()
+    await writeState({ cfg, short: "ab12", body: { state: "working", detail: "now" } })
+    const one = await api.getOne("ab12")
+    expect(one?.state).toBe("working")
+    expect(one?.detail).toBe("now")
+  })
+
+  it("discovers a rosterless job dir created after boot on an immediate read", async () => {
+    const api = await startRegistry()
+    await writeState({ cfg, short: "late1", body: { state: "done", detail: "shipped" } })
+    const one = await api.getOne("late1")
+    expect(one?.state).toBe("done")
+    expect(one?.detail).toBe("shipped")
   })
 })
