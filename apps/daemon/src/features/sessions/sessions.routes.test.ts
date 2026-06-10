@@ -8,7 +8,7 @@ import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } fro
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.repo"
 import { buildSessionsApp } from "./sessions.routes"
 
-type SessionState = ReturnType<SessionRegistryApi["snapshot"]>[number]
+type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
 
 const makeSession = (overrides: Partial<SessionState> = {}): SessionState => ({
   short: "ab12",
@@ -79,8 +79,8 @@ const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellRepo> => {
 
 const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<SessionRegistry> =>
   Layer.succeed(SessionRegistry, {
-    snapshot: () => Array.from(sessions.values()),
-    getOne: (short) => sessions.get(short),
+    snapshot: () => Promise.resolve(Array.from(sessions.values())),
+    getOne: (short) => Promise.resolve(sessions.get(short)),
   })
 
 type FilesStub = {

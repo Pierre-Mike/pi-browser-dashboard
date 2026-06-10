@@ -41,7 +41,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const list = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return reg.snapshot()
+          return yield* Effect.promise(() => reg.snapshot())
         }),
       )
       return c.json(list)
@@ -51,7 +51,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const one = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return reg.getOne(id)
+          return yield* Effect.promise(() => reg.getOne(id))
         }),
       )
       if (!one) return c.json({ error: "not_found", short: id }, 404)
@@ -62,7 +62,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const one = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return reg.getOne(id)
+          return yield* Effect.promise(() => reg.getOne(id))
         }),
       )
       if (!one) return c.json({ error: "not_found", short: id }, 404)
@@ -81,7 +81,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const session = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return reg.getOne(id)
+          return yield* Effect.promise(() => reg.getOne(id))
         }),
       )
       if (!session) return c.json({ error: "not_found", short: id }, 404)
