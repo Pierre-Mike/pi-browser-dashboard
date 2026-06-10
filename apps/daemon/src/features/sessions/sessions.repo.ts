@@ -4,7 +4,15 @@ import { Context, Effect, Layer, type Scope } from "effect"
 import { resolveConfigDir } from "../../platform/config-dir"
 import { type FsWatchUnsubscribe, watchFile } from "../../platform/fswatch.repo"
 import { sseBus } from "../../platform/sse-bus"
-import { type ParsedRoster, parseRoster, parseState, type SessionState } from "./sessions.core"
+import {
+  backfillRosterFields,
+  mergeStateWithPrior,
+  type ParsedRoster,
+  parseRoster,
+  parseState,
+  type SessionState,
+  seedFromWorker,
+} from "./sessions.core"
 
 const MAX_PARSE_RETRIES = 5
 const PARSE_RETRY_MS = 50
@@ -67,6 +75,53 @@ const removeSession = ({ reg, short }: { reg: RegistryState; short: string }): v
   sseBus.publish({ type: "session.removed", data: { short } })
 }
 
+// A worker dropping out of the roster only means the supervisor no longer
+// runs it — the job dir (state.json, transcript link) persists until the user
+// runs `claude rm`. Keep those sessions listed; only forget ones whose
+// state.json is gone too.
+const dropDepartedSessions = ({
+  reg,
+  configDir,
+  presentShorts,
+}: {
+  reg: RegistryState
+  configDir: string
+  presentShorts: ReadonlySet<string>
+}): void => {
+  for (const short of Array.from(reg.sessions.keys())) {
+    if (presentShorts.has(short)) continue
+    if (fs.existsSync(statePathFor(configDir, short))) continue
+    removeSession({ reg, short })
+  }
+}
+
+const upsertRosterWorker = ({
+  reg,
+  configDir,
+  worker,
+}: {
+  reg: RegistryState
+  configDir: string
+  worker: ParsedRoster["workers"][number]
+}): void => {
+  const existing = reg.sessions.get(worker.short)
+  if (existing) {
+    // Jobs-dir scan may have seeded this session from state.json before the
+    // roster was read — backfill roster-only fields it couldn't know.
+    const merged = backfillRosterFields({ existing, worker })
+    if (merged) {
+      reg.sessions.set(worker.short, merged)
+      sseBus.publish({ type: "session.state", data: merged })
+    }
+    return
+  }
+  // Seed with minimal info from roster; state.json watcher fills the rest.
+  const seed = seedFromWorker(worker)
+  reg.sessions.set(worker.short, seed)
+  sseBus.publish({ type: "session.created", data: seed })
+  attachStateWatcher({ reg, configDir, short: worker.short })
+}
+
 const reconcileRoster = async ({
   reg,
   configDir,
@@ -78,61 +133,10 @@ const reconcileRoster = async ({
 }): Promise<void> => {
   const presentShorts = new Set(parsed.workers.map((w) => w.short))
   reg.rosterShorts = presentShorts
-
-  // Removed sessions. A worker dropping out of the roster only means the
-  // supervisor no longer runs it — the job dir (state.json, transcript link)
-  // persists until the user runs `claude rm`. Keep those sessions listed;
-  // only forget ones whose state.json is gone too.
-  for (const short of Array.from(reg.sessions.keys())) {
-    if (presentShorts.has(short)) continue
-    if (fs.existsSync(statePathFor(configDir, short))) continue
-    removeSession({ reg, short })
-  }
-
-  // Added sessions
+  dropDepartedSessions({ reg, configDir, presentShorts })
   for (const worker of parsed.workers) {
-    const existing = reg.sessions.get(worker.short)
-    if (existing) {
-      // Jobs-dir scan may have seeded this session from state.json before the
-      // roster was read — backfill roster-only fields it couldn't know.
-      const merged: SessionState = {
-        ...existing,
-        intent: existing.intent ?? worker.intent,
-        sessionId: existing.sessionId ?? worker.sessionId,
-        cwd: existing.cwd ?? worker.cwd,
-      }
-      if (
-        merged.intent !== existing.intent ||
-        merged.sessionId !== existing.sessionId ||
-        merged.cwd !== existing.cwd
-      ) {
-        reg.sessions.set(worker.short, merged)
-        sseBus.publish({ type: "session.state", data: merged })
-      }
-      continue
-    }
-    // Seed with minimal info from roster; state.json watcher fills the rest.
-    const seed: SessionState = {
-      short: worker.short,
-      state: "idle",
-      detail: undefined,
-      tempo: undefined,
-      intent: worker.intent,
-      name: undefined,
-      sessionId: worker.sessionId,
-      cwd: worker.cwd,
-      createdAt: undefined,
-      updatedAt: undefined,
-      linkScanPath: undefined,
-      worktreePath: undefined,
-      worktreeBranch: undefined,
-      result: undefined,
-    }
-    reg.sessions.set(worker.short, seed)
-    sseBus.publish({ type: "session.created", data: seed })
-    attachStateWatcher({ reg, configDir, short: worker.short })
+    upsertRosterWorker({ reg, configDir, worker })
   }
-
   sseBus.publish({
     type: "roster.changed",
     data: { workers: parsed.workers, updatedAt: parsed.updatedAt },
@@ -157,12 +161,7 @@ const refreshState = async ({
     return
   }
   if (json === null) {
-    // state.json gone for a session the supervisor no longer tracks either:
-    // the user removed the job (`claude rm`). Roster-tracked sessions keep
-    // their snapshot — the file may simply not exist yet (spawn in flight).
-    if (!reg.rosterShorts.has(short) && reg.sessions.has(short) && !fs.existsSync(filePath)) {
-      removeSession({ reg, short })
-    }
+    forgetIfJobRemoved({ reg, short, filePath })
     return
   }
   let parsed: SessionState
@@ -173,15 +172,27 @@ const refreshState = async ({
     return
   }
   // Preserve any roster-derived fields if state.json hasn't filled them yet.
-  const prior = reg.sessions.get(short)
-  const merged: SessionState = {
-    ...parsed,
-    intent: parsed.intent ?? prior?.intent,
-    cwd: parsed.cwd ?? prior?.cwd,
-    sessionId: parsed.sessionId ?? prior?.sessionId,
-  }
+  const merged = mergeStateWithPrior({ parsed, prior: reg.sessions.get(short) })
   reg.sessions.set(short, merged)
   sseBus.publish({ type: "session.state", data: merged })
+}
+
+// state.json gone for a session the supervisor no longer tracks either: the
+// user removed the job (`claude rm`). Roster-tracked sessions keep their
+// snapshot — the file may simply not exist yet (spawn in flight).
+const forgetIfJobRemoved = ({
+  reg,
+  short,
+  filePath,
+}: {
+  reg: RegistryState
+  short: string
+  filePath: string
+}): void => {
+  if (reg.rosterShorts.has(short)) return
+  if (!reg.sessions.has(short)) return
+  if (fs.existsSync(filePath)) return
+  removeSession({ reg, short })
 }
 
 const attachStateWatcher = ({

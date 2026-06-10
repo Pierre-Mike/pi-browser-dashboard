@@ -139,6 +139,60 @@ export const parseState = ({ short, json }: ParseStateInput): SessionState => {
   }
 }
 
+// --- Merging ----------------------------------------------------------------
+
+export const seedFromWorker = (worker: RosterWorker): SessionState => ({
+  short: worker.short,
+  state: "idle",
+  detail: undefined,
+  tempo: undefined,
+  intent: worker.intent,
+  name: undefined,
+  sessionId: worker.sessionId,
+  cwd: worker.cwd,
+  createdAt: undefined,
+  updatedAt: undefined,
+  linkScanPath: undefined,
+  worktreePath: undefined,
+  worktreeBranch: undefined,
+  result: undefined,
+})
+
+const firstDefined = (a: string | undefined, b: string | undefined): string | undefined =>
+  a === undefined ? b : a
+
+type RosterDerived = Pick<SessionState, "intent" | "sessionId" | "cwd">
+
+const fillRosterDerived = (target: SessionState, fallback: RosterDerived): SessionState => ({
+  ...target,
+  intent: firstDefined(target.intent, fallback.intent),
+  sessionId: firstDefined(target.sessionId, fallback.sessionId),
+  cwd: firstDefined(target.cwd, fallback.cwd),
+})
+
+const sameRosterDerived = (a: RosterDerived, b: RosterDerived): boolean =>
+  a.intent === b.intent && a.sessionId === b.sessionId && a.cwd === b.cwd
+
+export type BackfillInput = { readonly existing: SessionState; readonly worker: RosterWorker }
+
+// Roster-only fields a jobs-dir-seeded session couldn't know. Returns the
+// merged session, or null when nothing would change.
+export const backfillRosterFields = ({ existing, worker }: BackfillInput): SessionState | null => {
+  const merged = fillRosterDerived(existing, worker)
+  return sameRosterDerived(merged, existing) ? null : merged
+}
+
+const NO_PRIOR: RosterDerived = { intent: undefined, sessionId: undefined, cwd: undefined }
+
+export type MergeStateInput = {
+  readonly parsed: SessionState
+  readonly prior: SessionState | undefined
+}
+
+// state.json wins, but roster-derived fields survive when it omits them.
+export const mergeStateWithPrior = ({ parsed, prior }: MergeStateInput): SessionState =>
+  fillRosterDerived(parsed, prior ?? NO_PRIOR)
+
 // --- Derived ---------------------------------------------------------------
 
 export type AgeInput = { readonly now: number; readonly createdAt: string | undefined }
