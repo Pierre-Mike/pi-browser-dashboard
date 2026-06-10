@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react"
+import { MODAL_PANEL } from "./modalLayout"
 
 type Props = {
   open: boolean
@@ -34,7 +35,7 @@ export const Modal = ({ open, title, onClose, children, testId }: Props) => {
         if (e.key === "Escape") onClose()
       }}
     >
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-auto">
+      <div className={MODAL_PANEL}>
         <header className="flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button
