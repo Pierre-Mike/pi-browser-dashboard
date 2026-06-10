@@ -76,6 +76,33 @@ export const bucketProjects = ({
   return out
 }
 
+export const SESSION_PAGE_SIZE = 5
+
+export type SessionWindow = {
+  visible: readonly SessionState[]
+  hiddenCount: number
+}
+
+export const sessionWindow = ({
+  sessions,
+  limit,
+}: {
+  sessions: readonly SessionState[]
+  limit: number
+}): SessionWindow => {
+  const visible = sessions.slice(0, Math.max(0, limit))
+  return { visible, hiddenCount: sessions.length - visible.length }
+}
+
+export const growLimit = (limit: number): number => limit + SESSION_PAGE_SIZE
+
+export const sessionMoreLabel = (hiddenCount: number): string => {
+  const next = Math.min(hiddenCount, SESSION_PAGE_SIZE)
+  return hiddenCount > SESSION_PAGE_SIZE
+    ? `Show ${next} more (${hiddenCount} hidden)`
+    : `Show ${next} more`
+}
+
 export const sessionLabel = (s: SessionState): string => s.name?.trim() || s.short
 
 export const activeProjectId = (pathname: string): string | null => {

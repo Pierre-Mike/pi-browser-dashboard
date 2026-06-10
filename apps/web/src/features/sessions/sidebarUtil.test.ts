@@ -1,6 +1,14 @@
 import { describe, expect, it } from "bun:test"
 import type { Project, SessionState } from "../../lib/types"
-import { activeProjectId, bucketProjects, sessionLabel } from "./sidebarUtil"
+import {
+  activeProjectId,
+  bucketProjects,
+  growLimit,
+  SESSION_PAGE_SIZE,
+  sessionLabel,
+  sessionMoreLabel,
+  sessionWindow,
+} from "./sidebarUtil"
 
 const proj = (over: Partial<Project> = {}): Project => ({
   id: "p1",
@@ -148,6 +156,39 @@ describe("activeProjectId", () => {
   it("decodes URL-encoded ids and tolerates a trailing slash", () => {
     expect(activeProjectId("/projects/my%20app")).toBe("my app")
     expect(activeProjectId("/projects/p1/")).toBe("p1")
+  })
+})
+
+describe("sessionWindow", () => {
+  const seven = Array.from({ length: 7 }, (_, i) => sess({ short: `s${i}` }))
+
+  it("shows only the first page and counts the rest as hidden", () => {
+    const out = sessionWindow({ sessions: seven, limit: SESSION_PAGE_SIZE })
+    expect(out.visible.map((s) => s.short)).toEqual(["s0", "s1", "s2", "s3", "s4"])
+    expect(out.hiddenCount).toBe(2)
+  })
+
+  it("shows everything once the limit covers the whole list", () => {
+    const out = sessionWindow({ sessions: seven, limit: 10 })
+    expect(out.visible).toHaveLength(7)
+    expect(out.hiddenCount).toBe(0)
+  })
+})
+
+describe("growLimit", () => {
+  it("reveals one more page per click", () => {
+    expect(growLimit(SESSION_PAGE_SIZE)).toBe(10)
+    expect(growLimit(growLimit(SESSION_PAGE_SIZE))).toBe(15)
+  })
+})
+
+describe("sessionMoreLabel", () => {
+  it("offers a full page and reports the hidden total", () => {
+    expect(sessionMoreLabel(12)).toBe("Show 5 more (12 hidden)")
+  })
+
+  it("offers only the remainder when fewer than a page is hidden", () => {
+    expect(sessionMoreLabel(2)).toBe("Show 2 more")
   })
 })
 
