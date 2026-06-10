@@ -2,7 +2,7 @@ export type Block =
   | { kind: "text"; text: string }
   | { kind: "thinking"; text: string }
   | { kind: "tool_use"; name: string; input: unknown; id?: string }
-  | { kind: "tool_result"; text: string; isError?: boolean }
+  | { kind: "tool_result"; text: string; isError?: boolean; toolUseId?: string }
 
 export const asString = (v: unknown): string => {
   if (typeof v === "string") return v
@@ -45,6 +45,7 @@ export const flattenContent = (raw: unknown): Block[] => {
         kind: "tool_result",
         text: asString(p.content),
         isError: Boolean(p.is_error),
+        ...(typeof p.tool_use_id === "string" ? { toolUseId: p.tool_use_id } : {}),
       })
     } else {
       out.push({ kind: "text", text: asString(part) })
