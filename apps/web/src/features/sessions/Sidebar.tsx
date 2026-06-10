@@ -1,4 +1,4 @@
-import { Link, useParams } from "@tanstack/react-router"
+import { Link, useLocation, useParams } from "@tanstack/react-router"
 import { useState } from "react"
 import { stateColor } from "../../lib/format"
 import type { Project } from "../../lib/types"
@@ -7,7 +7,7 @@ import { NotifyToggle } from "../notifications/NotifyToggle"
 import { useProjects } from "../projects/useProjects"
 import { clampMenuPosition } from "./contextMenu"
 import { MENU_HEIGHT, MENU_WIDTH, SessionContextMenu } from "./SessionContextMenu"
-import { bucketProjects, sessionLabel } from "./sidebarUtil"
+import { activeProjectId, bucketProjects, sessionLabel } from "./sidebarUtil"
 import { useCollapsedBuckets } from "./useCollapsedBuckets"
 import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
@@ -19,6 +19,8 @@ export const Sidebar = () => {
   const projectsQ = useProjects()
   const params = useParams({ strict: false }) as { id?: string }
   const activeShort = params.id
+  const pathname = useLocation({ select: (l) => l.pathname })
+  const activeProject = activeProjectId(pathname)
   const [spawnProject, setSpawnProject] = useState<Project | null>(null)
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin } = usePinnedProjects()
@@ -66,10 +68,15 @@ export const Sidebar = () => {
           buckets.map((b) => {
             const isNonGit = b.project !== null && !b.project.isGitRepo
             const collapsed = isCollapsed(b.key)
+            const projectActive = b.project !== null && b.project.id === activeProject
             return (
               <div key={b.key} className="px-1.5 py-1.5">
                 <div
-                  className="group flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-900/60"
+                  className={`group flex items-center gap-1.5 px-1.5 py-1 rounded ${
+                    projectActive
+                      ? "bg-sky-100 dark:bg-sky-900/50 shadow-[inset_2px_0_0_0] shadow-sky-500"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-900/60"
+                  }`}
                   title={b.pathHint}
                 >
                   <button
@@ -98,7 +105,12 @@ export const Sidebar = () => {
                       data-testid="sidebar-project-link"
                       data-project-id={b.project.id}
                       data-pinned={b.pinned ? "true" : "false"}
-                      className="truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 hover:text-sky-700 dark:hover:text-sky-300"
+                      data-active={projectActive ? "true" : "false"}
+                      className={`truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold ${
+                        projectActive
+                          ? "text-sky-900 dark:text-sky-100"
+                          : "text-slate-800 dark:text-slate-100 hover:text-sky-700 dark:hover:text-sky-300"
+                      }`}
                     >
                       {isNonGit ? (
                         <span
