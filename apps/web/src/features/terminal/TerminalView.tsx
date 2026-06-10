@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
+import { type ColorScheme, schemeForPrefersDark, terminalTheme } from "./terminalTheme"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 
 type Props = {
@@ -18,10 +19,30 @@ type Props = {
 // pty chunk.
 const isControlFrame = (data: string): boolean => data.length > 0 && data.charCodeAt(0) === 0x7b
 
+const PREFERS_DARK = "(prefers-color-scheme: dark)"
+
+// Tailwind runs in darkMode:"media", so the terminal follows the same OS
+// preference: light xterm palette in light mode, the original dark one in
+// dark mode, switching live when the OS theme flips.
+const usePreferredScheme = (): ColorScheme => {
+  const [scheme, setScheme] = useState<ColorScheme>(() =>
+    schemeForPrefersDark(window.matchMedia(PREFERS_DARK).matches),
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(PREFERS_DARK)
+    const onChange = (ev: MediaQueryListEvent) => setScheme(schemeForPrefersDark(ev.matches))
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+  return scheme
+}
+
 export const TerminalView = (props: Props) => {
   const { kind, reconnectTitle, testId } = props
   const id = "id" in props ? props.id : ""
   const hostRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const scheme = usePreferredScheme()
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
@@ -34,11 +55,10 @@ export const TerminalView = (props: Props) => {
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: 13,
-      theme: {
-        background: "#0b1220",
-        foreground: "#e2e8f0",
-        cursor: "#38bdf8",
-      },
+      // Read the media query directly so this effect doesn't depend on
+      // `scheme` (re-running it would tear down the WS); the effect below
+      // applies live scheme changes via term.options.theme.
+      theme: { ...terminalTheme(schemeForPrefersDark(window.matchMedia(PREFERS_DARK).matches)) },
       convertEol: true,
       cursorBlink: true,
       scrollback: 5_000,
@@ -46,6 +66,7 @@ export const TerminalView = (props: Props) => {
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
+    termRef.current = term
     const safeFit = () => {
       try {
         fit.fit()
@@ -165,9 +186,15 @@ export const TerminalView = (props: Props) => {
           // ignore
         }
       }
+      termRef.current = null
       term.dispose()
     }
   }, [kind, id])
+
+  useEffect(() => {
+    // xterm only repaints when options.theme is assigned a fresh object.
+    if (termRef.current) termRef.current.options.theme = { ...terminalTheme(scheme) }
+  }, [scheme])
 
   const onRestart = async (): Promise<void> => {
     if (restarting) return
@@ -195,7 +222,8 @@ export const TerminalView = (props: Props) => {
       <div
         ref={hostRef}
         data-testid="terminal-host"
-        className="flex-1 min-h-0 rounded-lg bg-[#0b1220] p-2 shadow-inner"
+        className="flex-1 min-h-0 rounded-lg p-2 shadow-inner"
+        style={{ backgroundColor: terminalTheme(scheme).background }}
       />
       <div className="flex items-center gap-2 px-1 pt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
         <span
