@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { Project, SessionState } from "../../lib/types"
-import { bucketProjects, sessionLabel } from "./sidebarUtil"
+import { activeProjectId, bucketProjects, sessionLabel } from "./sidebarUtil"
 
 const proj = (over: Partial<Project> = {}): Project => ({
   id: "p1",
@@ -131,6 +131,23 @@ describe("bucketProjects", () => {
       ],
     })
     expect(out[0]?.sessions.map((s) => s.short)).toEqual(["dated", "blank-a", "blank-b"])
+  })
+})
+
+describe("activeProjectId", () => {
+  it("extracts the project id from a /projects/$id pathname", () => {
+    expect(activeProjectId("/projects/p1")).toBe("p1")
+  })
+
+  it("returns null on non-project routes (session page must not match)", () => {
+    expect(activeProjectId("/sessions/abc")).toBeNull()
+    expect(activeProjectId("/")).toBeNull()
+    expect(activeProjectId("/projects/")).toBeNull()
+  })
+
+  it("decodes URL-encoded ids and tolerates a trailing slash", () => {
+    expect(activeProjectId("/projects/my%20app")).toBe("my app")
+    expect(activeProjectId("/projects/p1/")).toBe("p1")
   })
 })
 

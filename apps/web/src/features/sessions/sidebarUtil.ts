@@ -77,3 +77,8 @@ export const bucketProjects = ({
 }
 
 export const sessionLabel = (s: SessionState): string => s.name?.trim() || s.short
+
+export const activeProjectId = (pathname: string): string | null => {
+  const m = pathname.match(/^\/projects\/([^/]+)\/?$/)
+  return m?.[1] ? decodeURIComponent(m[1]) : null
+}
