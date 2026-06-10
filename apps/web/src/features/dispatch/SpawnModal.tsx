@@ -8,7 +8,7 @@ import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
 import { mergeSkillOptions } from "./skillOptions"
-import { SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
+import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
 
 type Props = {
   open: boolean
@@ -163,7 +163,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           rows={4}
           placeholder="What should this session do?"
           disabled={busy}
-          className="w-full resize-none rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className={SPAWN_INTENT_INPUT}
         />
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-slate-400">⌘/Ctrl + ⏎ to spawn</span>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { PaletteEntry } from "./palette"
+import { PALETTE_INPUT, PALETTE_MODAL_SHELL } from "./paletteModalLayout"
 
 type Props = {
   open: boolean
@@ -45,7 +46,7 @@ export const PaletteModal = ({ open, entries, query, onQueryChange, onSelect, on
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         role="presentation"
-        className="w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden"
+        className={PALETTE_MODAL_SHELL}
       >
         <input
           ref={inputRef}
@@ -70,7 +71,7 @@ export const PaletteModal = ({ open, entries, query, onQueryChange, onSelect, on
           placeholder="Jump to project…"
           autoComplete="off"
           spellCheck={false}
-          className="w-full px-4 py-3 text-sm bg-transparent border-b border-slate-200 dark:border-slate-800 focus:outline-none"
+          className={PALETTE_INPUT}
         />
         <div className="max-h-80 overflow-y-auto">
           {entries.length === 0 ? (
