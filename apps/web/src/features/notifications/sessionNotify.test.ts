@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { SessionState, SessionStateValue } from "../../lib/types"
-import { decideNotification, isTerminalState } from "./sessionNotify"
+import { decideNotification, isTerminalState, resolvePrevState } from "./sessionNotify"
 
 const make = (over: Partial<SessionState> = {}): SessionState => ({
   short: "abc123",
@@ -107,5 +107,41 @@ describe("decideNotification", () => {
     for (const state of terminals) {
       expect(decideNotification("working", make({ state }))).not.toBeNull()
     }
+  })
+})
+
+describe("resolvePrevState", () => {
+  it("prefers a live SSE-observed state over the roster fallback", () => {
+    expect(resolvePrevState("working", "idle")).toBe("working")
+  })
+
+  it("falls back to the roster state when nothing was observed live", () => {
+    // The initial session list arrives over HTTP, not SSE, so the first
+    // session.state event for a session has no live-observed prior. The roster
+    // value is the state the user was actually looking at.
+    expect(resolvePrevState(undefined, "working")).toBe("working")
+  })
+
+  it("is undefined only when neither source knows the session", () => {
+    expect(resolvePrevState(undefined, undefined)).toBeUndefined()
+  })
+})
+
+describe("notification edge seeding (resolvePrevState + decideNotification)", () => {
+  it("fires for the working→done edge witnessed via the HTTP roster", () => {
+    // Regression: previously this dropped the notification because lastStates
+    // (SSE-only) had no entry, so prev was undefined and the guard suppressed.
+    const prev = resolvePrevState(undefined, "working")
+    expect(decideNotification(prev, make({ state: "done", name: "Build" }))).not.toBeNull()
+  })
+
+  it("still suppresses a session already terminal in the roster on load", () => {
+    const prev = resolvePrevState(undefined, "done")
+    expect(decideNotification(prev, make({ state: "done" }))).toBeNull()
+  })
+
+  it("still suppresses a truly first-sighted session (no roster, no live)", () => {
+    const prev = resolvePrevState(undefined, undefined)
+    expect(decideNotification(prev, make({ state: "done" }))).toBeNull()
   })
 })

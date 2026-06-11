@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { notifyEnabled, showNotification } from "../features/notifications/notifier"
-import { decideNotification } from "../features/notifications/sessionNotify"
+import { decideNotification, resolvePrevState } from "../features/notifications/sessionNotify"
 import { extensionEventBroker } from "./extensionEvents"
 import type { SessionState, SessionStateValue } from "./types"
 
@@ -75,7 +75,14 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
       if (!payload) return
       mark("session.state", { short: payload.short, state: payload.state })
 
-      const prevState = lastStates.get(payload.short)
+      // Fall back to the roster state the user was looking at (HTTP-fetched,
+      // so absent from lastStates) for a session's first SSE event — otherwise
+      // the witnessed working→done edge is dropped. Read the cache before the
+      // setQueryData below overwrites it with the new state.
+      const cachedState = queryClient
+        .getQueryData<SessionState[]>(["sessions"])
+        ?.find((s) => s.short === payload.short)?.state
+      const prevState = resolvePrevState(lastStates.get(payload.short), cachedState)
       lastStates.set(payload.short, payload.state)
       if (notifyEnabled()) {
         const note = decideNotification(prevState, payload)
