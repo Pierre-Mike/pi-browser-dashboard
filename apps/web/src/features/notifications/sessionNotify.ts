@@ -16,6 +16,18 @@ const TERMINAL_STATES: ReadonlySet<SessionStateValue> = new Set<SessionStateValu
 
 export const isTerminalState = (state: SessionStateValue): boolean => TERMINAL_STATES.has(state)
 
+// Resolve the state to treat as "previous" for edge detection.
+//
+// `observed` is what we saw live on this SSE connection; `cached` is whatever
+// the initial session roster (fetched over HTTP, not SSE) reported. The first
+// SSE event for a session has no live-observed prior, so without the roster
+// fallback the very transition a user is watching — working → done — would be
+// dropped (prev undefined → suppressed). Live always wins when present.
+export const resolvePrevState = (
+  observed: SessionStateValue | undefined,
+  cached: SessionStateValue | undefined,
+): SessionStateValue | undefined => observed ?? cached
+
 const TITLES: Record<"done" | "failed" | "stopped", string> = {
   done: "✓ Claude session done",
   failed: "✗ Claude session failed",
