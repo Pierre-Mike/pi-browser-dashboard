@@ -1,4 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -19,6 +27,7 @@ import {
   projectZellijCommand,
   sessionZellijCommand,
   shouldAutoKillSession,
+  usableCwd,
   zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
@@ -29,6 +38,28 @@ type Bridge = {
   sizefile: string
   sizedir: string
   heartbeat: ReturnType<typeof setInterval>
+}
+
+// cleanZellijEnv deliberately forwards ZELLIJ_SOCKET_DIR so children talk to
+// the user's zellij daemon — but an UNUSABLE value is worse than none: the
+// zellij client `.unwrap()`-panics on startup (EACCES in create_ipc_pipe,
+// zellij-client lib.rs:783) before it can attach. That's the 2026-06-10
+// outage: ~/.zshrc exported ZELLIJ_SOCKET_DIR=/var/z, a root-owned path the
+// user can't mkdir, and every web terminal died with "child exited (0)".
+// Validate the dir (create it if absent, require write access) and drop the
+// var when it's broken so zellij falls back to its default socket dir.
+const zellijChildEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
+  const out = cleanZellijEnv(env)
+  const dir = out.ZELLIJ_SOCKET_DIR
+  if (dir !== undefined) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      accessSync(dir, constants.W_OK)
+    } catch {
+      delete out.ZELLIJ_SOCKET_DIR
+    }
+  }
+  return out
 }
 
 // Minimal child interface for testing closeChildBridge in isolation.
@@ -118,7 +149,7 @@ const spawnChild = (args: {
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        ...cleanZellijEnv(process.env),
+        ...zellijChildEnv(process.env),
         TERM: "xterm-256color",
         // COLUMNS / LINES are still set as a belt-and-braces for any tool that
         // reads them before the first SIGWINCH lands.
@@ -205,14 +236,30 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         const sizefile = join(sizedir, "size")
         writeFileSync(sizefile, formatSizeFileContent({ cols, rows }))
 
-        const child = spawnChild({
-          cwd: resolved.cwd,
-          cmd: resolved.cmd,
-          cols,
-          rows,
-          pty,
-          sizefile,
-        })
+        // Bun.spawn throws synchronously (missing cwd, missing executable…);
+        // an escaped throw here is an unhandled rejection the browser sees as
+        // a dead socket with no message. Report it like a resolve failure.
+        let child: ReturnType<typeof spawnChild>
+        try {
+          child = spawnChild({
+            cwd: resolved.cwd,
+            cmd: resolved.cmd,
+            cols,
+            rows,
+            pty,
+            sizefile,
+          })
+        } catch (err) {
+          rmSync(sizedir, { recursive: true, force: true })
+          const reason = `terminal spawn failed: ${err instanceof Error ? err.message : String(err)}`
+          try {
+            ws.send(`\r\n\x1b[31m${reason}\x1b[0m\r\n`)
+          } catch {
+            // ws closed before send
+          }
+          ws.close(1011, "spawn_failed")
+          return
+        }
         const spawnedAt = Date.now()
         const drainAbort = new AbortController()
         const heartbeat = setInterval(() => {
@@ -337,7 +384,14 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
   // a second pane (tail logs, run tests) can live next to the claude TUI.
   // The user runs `claude attach <short>` themselves — SessionCard already
   // exposes a copy button for the exact command.
-  const cwd = session.cwd || process.env.HOME || "/"
+  // A session's cwd can be a deleted worktree — spawn there fails with a
+  // misleading "ENOENT … posix_spawn 'python3'". Fall back to somewhere real;
+  // `claude attach <short>` works from any directory.
+  const cwd = usableCwd({
+    candidate: session.cwd || process.env.HOME || "/",
+    env: process.env,
+    exists: existsSync,
+  })
   const cmd = sessionZellijCommand({ cwd, short: session.short })
   if (cmd === null) return { ok: false, reason: "invalid_id" }
   return { ok: true, cwd, cmd, sessionName: zellijSessionName(session.short) }
@@ -365,8 +419,10 @@ const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   )
   const project = projects.find((p) => p.id === id)
   if (!project) return { ok: false, reason: `project ${id} not found` }
-  const cmd = projectZellijCommand({ cwd: project.path, sessionName })
-  return { ok: true, cwd: project.path, cmd, sessionName }
+  // Same deleted-directory guard as resolveSessionCommand.
+  const cwd = usableCwd({ candidate: project.path, env: process.env, exists: existsSync })
+  const cmd = projectZellijCommand({ cwd, sessionName })
+  return { ok: true, cwd, cmd, sessionName }
 }
 
 // Wedge recovery: `zellij kill-session <name>` so the user doesn't have to
@@ -379,7 +435,7 @@ const killZellijSession = async (sessionName: string | null): Promise<{ ok: bool
     const proc = Bun.spawn(zellijKillSessionArgv(sessionName), {
       stdout: "pipe",
       stderr: "pipe",
-      env: cleanZellijEnv(process.env),
+      env: zellijChildEnv(process.env),
     })
     await proc.exited
     return { ok: proc.exitCode === 0 }

@@ -47,6 +47,7 @@ export const TerminalView = (props: Props) => {
   const [reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey (in deps) is a deliberate re-run trigger for the Reconnect/Restart buttons; it is intentionally not read in the body.
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -189,7 +190,9 @@ export const TerminalView = (props: Props) => {
       termRef.current = null
       term.dispose()
     }
-  }, [kind, id])
+    // reconnectKey: bumped by the Reconnect / Restart buttons — without it in
+    // the deps the effect never re-runs and the buttons silently do nothing.
+  }, [kind, id, reconnectKey])
 
   useEffect(() => {
     // xterm only repaints when options.theme is assigned a fresh object.

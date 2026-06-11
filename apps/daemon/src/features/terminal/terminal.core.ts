@@ -30,6 +30,23 @@ export const zellijSessionName = (rawId: string): string | null => {
   return cleaned.slice(0, 64)
 }
 
+// Pick a cwd that actually exists. Bun.spawn with a missing cwd fails with a
+// deeply misleading "ENOENT … posix_spawn 'python3'" (it names the executable,
+// but the missing thing is the directory) and the throw escapes onOpen as an
+// unhandled rejection. Sessions whose isolated worktree was deleted are the
+// real-world trigger — fall back to HOME (then '/') so the terminal still
+// opens; for drill-ins `claude attach <short>` works from any directory.
+export const usableCwd = (args: {
+  readonly candidate: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly exists: (path: string) => boolean
+}): string => {
+  if (args.exists(args.candidate)) return args.candidate
+  const home = globalTerminalCwd(args.env)
+  if (args.exists(home)) return home
+  return "/"
+}
+
 // Drop the per-session markers ZELLIJ / ZELLIJ_SESSION_NAME / ZELLIJ_PANE_ID
 // before forwarding env to a child. If the daemon runs inside a zellij pane
 // (common in dev) those vars leak and `zellij attach <same-name>` panics with
@@ -317,26 +334,55 @@ const PTY_PY = [
   " except Exception: pass",
   "ap()",
   "signal.signal(signal.SIGWINCH,ap)",
+  // GRACEFUL SHUTDOWN — never close the master fd while the zellij client is
+  // still attached. Yanking the pty makes the client `.unwrap()`-panic on EIO
+  // (os error 5, zellij-client lib.rs) instead of detaching; enough of those
+  // panics stress the zellij server until it dies and takes EVERY session with
+  // it (2026-06-10 outage). Instead, mimic a real terminal closing: SIGHUP the
+  // child (zellij detaches / exits cleanly, session survives server-side),
+  // keep draining the master until the child is gone, SIGKILL after 3s if it
+  // wedges. Triggers: SIGTERM/SIGINT/SIGHUP from the daemon's closeChildBridge,
+  // stdin EOF, or EPIPE on stdout (daemon died, e.g. a bun --watch restart).
+  "def dead(*_):",
+  " try: os.kill(pid,signal.SIGKILL)",
+  " except Exception: pass",
+  "signal.signal(signal.SIGALRM,dead)",
+  "shutting=[False]",
+  "def bye(*_):",
+  " if shutting[0]: return",
+  " shutting[0]=True",
+  " try: os.kill(pid,signal.SIGHUP)",
+  " except Exception: pass",
+  " signal.alarm(3)",
+  "signal.signal(signal.SIGTERM,bye)",
+  "signal.signal(signal.SIGINT,bye)",
+  "signal.signal(signal.SIGHUP,bye)",
+  "rfds=[0,fd]",
   "while True:",
-  " try: rr,_,_=select.select([0,fd],[],[])",
+  " try: rr,_,_=select.select(rfds,[],[])",
   " except (OSError,select.error) as e:",
   "  if getattr(e,'errno',None)==errno.EINTR or (e.args and e.args[0]==errno.EINTR): continue",
   "  break",
   " if 0 in rr:",
   "  try: d=os.read(0,4096)",
-  "  except OSError: break",
+  "  except OSError: d=b''",
   "  if not d:",
-  "   try: os.close(fd)",
-  "   except Exception: pass",
-  "   break",
-  "  try: os.write(fd,d)",
-  "  except OSError: break",
+  "   rfds.remove(0)",
+  "   bye()",
+  "  else:",
+  "   try: os.write(fd,d)",
+  "   except OSError: bye()",
   " if fd in rr:",
+  // Master EOF/EIO = the child is gone — only now is it safe to stop.
   "  try: d=os.read(fd,4096)",
   "  except OSError: break",
   "  if not d: break",
   "  try: os.write(1,d)",
-  "  except OSError: break",
+  "  except OSError:",
+  "   if 0 in rfds: rfds.remove(0)",
+  "   bye()",
+  "try: os.waitpid(pid,os.WNOHANG)",
+  "except Exception: pass",
 ].join("\n")
 
 export const buildChildArgv = (args: {
