@@ -1,6 +1,6 @@
 import { Link, useLocation, useParams } from "@tanstack/react-router"
 import { useState } from "react"
-import { stateColor } from "../../lib/format"
+import { stateColor, stateTitle } from "../../lib/format"
 import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { NotifyToggle } from "../notifications/NotifyToggle"
@@ -246,27 +246,21 @@ export const Sidebar = () => {
                                   }),
                                 })
                               }}
+                              // Status reads as colour, not a text badge: the
+                              // name is tinted by state and a matching dot leads
+                              // the row. Hover (title) spells the status out.
                               className={`relative flex items-center gap-2 pl-2 pr-1.5 py-1 rounded text-[11.5px] leading-tight ${
                                 active
                                   ? "bg-sky-100 dark:bg-sky-900/50 text-sky-900 dark:text-sky-100 font-medium shadow-[inset_2px_0_0_0] shadow-sky-500"
-                                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/60"
+                                  : `${tone.text} hover:bg-slate-50 dark:hover:bg-slate-900/60`
                               }`}
-                              title={s.detail}
+                              title={stateTitle(s.state, s.detail)}
                             >
                               <span
                                 className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`}
                                 aria-hidden
                               />
                               <span className="truncate flex-1">{sessionLabel(s)}</span>
-                              <span
-                                className={`text-[9px] uppercase tracking-wide shrink-0 ${
-                                  active
-                                    ? "text-sky-700 dark:text-sky-300"
-                                    : "text-slate-400 dark:text-slate-500"
-                                }`}
-                              >
-                                {tone.label}
-                              </span>
                             </Link>
                           </li>
                         )
