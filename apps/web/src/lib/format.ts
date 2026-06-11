@@ -68,3 +68,12 @@ const PALETTE: Record<SessionStateValue, Tone> = {
 }
 
 export const stateColor = (state: SessionStateValue): Tone => PALETTE[state] ?? PALETTE.idle
+
+// Hover tooltip for a session row: the status label, plus its detail when present.
+// Lets the sidebar lean on colour for the at-a-glance signal while keeping the
+// word ("Done", "Failed", …) one hover away.
+export const stateTitle = (state: SessionStateValue, detail: string): string => {
+  const label = stateColor(state).label
+  const d = detail.trim()
+  return d ? `${label} — ${d}` : label
+}
