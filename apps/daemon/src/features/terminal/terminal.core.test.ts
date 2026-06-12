@@ -11,6 +11,7 @@ import {
   projectZellijCommand,
   sessionZellijCommand,
   shouldAutoKillSession,
+  usableCwd,
   zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
@@ -333,6 +334,40 @@ describe("globalTerminalCwd", () => {
 
   it("falls back to '/' when HOME is empty — empty cwd would crash bash", () => {
     expect(globalTerminalCwd({ HOME: "" })).toBe("/")
+  })
+})
+
+describe("usableCwd", () => {
+  const exists = (dirs: string[]) => (p: string) => dirs.includes(p)
+
+  it("keeps the candidate when the directory exists", () => {
+    expect(
+      usableCwd({
+        candidate: "/repo/wt",
+        env: { HOME: "/Users/me" },
+        exists: exists(["/repo/wt"]),
+      }),
+    ).toBe("/repo/wt")
+  })
+
+  it("falls back to HOME when the candidate is gone (deleted worktree)", () => {
+    expect(
+      usableCwd({
+        candidate: "/repo/.claude/worktrees/gone",
+        env: { HOME: "/Users/me" },
+        exists: exists(["/Users/me"]),
+      }),
+    ).toBe("/Users/me")
+  })
+
+  it("falls back to '/' when both candidate and HOME are missing", () => {
+    expect(usableCwd({ candidate: "/gone", env: { HOME: "/also-gone" }, exists: exists([]) })).toBe(
+      "/",
+    )
+  })
+
+  it("falls back past an unset HOME straight to '/'", () => {
+    expect(usableCwd({ candidate: "/gone", env: {}, exists: exists([]) })).toBe("/")
   })
 })
 
