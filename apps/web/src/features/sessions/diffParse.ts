@@ -10,6 +10,10 @@ export type FileDiff = {
   readonly newPath: string | null
   readonly path: string
   readonly lines: readonly DiffLine[]
+  // The file's own block of the unified diff, starting at its `diff --git`
+  // header — a self-contained single-file patch. @pierre/diffs' PatchDiff
+  // renders exactly one file, so FilesTab feeds it `raw` per file.
+  readonly raw: string
 }
 
 const DIFF_HEADER_RE = /^diff --git a\/(.+?) b\/(.+)$/
@@ -46,6 +50,7 @@ export const parseUnifiedDiff = (raw: string): readonly FileDiff[] => {
       newPath: current.newPath,
       path,
       lines: current.lines,
+      raw: `${current.lines.map((l) => l.text).join("\n")}\n`,
     })
     current = null
   }

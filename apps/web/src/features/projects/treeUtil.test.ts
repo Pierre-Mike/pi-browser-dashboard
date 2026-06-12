@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { formatSize, joinPath, parentOf } from "./treeUtil"
+import { formatSize, joinPath, parentOf, TREE_UNSAFE_CSS } from "./treeUtil"
 
 describe("joinPath", () => {
   it("returns the name when parent is empty", () => {
@@ -17,6 +17,15 @@ describe("parentOf", () => {
   })
   it("strips the last segment", () => {
     expect(parentOf("src/lib/util.ts")).toBe("src/lib")
+  })
+})
+
+describe("TREE_UNSAFE_CSS", () => {
+  it("lets the row label section grow so short names stop middle-truncating", () => {
+    // Targets the lib's label box and overrides its `flex: 0 1 auto` so the
+    // name fills the free row width. Regression guard for the over-truncation.
+    expect(TREE_UNSAFE_CSS).toContain("[data-item-section='content']")
+    expect(TREE_UNSAFE_CSS).toContain("flex-grow: 1")
   })
 })
 
