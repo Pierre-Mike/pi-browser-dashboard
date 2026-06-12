@@ -90,6 +90,19 @@ describe("bucketProjects", () => {
     expect(out[1]?.pinned).toBe(false)
   })
 
+  it("orders pinned projects by pin order, not session count or title", () => {
+    const a = proj({ id: "a", name: "a-busy", path: "/p/a" })
+    const b = proj({ id: "b", name: "b-quiet", path: "/p/b" })
+    const c = proj({ id: "c", name: "c-quiet", path: "/p/c" })
+    const out = bucketProjects({
+      projects: [a, b, c],
+      sessions: [sess({ cwd: "/p/a", short: "s1" }), sess({ cwd: "/p/a", short: "s2" })],
+      // Pin order c, a, b — a has the most sessions but must not jump ahead of c.
+      pinnedIds: new Set(["c", "a", "b"]),
+    })
+    expect(out.map((bk) => bk.title)).toEqual(["c-quiet", "a-busy", "b-quiet"])
+  })
+
   it("pins projects even when they have no sessions", () => {
     const a = proj({ id: "a", name: "a-empty", path: "/p/a" })
     const b = proj({ id: "b", name: "b-busy", path: "/p/b" })

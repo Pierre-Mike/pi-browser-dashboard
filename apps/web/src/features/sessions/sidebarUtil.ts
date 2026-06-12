@@ -67,9 +67,19 @@ export const bucketProjects = ({
     b.sessions.sort((x, y) => sessionRecency(y) - sessionRecency(x))
   }
 
+  // pinnedIds iterates in pin order (topmost first per the user's manual
+  // ranking); index it so two pinned buckets sort by that rank rather than by
+  // session count.
+  const pinRank = new Map<string, number>()
+  let r = 0
+  for (const id of pinnedIds) pinRank.set(id, r++)
+  const rankOf = (b: SidebarBucket): number =>
+    b.project ? (pinRank.get(b.project.id) ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY
+
   const out = [...byKey.values()]
   out.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (a.pinned && b.pinned) return rankOf(a) - rankOf(b)
     if (a.sessions.length !== b.sessions.length) return b.sessions.length - a.sessions.length
     return a.title.localeCompare(b.title)
   })
