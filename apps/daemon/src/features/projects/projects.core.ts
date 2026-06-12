@@ -55,6 +55,29 @@ export const sortEntries = (entries: readonly FileEntry[]): readonly FileEntry[]
   })
 }
 
+// Directories never worth walking for a file-tree view: VCS metadata and
+// dependency/build output. Skipped wholesale during the recursive listing so a
+// repo with a 100k-file node_modules doesn't blow the cap on noise.
+export const TREE_SKIP_DIRS: ReadonlySet<string> = new Set([
+  ".git",
+  "node_modules",
+  ".next",
+  ".turbo",
+  ".cache",
+  "dist",
+  "build",
+  "coverage",
+  ".venv",
+  "__pycache__",
+])
+
+export const isSkippedTreeDir = (name: string): boolean => TREE_SKIP_DIRS.has(name)
+
+// Hard cap on the number of file paths the recursive tree listing returns.
+// @pierre/trees virtualises rendering, so the ceiling bounds walk cost and
+// payload size, not the UI. When hit, the listing is marked truncated.
+export const MAX_TREE_FILES = 20_000
+
 export type GithubRemote = {
   readonly owner: string
   readonly repo: string

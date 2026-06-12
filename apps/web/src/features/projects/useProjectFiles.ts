@@ -27,6 +27,26 @@ export const useProjectDir = ({
     },
   })
 
+export type ProjectTree = {
+  readonly paths: readonly string[]
+  readonly truncated: boolean
+}
+
+// Full flat path list for the project, fed to @pierre/trees (which builds and
+// virtualises the tree). Cached longer than a single dir listing — the whole
+// tree is one request and rarely changes mid-view.
+export const useProjectTree = (projectId: string) =>
+  useQuery<ProjectTree>({
+    queryKey: ["project-tree", projectId],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/tree`)
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`list tree: HTTP ${res.status}`)
+      return (await res.json()) as ProjectTree
+    },
+  })
+
 export const useProjectFile = (projectId: string, path: string | null) =>
   useQuery<FileContent>({
     queryKey: ["project-file", projectId, path ?? ""],

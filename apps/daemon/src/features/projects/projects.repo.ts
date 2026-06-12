@@ -5,7 +5,9 @@ import { ConfigService } from "../../platform/config.repo"
 import {
   compareProjectsByCommit,
   type FileEntry,
+  isSkippedTreeDir,
   looksBinary,
+  MAX_TREE_FILES,
   mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
@@ -30,6 +32,14 @@ export type Project = {
 type FileListing = {
   readonly path: string
   readonly entries: readonly FileEntry[]
+}
+
+type FileTreeListing = {
+  // Flat, posix-relative list of every file path under the project root
+  // (directories are implied by the path segments). Feeds @pierre/trees, which
+  // builds and virtualises the tree from this list.
+  readonly paths: readonly string[]
+  readonly truncated: boolean
 }
 
 type FileContent = {
@@ -58,6 +68,7 @@ type ProjectsServiceApi = {
     id: string,
     relPath: string | undefined,
   ) => Effect.Effect<FileListing, FileError, never>
+  readonly listTree: (id: string) => Effect.Effect<FileTreeListing, FileError, never>
   readonly readFile: (id: string, relPath: string) => Effect.Effect<FileContent, FileError, never>
   readonly resolveRaw: (id: string, relPath: string) => Effect.Effect<RawFile, FileError, never>
 }
@@ -170,6 +181,41 @@ const classifyEntry = async (parentAbs: string, name: string): Promise<FileEntry
   }
 }
 
+// Breadth-light recursive walk: collect every file path under `root`, skipping
+// VCS/dependency/build dirs and stopping at MAX_TREE_FILES. Paths are returned
+// posix-relative to the root (forward slashes) so the same payload renders
+// identically on every platform. Unreadable directories are silently skipped —
+// a permission error deep in the tree must not fail the whole listing.
+const walkTree = async (root: string): Promise<{ paths: string[]; truncated: boolean }> => {
+  const paths: string[] = []
+  let truncated = false
+  const stack: string[] = [""]
+  while (stack.length > 0) {
+    const rel = stack.pop() as string
+    const abs = rel === "" ? root : join(root, rel)
+    let dirents: { name: string; isDirectory: () => boolean; isFile: () => boolean }[]
+    try {
+      dirents = await readdir(abs, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const d of dirents) {
+      const childRel = rel === "" ? d.name : `${rel}/${d.name}`
+      if (d.isDirectory()) {
+        if (isSkippedTreeDir(d.name)) continue
+        stack.push(childRel)
+      } else if (d.isFile()) {
+        if (paths.length >= MAX_TREE_FILES) {
+          truncated = true
+          return { paths, truncated }
+        }
+        paths.push(childRel)
+      }
+    }
+  }
+  return { paths, truncated }
+}
+
 export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService> = Layer.effect(
   ProjectsService,
   Effect.gen(function* () {
@@ -212,6 +258,21 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
           }
           const entries = sortEntries(kept)
           return { path: resolved.relPath, entries }
+        }),
+
+      listTree: (id) =>
+        Effect.gen(function* () {
+          const root = findProjectPath(config.projectsRoot, id)
+          if (!root) return yield* Effect.fail<FileError>("not_found")
+          const s = yield* Effect.tryPromise(() => stat(root)).pipe(
+            Effect.mapError<unknown, FileError>(() => "not_found"),
+          )
+          if (!s.isDirectory()) return yield* Effect.fail<FileError>("not_a_directory")
+          const { paths, truncated } = yield* Effect.tryPromise(() => walkTree(root)).pipe(
+            Effect.orElseSucceed(() => ({ paths: [] as string[], truncated: false })),
+          )
+          paths.sort()
+          return { paths, truncated }
         }),
 
       readFile: (id, relPath) =>
@@ -265,6 +326,7 @@ export const ProjectsRepoTest = (fixtures: readonly Project[]): Layer.Layer<Proj
   Layer.succeed(ProjectsService, {
     list: () => Effect.succeed([...fixtures].sort(compareProjectsByCommit)),
     listDir: () => Effect.fail<FileError>("not_found"),
+    listTree: () => Effect.fail<FileError>("not_found"),
     readFile: () => Effect.fail<FileError>("not_found"),
     resolveRaw: () => Effect.fail<FileError>("not_found"),
   })

@@ -16,8 +16,14 @@ test("file viewer offers a download that preserves the filename", async ({ page 
   await page.getByTestId("project-tab-files").click()
   await expect(page.getByTestId("project-file-tree")).toBeVisible()
 
-  // Root dir is expanded by default — pick the file to open the preview.
-  await page.getByTestId("tree-file-report.txt").click()
+  // The tree (@pierre/trees) renders rows as ARIA treeitems in an open shadow
+  // root; Playwright pierces it and matches on the accessible name. The tree
+  // opens expanded, so a root-level file is visible without drilling in.
+  const fileRow = page.getByTestId("project-file-tree").getByRole("treeitem", {
+    name: "report.txt",
+  })
+  await expect(fileRow).toBeVisible()
+  await fileRow.click()
   await expect(page.getByTestId("file-preview")).toBeVisible()
 
   // The download control sits in the preview toolbar and carries the basename.
