@@ -1,3 +1,4 @@
+import type { GitStatusEntry } from "@pierre/trees"
 import { useQuery } from "@tanstack/react-query"
 import { apiBase as baseUrl } from "../../lib/apiBase"
 import type { FileContent } from "../../lib/types"
@@ -8,17 +9,21 @@ import type { FileContent } from "../../lib/types"
 type ProjectTree = {
   readonly paths: readonly string[]
   readonly truncated: boolean
+  // Present when requested with `?gitStatus=1`; drives @pierre/trees row badges.
+  readonly gitStatus?: readonly GitStatusEntry[]
 }
 
 // Full flat path list for the project, fed to @pierre/trees (which builds and
 // virtualises the tree). Cached longer than a single dir listing — the whole
-// tree is one request and rarely changes mid-view.
+// tree is one request and rarely changes mid-view. `?gitStatus=1` rides the
+// same request so dirty-file badges land together with the listing.
 export const useProjectTree = (projectId: string) =>
   useQuery<ProjectTree>({
     queryKey: ["project-tree", projectId],
     staleTime: 15_000,
     queryFn: async () => {
       const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/tree`)
+      url.searchParams.set("gitStatus", "1")
       const res = await fetch(url)
       if (!res.ok) throw new Error(`list tree: HTTP ${res.status}`)
       return (await res.json()) as ProjectTree

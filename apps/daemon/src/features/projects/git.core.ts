@@ -15,6 +15,43 @@ export type GitStatus = {
   readonly entries: readonly GitStatusEntry[]
 }
 
+// The git-status shape @pierre/trees consumes: one status per path, used to
+// render a badge on the matching tree row.
+export type TreeGitStatus = "added" | "deleted" | "ignored" | "modified" | "renamed" | "untracked"
+export type TreeGitStatusEntry = {
+  readonly path: string
+  readonly status: TreeGitStatus
+}
+
+// Porcelain v1 status char → tree badge. Codes absent here (space, plus copy/
+// type-change/unmerged variants we fold into "modified") fall through the map.
+const TREE_STATUS_BY_CODE: Record<string, TreeGitStatus> = {
+  "?": "untracked",
+  "!": "ignored",
+  A: "added",
+  D: "deleted",
+  R: "renamed",
+  C: "renamed",
+  M: "modified",
+  T: "modified",
+  U: "modified",
+}
+
+// Renamed entries carry `old -> new`; the tree row is keyed by the new path.
+const renameTarget = (path: string): string => {
+  const arrow = path.indexOf(" -> ")
+  return arrow === -1 ? path : path.slice(arrow + 4)
+}
+
+// Project a parsed git status onto @pierre/trees' GitStatusEntry[]. The staged
+// (index) code wins over the worktree code; entries with no displayable code
+// are dropped.
+export const toTreeGitStatus = (status: GitStatus): readonly TreeGitStatusEntry[] =>
+  status.entries.flatMap((e) => {
+    const badge = TREE_STATUS_BY_CODE[e.index] ?? TREE_STATUS_BY_CODE[e.worktree]
+    return badge ? [{ path: renameTarget(e.path), status: badge }] : []
+  })
+
 export type GitLogEntry = {
   readonly hash: string
   readonly author: string

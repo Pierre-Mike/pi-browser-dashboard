@@ -1,4 +1,5 @@
 import { File as PierreFile } from "@pierre/diffs/react"
+import type { GitStatusEntry } from "@pierre/trees"
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
 import { useCallback, useMemo, useState } from "react"
 import type { FileContent } from "../../lib/types"
@@ -294,16 +295,19 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
 // the listing resolves and is keyed by project id to rebuild on project switch.
 const TreePane = ({
   paths,
+  gitStatus,
   selected,
   onSelect,
 }: {
   paths: readonly string[]
+  gitStatus: readonly GitStatusEntry[] | undefined
   selected: string | null
   onSelect: (path: string) => void
 }) => {
   const fileSet = useMemo(() => new Set(paths), [paths])
   const { model } = useFileTree({
     paths,
+    gitStatus,
     initialExpansion: "open",
     search: true,
     unsafeCSS: TREE_UNSAFE_CSS,
@@ -330,6 +334,10 @@ const errorMessage = (e: unknown, fallback: string): string =>
 const treePaths = (tree: ReturnType<typeof useProjectTree>): readonly string[] =>
   tree.data?.paths ?? []
 
+const treeGitStatus = (
+  tree: ReturnType<typeof useProjectTree>,
+): readonly GitStatusEntry[] | undefined => tree.data?.gitStatus
+
 // Loading / error / tree states. The TreePane is keyed by project so a project
 // switch rebuilds the (once-built) @pierre/trees model with the new path list.
 const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
@@ -344,7 +352,13 @@ const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
     )
   }
   return (
-    <TreePane key={projectId} paths={treePaths(tree)} selected={selected} onSelect={onSelect} />
+    <TreePane
+      key={projectId}
+      paths={treePaths(tree)}
+      gitStatus={treeGitStatus(tree)}
+      selected={selected}
+      onSelect={onSelect}
+    />
   )
 }
 

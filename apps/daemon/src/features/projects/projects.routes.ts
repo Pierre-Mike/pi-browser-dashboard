@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
 import { type GitError, gitLog, gitStatus } from "./git.repo"
 import { fetchGithubSummary } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
@@ -33,6 +34,16 @@ const projectPath = (id: string): Promise<string | null> =>
     }),
   )
 
+// Optional git-status overlay for the file tree, mapped to @pierre/trees'
+// GitStatusEntry[]. Never fails the listing: a non-repo project or a git error
+// just yields no badges.
+const treeGitStatus = async (id: string): Promise<readonly TreeGitStatusEntry[]> => {
+  const path = await projectPath(id)
+  if (!path) return []
+  const res = await gitStatus(path)
+  return res.ok ? toTreeGitStatus(res.value) : []
+}
+
 const app = new Hono()
   .get("/", async (c) => {
     const list = await appRuntime.runPromise(
@@ -56,15 +67,19 @@ const app = new Hono()
     return c.json(result.right)
   })
   .get("/:id/tree", async (c) => {
+    const id = c.req.param("id")
     const tree = await appRuntime.runPromise(
       ProjectsService.pipe(
-        Effect.flatMap((svc) => svc.listTree(c.req.param("id"))),
+        Effect.flatMap((svc) => svc.listTree(id)),
         Effect.either,
       ),
     )
+    // `?gitStatus=1` enriches the flat listing with per-path badges; without it
+    // the response keeps its original `{ paths, truncated }` shape.
+    const withGit = c.req.query("gitStatus") === "1"
     return tree._tag === "Left"
       ? c.json({ error: tree.left }, errorToStatus(tree.left))
-      : c.json(tree.right)
+      : c.json(withGit ? { ...tree.right, gitStatus: await treeGitStatus(id) } : tree.right)
   })
   .get("/:id/file", async (c) => {
     const id = c.req.param("id")
