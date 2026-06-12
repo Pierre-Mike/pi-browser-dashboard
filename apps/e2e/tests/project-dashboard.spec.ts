@@ -3,28 +3,25 @@ import {
   cardLocator,
   dispatchDirect,
   ensureProject,
-  ensureProjectsTab,
   rmSession,
   waitForCard,
   waitForSessionInRegistry,
 } from "./helpers"
 
-test("click project bar on grid → navigate to /projects/$id dashboard", async ({ page }) => {
+test("click sidebar project link → navigate to /projects/$id dashboard", async ({ page }) => {
   const projectPath = ensureProject("proj-dash", { gitInit: true })
   const { short } = await dispatchDirect(undefined, { cwd: projectPath })
   await waitForSessionInRegistry(short)
 
   try {
     await page.goto("/")
-    await ensureProjectsTab(page)
 
-    const section = page.locator('[data-testid="project-section"][data-project-id="proj-dash"]')
-    await expect(section).toBeVisible({ timeout: 15_000 })
-
-    // The project bar (title row) must be a link to the project dashboard.
-    const bar = section.locator('[data-testid="project-bar"]')
-    await expect(bar).toHaveAttribute("href", "/projects/proj-dash")
-    await bar.click()
+    // The home page leads with a cross-project activity feed; the sidebar
+    // project link is the affordance into a project's own dashboard.
+    const link = page.locator('[data-testid="sidebar-project-link"][data-project-id="proj-dash"]')
+    await expect(link).toBeVisible({ timeout: 15_000 })
+    await expect(link).toHaveAttribute("href", "/projects/proj-dash")
+    await link.click()
     await expect(page).toHaveURL(/\/projects\/proj-dash$/)
 
     // Dashboard must show the project name, path hint, and the session card.

@@ -9,7 +9,7 @@ import {
   waitForSettled,
 } from "./helpers"
 
-test("two sessions on same cwd group under one ProjectSection", async ({ page }) => {
+test("activity tab shows the latest sessions across projects as a live feed", async ({ page }) => {
   const projectPath = ensureProject("proj-a", { gitInit: true })
 
   const a = await dispatchDirect(undefined, { cwd: projectPath })
@@ -24,13 +24,13 @@ test("two sessions on same cwd group under one ProjectSection", async ({ page })
     await waitForSettled({ page, short: a.short })
     await waitForSettled({ page, short: b.short })
 
-    const section = page.locator('[data-testid="project-section"][data-project-id="proj-a"]')
-    await expect(section).toHaveCount(1)
-    await expect(section).toHaveAttribute("data-session-count", "2")
-    await expect(section).toContainText("2 sessions")
+    const feed = page.getByTestId("recent-sessions-feed")
+    await expect(feed).toHaveCount(1)
+    await expect(feed).toContainText(/most recent/i)
 
-    await expect(section.locator(cardLocator(page, a.short))).toHaveCount(1)
-    await expect(section.locator(cardLocator(page, b.short))).toHaveCount(1)
+    // Both sessions surface in the cross-project feed regardless of project.
+    await expect(feed.locator(cardLocator(page, a.short))).toHaveCount(1)
+    await expect(feed.locator(cardLocator(page, b.short))).toHaveCount(1)
   } finally {
     rmSession(a.short)
     rmSession(b.short)

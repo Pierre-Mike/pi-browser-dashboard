@@ -7,7 +7,7 @@ import { useExtensions } from "../features/extensions/useExtensions"
 import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { useProjects } from "../features/projects/useProjects"
-import { ProjectGrid } from "../features/sessions/ProjectGrid"
+import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
 import { useSessions } from "../features/sessions/useSessions"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
 
@@ -22,7 +22,7 @@ type TabKey = StaticTabKey | `ext:${string}`
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "terminal", label: "Terminal" },
-  { key: "projects", label: "Projects" },
+  { key: "projects", label: "Activity" },
   { key: "claude", label: "Claude" },
   { key: "library", label: "Library" },
   { key: "extensions", label: "Extensions" },
@@ -61,7 +61,7 @@ const ProjectsPanel = () => {
       </div>
     )
   }
-  return <ProjectGrid projects={projects} sessions={sessions} />
+  return <RecentSessionsFeed projects={projects} sessions={sessions} />
 }
 
 function IndexPage() {
