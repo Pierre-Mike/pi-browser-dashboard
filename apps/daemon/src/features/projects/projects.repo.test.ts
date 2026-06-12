@@ -203,10 +203,10 @@ describe("ProjectsRepo listTree", () => {
 
   it("fails with not_found for missing projects", async () => {
     const exit = await withLayer(
-      Effect.flatMap(ProjectsService, (s) => s.listTree("missing")).pipe(Effect.either),
+      Effect.either(Effect.flatMap(ProjectsService, (s) => s.listTree("missing"))),
     )
-    expect(exit._tag).toBe("Left")
-    if (exit._tag === "Left") expect(exit.left).toBe("not_found")
+    const reason = exit._tag === "Left" ? exit.left : "(unexpectedly succeeded)"
+    expect(reason).toBe("not_found")
   })
 })
 

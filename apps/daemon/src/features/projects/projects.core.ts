@@ -58,7 +58,7 @@ export const sortEntries = (entries: readonly FileEntry[]): readonly FileEntry[]
 // Directories never worth walking for a file-tree view: VCS metadata and
 // dependency/build output. Skipped wholesale during the recursive listing so a
 // repo with a 100k-file node_modules doesn't blow the cap on noise.
-export const TREE_SKIP_DIRS: ReadonlySet<string> = new Set([
+const TREE_SKIP_DIRS: ReadonlySet<string> = new Set([
   ".git",
   "node_modules",
   ".next",

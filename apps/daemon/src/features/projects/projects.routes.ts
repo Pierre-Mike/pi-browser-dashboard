@@ -56,15 +56,15 @@ const app = new Hono()
     return c.json(result.right)
   })
   .get("/:id/tree", async (c) => {
-    const id = c.req.param("id")
-    const result = await appRuntime.runPromise(
-      Effect.gen(function* () {
-        const svc = yield* ProjectsService
-        return yield* svc.listTree(id)
-      }).pipe(Effect.either),
+    const tree = await appRuntime.runPromise(
+      ProjectsService.pipe(
+        Effect.flatMap((svc) => svc.listTree(c.req.param("id"))),
+        Effect.either,
+      ),
     )
-    if (result._tag === "Left") return c.json({ error: result.left }, errorToStatus(result.left))
-    return c.json(result.right)
+    return tree._tag === "Left"
+      ? c.json({ error: tree.left }, errorToStatus(tree.left))
+      : c.json(tree.right)
   })
   .get("/:id/file", async (c) => {
     const id = c.req.param("id")

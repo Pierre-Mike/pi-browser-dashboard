@@ -316,6 +316,62 @@ const TreePane = ({
   return <PierreFileTree model={model} className="text-xs" style={{ height: "100%" }} />
 }
 
+type SidebarProps = {
+  projectId: string
+  tree: ReturnType<typeof useProjectTree>
+  selected: string | null
+  onSelect: (path: string) => void
+}
+
+const errorMessage = (e: unknown, fallback: string): string =>
+  e instanceof Error ? e.message : fallback
+
+const treePaths = (tree: ReturnType<typeof useProjectTree>): readonly string[] =>
+  tree.data?.paths ?? []
+
+// Loading / error / tree states. The TreePane is keyed by project so a project
+// switch rebuilds the (once-built) @pierre/trees model with the new path list.
+const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
+  if (tree.isLoading) {
+    return <div className="text-[11px] text-slate-400 italic px-3 py-2">loading…</div>
+  }
+  if (tree.isError) {
+    return (
+      <div className="text-[11px] text-rose-500 px-3 py-2">
+        {errorMessage(tree.error, "failed to load tree")}
+      </div>
+    )
+  }
+  return (
+    <TreePane key={projectId} paths={treePaths(tree)} selected={selected} onSelect={onSelect} />
+  )
+}
+
+// Left column: the tree plus its truncation chrome.
+const FileTreeSidebar = (props: SidebarProps) => (
+  <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+    <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto">
+      <TreeBody {...props} />
+    </div>
+    {props.tree.data?.truncated ? (
+      <div className="text-[10px] text-amber-600 dark:text-amber-300 px-3 py-1 border-t border-slate-200 dark:border-slate-800">
+        listing truncated — some files hidden
+      </div>
+    ) : null}
+  </aside>
+)
+
+const EmptyPreview = () => (
+  <div className="flex flex-col items-center justify-center gap-2 h-full text-slate-500 text-center px-6">
+    <div className="text-4xl">📂</div>
+    <div className="text-sm font-medium">Pick a file to preview</div>
+    <div className="text-xs text-slate-400 max-w-sm">
+      Markdown renders as Markdown · HTML opens in a sandboxed frame · images, PDFs, audio and video
+      play inline.
+    </div>
+  </div>
+)
+
 export const FileTree = ({ projectId }: { projectId: string }) => {
   const tree = useProjectTree(projectId)
   const [selected, setSelected] = useState<string | null>(null)
@@ -326,42 +382,14 @@ export const FileTree = ({ projectId }: { projectId: string }) => {
       data-testid="project-file-tree"
       className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm flex-1 min-h-0"
     >
-      <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
-        <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto">
-          {tree.isLoading ? (
-            <div className="text-[11px] text-slate-400 italic px-3 py-2">loading…</div>
-          ) : tree.isError ? (
-            <div className="text-[11px] text-rose-500 px-3 py-2">
-              {tree.error instanceof Error ? tree.error.message : "failed to load tree"}
-            </div>
-          ) : (
-            <TreePane
-              key={projectId}
-              paths={tree.data?.paths ?? []}
-              selected={selected}
-              onSelect={handleSelect}
-            />
-          )}
-        </div>
-        {tree.data?.truncated ? (
-          <div className="text-[10px] text-amber-600 dark:text-amber-300 px-3 py-1 border-t border-slate-200 dark:border-slate-800">
-            listing truncated — some files hidden
-          </div>
-        ) : null}
-      </aside>
+      <FileTreeSidebar
+        projectId={projectId}
+        tree={tree}
+        selected={selected}
+        onSelect={handleSelect}
+      />
       <section className="min-h-0 overflow-hidden">
-        {selected ? (
-          <FilePreview projectId={projectId} path={selected} />
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 h-full text-slate-500 text-center px-6">
-            <div className="text-4xl">📂</div>
-            <div className="text-sm font-medium">Pick a file to preview</div>
-            <div className="text-xs text-slate-400 max-w-sm">
-              Markdown renders as Markdown · HTML opens in a sandboxed frame · images, PDFs, audio
-              and video play inline.
-            </div>
-          </div>
-        )}
+        {selected ? <FilePreview projectId={projectId} path={selected} /> : <EmptyPreview />}
       </section>
     </div>
   )

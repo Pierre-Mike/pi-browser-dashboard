@@ -14,6 +14,31 @@ import { MermaidView } from "./MermaidView"
 
 const codeChildText = (children: ReactNode): string => String(children ?? "").replace(/\n$/, "")
 
+const fenceLang = (className: string | undefined): string => {
+  const match = /language-(\w+)/.exec(className ?? "")
+  return match ? match[1] : ""
+}
+
+// A fenced code block lifted out of <pre>: mermaid renders as a diagram,
+// everything else as a Shiki-highlighted @pierre/diffs File.
+const FencedBlock = ({
+  codeEl,
+}: {
+  codeEl: ReactElement<{ className?: string; children?: ReactNode }>
+}) => {
+  const lang = fenceLang(codeEl.props.className)
+  const text = codeChildText(codeEl.props.children)
+  if (lang.toLowerCase() === "mermaid") {
+    return <MermaidView code={text} />
+  }
+  const name = lang ? `snippet.${lang}` : "snippet.txt"
+  return (
+    <div className="my-3 overflow-x-auto text-[12px] leading-snug">
+      <PierreFile file={{ name, contents: text }} options={CODE_FILE_OPTIONS} />
+    </div>
+  )
+}
+
 const HEADING_CLASS: Record<number, string> = {
   1: "text-2xl font-bold mt-6 mb-3 border-b border-slate-200 dark:border-slate-800 pb-1.5",
   2: "text-xl font-bold mt-5 mb-2 border-b border-slate-200 dark:border-slate-800 pb-1",
@@ -76,23 +101,11 @@ const components: Components = {
     </code>
   ),
   // Own the whole fenced block so code components are never nested inside <pre>.
-  pre: ({ children }) => {
-    const codeEl = Children.only(children) as ReactElement<{
-      className?: string
-      children?: ReactNode
-    }>
-    const lang = /language-(\w+)/.exec(codeEl.props.className ?? "")?.[1] ?? ""
-    const text = codeChildText(codeEl.props.children)
-    if (lang.toLowerCase() === "mermaid") {
-      return <MermaidView code={text} />
-    }
-    const name = lang ? `snippet.${lang}` : "snippet.txt"
-    return (
-      <div className="my-3 overflow-x-auto text-[12px] leading-snug">
-        <PierreFile file={{ name, contents: text }} options={CODE_FILE_OPTIONS} />
-      </div>
-    )
-  },
+  pre: ({ children }) => (
+    <FencedBlock
+      codeEl={Children.only(children) as ReactElement<{ className?: string; children?: ReactNode }>}
+    />
+  ),
 }
 
 type Props = { text: string }
