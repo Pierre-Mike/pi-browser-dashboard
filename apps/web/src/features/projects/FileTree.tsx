@@ -6,7 +6,7 @@ import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
-import { formatSize } from "./treeUtil"
+import { formatSize, TREE_UNSAFE_CSS } from "./treeUtil"
 import {
   projectDownloadUrl,
   projectRawUrl,
@@ -306,6 +306,7 @@ const TreePane = ({
     paths,
     initialExpansion: "open",
     search: true,
+    unsafeCSS: TREE_UNSAFE_CSS,
     initialSelectedPaths: selected ? [selected] : undefined,
     onSelectionChange: (selectedPaths) => {
       // Directory rows fire selection too; only file paths drive the preview.

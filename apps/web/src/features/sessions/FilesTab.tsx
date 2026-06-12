@@ -35,12 +35,11 @@ type Props = { short: string }
 export const FilesTab = ({ short }: Props) => {
   const q = useSessionFiles(short)
 
-  // The unified diff still drives a tiny +/- banner; @pierre/diffs renders the
-  // patch itself (per-file headers, Shiki highlight, hunk expansion).
-  const summary = useMemo(
-    () => summarizeDiff(q.data?.diff ? parseUnifiedDiff(q.data.diff) : []),
-    [q.data?.diff],
-  )
+  // PatchDiff renders exactly one file (it throws on a multi-file patch), so we
+  // split the unified diff per file and render one PatchDiff each. The same
+  // parse feeds the tiny +/- banner.
+  const parsed = useMemo(() => (q.data?.diff ? parseUnifiedDiff(q.data.diff) : []), [q.data?.diff])
+  const summary = useMemo(() => summarizeDiff(parsed), [parsed])
 
   if (q.isLoading) {
     return <div className="px-1 py-4 text-sm text-slate-500">Loading files…</div>
@@ -80,8 +79,12 @@ export const FilesTab = ({ short }: Props) => {
         ) : null}
       </div>
       <div data-testid="file-diff" className="flex-1 min-h-0 overflow-auto px-1 py-1">
-        {q.data.diff ? (
-          <PatchDiff patch={q.data.diff} options={PATCH_DIFF_OPTIONS} />
+        {parsed.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {parsed.map((file) => (
+              <PatchDiff key={file.path} patch={file.raw} options={PATCH_DIFF_OPTIONS} />
+            ))}
+          </div>
         ) : (
           <div className="text-slate-500 text-xs px-2 py-2">No diff content.</div>
         )}

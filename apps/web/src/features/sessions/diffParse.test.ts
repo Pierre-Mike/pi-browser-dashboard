@@ -76,6 +76,29 @@ describe("parseUnifiedDiff", () => {
     expect(f.path).toBe("new.ts")
   })
 
+  test("exposes each file's own block as a self-contained `raw` patch", () => {
+    const files = parseUnifiedDiff(DIFF_TWO_FILES)
+    expect(files).toHaveLength(2)
+    for (const f of files) {
+      // Each block must start at its own `diff --git` header and contain
+      // exactly one — so @pierre/diffs' PatchDiff sees a single-file patch.
+      expect(f.raw.startsWith("diff --git ")).toBe(true)
+      expect(f.raw.match(/^diff --git /gm)).toHaveLength(1)
+    }
+    expect(files[0]?.raw).toBe(
+      [
+        "diff --git a/apps/foo.ts b/apps/foo.ts",
+        "index 1111111..2222222 100644",
+        "--- a/apps/foo.ts",
+        "+++ b/apps/foo.ts",
+        "@@ -1 +1 @@",
+        "-old",
+        "+new",
+        "",
+      ].join("\n"),
+    )
+  })
+
   test("flags `index`, `new file mode`, and `Binary files` as meta lines", () => {
     const diff = `diff --git a/b.bin b/b.bin
 new file mode 100644
