@@ -3,6 +3,7 @@
 // configured for `gh` (keychain, env, etc.). Failures are returned as a
 // `warning` field instead of HTTP 500 — the UI still has something to render.
 
+import { type GithubPrDiff, prDiffOutcome } from "./github.core"
 import type { GithubProjectSummary, GithubPullRequest, GithubWorkflowRun } from "./github.types"
 
 const PR_FIELDS = [
@@ -155,3 +156,8 @@ export const fetchGithubSummary = async (cwd: string): Promise<GithubProjectSumm
   cache.set(cwd, { at: Date.now(), value })
   return value
 }
+
+// Fetch a single PR's unified patch via `gh pr diff <n> --patch`. Used by the
+// inline diff viewer; failures degrade to a warning (see prDiffOutcome).
+export const fetchPrDiff = async (cwd: string, prNumber: number): Promise<GithubPrDiff> =>
+  prDiffOutcome(await runGh({ args: ["pr", "diff", String(prNumber), "--patch"], cwd }))
