@@ -3,7 +3,7 @@ import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
 import { type GitError, gitLog, gitStatus } from "./git.repo"
-import { fetchGithubSummary } from "./github.repo"
+import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
 import type { FileError } from "./projects.repo"
 import { ProjectsService } from "./projects.repo"
@@ -134,6 +134,12 @@ const app = new Hono()
     if (!project.githubUrl) return c.json({ error: "project has no github origin" }, 400)
     const summary = await fetchGithubSummary(project.path)
     return c.json(summary)
+  })
+  .get("/:id/github/pr/:prNumber/diff", async (c) => {
+    const path = await projectPath(c.req.param("id"))
+    return path
+      ? c.json(await fetchPrDiff(path, Number(c.req.param("prNumber"))))
+      : c.json({ error: "project not found" }, 404)
   })
   .get("/:id/git/status", async (c) => {
     const path = await projectPath(c.req.param("id"))
