@@ -23,6 +23,7 @@ type TabKey = StaticTabKey | `ext:${string}`
 type Tab = { readonly key: TabKey; readonly label: string }
 
 const emptyCounts = (): Counts => ({
+  blocked: 0,
   needs_input: 0,
   working: 0,
   idle: 0,
@@ -135,6 +136,13 @@ export const ProjectDashboard = ({ project }: Props) => {
               label="working"
               value={counts.working}
               tone="bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200"
+            />
+          ) : null}
+          {counts.blocked > 0 ? (
+            <Pill
+              label="blocked"
+              value={counts.blocked}
+              tone="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
             />
           ) : null}
           {counts.needs_input > 0 ? (

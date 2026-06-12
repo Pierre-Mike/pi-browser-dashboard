@@ -23,6 +23,13 @@ export const cwdTail = (cwd: string, n = 2): string => {
 type Tone = { bg: string; text: string; dot: string; ring: string; label: string }
 
 const PALETTE: Record<SessionStateValue, Tone> = {
+  blocked: {
+    bg: "bg-amber-100 dark:bg-amber-900/30",
+    text: "text-amber-900 dark:text-amber-200",
+    dot: "bg-amber-500",
+    ring: "ring-amber-300/40",
+    label: "Blocked",
+  },
   needs_input: {
     bg: "bg-amber-100 dark:bg-amber-900/30",
     text: "text-amber-900 dark:text-amber-200",

@@ -21,4 +21,11 @@ describe("stateTitle", () => {
   it("uses the same label the palette exposes", () => {
     expect(stateTitle("needs_input", "")).toBe(stateColor("needs_input").label)
   })
+
+  it("renders 'blocked' as its own state, not the idle fallback", () => {
+    const blocked = stateColor("blocked")
+    expect(blocked.label).toBe("Blocked")
+    expect(blocked).not.toBe(stateColor("idle"))
+    expect(stateTitle("blocked", "waiting for review")).toBe("Blocked — waiting for review")
+  })
 })

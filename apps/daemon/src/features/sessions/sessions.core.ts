@@ -2,7 +2,18 @@ import { Schema as S } from "@effect/schema"
 
 // --- State slug normalization -----------------------------------------------
 
-const KNOWN_STATES = ["done", "working", "needs_input", "idle", "failed", "stopped"] as const
+// `blocked` is what the current supervisor emits for a session waiting on the
+// user; older CLIs emitted `needs_input`. Keep both so neither version's
+// sessions silently degrade to `idle`.
+const KNOWN_STATES = [
+  "done",
+  "working",
+  "blocked",
+  "needs_input",
+  "idle",
+  "failed",
+  "stopped",
+] as const
 export type SessionStateSlug = (typeof KNOWN_STATES)[number]
 
 const isKnownState = (s: string): s is SessionStateSlug =>
