@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
 import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { MermaidView } from "./MermaidView"
+import { alignClass } from "./markdownAlign"
 
 // Markdown rendering is delegated to react-markdown (GFM via remark-gfm:
 // tables, task lists, strikethrough, autolinks, footnotes) and made safe by
@@ -92,8 +93,16 @@ const components: Components = {
   tr: ({ children }) => (
     <tr className="border-b border-slate-200 dark:border-slate-800 last:border-b-0">{children}</tr>
   ),
-  th: ({ children }) => <th className="px-3 py-1.5 font-semibold text-left">{children}</th>,
-  td: ({ children }) => <td className="px-3 py-1.5 align-top text-left">{children}</td>,
+  // GFM alignment rides on node.properties.align; map it so `:-:` / `--:`
+  // columns no longer collapse to left.
+  th: ({ node, children }) => (
+    <th className={`px-3 py-1.5 font-semibold ${alignClass(node?.properties.align)}`}>
+      {children}
+    </th>
+  ),
+  td: ({ node, children }) => (
+    <td className={`px-3 py-1.5 align-top ${alignClass(node?.properties.align)}`}>{children}</td>
+  ),
   // Inline code only — fenced blocks never reach here because `pre` owns them.
   code: ({ children }) => (
     <code className="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 font-mono text-[0.9em]">

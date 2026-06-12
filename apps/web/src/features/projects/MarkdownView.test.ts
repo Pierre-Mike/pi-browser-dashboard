@@ -40,6 +40,13 @@ describe("MarkdownView code-block routing", () => {
   it("owns the <pre> boundary so block code is never nested inside <pre>", () => {
     expect(src).toMatch(/pre:\s*\(\{ children \}\)/)
   })
+
+  it("honours GFM column alignment on table cells via node.properties.align", () => {
+    expect(src).toMatch(/from\s+["']\.\/markdownAlign["']/)
+    expect(src).toMatch(/th:\s*\(\{ node, children \}\)/)
+    expect(src).toMatch(/td:\s*\(\{ node, children \}\)/)
+    expect(src).toContain("alignClass(node?.properties.align)")
+  })
 })
 
 describe("MermaidView", () => {
