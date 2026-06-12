@@ -2,7 +2,9 @@ import { describe, expect, it, test } from "bun:test"
 import {
   compareProjectsByCommit,
   contentDispositionAttachment,
+  isSkippedTreeDir,
   looksBinary,
+  MAX_TREE_FILES,
   mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
@@ -314,5 +316,24 @@ describe("mimeFromPath", () => {
     expect(mimeFromPath("archive.xyz")).toBe("application/octet-stream")
     expect(mimeFromPath("nodot")).toBe("application/octet-stream")
     expect(mimeFromPath("trailing.")).toBe("application/octet-stream")
+  })
+})
+
+describe("tree listing guards", () => {
+  test("skips VCS metadata and dependency/build dirs", () => {
+    expect(isSkippedTreeDir(".git")).toBe(true)
+    expect(isSkippedTreeDir("node_modules")).toBe(true)
+    expect(isSkippedTreeDir("dist")).toBe(true)
+  })
+
+  test("keeps ordinary source directories", () => {
+    expect(isSkippedTreeDir("src")).toBe(false)
+    expect(isSkippedTreeDir("features")).toBe(false)
+    expect(isSkippedTreeDir(".github")).toBe(false)
+  })
+
+  test("caps the recursive listing well above a normal repo but below pathological sizes", () => {
+    expect(MAX_TREE_FILES).toBeGreaterThanOrEqual(10_000)
+    expect(MAX_TREE_FILES).toBeLessThanOrEqual(100_000)
   })
 })

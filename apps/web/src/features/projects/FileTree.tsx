@@ -1,25 +1,18 @@
-import { useMemo, useState } from "react"
-import type { FileContent, FileEntry } from "../../lib/types"
+import { File as PierreFile } from "@pierre/diffs/react"
+import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
+import { useCallback, useMemo, useState } from "react"
+import type { FileContent } from "../../lib/types"
+import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
-import { formatSize, joinPath } from "./treeUtil"
-import { projectDownloadUrl, projectRawUrl, useProjectDir, useProjectFile } from "./useProjectFiles"
-
-type Props = {
-  projectId: string
-  onPick?: (path: string) => void
-}
-
-type NodeProps = {
-  projectId: string
-  path: string
-  name: string
-  depth: number
-  selected: string | null
-  filter: string
-  onPick: (path: string) => void
-}
+import { formatSize } from "./treeUtil"
+import {
+  projectDownloadUrl,
+  projectRawUrl,
+  useProjectFile,
+  useProjectTree,
+} from "./useProjectFiles"
 
 const ICON_FOR_KIND: Record<FileKind, string> = {
   markdown: "📝",
@@ -33,124 +26,6 @@ const ICON_FOR_KIND: Record<FileKind, string> = {
   code: "⟨⟩",
   text: "📄",
   binary: "■",
-}
-
-const iconForEntry = (e: FileEntry): string => {
-  if (e.type === "dir") return "📁"
-  if (e.type === "symlink") return "🔗"
-  return ICON_FOR_KIND[classifyFile(e.name, false)]
-}
-
-const matchesFilter = (name: string, filter: string): boolean => {
-  if (!filter) return true
-  return name.toLowerCase().includes(filter.toLowerCase())
-}
-
-const DirNode = ({ projectId, path, name, depth, selected, filter, onPick }: NodeProps) => {
-  const [open, setOpen] = useState(depth === 0 || filter !== "")
-  const q = useProjectDir({ projectId, path, enabled: open })
-  const indent = depth * 12
-  return (
-    <div>
-      <button
-        type="button"
-        data-testid={`tree-dir-${path || "ROOT"}`}
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-1.5 text-left text-xs py-1 px-1 hover:bg-slate-100 dark:hover:bg-slate-800/50 rounded text-slate-700 dark:text-slate-200"
-        style={{ paddingLeft: indent + 4 }}
-      >
-        <span className="font-mono text-slate-400 w-3">{open ? "▾" : "▸"}</span>
-        <span className="text-base leading-none">📁</span>
-        <span className="truncate font-medium">{name || "/"}</span>
-      </button>
-      {open ? (
-        <div>
-          {q.isLoading ? (
-            <div className="text-[10px] text-slate-400 italic" style={{ paddingLeft: indent + 20 }}>
-              loading…
-            </div>
-          ) : q.isError ? (
-            <div className="text-[10px] text-rose-500" style={{ paddingLeft: indent + 20 }}>
-              {q.error instanceof Error ? q.error.message : "failed"}
-            </div>
-          ) : (
-            (q.data?.entries ?? [])
-              .filter((e) => e.type === "dir" || matchesFilter(e.name, filter))
-              .map((e) => (
-                <EntryRow
-                  key={e.name}
-                  projectId={projectId}
-                  parent={path}
-                  entry={e}
-                  depth={depth + 1}
-                  selected={selected}
-                  filter={filter}
-                  onPick={onPick}
-                />
-              ))
-          )}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-const EntryRow = ({
-  projectId,
-  parent,
-  entry,
-  depth,
-  selected,
-  filter,
-  onPick,
-}: {
-  projectId: string
-  parent: string
-  entry: FileEntry
-  depth: number
-  selected: string | null
-  filter: string
-  onPick: (path: string) => void
-}) => {
-  const full = joinPath(parent, entry.name)
-  if (entry.type === "dir") {
-    return (
-      <DirNode
-        projectId={projectId}
-        path={full}
-        name={entry.name}
-        depth={depth}
-        selected={selected}
-        filter={filter}
-        onPick={onPick}
-      />
-    )
-  }
-  const isSelected = selected === full
-  const indent = depth * 12
-  return (
-    <button
-      type="button"
-      data-testid={`tree-file-${full}`}
-      onClick={() => onPick(full)}
-      className={`w-full flex items-center justify-between gap-2 text-left text-xs py-1 px-1 rounded transition-colors ${
-        isSelected
-          ? "bg-sky-100 dark:bg-sky-900/40 text-sky-900 dark:text-sky-100 ring-1 ring-inset ring-sky-300/60 dark:ring-sky-700/60"
-          : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50"
-      }`}
-      style={{ paddingLeft: indent + 20 }}
-    >
-      <span className="flex items-center gap-1.5 min-w-0">
-        <span className="text-sm leading-none w-4 text-center text-slate-500">
-          {iconForEntry(entry)}
-        </span>
-        <span className="truncate font-mono">{entry.name}</span>
-      </span>
-      <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
-        {formatSize(entry.size)}
-      </span>
-    </button>
-  )
 }
 
 const Breadcrumbs = ({ path }: { path: string }) => {
@@ -221,31 +96,17 @@ const ToolbarButton = ({
   )
 }
 
-const CodeView = ({ content }: { content: string }) => {
-  const lines = useMemo(() => content.split("\n"), [content])
-  return (
-    <div
-      data-testid="file-code"
-      className="text-[12px] font-mono leading-snug bg-slate-50 dark:bg-slate-950/60 overflow-auto h-full"
-    >
-      <table className="border-separate border-spacing-0 w-full">
-        <tbody>
-          {lines.map((l, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: line numbers are positionally stable per fetch
-            <tr key={i} className="hover:bg-slate-100/60 dark:hover:bg-slate-900/60">
-              <td className="select-none text-right pr-3 pl-3 text-slate-400 dark:text-slate-600 w-12 align-top">
-                {i + 1}
-              </td>
-              <td className="whitespace-pre text-slate-800 dark:text-slate-200 align-top pr-4">
-                {l || " "}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+// Syntax-highlighted source preview via @pierre/diffs (Shiki). The library
+// infers the language from the file name; we suppress its header because
+// FilePreview already renders a toolbar. Theme follows the OS colour scheme.
+const CodeView = ({ name, content }: { name: string; content: string }) => (
+  <div
+    data-testid="file-code"
+    className="text-[12px] leading-snug bg-slate-50 dark:bg-slate-950/60 overflow-auto h-full"
+  >
+    <PierreFile file={{ name, contents: content }} options={CODE_FILE_OPTIONS} />
+  </div>
+)
 
 const FileBody = ({
   projectId,
@@ -346,7 +207,7 @@ const FileBody = ({
       )
     case "code":
     case "text":
-      return <CodeView content={file.content} />
+      return <CodeView name={file.path} content={file.content} />
   }
 }
 
@@ -428,54 +289,107 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
   )
 }
 
-export const FileTree = ({ projectId, onPick }: Props) => {
-  const [selected, setSelected] = useState<string | null>(null)
-  const [filter, setFilter] = useState("")
-  const pick = (path: string) => {
-    setSelected(path)
-    onPick?.(path)
+// The tree model is built once from the loaded path list (@pierre/trees'
+// useFileTree ignores later option changes), so this pane is mounted only after
+// the listing resolves and is keyed by project id to rebuild on project switch.
+const TreePane = ({
+  paths,
+  selected,
+  onSelect,
+}: {
+  paths: readonly string[]
+  selected: string | null
+  onSelect: (path: string) => void
+}) => {
+  const fileSet = useMemo(() => new Set(paths), [paths])
+  const { model } = useFileTree({
+    paths,
+    initialExpansion: "open",
+    search: true,
+    initialSelectedPaths: selected ? [selected] : undefined,
+    onSelectionChange: (selectedPaths) => {
+      // Directory rows fire selection too; only file paths drive the preview.
+      const file = selectedPaths.find((p) => fileSet.has(p))
+      if (file) onSelect(file)
+    },
+  })
+  return <PierreFileTree model={model} className="text-xs" style={{ height: "100%" }} />
+}
+
+type SidebarProps = {
+  projectId: string
+  tree: ReturnType<typeof useProjectTree>
+  selected: string | null
+  onSelect: (path: string) => void
+}
+
+const errorMessage = (e: unknown, fallback: string): string =>
+  e instanceof Error ? e.message : fallback
+
+const treePaths = (tree: ReturnType<typeof useProjectTree>): readonly string[] =>
+  tree.data?.paths ?? []
+
+// Loading / error / tree states. The TreePane is keyed by project so a project
+// switch rebuilds the (once-built) @pierre/trees model with the new path list.
+const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
+  if (tree.isLoading) {
+    return <div className="text-[11px] text-slate-400 italic px-3 py-2">loading…</div>
   }
+  if (tree.isError) {
+    return (
+      <div className="text-[11px] text-rose-500 px-3 py-2">
+        {errorMessage(tree.error, "failed to load tree")}
+      </div>
+    )
+  }
+  return (
+    <TreePane key={projectId} paths={treePaths(tree)} selected={selected} onSelect={onSelect} />
+  )
+}
+
+// Left column: the tree plus its truncation chrome.
+const FileTreeSidebar = (props: SidebarProps) => (
+  <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+    <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto">
+      <TreeBody {...props} />
+    </div>
+    {props.tree.data?.truncated ? (
+      <div className="text-[10px] text-amber-600 dark:text-amber-300 px-3 py-1 border-t border-slate-200 dark:border-slate-800">
+        listing truncated — some files hidden
+      </div>
+    ) : null}
+  </aside>
+)
+
+const EmptyPreview = () => (
+  <div className="flex flex-col items-center justify-center gap-2 h-full text-slate-500 text-center px-6">
+    <div className="text-4xl">📂</div>
+    <div className="text-sm font-medium">Pick a file to preview</div>
+    <div className="text-xs text-slate-400 max-w-sm">
+      Markdown renders as Markdown · HTML opens in a sandboxed frame · images, PDFs, audio and video
+      play inline.
+    </div>
+  </div>
+)
+
+export const FileTree = ({ projectId }: { projectId: string }) => {
+  const tree = useProjectTree(projectId)
+  const [selected, setSelected] = useState<string | null>(null)
+  const handleSelect = useCallback((path: string) => setSelected(path), [])
+
   return (
     <div
       data-testid="project-file-tree"
       className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm flex-1 min-h-0"
     >
-      <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
-        <div className="px-2 py-2 border-b border-slate-200 dark:border-slate-800">
-          <input
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter files…"
-            data-testid="file-filter"
-            className="w-full text-xs px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
-          />
-        </div>
-        <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto py-1.5 px-1">
-          <DirNode
-            projectId={projectId}
-            path=""
-            name="."
-            depth={0}
-            selected={selected}
-            filter={filter}
-            onPick={pick}
-          />
-        </div>
-      </aside>
+      <FileTreeSidebar
+        projectId={projectId}
+        tree={tree}
+        selected={selected}
+        onSelect={handleSelect}
+      />
       <section className="min-h-0 overflow-hidden">
-        {selected ? (
-          <FilePreview projectId={projectId} path={selected} />
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-2 h-full text-slate-500 text-center px-6">
-            <div className="text-4xl">📂</div>
-            <div className="text-sm font-medium">Pick a file to preview</div>
-            <div className="text-xs text-slate-400 max-w-sm">
-              Markdown renders as Markdown · HTML opens in a sandboxed frame · images, PDFs, audio
-              and video play inline.
-            </div>
-          </div>
-        )}
+        {selected ? <FilePreview projectId={projectId} path={selected} /> : <EmptyPreview />}
       </section>
     </div>
   )

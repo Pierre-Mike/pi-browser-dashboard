@@ -5,7 +5,9 @@ import { ConfigService } from "../../platform/config.repo"
 import {
   compareProjectsByCommit,
   type FileEntry,
+  isSkippedTreeDir,
   looksBinary,
+  MAX_TREE_FILES,
   mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
@@ -30,6 +32,14 @@ export type Project = {
 type FileListing = {
   readonly path: string
   readonly entries: readonly FileEntry[]
+}
+
+type FileTreeListing = {
+  // Flat, posix-relative list of every file path under the project root
+  // (directories are implied by the path segments). Feeds @pierre/trees, which
+  // builds and virtualises the tree from this list.
+  readonly paths: readonly string[]
+  readonly truncated: boolean
 }
 
 type FileContent = {
@@ -58,6 +68,7 @@ type ProjectsServiceApi = {
     id: string,
     relPath: string | undefined,
   ) => Effect.Effect<FileListing, FileError, never>
+  readonly listTree: (id: string) => Effect.Effect<FileTreeListing, FileError, never>
   readonly readFile: (id: string, relPath: string) => Effect.Effect<FileContent, FileError, never>
   readonly resolveRaw: (id: string, relPath: string) => Effect.Effect<RawFile, FileError, never>
 }
@@ -170,6 +181,44 @@ const classifyEntry = async (parentAbs: string, name: string): Promise<FileEntry
   }
 }
 
+// Read one directory's child files and sub-directories, posix-relative to the
+// root. Skipped dirs (VCS/deps/build) and unreadable dirs yield nothing — a
+// permission error deep in the tree must not fail the whole listing.
+const scanDir = async (root: string, rel: string): Promise<{ files: string[]; dirs: string[] }> => {
+  const abs = rel === "" ? root : join(root, rel)
+  const files: string[] = []
+  const dirs: string[] = []
+  let dirents: { name: string; isDirectory: () => boolean; isFile: () => boolean }[] = []
+  try {
+    dirents = await readdir(abs, { withFileTypes: true })
+  } catch {
+    return { files, dirs }
+  }
+  for (const d of dirents) {
+    const childRel = rel === "" ? d.name : `${rel}/${d.name}`
+    if (d.isDirectory() && !isSkippedTreeDir(d.name)) dirs.push(childRel)
+    else if (d.isFile()) files.push(childRel)
+  }
+  return { files, dirs }
+}
+
+// Breadth-light recursive walk: collect every file path under `root` via
+// scanDir, stopping at MAX_TREE_FILES. Paths are posix-relative (forward
+// slashes) so the payload renders identically on every platform.
+const walkTree = async (root: string): Promise<{ paths: string[]; truncated: boolean }> => {
+  const paths: string[] = []
+  const stack: string[] = [""]
+  while (stack.length > 0) {
+    const { files, dirs } = await scanDir(root, stack.pop() as string)
+    for (const f of files) {
+      if (paths.length >= MAX_TREE_FILES) return { paths, truncated: true }
+      paths.push(f)
+    }
+    stack.push(...dirs)
+  }
+  return { paths, truncated: false }
+}
+
 export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService> = Layer.effect(
   ProjectsService,
   Effect.gen(function* () {
@@ -212,6 +261,21 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
           }
           const entries = sortEntries(kept)
           return { path: resolved.relPath, entries }
+        }),
+
+      listTree: (id) =>
+        Effect.gen(function* () {
+          const root = findProjectPath(config.projectsRoot, id)
+          if (!root) return yield* Effect.fail<FileError>("not_found")
+          const s = yield* Effect.tryPromise(() => stat(root)).pipe(
+            Effect.mapError<unknown, FileError>(() => "not_found"),
+          )
+          if (!s.isDirectory()) return yield* Effect.fail<FileError>("not_a_directory")
+          const { paths, truncated } = yield* Effect.tryPromise(() => walkTree(root)).pipe(
+            Effect.orElseSucceed(() => ({ paths: [] as string[], truncated: false })),
+          )
+          paths.sort()
+          return { paths, truncated }
         }),
 
       readFile: (id, relPath) =>
@@ -265,6 +329,7 @@ export const ProjectsRepoTest = (fixtures: readonly Project[]): Layer.Layer<Proj
   Layer.succeed(ProjectsService, {
     list: () => Effect.succeed([...fixtures].sort(compareProjectsByCommit)),
     listDir: () => Effect.fail<FileError>("not_found"),
+    listTree: () => Effect.fail<FileError>("not_found"),
     readFile: () => Effect.fail<FileError>("not_found"),
     resolveRaw: () => Effect.fail<FileError>("not_found"),
   })

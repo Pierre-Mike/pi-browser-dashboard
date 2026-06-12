@@ -1,29 +1,27 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiBase as baseUrl } from "../../lib/apiBase"
-import type { FileContent, FileListing } from "../../lib/types"
+import type { FileContent } from "../../lib/types"
 
 // The hc client's path-param + query-string shape is awkward for these
 // endpoints; bypass it and hit the configured base URL directly.
 
-export const useProjectDir = ({
-  projectId,
-  path,
-  enabled = true,
-}: {
-  projectId: string
-  path: string
-  enabled?: boolean
-}) =>
-  useQuery<FileListing>({
-    queryKey: ["project-dir", projectId, path],
-    enabled,
+type ProjectTree = {
+  readonly paths: readonly string[]
+  readonly truncated: boolean
+}
+
+// Full flat path list for the project, fed to @pierre/trees (which builds and
+// virtualises the tree). Cached longer than a single dir listing — the whole
+// tree is one request and rarely changes mid-view.
+export const useProjectTree = (projectId: string) =>
+  useQuery<ProjectTree>({
+    queryKey: ["project-tree", projectId],
     staleTime: 15_000,
     queryFn: async () => {
-      const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/files`)
-      if (path) url.searchParams.set("path", path)
+      const url = new URL(`${baseUrl()}/projects/${encodeURIComponent(projectId)}/tree`)
       const res = await fetch(url)
-      if (!res.ok) throw new Error(`list dir: HTTP ${res.status}`)
-      return (await res.json()) as FileListing
+      if (!res.ok) throw new Error(`list tree: HTTP ${res.status}`)
+      return (await res.json()) as ProjectTree
     },
   })
 

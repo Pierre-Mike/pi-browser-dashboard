@@ -188,6 +188,28 @@ describe("ProjectsRepo list", () => {
   })
 })
 
+describe("ProjectsRepo listTree", () => {
+  it("returns every file path under the root, posix-relative and sorted", async () => {
+    const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.listTree("demo")))
+    expect(out.paths).toEqual(["README.md", "bin.dat", "src/index.ts", "src/nested/deep.txt"])
+    expect(out.truncated).toBe(false)
+  })
+
+  it("skips VCS metadata directories like .git", async () => {
+    const out = await withLayer(Effect.flatMap(ProjectsService, (s) => s.listTree("repo")))
+    // The only contents of `repo` live under .git, which the walk never enters.
+    expect(out.paths.some((p) => p.startsWith(".git"))).toBe(false)
+  })
+
+  it("fails with not_found for missing projects", async () => {
+    const exit = await withLayer(
+      Effect.either(Effect.flatMap(ProjectsService, (s) => s.listTree("missing"))),
+    )
+    const reason = exit._tag === "Left" ? exit.left : "(unexpectedly succeeded)"
+    expect(reason).toBe("not_found")
+  })
+})
+
 describe("ProjectsRepo readFile", () => {
   it("reads a text file", async () => {
     const out = await withLayer(

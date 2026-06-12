@@ -5,18 +5,40 @@ import { join } from "node:path"
 const src = readFileSync(join(import.meta.dir, "MarkdownView.tsx"), "utf8")
 const mermaidSrc = readFileSync(join(import.meta.dir, "MermaidView.tsx"), "utf8")
 
-describe("MarkdownView mermaid rendering", () => {
-  it("imports MermaidView", () => {
+describe("MarkdownView rendering pipeline", () => {
+  it("delegates parsing to react-markdown", () => {
+    expect(src).toMatch(/from\s+["']react-markdown["']/)
+  })
+
+  it("enables GFM (tables, task lists, strikethrough) via remark-gfm", () => {
+    expect(src).toMatch(/from\s+["']remark-gfm["']/)
+    expect(src).toMatch(/remarkPlugins=\{\[remarkGfm\]\}/)
+  })
+
+  it("is safe by construction — sanitizes with rehype-sanitize so raw HTML cannot inject", () => {
+    expect(src).toMatch(/from\s+["']rehype-sanitize["']/)
+    expect(src).toMatch(/rehypePlugins=\{\[rehypeSanitize\]\}/)
+  })
+
+  it("exposes a stable testid for the rendered output", () => {
+    expect(src).toContain('data-testid="markdown-rendered"')
+  })
+})
+
+describe("MarkdownView code-block routing", () => {
+  it("imports MermaidView and routes mermaid fences to it", () => {
     expect(src).toMatch(/from\s+["']\.\/MermaidView["']/)
+    expect(src).toContain('lang.toLowerCase() === "mermaid"')
+    expect(src).toMatch(/<MermaidView code=\{text\}\s*\/>/)
   })
 
-  it("routes code blocks with lang=mermaid to MermaidView", () => {
-    expect(src).toContain('block.lang.toLowerCase() === "mermaid"')
-    expect(src).toMatch(/<MermaidView code=\{block\.text\}\s*\/>/)
+  it("syntax-highlights non-mermaid fences through @pierre/diffs", () => {
+    expect(src).toMatch(/from\s+["']@pierre\/diffs\/react["']/)
+    expect(src).toMatch(/<PierreFile file=\{\{ name, contents: text \}\}/)
   })
 
-  it("still renders non-mermaid code blocks as <pre>", () => {
-    expect(src).toMatch(/<pre[^>]*>[\s\S]*<code>\{block\.text\}<\/code>/)
+  it("owns the <pre> boundary so block code is never nested inside <pre>", () => {
+    expect(src).toMatch(/pre:\s*\(\{ children \}\)/)
   })
 })
 
@@ -40,10 +62,7 @@ describe("MermaidView", () => {
   })
 
   it("initializes mermaid at module level with a run-once guard, not inside every render effect", () => {
-    // The initialize call must be outside any function / arrow function that is
-    // used as a useEffect callback — we look for a top-level `initialized` flag.
     expect(mermaidSrc).toMatch(/let initialized/)
-    // initialize should be guarded so it runs only once
     expect(mermaidSrc).toMatch(/if\s*\(!initialized\)/)
   })
 
