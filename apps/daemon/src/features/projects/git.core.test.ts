@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { GIT_LOG_FIELD_SEP, GIT_LOG_FORMAT, parseGitLog, parseGitStatusPorcelain } from "./git.core"
+import {
+  GIT_LOG_FIELD_SEP,
+  GIT_LOG_FORMAT,
+  type GitStatus,
+  parseGitLog,
+  parseGitStatusPorcelain,
+  toTreeGitStatus,
+} from "./git.core"
 
 describe("parseGitStatusPorcelain", () => {
   it("reads the branch name and ahead/behind from the header", () => {
@@ -37,6 +44,52 @@ describe("parseGitStatusPorcelain", () => {
     expect(s.entries).toEqual([])
     expect(s.ahead).toBe(0)
     expect(s.behind).toBe(0)
+  })
+})
+
+describe("toTreeGitStatus", () => {
+  const status = (entries: GitStatus["entries"]): GitStatus => ({
+    branch: "main",
+    ahead: 0,
+    behind: 0,
+    entries,
+  })
+
+  it("maps each porcelain code to the @pierre/trees status shape", () => {
+    const s = status([
+      { index: "M", worktree: " ", path: "staged.ts" },
+      { index: " ", worktree: "M", path: "unstaged.ts" },
+      { index: "A", worktree: " ", path: "added.ts" },
+      { index: " ", worktree: "D", path: "gone.ts" },
+      { index: "?", worktree: "?", path: "new.ts" },
+      { index: "!", worktree: "!", path: "ignored.ts" },
+    ])
+    expect(toTreeGitStatus(s)).toEqual([
+      { path: "staged.ts", status: "modified" },
+      { path: "unstaged.ts", status: "modified" },
+      { path: "added.ts", status: "added" },
+      { path: "gone.ts", status: "deleted" },
+      { path: "new.ts", status: "untracked" },
+      { path: "ignored.ts", status: "ignored" },
+    ])
+  })
+
+  it("prefers the staged (index) code over the worktree code", () => {
+    // A file added to the index but since modified in the worktree (`AM`)
+    // is surfaced as added — the staged intent wins.
+    const s = status([{ index: "A", worktree: "M", path: "both.ts" }])
+    expect(toTreeGitStatus(s)).toEqual([{ path: "both.ts", status: "added" }])
+  })
+
+  it("reports a rename against its destination path", () => {
+    // Porcelain renames carry `old -> new`; the tree holds the new path.
+    const s = status([{ index: "R", worktree: " ", path: "old.ts -> new.ts" }])
+    expect(toTreeGitStatus(s)).toEqual([{ path: "new.ts", status: "renamed" }])
+  })
+
+  it("drops entries whose codes carry no displayable status", () => {
+    const s = status([{ index: " ", worktree: " ", path: "noop.ts" }])
+    expect(toTreeGitStatus(s)).toEqual([])
   })
 })
 
