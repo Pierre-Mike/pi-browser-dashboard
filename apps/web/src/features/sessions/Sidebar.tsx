@@ -31,13 +31,21 @@ export const Sidebar = () => {
   const activeProject = activeProjectId(pathname)
   const [spawnProject, setSpawnProject] = useState<Project | null>(null)
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
-  const { pinnedIds, togglePin } = usePinnedProjects()
+  const { pinnedIds, togglePin, reorderPin } = usePinnedProjects()
   const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
   // Per-bucket visible-session cap; ephemeral on purpose — a fresh load
   // snaps every project back to the latest SESSION_PAGE_SIZE sessions.
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({})
   const showMore = (key: string) =>
     setSessionLimits((prev) => ({ ...prev, [key]: growLimit(prev[key] ?? SESSION_PAGE_SIZE) }))
+  // Drag-to-reorder pinned projects. dragPinId is the project being dragged;
+  // overPinId is the pinned row it's currently hovering (drop-before target).
+  const [dragPinId, setDragPinId] = useState<string | null>(null)
+  const [overPinId, setOverPinId] = useState<string | null>(null)
+  const endPinDrag = () => {
+    setDragPinId(null)
+    setOverPinId(null)
+  }
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
     return (
@@ -89,13 +97,59 @@ export const Sidebar = () => {
             return (
               <div key={b.key} className="px-1.5 py-1.5">
                 <div
+                  data-testid="sidebar-bucket-row"
+                  data-project-id={b.project?.id}
+                  data-drop-target={
+                    b.pinned && dragPinId && dragPinId !== b.project?.id ? "true" : "false"
+                  }
+                  onDragOver={(e) => {
+                    // Only pinned rows accept a drop, and never onto self.
+                    if (!b.pinned || !b.project || !dragPinId || dragPinId === b.project.id) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = "move"
+                    if (overPinId !== b.project.id) setOverPinId(b.project.id)
+                  }}
+                  onDragLeave={() => {
+                    if (b.project && overPinId === b.project.id) setOverPinId(null)
+                  }}
+                  onDrop={(e) => {
+                    if (!b.pinned || !b.project || !dragPinId) return
+                    e.preventDefault()
+                    reorderPin(dragPinId, b.project.id)
+                    endPinDrag()
+                  }}
                   className={`group flex items-center gap-1.5 px-1.5 py-1 rounded ${
+                    overPinId === b.project?.id && dragPinId && dragPinId !== b.project?.id
+                      ? "shadow-[inset_0_2px_0_0] shadow-amber-500"
+                      : ""
+                  } ${
                     projectActive
                       ? "bg-sky-100 dark:bg-sky-900/50 shadow-[inset_2px_0_0_0] shadow-sky-500"
                       : "hover:bg-slate-50 dark:hover:bg-slate-900/60"
-                  }`}
+                  } ${dragPinId === b.project?.id ? "opacity-40" : ""}`}
                   title={b.pathHint}
                 >
+                  {b.pinned && b.project ? (
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        if (!b.project) return
+                        e.dataTransfer.effectAllowed = "move"
+                        // Some browsers require data to be set for drag to fire.
+                        e.dataTransfer.setData("text/plain", b.project.id)
+                        setDragPinId(b.project.id)
+                      }}
+                      onDragEnd={endPinDrag}
+                      data-testid="sidebar-pin-drag-handle"
+                      data-project-id={b.project.id}
+                      title={`Drag to reorder ${b.title}`}
+                      aria-label={`Drag to reorder ${b.title}`}
+                      className="shrink-0 inline-flex items-center justify-center w-3 h-4 cursor-grab active:cursor-grabbing text-[10px] leading-none text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    >
+                      ⠿
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => toggleCollapsed(b.key)}
