@@ -14,6 +14,11 @@ describe("parseState — additional coverage", () => {
     expect(parseState({ short: "x", json: { state: "  Needs_Input  " } }).state).toBe("needs_input")
   })
 
+  test("preserves the 'blocked' state the supervisor emits for waiting sessions", () => {
+    expect(parseState({ short: "x", json: { state: "blocked" } }).state).toBe("blocked")
+    expect(parseState({ short: "x", json: { state: "  Blocked  " } }).state).toBe("blocked")
+  })
+
   test("falls back to 'idle' when state is not a string", () => {
     expect(parseState({ short: "x", json: { state: 42 } }).state).toBe("idle")
     expect(parseState({ short: "x", json: { state: null } }).state).toBe("idle")

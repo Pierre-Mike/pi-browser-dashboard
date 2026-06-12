@@ -3,7 +3,16 @@
 // components typeable even when the daemon types package can't resolve in
 // isolation (e.g. before `bun install`).
 
-export type SessionStateValue = "done" | "working" | "needs_input" | "idle" | "failed" | "stopped"
+// `blocked` is the current supervisor's slug for a session waiting on the user;
+// older CLIs emitted `needs_input`. Both are kept so neither degrades to `idle`.
+export type SessionStateValue =
+  | "done"
+  | "working"
+  | "blocked"
+  | "needs_input"
+  | "idle"
+  | "failed"
+  | "stopped"
 
 export type SessionState = {
   short: string
