@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react"
+import { File as PierreFile } from "@pierre/diffs/react"
+import { useState } from "react"
 import type { FileContent, FileEntry } from "../../lib/types"
+import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
@@ -221,31 +223,17 @@ const ToolbarButton = ({
   )
 }
 
-const CodeView = ({ content }: { content: string }) => {
-  const lines = useMemo(() => content.split("\n"), [content])
-  return (
-    <div
-      data-testid="file-code"
-      className="text-[12px] font-mono leading-snug bg-slate-50 dark:bg-slate-950/60 overflow-auto h-full"
-    >
-      <table className="border-separate border-spacing-0 w-full">
-        <tbody>
-          {lines.map((l, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: line numbers are positionally stable per fetch
-            <tr key={i} className="hover:bg-slate-100/60 dark:hover:bg-slate-900/60">
-              <td className="select-none text-right pr-3 pl-3 text-slate-400 dark:text-slate-600 w-12 align-top">
-                {i + 1}
-              </td>
-              <td className="whitespace-pre text-slate-800 dark:text-slate-200 align-top pr-4">
-                {l || " "}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+// Syntax-highlighted source preview via @pierre/diffs (Shiki). The library
+// infers the language from the file name; we suppress its header because
+// FilePreview already renders a toolbar. Theme follows the OS colour scheme.
+const CodeView = ({ name, content }: { name: string; content: string }) => (
+  <div
+    data-testid="file-code"
+    className="text-[12px] leading-snug bg-slate-50 dark:bg-slate-950/60 overflow-auto h-full"
+  >
+    <PierreFile file={{ name, contents: content }} options={CODE_FILE_OPTIONS} />
+  </div>
+)
 
 const FileBody = ({
   projectId,
@@ -346,7 +334,7 @@ const FileBody = ({
       )
     case "code":
     case "text":
-      return <CodeView content={file.content} />
+      return <CodeView name={file.path} content={file.content} />
   }
 }
 

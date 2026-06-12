@@ -1,6 +1,8 @@
+import { PatchDiff } from "@pierre/diffs/react"
 import { useQuery } from "@tanstack/react-query"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { api } from "../../lib/api"
+import { PATCH_DIFF_OPTIONS } from "../diffs/diffsOptions"
 import { parseUnifiedDiff, summarizeDiff } from "./diffParse"
 
 type SessionFiles = {
@@ -28,46 +30,17 @@ export const useSessionFiles = (short: string) =>
     staleTime: 2_000,
   })
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  modified: {
-    label: "M",
-    cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  },
-  added: {
-    label: "A",
-    cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  },
-  deleted: { label: "D", cls: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200" },
-  renamed: {
-    label: "R",
-    cls: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200",
-  },
-  copied: { label: "C", cls: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200" },
-  type_changed: {
-    label: "T",
-    cls: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  },
-  untracked: {
-    label: "?",
-    cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
-  },
-  unknown: { label: "•", cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
-}
-
 type Props = { short: string }
 
 export const FilesTab = ({ short }: Props) => {
   const q = useSessionFiles(short)
-  const [selected, setSelected] = useState<string | null>(null)
 
-  const parsedFiles = useMemo(
-    () => (q.data?.diff ? parseUnifiedDiff(q.data.diff) : []),
+  // The unified diff still drives a tiny +/- banner; @pierre/diffs renders the
+  // patch itself (per-file headers, Shiki highlight, hunk expansion).
+  const summary = useMemo(
+    () => summarizeDiff(q.data?.diff ? parseUnifiedDiff(q.data.diff) : []),
     [q.data?.diff],
   )
-  const summary = useMemo(() => summarizeDiff(parsedFiles), [parsedFiles])
-
-  const activePath = selected ?? parsedFiles[0]?.path ?? null
-  const activeFile = parsedFiles.find((f) => f.path === activePath) ?? parsedFiles[0]
 
   if (q.isLoading) {
     return <div className="px-1 py-4 text-sm text-slate-500">Loading files…</div>
@@ -106,65 +79,12 @@ export const FilesTab = ({ short }: Props) => {
           </span>
         ) : null}
       </div>
-      <div className="flex flex-1 min-h-0">
-        <ul
-          data-testid="files-list"
-          className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 dark:border-slate-800 text-xs"
-        >
-          {q.data.files.map((f) => {
-            const badge = STATUS_BADGE[f.status] ?? STATUS_BADGE.unknown
-            const isActive = f.path === activePath
-            return (
-              <li key={f.path}>
-                <button
-                  type="button"
-                  data-testid={`file-item-${f.path}`}
-                  data-active={isActive ? "true" : "false"}
-                  onClick={() => setSelected(f.path)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                    isActive ? "bg-slate-100 dark:bg-slate-800" : ""
-                  }`}
-                  title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
-                >
-                  <span
-                    className={`inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold ${badge?.cls ?? ""}`}
-                  >
-                    {badge?.label ?? "•"}
-                  </span>
-                  <span className="truncate font-mono">{f.path}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        <pre
-          data-testid="file-diff"
-          className="flex-1 min-h-0 overflow-auto text-[11px] font-mono leading-snug px-2 py-1 bg-slate-50 dark:bg-slate-950/40"
-        >
-          {activeFile ? (
-            activeFile.lines.map((l, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: lines are positionally stable per fetch
-                key={i}
-                className={
-                  l.kind === "addition"
-                    ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-950/30"
-                    : l.kind === "deletion"
-                      ? "text-rose-700 dark:text-rose-300 bg-rose-50/70 dark:bg-rose-950/30"
-                      : l.kind === "hunk"
-                        ? "text-sky-700 dark:text-sky-300"
-                        : l.kind === "header" || l.kind === "meta"
-                          ? "text-slate-400 dark:text-slate-500"
-                          : "text-slate-700 dark:text-slate-300"
-                }
-              >
-                {l.text || " "}
-              </div>
-            ))
-          ) : (
-            <div className="text-slate-500">No diff content.</div>
-          )}
-        </pre>
+      <div data-testid="file-diff" className="flex-1 min-h-0 overflow-auto px-1 py-1">
+        {q.data.diff ? (
+          <PatchDiff patch={q.data.diff} options={PATCH_DIFF_OPTIONS} />
+        ) : (
+          <div className="text-slate-500 text-xs px-2 py-2">No diff content.</div>
+        )}
       </div>
     </div>
   )
