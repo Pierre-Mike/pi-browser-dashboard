@@ -3,8 +3,13 @@ import type { Project, SessionState } from "../../lib/types"
 import {
   activeProjectId,
   bucketProjects,
+  dropTargetId,
   growLimit,
+  isDraggingSelf,
+  isOverTarget,
+  pinnedProjectId,
   SESSION_PAGE_SIZE,
+  type SidebarBucket,
   sessionLabel,
   sessionMoreLabel,
   sessionWindow,
@@ -169,6 +174,44 @@ describe("activeProjectId", () => {
   it("decodes URL-encoded ids and tolerates a trailing slash", () => {
     expect(activeProjectId("/projects/my%20app")).toBe("my app")
     expect(activeProjectId("/projects/p1/")).toBe("p1")
+  })
+})
+
+describe("pinned drag-state predicates", () => {
+  const bucket = (over: Partial<SidebarBucket> = {}): SidebarBucket => ({
+    key: "p:p1",
+    title: "alpha",
+    pathHint: "/p/a",
+    sessions: [],
+    project: proj(),
+    pinned: true,
+    ...over,
+  })
+
+  it("pinnedProjectId returns the id only for a pinned project bucket", () => {
+    expect(pinnedProjectId(bucket())).toBe("p1")
+    expect(pinnedProjectId(bucket({ pinned: false }))).toBeNull()
+    expect(pinnedProjectId(bucket({ project: null }))).toBeNull()
+  })
+
+  it("dropTargetId accepts a pinned row only while another row is dragged", () => {
+    expect(dropTargetId("p1", "p2")).toBe("p1") // dragging a different pin
+    expect(dropTargetId("p1", "p1")).toBeNull() // can't drop onto itself
+    expect(dropTargetId("p1", null)).toBeNull() // nothing being dragged
+    expect(dropTargetId(null, "p2")).toBeNull() // this row isn't pinned
+  })
+
+  it("isOverTarget is true only when the hovered id matches the drop target", () => {
+    expect(isOverTarget("p1", "p1")).toBe(true)
+    expect(isOverTarget("p1", "p2")).toBe(false)
+    expect(isOverTarget(null, "p1")).toBe(false)
+  })
+
+  it("isDraggingSelf is true only when this row is the one being dragged", () => {
+    expect(isDraggingSelf("p1", "p1")).toBe(true)
+    expect(isDraggingSelf("p2", "p1")).toBe(false)
+    expect(isDraggingSelf(null, "p1")).toBe(false)
+    expect(isDraggingSelf("p1", undefined)).toBe(false)
   })
 })
 
