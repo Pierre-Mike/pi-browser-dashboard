@@ -119,3 +119,20 @@ export const activeProjectId = (pathname: string): string | null => {
   const m = pathname.match(/^\/projects\/([^/]+)\/?$/)
   return m?.[1] ? decodeURIComponent(m[1]) : null
 }
+
+// Drag-to-reorder predicates for sidebar rows. Only a pinned project can be
+// dragged or be a drop target; each predicate stays at a couple of conditions
+// so the row component reads as data, not branching.
+export const pinnedProjectId = (bucket: SidebarBucket): string | null =>
+  bucket.pinned && bucket.project ? bucket.project.id : null
+
+// A pinned row is a drop target for the active drag unless it's the row being
+// dragged. Returns the droppable id, or null when it can't accept.
+export const dropTargetId = (pinnedId: string | null, draggingId: string | null): string | null =>
+  pinnedId && draggingId && draggingId !== pinnedId ? pinnedId : null
+
+export const isOverTarget = (target: string | null, overId: string | null): boolean =>
+  target !== null && overId === target
+
+export const isDraggingSelf = (draggingId: string | null, selfId: string | undefined): boolean =>
+  draggingId !== null && draggingId === selfId
