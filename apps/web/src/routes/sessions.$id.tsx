@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
 import { CanvasTab } from "../features/canvas/CanvasTab"
 import { ChatComposer } from "../features/sessions/ChatComposer"
@@ -8,6 +8,7 @@ import { TerminalTab } from "../features/sessions/TerminalTab"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
 import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
+import { resolveSessionView } from "../lib/sessionView"
 import { coerceEnumTab } from "../lib/tabParams"
 import type { SessionState, TranscriptMessage } from "../lib/types"
 
@@ -176,6 +177,22 @@ function SessionDrillIn() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [messageCount])
+
+  // An invalid id (queryFn resolves to null on a 404) must show a not-found
+  // state with a back link — never an infinite "Loading session…" with a live
+  // action bar wired to a phantom session. Mirrors projects.$id.tsx.
+  if (resolveSessionView({ isLoading: sessionQ.isLoading, data: session }) === "not-found") {
+    return (
+      <div className="flex flex-col gap-2">
+        <Link to="/" className="text-xs text-slate-500 hover:underline">
+          ← All sessions
+        </Link>
+        <div data-testid="session-not-found" className="text-sm text-slate-600 dark:text-slate-400">
+          Session <span className="font-mono">{id}</span> not found.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-screen -my-4">
