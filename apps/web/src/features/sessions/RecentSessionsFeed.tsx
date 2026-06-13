@@ -6,12 +6,20 @@ type Props = {
   projects: readonly Project[]
   sessions: readonly SessionState[]
   limit?: number
+  // Cross-project views label each row with its owning project; a single-project
+  // view (e.g. a project's Activity tab) sets this false to drop the redundant tag.
+  showProjectName?: boolean
 }
 
 // Cross-project activity feed: the newest sessions across every project, newest
 // first, each tagged with its owning project. Stays live because the parent
 // feeds it the SSE-patched `["sessions"]` query cache.
-export const RecentSessionsFeed = ({ projects, sessions, limit = RECENT_LIMIT }: Props) => {
+export const RecentSessionsFeed = ({
+  projects,
+  sessions,
+  limit = RECENT_LIMIT,
+  showProjectName = true,
+}: Props) => {
   const items = recentSessions({ projects, sessions, limit })
 
   if (items.length === 0) {
@@ -30,12 +38,14 @@ export const RecentSessionsFeed = ({ projects, sessions, limit = RECENT_LIMIT }:
       <div className="flex flex-col gap-2">
         {items.map(({ session, projectName }) => (
           <div key={session.short} className="flex flex-col gap-1" data-testid="recent-session-row">
-            <div
-              className="text-[11px] font-medium text-slate-400 dark:text-slate-500 truncate"
-              title={session.cwd}
-            >
-              {projectName}
-            </div>
+            {showProjectName ? (
+              <div
+                className="text-[11px] font-medium text-slate-400 dark:text-slate-500 truncate"
+                title={session.cwd}
+              >
+                {projectName}
+              </div>
+            ) : null}
             <SessionCard session={session} />
           </div>
         ))}
