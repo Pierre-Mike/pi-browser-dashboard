@@ -1,3 +1,11 @@
+import type { FileTreeInitialExpansion } from "@pierre/trees"
+
+// Directories start collapsed. Some repos hold thousands of files, and
+// auto-expanding every directory renders the whole listing on open — the pane
+// floods and scrolling it is useless. Collapsed-by-default keeps the initial
+// view to top-level entries; the user expands the directories they care about.
+export const TREE_INITIAL_EXPANSION: FileTreeInitialExpansion = "closed"
+
 export const joinPath = (parent: string, name: string): string =>
   parent === "" ? name : `${parent}/${name}`
 
