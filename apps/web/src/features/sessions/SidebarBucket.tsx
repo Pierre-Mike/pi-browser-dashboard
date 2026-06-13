@@ -158,16 +158,6 @@ const ProjectTitle = ({
       </span>
     )}
     <span className="truncate">{title}</span>
-    {project.branch ? (
-      <span
-        data-testid="sidebar-project-branch"
-        data-branch={project.branch}
-        title={`branch: ${project.branch}`}
-        className="shrink-0 max-w-[80px] truncate font-mono text-[10px] font-normal text-slate-500 dark:text-slate-400"
-      >
-        {project.branch}
-      </span>
-    ) : null}
   </Link>
 )
 
