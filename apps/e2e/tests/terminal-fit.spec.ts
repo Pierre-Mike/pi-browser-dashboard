@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import { dispatchDirect, openSessionPage, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Regression: when the terminal tab mounts, the xterm fit pass used to latch
 // onto stale flex dims and leave the terminal stuck at xterm's 80x24 default
@@ -23,8 +23,7 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
     await waitForCard({ page, short, timeout: 20_000 })
     await waitForSettled({ page, short })
 
-    await cardLocator(page, short).locator("a", { hasText: short }).first().click()
-    await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
+    await openSessionPage(page, short)
 
     await page.getByTestId("tab-terminal").click()
     const host = page.getByTestId("terminal-host")

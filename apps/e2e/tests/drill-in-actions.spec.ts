@@ -1,12 +1,19 @@
 import { expect, type Page, test } from "@playwright/test"
-import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import {
+  cardLocator,
+  dispatchDirect,
+  openSessionPage,
+  rmSession,
+  waitForCard,
+  waitForSettled,
+} from "./helpers"
 
 const openDrillIn = async (page: Page, short: string) => {
   await page.goto("/")
   await waitForCard({ page, short, timeout: 20_000 })
   await waitForSettled({ page, short })
-  await cardLocator(page, short).locator("a", { hasText: short }).first().click()
-  await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
+  // Click opens the reply modal; follow its "Open full session" link.
+  await openSessionPage(page, short)
   // Wait for header to stabilize before clicking action buttons.
   await expect(page.getByRole("heading", { level: 1 })).toContainText(short)
 }

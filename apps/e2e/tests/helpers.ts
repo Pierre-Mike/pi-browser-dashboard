@@ -187,6 +187,32 @@ export const rmSession = (short: string): void => {
 export const cardLocator = (page: Page, short: string): Locator =>
   page.locator(`[data-testid="session-card"][data-short="${short}"]`)
 
+// Spawn a trivial session and wait for its card to appear and settle. Returns
+// the short id. Folds the goto/dispatch/wait boilerplate shared by most specs.
+export const spawnSettled = async (page: Page, opts: { cwd?: string } = {}): Promise<string> => {
+  const { short } = await dispatchDirect(undefined, opts)
+  await waitForCard({ page, short, timeout: 20_000 })
+  await waitForSettled({ page, short })
+  return short
+}
+
+// Clicking a session card no longer navigates — it opens the quick-reply
+// modal. Open the modal (and let the caller assert its contents).
+export const openReplyModal = async (page: Page, short: string): Promise<Locator> => {
+  await cardLocator(page, short).getByTestId("session-card-name").click()
+  const modal = page.getByTestId("session-reply-modal")
+  await expect(modal).toBeVisible({ timeout: 10_000 })
+  return modal
+}
+
+// Reach the full drill-in page the way a user now does: open the reply modal,
+// then follow its "Open full session" link.
+export const openSessionPage = async (page: Page, short: string): Promise<void> => {
+  const modal = await openReplyModal(page, short)
+  await modal.getByTestId("reply-open-full").click()
+  await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
+}
+
 // Dashboards default to the Terminal tab; session cards live behind the
 // "projects" tab (on /) or the "sessions" tab (on /projects/$slug). Click
 // whichever is present so card assertions see a populated panel.

@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test"
-import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import { openSessionPage, rmSession, spawnSettled } from "./helpers"
 
-test("spawn → wait settled → click card → drill-in page loads", async ({ page }) => {
+test("spawn → wait settled → click card → reply modal → open full → drill-in page", async ({
+  page,
+}) => {
   await page.goto("/")
-  const { short } = await dispatchDirect()
+  const short = await spawnSettled(page)
   try {
-    await waitForCard({ page, short, timeout: 20_000 })
-    await waitForSettled({ page, short })
-
-    await cardLocator(page, short).locator("a", { hasText: short }).first().click()
-    await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
+    // Click no longer navigates; it opens the quick-reply modal. The full
+    // drill-in is reachable from the modal's "Open full session" link.
+    await openSessionPage(page, short)
 
     // Terminal is the default session tab — switch to chat to see the transcript.
     await page.getByTestId("tab-chat").click()
