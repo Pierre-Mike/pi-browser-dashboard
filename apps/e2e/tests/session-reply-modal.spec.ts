@@ -18,10 +18,12 @@ test("clicking a session card opens the reply modal (no navigation)", async ({ p
     await expect(modal.getByTestId("chat-textarea")).toBeVisible()
     await expect(modal.getByTestId("reply-open-full")).toBeVisible()
 
-    // Escape closes the modal and we are still on the dashboard.
+    // Escape closes the modal; we never left the dashboard for the session
+    // drill-in route (the dashboard keeps its active tab in the query string,
+    // e.g. /?tab=projects, so assert by what we did NOT navigate to).
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("session-reply-modal")).toHaveCount(0)
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).not.toHaveURL(new RegExp(`/sessions/${short}`))
   } finally {
     rmSession(short)
   }
