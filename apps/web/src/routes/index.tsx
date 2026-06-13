@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useState } from "react"
 import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { ExtensionHost } from "../features/extensions/ExtensionHost"
 import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
@@ -10,12 +9,17 @@ import { useProjects } from "../features/projects/useProjects"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
 import { useSessions } from "../features/sessions/useSessions"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
+import { coerceExtTab } from "../lib/tabParams"
 
-export const Route = createFileRoute("/")({
-  component: IndexPage,
-})
-
-type StaticTabKey = "projects" | "terminal" | "claude" | "library" | "extensions" | "tunnel"
+const STATIC_TAB_KEYS = [
+  "terminal",
+  "projects",
+  "claude",
+  "library",
+  "extensions",
+  "tunnel",
+] as const
+type StaticTabKey = (typeof STATIC_TAB_KEYS)[number]
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
 // with a static key.
 type TabKey = StaticTabKey | `ext:${string}`
@@ -28,6 +32,14 @@ const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "extensions", label: "Extensions" },
   { key: "tunnel", label: "Tunnel" },
 ]
+
+export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>): { tab?: TabKey } => {
+    const tab = coerceExtTab(search.tab, STATIC_TAB_KEYS)
+    return tab === undefined ? {} : { tab }
+  },
+  component: IndexPage,
+})
 
 const ProjectsPanel = () => {
   const sessionsQ = useSessions()
@@ -65,7 +77,9 @@ const ProjectsPanel = () => {
 }
 
 function IndexPage() {
-  const [tab, setTab] = useState<TabKey>("terminal")
+  const { tab = "terminal" } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const extensionsQ = useExtensions()
   // Only iframe-tier extensions that contribute a top-level tab.
   // Only enabled iframe-tier extensions that contribute a top-level tab.

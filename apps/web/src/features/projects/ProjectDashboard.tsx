@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router"
+import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
@@ -11,6 +11,8 @@ import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
 import { ProjectTerminal } from "./ProjectTerminal"
+
+const route = getRouteApi("/projects/$id")
 
 type Props = { project: Project }
 
@@ -73,7 +75,9 @@ export const ProjectDashboard = ({ project }: Props) => {
     return base
   }, [project.githubUrl, sessions.length, extPanels])
 
-  const [tab, setTab] = useState<TabKey>("terminal")
+  const { tab = "terminal" } = route.useSearch()
+  const navigate = route.useNavigate()
+  const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const fillViewport =
     tab === "terminal" || tab === "files" || tab === "claude" || tab === "library"
 

@@ -8,11 +8,17 @@ import { TerminalTab } from "../features/sessions/TerminalTab"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
 import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
+import { coerceEnumTab } from "../lib/tabParams"
 import type { SessionState, TranscriptMessage } from "../lib/types"
 
-type Tab = "chat" | "canvas" | "terminal" | "files"
+const SESSION_TABS = ["chat", "canvas", "terminal", "files"] as const
+type Tab = (typeof SESSION_TABS)[number]
 
 export const Route = createFileRoute("/sessions/$id")({
+  validateSearch: (search: Record<string, unknown>): { tab?: Tab } => {
+    const tab = coerceEnumTab(search.tab, SESSION_TABS)
+    return tab === undefined ? {} : { tab }
+  },
   component: SessionDrillIn,
 })
 
@@ -141,7 +147,10 @@ function SessionDrillIn() {
     session !== undefined &&
     session.state !== "stopped" &&
     session.state !== "done"
-  const [tab, setTab] = useState<Tab>("terminal")
+
+  const { tab = "terminal" } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const setTab = (next: Tab) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
 
   const filesQ = useSessionFiles(id)
   const filesChanged = filesQ.data?.changed === true
@@ -157,8 +166,9 @@ function SessionDrillIn() {
 
   // If the tab was on `files` and the changes disappeared, drop back to terminal.
   useEffect(() => {
-    if (tab === "files" && !filesChanged) setTab("terminal")
-  }, [tab, filesChanged])
+    if (tab === "files" && !filesChanged)
+      navigate({ search: (prev) => ({ ...prev, tab: "terminal" }), replace: true })
+  }, [tab, filesChanged, navigate])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const messageCount = transcriptQ.data?.length ?? 0
