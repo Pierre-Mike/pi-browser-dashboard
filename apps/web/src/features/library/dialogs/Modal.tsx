@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 import { MODAL_PANEL } from "./modalLayout"
 
 type Props = {
@@ -10,29 +10,45 @@ type Props = {
 }
 
 export const Modal = ({ open, title, onClose, children, testId }: Props) => {
+  const ref = useRef<HTMLDialogElement>(null)
+
+  // Show via the native top layer (showModal) rather than a plain z-indexed
+  // <dialog open>. A non-modal dialog stays in normal stacking order, so the
+  // xterm terminal canvas — its own stacking context — painted over it: a
+  // session clicked in the sidebar opened the reply modal *behind* the
+  // terminal, invisible and unclickable. The top layer renders above every
+  // sibling stacking context regardless of z-index. We only mount the dialog
+  // while open (see the early return below), and unmounting removes it from
+  // the top layer, so there is nothing to close() here.
+  // Mount-only: the early return below unmounts the dialog whenever it closes,
+  // so each open is a fresh mount and this runs exactly once per opening.
   useEffect(() => {
-    if (!open) return undefined
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [open, onClose])
+    const dlg = ref.current
+    if (dlg && !dlg.open) dlg.showModal()
+  }, [])
 
   if (!open) return null
   return (
-    // Backdrop: clicking the empty area dismisses; Esc dismisses via the effect above.
-    // We use a native <dialog> element so the role and modality are implicit.
+    // Backdrop: clicking the empty area dismisses; Esc fires the native
+    // `cancel` event (handled below). We use a native <dialog> so the role and
+    // modality are implicit. max-w/max-h-none override the UA modal sizing so
+    // the overlay fills the viewport.
     <dialog
-      open
+      ref={ref}
       aria-label={title}
       data-testid={testId}
-      className="fixed inset-0 z-50 m-0 max-w-none w-full h-full bg-slate-900/40 dark:bg-slate-950/60 backdrop:bg-slate-900/40"
+      className="fixed inset-0 z-50 m-0 max-w-none max-h-none w-full h-full bg-slate-900/40 dark:bg-slate-950/60 backdrop:bg-slate-900/40"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose()
+      }}
+      onCancel={(e) => {
+        // Native Esc also closes the dialog and fires `cancel`; drive React
+        // state so the element unmounts and the two stay in sync.
+        e.preventDefault()
+        onClose()
       }}
     >
       <div className={MODAL_PANEL}>
