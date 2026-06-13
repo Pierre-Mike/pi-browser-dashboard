@@ -81,3 +81,9 @@ export const pairTranscript = (messages: readonly TranscriptMessage[]): Transcri
 
   return items
 }
+
+// React key for a transcript row. The array index is always appended so two
+// same-kind rows sharing a second-resolution timestamp can never collide (which
+// otherwise makes React duplicate/omit messages).
+export const transcriptItemKey = (item: TranscriptItem, index: number): string =>
+  `msg-${item.timestamp || index}-${item.kind}-${index}`

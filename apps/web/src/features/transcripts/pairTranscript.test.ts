@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { TranscriptMessage } from "../../lib/types"
-import { pairTranscript } from "./pairTranscript"
+import { pairTranscript, type TranscriptItem, transcriptItemKey } from "./pairTranscript"
 
 const assistantMsg = (content: unknown[], timestamp?: string): TranscriptMessage => ({
   type: "assistant",
@@ -144,5 +144,31 @@ describe("pairTranscript", () => {
       { type: "result", result: undefined },
     ])
     expect(items).toEqual([{ kind: "result", text: "All done", timestamp: "2026-06-10T10:05:00Z" }])
+  })
+})
+
+describe("transcriptItemKey", () => {
+  test("disambiguates same-kind same-timestamp items by index", () => {
+    const ts = "2026-06-11T16:42:34Z"
+    const items: TranscriptItem[] = [
+      { kind: "user", blocks: [{ kind: "text", text: "hi" }], timestamp: ts },
+      { kind: "user", blocks: [{ kind: "text", text: "again" }], timestamp: ts },
+    ]
+    const a = transcriptItemKey(items[0] as TranscriptItem, 0)
+    const b = transcriptItemKey(items[1] as TranscriptItem, 1)
+    expect(a).not.toBe(b)
+  })
+
+  test("yields a unique key for every item in a transcript", () => {
+    const ts = "2026-06-11T16:42:34Z"
+    const items: TranscriptItem[] = [
+      { kind: "user", blocks: [], timestamp: ts },
+      { kind: "user", blocks: [], timestamp: ts },
+      { kind: "assistant", blocks: [], timestamp: ts },
+      { kind: "assistant", blocks: [] },
+      { kind: "result", text: "done" },
+    ]
+    const keys = items.map((item, i) => transcriptItemKey(item, i))
+    expect(new Set(keys).size).toBe(items.length)
   })
 })
