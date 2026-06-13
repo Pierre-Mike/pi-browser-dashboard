@@ -6,7 +6,7 @@ import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
 import { useExtensions } from "../extensions/useExtensions"
 import { LibraryPanel } from "../library/LibraryPanel"
-import { SessionCard } from "../sessions/SessionCard"
+import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
@@ -65,7 +65,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   const tabs: readonly Tab[] = useMemo(() => {
     const base: Tab[] = [
       { key: "terminal", label: "Terminal" },
-      { key: "sessions", label: `Sessions${sessions.length ? ` · ${sessions.length}` : ""}` },
+      { key: "sessions", label: `Activity${sessions.length ? ` · ${sessions.length}` : ""}` },
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
     base.push({ key: "files", label: "Files" })
@@ -213,11 +213,12 @@ export const ProjectDashboard = ({ project }: Props) => {
             No sessions yet — use <span className="font-medium">Spawn new +</span> to start one.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {sessions.map((s) => (
-              <SessionCard key={s.short} session={s} />
-            ))}
-          </div>
+          <RecentSessionsFeed
+            projects={[project]}
+            sessions={sessions}
+            showProjectName={false}
+            limit={Number.POSITIVE_INFINITY}
+          />
         )}
       </div>
 
