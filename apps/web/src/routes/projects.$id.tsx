@@ -1,8 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { ProjectDashboard } from "../features/projects/ProjectDashboard"
 import { useProjects } from "../features/projects/useProjects"
+import { coerceExtTab } from "../lib/tabParams"
+
+const PROJECT_STATIC_TAB_KEYS = [
+  "sessions",
+  "github",
+  "terminal",
+  "files",
+  "claude",
+  "library",
+] as const
+type ProjectTabKey = (typeof PROJECT_STATIC_TAB_KEYS)[number] | `ext:${string}`
 
 export const Route = createFileRoute("/projects/$id")({
+  validateSearch: (search: Record<string, unknown>): { tab?: ProjectTabKey } => {
+    const tab = coerceExtTab(search.tab, PROJECT_STATIC_TAB_KEYS)
+    return tab === undefined ? {} : { tab }
+  },
   component: ProjectDashboardPage,
 })
 
