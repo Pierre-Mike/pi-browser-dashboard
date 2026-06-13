@@ -27,6 +27,17 @@ describe("TREE_UNSAFE_CSS", () => {
     expect(TREE_UNSAFE_CSS).toContain("[data-item-section='content']")
     expect(TREE_UNSAFE_CSS).toContain("flex-grow: 1")
   })
+
+  it("re-detects overflow with em under a Safari-only guard (lib's 1lh query breaks in WebKit)", () => {
+    // WebKit resolves `lh` to ~0 inside a container-type:size query, so the
+    // lib's `@container measure (height > 1lh)` is always true and over-truncates
+    // every label. The override must be Safari-scoped and use an `em` threshold,
+    // and must not reintroduce a 1lh container condition.
+    expect(TREE_UNSAFE_CSS).toContain("@supports (-webkit-hyphens: none)")
+    expect(TREE_UNSAFE_CSS).toContain("@container measure (height > 2em)")
+    expect(TREE_UNSAFE_CSS).toContain("[data-truncate-marker]")
+    expect(TREE_UNSAFE_CSS).not.toContain("1lh")
+  })
 })
 
 describe("formatSize", () => {
