@@ -1,5 +1,9 @@
 # pi-browser-dashboard — Feature Demo Recordings
 
+> **🎛️ Live feature tour:** [pierre-mike.github.io/pi-browser-dashboard](https://pierre-mike.github.io/pi-browser-dashboard/)
+> — the same recordings, grouped by user story in a browsable UI ([`index.html`](./index.html),
+> published to GitHub Pages by [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml)).
+
 Animated-GIF walkthroughs of every feature, recorded against the local dev app
 (`bun run dev` → http://localhost:5173) by driving **headless Google Chrome** with
 Playwright. One feature per recording, one browser context (tab) per recording —
