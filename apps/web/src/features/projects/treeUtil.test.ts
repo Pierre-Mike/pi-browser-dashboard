@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test"
-import { formatSize, joinPath, parentOf, TREE_UNSAFE_CSS } from "./treeUtil"
+import { formatSize, joinPath, parentOf, TREE_INITIAL_EXPANSION, TREE_UNSAFE_CSS } from "./treeUtil"
+
+describe("TREE_INITIAL_EXPANSION", () => {
+  it("starts directories collapsed so large repos don't render every file up front", () => {
+    // Big repos flood the pane when every directory auto-expands; collapse by
+    // default and let the user drill in. See @pierre/trees FileTreeInitialExpansion.
+    expect(TREE_INITIAL_EXPANSION).toBe("closed")
+  })
+})
 
 describe("joinPath", () => {
   it("returns the name when parent is empty", () => {

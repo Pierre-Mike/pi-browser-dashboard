@@ -7,7 +7,7 @@ import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
-import { formatSize, TREE_UNSAFE_CSS } from "./treeUtil"
+import { formatSize, TREE_INITIAL_EXPANSION, TREE_UNSAFE_CSS } from "./treeUtil"
 import {
   projectDownloadUrl,
   projectRawUrl,
@@ -308,7 +308,7 @@ const TreePane = ({
   const { model } = useFileTree({
     paths,
     gitStatus,
-    initialExpansion: "open",
+    initialExpansion: TREE_INITIAL_EXPANSION,
     search: true,
     unsafeCSS: TREE_UNSAFE_CSS,
     initialSelectedPaths: selected ? [selected] : undefined,

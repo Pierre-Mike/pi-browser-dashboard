@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 import {
@@ -101,6 +101,31 @@ test("Files tab fills viewport height and the tree list scrolls within it", asyn
   await expect(scroller).toBeVisible()
   const scrollOverflow = await scroller.evaluate((el) => getComputedStyle(el).overflowY)
   expect(scrollOverflow).toBe("auto")
+})
+
+// Large repos flood the pane if every directory auto-expands, so directories
+// start collapsed: a top-level directory row shows, but its nested file does
+// not until the user expands it.
+test("file tree starts with directories collapsed", async ({ page }) => {
+  const projectPath = ensureProject("proj-tree-collapsed", { gitInit: true })
+  mkdirSync(join(projectPath, "src"), { recursive: true })
+  writeFileSync(join(projectPath, "src", "nested.ts"), "export const v = 1\n")
+
+  await page.goto("/projects/proj-tree-collapsed")
+  await expect(page.locator('[data-testid="project-dashboard"]')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId("project-tab-files").click()
+  const tree = page.getByTestId("project-file-tree")
+  await expect(tree).toBeVisible()
+
+  // The directory row renders; its child file must be hidden while collapsed.
+  const dirRow = tree.getByRole("treeitem", { name: "src" })
+  await expect(dirRow).toBeVisible()
+  await expect(tree.getByRole("treeitem", { name: "nested.ts" })).toHaveCount(0)
+
+  // Expanding the directory reveals the nested file.
+  await dirRow.click()
+  await expect(tree.getByRole("treeitem", { name: "nested.ts" })).toBeVisible()
 })
 
 test("project dashboard hides GitHub tab when no github origin", async ({ page }) => {
