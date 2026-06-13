@@ -1,7 +1,12 @@
 import { useState } from "react"
 import type { TranscriptMessage } from "../../lib/types"
 import { asString } from "./flattenContent"
-import { type PairedBlock, pairTranscript, type ToolResultInfo } from "./pairTranscript"
+import {
+  type PairedBlock,
+  pairTranscript,
+  type ToolResultInfo,
+  transcriptItemKey,
+} from "./pairTranscript"
 
 type Props = { messages: readonly TranscriptMessage[] }
 
@@ -323,7 +328,7 @@ export const TranscriptView = ({ messages }: Props) => {
     <div className="flex flex-col gap-2.5">
       {items.map((item, i) => {
         const time = timeStr(item.timestamp)
-        const key = `msg-${item.timestamp || i}-${item.kind}`
+        const key = transcriptItemKey(item, i)
 
         if (item.kind === "user") {
           return <UserBubble key={key} blocks={item.blocks} time={time} />
