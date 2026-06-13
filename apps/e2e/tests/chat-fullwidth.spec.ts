@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { cardLocator, dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import { dispatchDirect, openSessionPage, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Regression guard: the chat pane (transcript + composer) must fill the
 // available column, not be capped at the old max-w-3xl (768px) reading width.
@@ -17,8 +17,7 @@ test("chat tab fills available width (not capped at max-w-3xl)", async ({ page }
     await waitForCard({ page, short, timeout: 20_000 })
     await waitForSettled({ page, short })
 
-    await cardLocator(page, short).locator("a", { hasText: short }).first().click()
-    await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
+    await openSessionPage(page, short)
     await expect(page.getByText("Loading transcript…")).toHaveCount(0, { timeout: 15_000 })
 
     // Terminal is the default session tab — switch to chat for this assertion.

@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router"
+import { useState } from "react"
 import { stateColor, stateTitle } from "../../lib/format"
 import type { Project, SessionState } from "../../lib/types"
 import { clampMenuPosition } from "./contextMenu"
 import { MENU_HEIGHT, MENU_WIDTH } from "./SessionContextMenu"
+import { SessionReplyModal } from "./SessionReplyModal"
 import type { SidebarBucket as Bucket } from "./sidebarUtil"
 import {
   dropTargetId,
@@ -296,11 +298,12 @@ const SessionRow = ({
   onContextMenu: (menu: SessionMenu) => void
 }) => {
   const tone = stateColor(session.state)
+  const [replyOpen, setReplyOpen] = useState(false)
   return (
     <li>
-      <Link
-        to="/sessions/$id"
-        params={{ id: session.short }}
+      <button
+        type="button"
+        onClick={() => setReplyOpen(true)}
         data-testid="sidebar-session"
         data-short={session.short}
         data-active={String(active)}
@@ -320,7 +323,9 @@ const SessionRow = ({
         }}
         // Status reads as colour, not a text badge: the name is tinted by state
         // and a matching dot leads the row. Hover (title) spells the status out.
-        className={`relative flex items-center gap-2 pl-2 pr-1.5 py-1 rounded text-[11.5px] leading-tight ${
+        // Click opens the quick-reply modal instead of navigating to the
+        // full session view.
+        className={`relative flex w-full items-center gap-2 pl-2 pr-1.5 py-1 rounded text-left text-[11.5px] leading-tight ${
           active
             ? "bg-sky-100 dark:bg-sky-900/50 text-sky-900 dark:text-sky-100 font-medium shadow-[inset_2px_0_0_0] shadow-sky-500"
             : `${tone.text} hover:bg-slate-50 dark:hover:bg-slate-900/60`
@@ -332,7 +337,10 @@ const SessionRow = ({
           aria-hidden
         />
         <span className="truncate flex-1">{sessionLabel(session)}</span>
-      </Link>
+      </button>
+      {replyOpen ? (
+        <SessionReplyModal open session={session} onClose={() => setReplyOpen(false)} />
+      ) : null}
     </li>
   )
 }
