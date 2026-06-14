@@ -24,11 +24,32 @@ bun run dev                    # start the app on :5173 (in another shell)
 # save the "Recorder script" below as record.mjs at the repo root, then:
 node record.mjs                # record all 19 features
 node record.mjs 11             # re-record only feature 11 (canvas)
-DEMO_SESSION=<id> DEMO_PROJECT=<slug> node record.mjs
+DEMO_SESSION=<id> DEMO_SESSION_DIFF=<id> DEMO_PROJECT=<slug> node record.mjs
+DEMO_BASE=http://localhost:5180 node record.mjs   # record against a different host/port
 ```
 
 Each clip: navigate → 3–6 deliberate actions with ~1s waits → context close flushes a
 `.webm` → `ffmpeg` trims the blank pre-mount intro (`-ss 1.0`) and encodes a light gif.
+
+**Picking demo targets.** `DEMO_SESSION` should be a session with a rich transcript (for the
+chat clip) and a live terminal; `DEMO_SESSION_DIFF` should be a *different* session whose
+worktree has a small diff — the main demo session usually changes too many files, so its diff
+renders as "truncated". Read both from the daemon: `curl -s localhost:8787/sessions` and
+`curl -s localhost:8787/sessions/<id>/files`.
+
+**Two gotchas worth knowing (both cost real time to debug):**
+
+1. **The terminal mounts cold.** The embedded xterm needs a keypress — often several — before
+   the shell repaints its prompt. The recorder's `wakeTerminal()` clicks into the pane, sends a
+   few `Enter`s, then runs a short visible command (`ls`, `git status`, …) so the clip shows a
+   live shell rather than an empty black box.
+2. **Stale Vite dep-optimize → blank diffs/markdown.** The diff viewer (`@pierre/diffs`) and
+   markdown panels lazy-import chunks (`github-dark`, `markdown`). If the dev server's
+   `.vite/deps` cache is stale it answers those imports with `504 (Outdated Optimize Dep)` and
+   the panels render **empty** — no error on screen. Record against a freshly-started server
+   (`rm -rf apps/web/.vite && PID_WEB_PORT=5180 bun run dev:web`, then
+   `DEMO_BASE=http://localhost:5180`) to be sure the chunks load.
+
 The session/project IDs used as demo targets were read from the live app's rendered
 `a[href*="/sessions/"]` / `a[href*="/projects/"]` links.
 
@@ -118,14 +139,17 @@ import { mkdirSync, rmSync, statSync, mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const BASE = 'http://localhost:5173';
+const BASE = process.env.DEMO_BASE || 'http://localhost:5173';
 const ROOT = resolve('.');
 const VID = mkdtempSync(join(tmpdir(), 'pid-demo-'));
 const GIFS = join(ROOT, 'doc', 'demo', 'gifs');
 mkdirSync(GIFS, { recursive: true });
 
 // real session/project discovered from the running app (override via env)
-const SESS = process.env.DEMO_SESSION || 'c80aff91';
+const SESS = process.env.DEMO_SESSION || '0d3e5351';
+// A separate session whose worktree has a small, untruncated diff — the main
+// demo session changes too many files, so its diff renders as "truncated".
+const SESS_DIFF = process.env.DEMO_SESSION_DIFF || 'dde8d1df';
 const PROJ = process.env.DEMO_PROJECT || 'pi-browser-dashboard';
 const VW = { width: 1280, height: 800 };
 const log = (...a) => console.log('[rec]', ...a);
@@ -160,6 +184,25 @@ async function hoverFirstCard(page) {
   }
 }
 
+// The xterm pane often mounts "cold": it needs a keypress (or several) before
+// the shell redraws its prompt. Click into the terminal, send a few Enters to
+// wake it, then run a short visible command so the clip shows a live shell.
+async function wakeTerminal(page, cmd = 'ls') {
+  const term = page.locator('.xterm-screen, .xterm, textarea.xterm-helper-textarea, canvas').first();
+  try {
+    await term.waitFor({ state: 'visible', timeout: 6000 });
+    await term.click({ timeout: 2500, position: { x: 80, y: 40 } });
+  } catch { /* fall back to page-level keys */ }
+  // Multiple Enters: wakes the pane and forces the prompt to paint.
+  for (let i = 0; i < 4; i++) { await page.keyboard.press('Enter'); await page.waitForTimeout(450); }
+  await page.waitForTimeout(700);
+  // Type a benign command character-by-character so the keystrokes are visible.
+  await page.keyboard.type(cmd, { delay: 90 });
+  await page.waitForTimeout(500);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(2200);
+}
+
 const features = [
   { file: '01-activity-feed', url: '/', async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Activity'], { exact: true }); await page.waitForTimeout(1500);
@@ -172,10 +215,14 @@ const features = [
   }},
   { file: '03-spawn-modal', url: '/', async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Spawn session', 'Spawn', 'New session', '+']);
-      await page.waitForTimeout(2000); await page.keyboard.press('Escape'); await page.waitForTimeout(700);
+      await page.waitForTimeout(900);
+      // Type a sample prompt so the dispatch bar shows real intent, then leave it open.
+      try { await page.keyboard.type('Refactor the auth guard and add tests', { delay: 35 }); } catch {}
+      await page.waitForTimeout(2200);
   }},
   { file: '04-terminal-global', url: '/', async run(page) {
-      await page.waitForTimeout(1200); await clickAny(page, ['Terminal'], { exact: true }); await page.waitForTimeout(2500);
+      await page.waitForTimeout(1200); await clickAny(page, ['Terminal'], { exact: true }); await page.waitForTimeout(1500);
+      await wakeTerminal(page, 'ls');
   }},
   { file: '05-claude-config', url: '/', async run(page) {
       await page.waitForTimeout(1200); await clickAny(page, ['Claude'], { exact: true }); await page.waitForTimeout(2200);
@@ -203,10 +250,16 @@ const features = [
       await page.mouse.wheel(0, 200); await page.waitForTimeout(800);
   }},
   { file: '12-terminal-session', url: `/sessions/${SESS}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['terminal', 'Terminal'], { exact: true }); await page.waitForTimeout(2500);
+      await page.waitForTimeout(1500); await clickAny(page, ['terminal', 'Terminal'], { exact: true }); await page.waitForTimeout(1500);
+      await wakeTerminal(page, 'git status');
   }},
-  { file: '13-files-diff', url: `/sessions/${SESS}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['Files', 'files'], { exact: true }); await page.waitForTimeout(2200);
+  { file: '13-files-diff', url: `/sessions/${SESS_DIFF}`, async run(page) {
+      // The Files tab only mounts once the worktree-diff query resolves — wait for it.
+      await page.waitForTimeout(2500);
+      const filesTab = page.locator('[data-testid="tab-files"]');
+      try { await filesTab.waitFor({ state: 'visible', timeout: 6000 }); await filesTab.click({ timeout: 2500 }); log('clicked tab-files'); }
+      catch { await clickAny(page, ['Files', 'files']); }
+      await page.waitForTimeout(2200);
       await page.mouse.wheel(0, 400); await page.waitForTimeout(800);
   }},
   { file: '14-project-sessions', url: `/projects/${PROJ}`, async run(page) {
@@ -214,11 +267,17 @@ const features = [
       await page.mouse.wheel(0, 350); await page.waitForTimeout(900);
   }},
   { file: '15-github', url: `/projects/${PROJ}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['GitHub'], { exact: true }); await page.waitForTimeout(2500);
-      await page.mouse.wheel(0, 400); await page.waitForTimeout(900);
+      await page.waitForTimeout(1500); await clickAny(page, ['GitHub'], { exact: true }); await page.waitForTimeout(2000);
+      // Open the first PR row to reveal its inline, syntax-highlighted diff.
+      const pr = page.locator('[data-testid="gh-pr-toggle"]').first();
+      try { await pr.waitFor({ state: 'visible', timeout: 5000 }); await pr.click({ timeout: 2500 }); log('opened PR diff'); }
+      catch { /* fall back to just the list */ }
+      await page.waitForTimeout(3500);
+      await page.mouse.wheel(0, 450); await page.waitForTimeout(1000);
   }},
   { file: '16-terminal-project', url: `/projects/${PROJ}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['Terminal'], { exact: true }); await page.waitForTimeout(2500);
+      await page.waitForTimeout(1500); await clickAny(page, ['Terminal'], { exact: true }); await page.waitForTimeout(1500);
+      await wakeTerminal(page, 'git log --oneline -5');
   }},
   { file: '17-files-tree', url: `/projects/${PROJ}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Files'], { exact: true }); await page.waitForTimeout(2000);

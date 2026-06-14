@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>pi-browser-dashboard — Feature Tour</title>
-<meta name="description" content="A browser front-end to Claude Code background sessions. Animated walkthroughs of every feature, grouped by what you're trying to get done." />
+<meta name="description" content="A browser front-end to Claude Code background sessions. Animated walkthroughs of every feature, told as the things you actually sit down to do." />
 <meta property="og:title" content="pi-browser-dashboard — Feature Tour" />
-<meta property="og:description" content="Animated walkthroughs of every feature, grouped by user story." />
+<meta property="og:description" content="Drive your Claude Code agents from any browser. Every feature, told as a real user story." />
 <meta property="og:type" content="website" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎛️</text></svg>" />
 <style>
@@ -83,7 +83,7 @@
   }
   .hero p.lede {
     font-size: clamp(16px, 2.4vw, 20px); color: var(--muted);
-    max-width: 720px; margin: 0 auto 28px;
+    max-width: 730px; margin: 0 auto 28px;
   }
   .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
@@ -102,6 +102,31 @@
   .stat .n { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
   .stat .l { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .08em; }
 
+  /* ---- walkthrough (end-to-end story) ---- */
+  .walk { max-width: var(--maxw); margin: 0 auto; padding: 40px 20px 8px; }
+  .walk-head { text-align: center; margin-bottom: 36px; }
+  .walk-head .story-kicker { justify-content: center; }
+  .walk-head h2 { font-size: clamp(22px, 3.4vw, 32px); letter-spacing: -.02em; margin: 0 0 8px; font-weight: 750; }
+  .walk-head p { color: var(--muted); max-width: 680px; margin: 0 auto; font-size: 16px; }
+  .steps {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+  .step {
+    position: relative; display: flex; gap: 14px; align-items: flex-start;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; transition: border-color .15s ease, transform .15s ease;
+  }
+  .step:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .step .num {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
+    display: grid; place-items: center; font-weight: 800; font-size: 14px;
+    color: #0a0c10; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  }
+  .step h3 { margin: 0 0 4px; font-size: 15.5px; font-weight: 650; }
+  .step p { margin: 0 0 8px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  .step a.jump { font-size: 12.5px; font-weight: 600; }
+
   /* ---- story sections ---- */
   main { max-width: var(--maxw); margin: 0 auto; padding: 0 20px 80px; }
   .story { padding-top: 64px; }
@@ -116,6 +141,12 @@
   }
   .story h2 .quote { color: var(--text); }
   .story-desc { color: var(--muted); max-width: 760px; margin: 0; font-size: 16px; }
+  .story-scenario {
+    max-width: 760px; margin: 16px 0 0; padding: 12px 16px; font-size: 15px;
+    color: var(--text); background: var(--bg-soft);
+    border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  }
+  .story-scenario .you { color: var(--accent-2); font-weight: 600; }
 
   .grid {
     display: grid; gap: 20px; margin-top: 28px;
@@ -195,14 +226,16 @@
 </header>
 
 <section class="hero">
-  <h1>Drive Claude Code background sessions<br />from your browser.</h1>
+  <h1>Your Claude Code agents,<br />on a screen you can actually drive.</h1>
   <p class="lede">
-    Same supervisor, same worktrees, same auto-cleanup — a richer surface. A live grid of
-    agent sessions reachable from any device, with permission control, transcripts, diffs,
-    terminals and project tooling built in. Here's every feature, grouped by what you're trying to get done.
+    You kick off background sessions from the CLI — then lose them: buried in tmux panes,
+    invisible from your phone, impossible to compare. pi-browser-dashboard puts the whole fleet
+    on one live page — spawn, watch, steer, review, and ship — without leaving the browser.
+    Same supervisor, same worktrees, same auto-cleanup. Below: every feature, told as the thing
+    you actually sat down to do.
   </p>
   <div class="cta">
-    <a class="btn primary" href="#story-1">Take the tour ↓</a>
+    <a class="btn primary" href="#walkthrough">See a day in the life ↓</a>
     <a class="btn" href="https://github.com/Pierre-Mike/pi-browser-dashboard#quick-start" target="_blank" rel="noopener">Quick start</a>
   </div>
   <div class="stats">
@@ -211,6 +244,15 @@
     <div class="stat"><div class="n">3</div><div class="l">Surfaces</div></div>
     <div class="stat"><div class="n">0</div><div class="l">Databases</div></div>
   </div>
+</section>
+
+<section class="walk" id="walkthrough">
+  <div class="walk-head">
+    <div class="story-kicker"><span class="ico">🗓️</span>A day driving the fleet</div>
+    <h2>One bug report, start to finish.</h2>
+    <p>Every feature in this dashboard exists to move one of these eight moments forward. Here's how they chain together on an ordinary morning — each step jumps to the feature that powers it.</p>
+  </div>
+  <div class="steps" id="walkSteps"></div>
 </section>
 
 <main id="main"></main>
@@ -225,19 +267,22 @@
 
 <footer>
   <div class="footer-inner">
-    <div>Recorded against the local dev app by driving headless Chrome with Playwright. One feature per clip.</div>
+    <div>Every clip recorded against the live dev app by driving real Chrome with Playwright — one feature per clip, no mockups.</div>
     <div>MIT · <a href="https://github.com/Pierre-Mike/pi-browser-dashboard" target="_blank" rel="noopener">source</a> · <code>bun run dev</code></div>
   </div>
 </footer>
 
 <script>
-// Feature tour data — 19 features regrouped into 8 user stories.
+// Feature tour data — 19 features regrouped into 8 user stories. Each story
+// carries a `scenario`: a moment from a real workflow, so the page reads as
+// "things you do", not "things the app has".
 const STORIES = [
   {
     id: "story-1", nav: "Monitor", icon: "📡",
     kicker: "Monitor the fleet",
     title: "“Show me everything my agents are doing, at a glance.”",
     desc: "A live grid of session cards refreshed over SSE from the supervisor's roster. Group, pin, and filter — across the whole machine or a single project.",
+    scenario: "It's 9am and six agents ran overnight. You open one page and instantly see which finished, which are blocked waiting on you, and which are still churning — no terminals opened.",
     items: [
       { gif: "01-activity-feed", surface: "Home", title: "Activity feed", desc: "Sessions / projects grid with live state badges and card hover detail." },
       { gif: "02-sidebar", surface: "Home", title: "Sidebar navigation", desc: "Project buckets — pinned plus by-state grouping, with “show more”." },
@@ -247,8 +292,9 @@ const STORIES = [
   {
     id: "story-2", nav: "Dispatch", icon: "🚀",
     kicker: "Dispatch & steer",
-    title: "“Spawn work and keep my hands on the controls.”",
+    title: "“Spawn the work and keep my hands on the controls.”",
     desc: "Type a prompt, pick an agent and permission mode, fan out N parallel sessions in one click — then peek, open in CLI, or stop any session from its header.",
+    scenario: "A bug report lands. You type the fix prompt, pick the tdd skill and auto-accept mode, and fan out three attempts at once — then peek at each summary to pick the winner.",
     items: [
       { gif: "03-spawn-modal", surface: "Home", title: "Spawn modal", desc: "Dispatch bar: prompt box, skill chips, permission mode, N-sessions." },
       { gif: "09-session-controls", surface: "Session", title: "Session controls + Peek", desc: "Header (name / state / short id / cwd), Open-in-CLI, Peek summary, Delete." },
@@ -258,10 +304,11 @@ const STORIES = [
     id: "story-3", nav: "Follow", icon: "👁️",
     kicker: "Follow the work",
     title: "“Watch the work as it happens.”",
-    desc: "Read the agent's reasoning as a rendered transcript, inspect the worktree diff line-by-line, or open the JSON-Canvas it's building.",
+    desc: "Read the agent's reasoning as a rendered transcript, inspect the worktree diff line-by-line, or open the JSON-Canvas it's sketching the plan on.",
+    scenario: "An agent has been running ten minutes. You scroll its transcript to see which files it touched and why, watch the worktree diff grow line by line, and open the canvas it planned on.",
     items: [
-      { gif: "10-chat", surface: "Session", title: "Chat transcript", desc: "JSONL transcript: tool-use, tool-result and assistant blocks." },
-      { gif: "13-files-diff", surface: "Session", title: "Files diff", desc: "Worktree diff viewer for the session's changes." },
+      { gif: "10-chat", surface: "Session", title: "Chat transcript", desc: "JSONL transcript: tool-use, tool-result and assistant blocks, rendered." },
+      { gif: "13-files-diff", surface: "Session", title: "Files diff", desc: "Syntax-highlighted worktree diff of everything the session changed." },
       { gif: "11-canvas", surface: "Session", title: "Canvas", desc: "JSON-Canvas editor: Box/Link/File/Group/Export toolbar, grid, minimap, zoom." },
     ],
   },
@@ -270,9 +317,10 @@ const STORIES = [
     kicker: "Review & ship",
     title: "“Review the code and ship the PR.”",
     desc: "Browse the project file tree with previews, then read pull requests and their diffs inline — without leaving the dashboard.",
+    scenario: "The agent says it's done. You skim the file tree, open the pull request it raised, read the diff inline with full syntax highlighting, and approve — before the coffee gets cold.",
     items: [
       { gif: "17-files-tree", surface: "Project", title: "Project files tree", desc: "Full file tree with markdown / image / PDF preview." },
-      { gif: "15-github", surface: "Project", title: "GitHub / PR diff", desc: "Pull-request list with an inline PR-diff viewer." },
+      { gif: "15-github", surface: "Project", title: "GitHub / PR diff", desc: "Pull-request list with an inline, syntax-highlighted PR-diff viewer." },
     ],
   },
   {
@@ -280,8 +328,9 @@ const STORIES = [
     kicker: "Drop to a shell",
     title: "“Drop into a real terminal when I need one.”",
     desc: "Embedded xterm.js attached to a zellij layout — globally, per session, or rooted at a project path. Fall back to the CLI without losing context.",
+    scenario: "The agent gets stuck on a flaky test. You drop into its live shell, re-run the test yourself, tweak an env var, and hand control back — same worktree, nothing lost.",
     items: [
-      { gif: "04-terminal-global", surface: "Home", title: "Global terminal", desc: "Attached to the zellij “default” shell." },
+      { gif: "04-terminal-global", surface: "Home", title: "Global terminal", desc: "Attached to the zellij “default” shell — a live prompt in the browser." },
       { gif: "12-terminal-session", surface: "Session", title: "Session terminal", desc: "xterm attached to the per-session zellij layout." },
       { gif: "16-terminal-project", surface: "Project", title: "Project terminal", desc: "Shell rooted at the project's path." },
     ],
@@ -291,6 +340,7 @@ const STORIES = [
     kicker: "Tune Claude",
     title: "“See and tune how Claude is configured.”",
     desc: "Browse hooks, skills, settings.json and CLAUDE.md — both your global ~/.claude config and a project's local .claude overrides.",
+    scenario: "A hook isn't firing. You open the config panel, compare your global ~/.claude settings against the project's local .claude overrides, and spot the skill that was shadowing it.",
     items: [
       { gif: "05-claude-config", surface: "Home", title: "Claude config", desc: "hooks / skills / settings.json / CLAUDE.md from ~/.claude." },
       { gif: "18-claude-project", surface: "Project", title: "Project Claude config", desc: "A project's .claude hooks, skills and settings." },
@@ -301,9 +351,10 @@ const STORIES = [
     kicker: "Customize & extend",
     title: "“Extend the dashboard with my own tools.”",
     desc: "Install skills, agents and tools from the catalog, then add iframe extensions gated by per-capability toggles — global or scoped to a project.",
+    scenario: "Your team has a house style for code review. You install the shared skill from the library, toggle on the extension that surfaces it, and scope it to just this project.",
     items: [
-      { gif: "06-library", surface: "Home", title: "Library", desc: "Skills / agents / tools catalog with install entries." },
-      { gif: "07-extensions", surface: "Home", title: "Extensions", desc: "Installed extensions with per-capability toggles." },
+      { gif: "06-library", surface: "Home", title: "Library", desc: "Skills / agents / tools catalog with one-click install entries." },
+      { gif: "07-extensions", surface: "Home", title: "Extensions", desc: "Installed iframe extensions with per-capability toggles." },
       { gif: "19-library-project", surface: "Project", title: "Project Library", desc: "Catalog with an all / global / local scope selector." },
     ],
   },
@@ -312,15 +363,44 @@ const STORIES = [
     kicker: "Reach it anywhere",
     title: "“Reach my dashboard from any device.”",
     desc: "Start a Cloudflare tunnel from the UI and share the URL — the same grid of sessions, now on your phone.",
+    scenario: "You're away from your desk when a session blocks. You start a Cloudflare tunnel, open the URL on your phone, approve the permission, and the agent picks up right where it stopped.",
     items: [
       { gif: "08-tunnel", surface: "Home", title: "Tunnel", desc: "Cloudflare tunnel start / stop with URL controls." },
     ],
   },
 ];
 
+// The end-to-end walkthrough — the eight moments above, in the order a real
+// task hits them. Each step points back at the story that powers it.
+const WALK = [
+  { to: "story-2", title: "Dispatch the fix", text: "A bug report lands. Type the prompt, pick a skill and permission mode, fan out a few parallel attempts." },
+  { to: "story-1", title: "Watch the fleet light up", text: "The new sessions appear on the live grid with state badges — running, blocked, done — updating over SSE." },
+  { to: "story-3", title: "Follow the reasoning", text: "Open the front-runner and read its transcript and growing diff to see exactly what it's doing, and why." },
+  { to: "story-5", title: "Jump in when it's stuck", text: "It trips on a flaky test. Drop into the session's live shell, re-run it, and hand control back." },
+  { to: "story-4", title: "Review the PR inline", text: "It raises a pull request. Skim the file tree, then read the PR diff inline — no tab-switching to GitHub." },
+  { to: "story-6", title: "Tune what felt off", text: "A hook misbehaved mid-run. Compare global vs project Claude config and fix the shadowed skill." },
+  { to: "story-7", title: "Teach it your way", text: "Install your team's review skill from the library and enable the extension that surfaces it." },
+  { to: "story-8", title: "Approve from your phone", text: "You step away; another session blocks. Open the tunnel URL on mobile and approve — it keeps going." },
+];
+
 const GIFDIR = "gifs/";
 const main = document.getElementById("main");
 const navLinks = document.getElementById("navLinks");
+
+// Walkthrough nav link + steps.
+{
+  const wa = document.createElement("a");
+  wa.href = "#walkthrough"; wa.textContent = "Walkthrough"; navLinks.appendChild(wa);
+  document.getElementById("walkSteps").innerHTML = WALK.map((w, i) => `
+    <div class="step" data-step="${i + 1}">
+      <div class="num">${i + 1}</div>
+      <div>
+        <h3>${w.title}</h3>
+        <p>${w.text}</p>
+        <a class="jump" href="#${w.to}">See the feature →</a>
+      </div>
+    </div>`).join("");
+}
 
 for (const s of STORIES) {
   const a = document.createElement("a");
@@ -345,6 +425,7 @@ for (const s of STORIES) {
       <div class="story-kicker"><span class="ico">${s.icon}</span>${s.kicker}</div>
       <h2><span class="quote">${s.title}</span></h2>
       <p class="story-desc">${s.desc}</p>
+      <p class="story-scenario"><span class="you">The moment:</span> ${s.scenario}</p>
     </div>
     <div class="grid">${cards}</div>`;
   main.appendChild(sec);
