@@ -1,14 +1,17 @@
+import { type Node, type NodeProps, NodeResizer } from "@xyflow/react"
 import {
-  Handle,
-  type Node,
-  type NodeProps,
-  NodeResizer,
-  Position,
-  useReactFlow,
-} from "@xyflow/react"
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+  type ChangeEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { classifyEmbed, dispatchCanvasImport, isLoadable } from "./canvasEmbed"
+import { pickedFileRef } from "./canvasInteractions"
 import { colorFor, renderInlineMarkdown } from "./canvasObsidian"
+import { NodeHandles } from "./NodeHandles"
+import { useInlineEdit } from "./useInlineEdit"
 
 // JSON Canvas spec exposes a "file" node — a card referencing a vault file
 // path. We mirror the wire shape: `data.file` holds the path. Rendering is
@@ -16,8 +19,6 @@ import { colorFor, renderInlineMarkdown } from "./canvasObsidian"
 // node stays a stable reference; double-click to edit the path.
 
 type FileNode = Node<{ file?: string; color?: string; locked?: boolean }, "file">
-
-const HANDLE_STYLE = { width: 8, height: 8 }
 
 const basename = (p: string): string => {
   const cleaned = p.replace(/\\/g, "/")
@@ -173,32 +174,23 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
   const initial = typeof data?.file === "string" ? data.file : ""
   const colorKey = typeof data?.color === "string" ? data.color : ""
   const palette = colorFor(colorKey)
-  const [editing, setEditing] = useState(initial.length === 0)
-  const [draft, setDraft] = useState(initial)
-  const { setNodes } = useReactFlow()
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const { editing, setEditing, draft, setDraft, inputRef, commit } =
+    useInlineEdit<HTMLInputElement>({ id, field: "file", initial, autoEdit: true })
+  const pickerRef = useRef<HTMLInputElement | null>(null)
 
-  useEffect(() => {
-    if (!editing) setDraft(initial)
-  }, [editing, initial])
+  // Native system file picker: open the OS dialog, then store the chosen
+  // file's name as the reference (browsers don't expose the full path).
+  const openPicker = useCallback(() => {
+    pickerRef.current?.click()
+  }, [])
 
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editing])
-
-  const commit = useCallback(
-    (next: string) => {
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === id ? { ...n, data: { ...(n.data as Record<string, unknown>), file: next } } : n,
-        ),
-      )
-      setEditing(false)
+  const onPicked = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const ref = pickedFileRef(e.target.files)
+      e.target.value = ""
+      if (ref) commit(ref)
     },
-    [id, setNodes],
+    [commit],
   )
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -242,25 +234,36 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
         lineClassName="border-sky-400"
         handleClassName="bg-sky-500 border-white"
       />
-      <Handle id="top" type="target" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="top" type="source" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="right" type="target" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="right" type="source" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="target" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="left" type="target" position={Position.Left} style={HANDLE_STYLE} />
-      <Handle id="left" type="source" position={Position.Left} style={HANDLE_STYLE} />
+      <NodeHandles />
       {editing ? (
-        <input
-          ref={inputRef}
-          data-testid="canvas-file-input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => commit(draft)}
-          onKeyDown={onKeyDown}
-          placeholder="path/to/file"
-          className="w-full bg-transparent outline-none"
-        />
+        <div className="flex flex-col gap-1">
+          <input
+            ref={inputRef}
+            data-testid="canvas-file-input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(draft)}
+            onKeyDown={onKeyDown}
+            placeholder="path/to/file"
+            className="w-full bg-transparent outline-none"
+          />
+          <button
+            type="button"
+            data-testid="canvas-file-browse"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openPicker}
+            className="self-start rounded border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            Browse…
+          </button>
+          <input
+            ref={pickerRef}
+            type="file"
+            data-testid="canvas-file-picker"
+            onChange={onPicked}
+            className="hidden"
+          />
+        </div>
       ) : initial ? (
         <FilePreview ref={initial} />
       ) : (

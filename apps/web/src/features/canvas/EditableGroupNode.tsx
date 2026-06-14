@@ -1,6 +1,7 @@
-import { type Node, type NodeProps, NodeResizer, useReactFlow } from "@xyflow/react"
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type Node, type NodeProps, NodeResizer } from "@xyflow/react"
+import type { KeyboardEvent } from "react"
 import { colorFor } from "./canvasObsidian"
+import { useInlineEdit } from "./useInlineEdit"
 
 type GroupNode = Node<{ label?: string; color?: string }, "group">
 
@@ -11,33 +12,8 @@ type GroupNode = Node<{ label?: string; color?: string }, "group">
 
 export const EditableGroupNode = ({ id, data, selected }: NodeProps<GroupNode>) => {
   const initial = typeof data?.label === "string" ? data.label : "Group"
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(initial)
-  const { setNodes } = useReactFlow()
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    if (!editing) setDraft(initial)
-  }, [editing, initial])
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editing])
-
-  const commit = useCallback(
-    (next: string) => {
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === id ? { ...n, data: { ...(n.data as Record<string, unknown>), label: next } } : n,
-        ),
-      )
-      setEditing(false)
-    },
-    [id, setNodes],
-  )
+  const { editing, setEditing, draft, setDraft, inputRef, commit } =
+    useInlineEdit<HTMLInputElement>({ id, field: "label", initial })
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {

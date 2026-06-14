@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
 
 // Covers the usability features added on top of the shared-canvas tab:
@@ -6,22 +6,26 @@ import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helper
 //  - select two boxes and wrap them under a "group" parent
 //  - ungroup back to flat boxes
 //  - attach a label to an edge (arrow text)
+//  - double-click empty space to drop a box (Obsidian parity)
 // All assertions ride on data-testid hooks; we deliberately avoid relying on
 // React Flow's internal pixel transforms because they're a moving target.
 
-test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
+// Spin up a fresh session and land on its canvas tab. Returns the short id so
+// the caller can tear the session down in a finally block.
+const openCanvasTab = async (page: Page): Promise<string> => {
   await page.goto("/")
   const { short } = await dispatchDirect()
+  await waitForCard({ page, short, timeout: 20_000 })
+  await waitForSettled({ page, short })
+  await page.goto(`/sessions/${short}`)
+  await page.getByTestId("tab-canvas").click()
+  await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
+  return short
+}
+
+test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
+  const short = await openCanvasTab(page)
   try {
-    await waitForCard({ page, short, timeout: 20_000 })
-    await waitForSettled({ page, short })
-    await page.goto(`/sessions/${short}`)
-
-    // Switch to the canvas tab.
-    await page.getByTestId("tab-canvas").click()
-    const canvas = page.getByTestId("canvas-tab")
-    await expect(canvas).toBeVisible({ timeout: 15_000 })
-
     // Wait for sync to come online so the toolbar actions reach the daemon.
     await expect(page.getByTestId("canvas-status")).toHaveText(/live|connecting/i, {
       timeout: 10_000,
@@ -86,15 +90,8 @@ test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
 })
 
 test("canvas tab — edge label input appears when an edge is selected", async ({ page }) => {
-  await page.goto("/")
-  const { short } = await dispatchDirect()
+  const short = await openCanvasTab(page)
   try {
-    await waitForCard({ page, short, timeout: 20_000 })
-    await waitForSettled({ page, short })
-    await page.goto(`/sessions/${short}`)
-    await page.getByTestId("tab-canvas").click()
-    await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
-
     // The edge label input only mounts when an edge is selected. With no
     // edges drawn yet, it must be absent. This guards against a regression
     // where the input is always-rendered and steals keyboard focus.
@@ -105,6 +102,33 @@ test("canvas tab — edge label input appears when an edge is selected", async (
     await expect(page.getByTestId("canvas-ungroup")).toBeVisible()
     await expect(page.getByTestId("canvas-group")).toBeDisabled()
     await expect(page.getByTestId("canvas-ungroup")).toBeDisabled()
+  } finally {
+    rmSession(short)
+  }
+})
+
+test("canvas tab — double-click empty space creates an editable box", async ({ page }) => {
+  const short = await openCanvasTab(page)
+  try {
+    await expect(page.getByTestId("canvas-status")).toHaveText(/live|connecting/i, {
+      timeout: 10_000,
+    })
+
+    // Fresh canvas: no boxes yet.
+    await expect(page.getByTestId("canvas-node-box")).toHaveCount(0)
+
+    // Obsidian parity: double-clicking the empty pane drops a box, opened
+    // straight into edit mode so the user can type immediately.
+    const pane = page.locator(".react-flow__pane")
+    await pane.dblclick({ position: { x: 240, y: 180 } })
+
+    const box = page.getByTestId("canvas-node-box").first()
+    await expect(box).toBeVisible({ timeout: 10_000 })
+    const input = box.getByTestId("canvas-node-input")
+    await expect(input).toBeVisible()
+    await input.fill("Spawned by double-click")
+    await input.press("Enter")
+    await expect(box.getByTestId("canvas-node-label")).toHaveText("Spawned by double-click")
   } finally {
     rmSession(short)
   }
