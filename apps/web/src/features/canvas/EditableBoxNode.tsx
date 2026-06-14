@@ -1,13 +1,8 @@
-import {
-  Handle,
-  type Node,
-  type NodeProps,
-  NodeResizer,
-  Position,
-  useReactFlow,
-} from "@xyflow/react"
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type Node, type NodeProps, NodeResizer } from "@xyflow/react"
+import type { KeyboardEvent } from "react"
 import { colorFor, renderInlineMarkdown } from "./canvasObsidian"
+import { NodeHandles } from "./NodeHandles"
+import { useInlineEdit } from "./useInlineEdit"
 
 // React Flow gives us a node with `data.label` plus a `selected` flag. We
 // render a rounded card; double-click swaps in a textarea so the user can
@@ -16,43 +11,17 @@ import { colorFor, renderInlineMarkdown } from "./canvasObsidian"
 //
 // Obsidian parity: the card is resizable from any corner when selected, has
 // connection handles on all 4 sides (both source and target), and respects
-// an optional `data.color` key from the Obsidian color palette.
+// an optional `data.color` key from the Obsidian color palette. An empty box
+// (e.g. one dropped by double-clicking empty canvas) opens in edit mode.
 
 type BoxNode = Node<{ label?: string; color?: string }, "box">
-
-const HANDLE_STYLE = { width: 8, height: 8 }
 
 export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
   const initial = typeof data?.label === "string" ? data.label : ""
   const colorKey = typeof data?.color === "string" ? data.color : ""
   const palette = colorFor(colorKey)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(initial)
-  const { setNodes } = useReactFlow()
-  const inputRef = useRef<HTMLTextAreaElement | null>(null)
-
-  useEffect(() => {
-    if (!editing) setDraft(initial)
-  }, [editing, initial])
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editing])
-
-  const commit = useCallback(
-    (next: string) => {
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === id ? { ...n, data: { ...(n.data as Record<string, unknown>), label: next } } : n,
-        ),
-      )
-      setEditing(false)
-    },
-    [id, setNodes],
-  )
+  const { editing, setEditing, draft, setDraft, inputRef, commit } =
+    useInlineEdit<HTMLTextAreaElement>({ id, field: "label", initial, autoEdit: true })
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Obsidian-style: plain Enter commits, Shift+Enter inserts a newline. This
@@ -101,14 +70,7 @@ export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
         lineClassName="border-sky-400"
         handleClassName="bg-sky-500 border-white"
       />
-      <Handle id="top" type="target" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="top" type="source" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="right" type="target" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="right" type="source" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="target" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="left" type="target" position={Position.Left} style={HANDLE_STYLE} />
-      <Handle id="left" type="source" position={Position.Left} style={HANDLE_STYLE} />
+      <NodeHandles />
       {editing ? (
         <textarea
           ref={inputRef}

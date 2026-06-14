@@ -1,13 +1,11 @@
-import {
-  Handle,
-  type Node,
-  type NodeProps,
-  NodeResizer,
-  Position,
-  useReactFlow,
-} from "@xyflow/react"
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
+import { type Node, type NodeProps, NodeResizer } from "@xyflow/react"
+import type { CSSProperties, KeyboardEvent } from "react"
+import { defaultLinkUrl } from "./canvasInteractions"
 import { colorFor } from "./canvasObsidian"
+import { NodeHandles } from "./NodeHandles"
+import { useInlineEdit } from "./useInlineEdit"
+
+type Palette = { stroke: string; fill: string }
 
 // Obsidian Canvas exposes a "link" node type — a card with a URL. We keep the
 // rendering simple: the URL is shown as a clickable host pill plus the full
@@ -16,8 +14,6 @@ import { colorFor } from "./canvasObsidian"
 // — users open the link to follow it.
 
 type LinkNode = Node<{ url?: string; color?: string }, "link">
-
-const HANDLE_STYLE = { width: 8, height: 8 }
 
 const hostOf = (raw: string): string => {
   try {
@@ -29,37 +25,67 @@ const hostOf = (raw: string): string => {
 
 const isSafeUrl = (raw: string): boolean => /^https?:\/\//i.test(raw.trim())
 
+// Local-first: a brand-new (empty) link seeds the editor with the project's
+// own origin so the common case — linking somewhere inside the running app —
+// is one keystroke away.
+const projectLocalUrl = (): string =>
+  typeof window !== "undefined" ? defaultLinkUrl(window.location.origin) : ""
+
+const cardClass = (palette: Palette, selected: boolean): string => {
+  if (palette.stroke) return ""
+  return selected ? "border-sky-500 ring-1 ring-sky-400" : "border-slate-300 dark:border-slate-700"
+}
+
+const cardStyle = (palette: Palette, selected: boolean): CSSProperties | undefined =>
+  palette.stroke
+    ? {
+        borderColor: palette.stroke,
+        boxShadow: selected ? `0 0 0 1px ${palette.stroke}` : undefined,
+        backgroundColor: palette.fill || undefined,
+      }
+    : undefined
+
+// The non-editing body: a clickable host pill (for safe http(s) URLs) or a
+// placeholder, with the full reference shown beneath whenever one is set.
+const LinkBody = ({ url }: { url: string }) => (
+  <>
+    {url && isSafeUrl(url) ? (
+      <a
+        data-testid="canvas-link-href"
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="block text-sky-700 dark:text-sky-300 underline truncate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {hostOf(url)}
+      </a>
+    ) : (
+      <span
+        data-testid="canvas-link-placeholder"
+        className="text-slate-500 dark:text-slate-400 italic"
+      >
+        (link)
+      </span>
+    )}
+    {url ? (
+      <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">{url}</div>
+    ) : null}
+  </>
+)
+
 export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) => {
   const initial = typeof data?.url === "string" ? data.url : ""
   const colorKey = typeof data?.color === "string" ? data.color : ""
   const palette = colorFor(colorKey)
-  const [editing, setEditing] = useState(initial.length === 0)
-  const [draft, setDraft] = useState(initial)
-  const { setNodes } = useReactFlow()
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    if (!editing) setDraft(initial)
-  }, [editing, initial])
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editing])
-
-  const commit = useCallback(
-    (next: string) => {
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === id ? { ...n, data: { ...(n.data as Record<string, unknown>), url: next } } : n,
-        ),
-      )
-      setEditing(false)
-    },
-    [id, setNodes],
-  )
+  const { editing, setEditing, draft, setDraft, inputRef, commit } =
+    useInlineEdit<HTMLInputElement>({
+      id,
+      field: "url",
+      initial,
+      autoEdit: true,
+      seedDraft: initial.length ? initial : projectLocalUrl(),
+    })
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -78,22 +104,8 @@ export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) =>
       data-testid="canvas-node-link"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${
-        palette.stroke
-          ? ""
-          : selected
-            ? "border-sky-500 ring-1 ring-sky-400"
-            : "border-slate-300 dark:border-slate-700"
-      }`}
-      style={
-        palette.stroke
-          ? {
-              borderColor: palette.stroke,
-              boxShadow: selected ? `0 0 0 1px ${palette.stroke}` : undefined,
-              backgroundColor: palette.fill || undefined,
-            }
-          : undefined
-      }
+      className={`group rounded-md border bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${cardClass(palette, selected)}`}
+      style={cardStyle(palette, selected)}
     >
       <NodeResizer
         isVisible={selected}
@@ -102,14 +114,7 @@ export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) =>
         lineClassName="border-sky-400"
         handleClassName="bg-sky-500 border-white"
       />
-      <Handle id="top" type="target" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="top" type="source" position={Position.Top} style={HANDLE_STYLE} />
-      <Handle id="right" type="target" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="right" type="source" position={Position.Right} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="target" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={HANDLE_STYLE} />
-      <Handle id="left" type="target" position={Position.Left} style={HANDLE_STYLE} />
-      <Handle id="left" type="source" position={Position.Left} style={HANDLE_STYLE} />
+      <NodeHandles />
       {editing ? (
         <input
           ref={inputRef}
@@ -121,30 +126,9 @@ export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) =>
           placeholder="https://example.com"
           className="w-full bg-transparent outline-none"
         />
-      ) : initial && isSafeUrl(initial) ? (
-        <a
-          data-testid="canvas-link-href"
-          href={initial}
-          target="_blank"
-          rel="noreferrer"
-          className="block text-sky-700 dark:text-sky-300 underline truncate"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {hostOf(initial)}
-        </a>
       ) : (
-        <span
-          data-testid="canvas-link-placeholder"
-          className="text-slate-500 dark:text-slate-400 italic"
-        >
-          (link)
-        </span>
+        <LinkBody url={initial} />
       )}
-      {!editing && initial ? (
-        <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">
-          {initial}
-        </div>
-      ) : null}
     </div>
   )
 }

@@ -28,6 +28,7 @@ import {
   groupSelected as groupSelectedNodes,
   ungroupNode,
 } from "./canvasGrouping"
+import { isPaneClassName, newBoxAt } from "./canvasInteractions"
 import {
   type ArrowDirection,
   colorFor,
@@ -327,6 +328,20 @@ const CanvasInner = ({ session }: Props) => {
       } as Node,
     ])
   }, [setNodes])
+
+  // Obsidian parity: double-clicking empty canvas drops a fresh box centered
+  // under the cursor and opens it for editing. We guard on the pane class so a
+  // double-click on a node/handle/edge still goes to that element instead.
+  const onPaneDoubleClick = useCallback(
+    (ev: React.MouseEvent) => {
+      if (readOnly) return
+      if (!isPaneClassName((ev.target as HTMLElement).className)) return
+      const point = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY })
+      const box = newBoxAt(point, `n-${Date.now().toString(36)}`)
+      setNodes((prev) => [...prev.map((n) => ({ ...n, selected: false })), box as unknown as Node])
+    },
+    [readOnly, rf, setNodes],
+  )
 
   // --- Grouping (existing) ---------------------------------------------------
 
@@ -1053,7 +1068,8 @@ const CanvasInner = ({ session }: Props) => {
           </span>
         ) : null}
         <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
-          dbl-click box/arrow to edit · Del to remove · drag handles to connect
+          dbl-click empty space to add a box · dbl-click box/arrow to edit · Del to remove · drag
+          handles to connect
         </span>
       </div>
       <div
@@ -1070,12 +1086,14 @@ const CanvasInner = ({ session }: Props) => {
           onConnect={readOnly ? undefined : onConnect}
           onEdgeClick={onEdgeClick}
           onPaneClick={() => setSelectedEdgeId(null)}
+          onDoubleClick={onPaneDoubleClick}
           onEdgeDoubleClick={(_, edge) => {
             setSelectedEdgeId(edge.id)
             setEdgeLabelDraft(typeof edge.label === "string" ? edge.label : "")
           }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
           multiSelectionKeyCode={["Shift", "Meta", "Control"]}
+          zoomOnDoubleClick={false}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
