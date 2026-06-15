@@ -248,6 +248,33 @@ describe("SessionRegistry — state.json delta", () => {
   })
 })
 
+// A session whose state.json carries a `daemonShort` is exposed under that
+// alias (state.short === daemonShort), but the registry map is keyed by the
+// job-dir name. getOne is called with the short the UI holds — the exposed
+// one — so it must resolve the alias, or the terminal WS, GET, stop, and rm
+// all fail with "session <id> not found" for a session that lists fine.
+describe("SessionRegistry — daemonShort alias", () => {
+  it("getOne resolves a session by its exposed short when daemonShort differs from the job dir", async () => {
+    await writeRoster(cfg, { jobdir1: {} })
+    await writeState({
+      cfg,
+      short: "jobdir1",
+      body: { state: "working", detail: "attached", daemonShort: "claude-alias" },
+    })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+
+    // The list exposes the alias …
+    const snap = await api.snapshot()
+    expect(snap.map((s) => s.short)).toContain("claude-alias")
+
+    // … so a by-id lookup with that same alias must succeed.
+    const one = await api.getOne("claude-alias")
+    expect(one?.state).toBe("working")
+    expect(one?.detail).toBe("attached")
+  })
+})
+
 // Reads must stay correct even when the runtime's timers stop firing
 // (observed in production: Bun's timer subsystem died after hours of uptime —
 // sockets kept serving but every 500ms poll watcher froze, so sessions
