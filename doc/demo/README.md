@@ -285,9 +285,17 @@ const features = [
       await page.waitForTimeout(2200);
       await page.mouse.wheel(0, 400); await page.waitForTimeout(800);
   }},
+  // The project's DEFAULT tab is "terminal", so without a click this clip showed a
+  // shell (duplicating feature 16). The session-card grid lives under the "Activity"
+  // tab (key "sessions", labelled "Activity · N") — click it, then guard on cards.
   { file: '14-project-sessions', url: `/projects/${PROJ}`, async run(page) {
-      await page.waitForTimeout(2000); await hoverFirstCard(page); await page.waitForTimeout(900);
-      await page.mouse.wheel(0, 350); await page.waitForTimeout(900);
+      await page.waitForTimeout(1800);
+      if (!(await clickAny(page, ['Activity']))) throw new Error('14: could not open Activity tab');
+      await page.waitForTimeout(1500);
+      const cards = await page.locator('[data-testid="session-card"]').count();
+      if (cards < 1) throw new Error(`14 guard: expected >=1 session card, saw ${cards}`);
+      await page.mouse.wheel(0, 300); await page.waitForTimeout(900);
+      await page.mouse.wheel(0, -150); await page.waitForTimeout(700);
   }},
   { file: '15-github', url: `/projects/${PROJ}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['GitHub'], { exact: true }); await page.waitForTimeout(2000);
