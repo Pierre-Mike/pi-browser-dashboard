@@ -29,6 +29,20 @@ export type ShellRepoApi = {
 
 export class ShellRepo extends Context.Tag("ShellRepo")<ShellRepo, ShellRepoApi>() {}
 
+// Pick the cwd a dispatched session spawns in. An explicit cwd (e.g. a project
+// path) wins; otherwise default sessions start in HOME so they land in the
+// user's `~` rather than wherever the daemon process happens to run. Falls back
+// to '/' when HOME is unset — Bun.spawn rejects an empty cwd.
+export const resolveSpawnCwd = (
+  cwd: string | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+): string => {
+  if (cwd && cwd.length > 0) return cwd
+  const home = env.HOME
+  if (home && home.length > 0) return home
+  return "/"
+}
+
 const SHORT_RE = /backgrounded[^a-z0-9]+([a-z0-9]{4,})/i
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI SGR escapes
 const ANSI_RE = /\x1b\[[0-9;]*m/g
@@ -247,7 +261,8 @@ export const ShellRepoLive: Layer.Layer<ShellRepo> = Layer.succeed(ShellRepo, {
   dispatch: (input) =>
     Effect.gen(function* () {
       const args = buildDispatchArgs(input)
-      const { stdout } = yield* runClaude({ cmd: args, cwd: input.cwd })
+      const cwd = resolveSpawnCwd(input.cwd, process.env)
+      const { stdout } = yield* runClaude({ cmd: args, cwd })
       const short = parseShort(stdout)
       if (!short) {
         return yield* Effect.fail(
