@@ -36,7 +36,6 @@ export const MobileNav = ({ children }: { children: ReactNode }) => {
             <line x1="4" y1="17" x2="20" y2="17" />
           </svg>
         </button>
-        <span className="text-sm font-semibold tracking-tight">pi-browser-dashboard</span>
       </header>
 
       <button
@@ -55,7 +54,10 @@ export const MobileNav = ({ children }: { children: ReactNode }) => {
         onClick={closeOnLink}
         className={`md:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform shadow-xl transition-transform duration-200 ${drawerPanelClass(open)}`}
       >
-        {children}
+        {/* Lazy: the drawer body (a second Sidebar) is only mounted while open,
+            so it never duplicates the desktop sidebar's testids/links nor opens
+            a redundant data subscription. */}
+        {open ? children : null}
       </div>
     </>
   )
