@@ -235,9 +235,17 @@ const features = [
       await page.waitForTimeout(1200); await clickAny(page, ['Claude'], { exact: true }); await page.waitForTimeout(2200);
       await page.mouse.wheel(0, 400); await page.waitForTimeout(900);
   }},
+  // Click a catalog entry so the detail pane renders (the old clip left it on the
+  // "Select an entry…" empty state). Each category has its own hidden empty-state,
+  // so the guard counts VISIBLE ones only.
   { file: '06-library', url: '/', async run(page) {
-      await page.waitForTimeout(1200); await clickAny(page, ['Library'], { exact: true }); await page.waitForTimeout(2200);
-      await page.mouse.wheel(0, 350); await page.waitForTimeout(900);
+      await page.waitForTimeout(1200); await clickAny(page, ['Library'], { exact: true }); await page.waitForTimeout(1800);
+      const entry = page.locator('[data-testid^="library-entry-"]').first();
+      await entry.waitFor({ state: 'visible', timeout: 6000 }); await entry.click({ timeout: 2500 });
+      await page.waitForTimeout(1500);
+      if (await page.getByText('Select an entry to view details.').filter({ visible: true }).count())
+        throw new Error('06 guard: detail pane still empty after click');
+      await page.mouse.wheel(0, 250); await page.waitForTimeout(900);
   }},
   { file: '07-extensions', url: '/', async run(page) {
       await page.waitForTimeout(1200); await clickAny(page, ['Extensions'], { exact: true }); await page.waitForTimeout(2200);
@@ -311,16 +319,29 @@ const features = [
       // --no-pager keeps git from dropping into a pager (the old clip ended on "(END)").
       await wakeTerminal(page, 'git --no-pager log --oneline -8');
   }},
+  // Open a file so the preview pane renders (the old clip left it on "Pick a file
+  // to preview"). The tree splits name/extension into separate spans, so match the
+  // row by partial text, then wait for the preview before holding.
   { file: '17-files-tree', url: `/projects/${PROJ}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['Files'], { exact: true }); await page.waitForTimeout(2000);
-      await page.mouse.wheel(0, 300); await page.waitForTimeout(900);
+      await page.waitForTimeout(1500); await clickAny(page, ['Files'], { exact: true }); await page.waitForTimeout(1800);
+      const row = page.locator('[data-testid="project-file-tree"]').getByText('README', { exact: false }).first();
+      await row.waitFor({ state: 'visible', timeout: 6000 }); await row.click({ timeout: 2500 });
+      await page.locator('[data-testid="file-preview"]').waitFor({ state: 'visible', timeout: 8000 });
+      await page.waitForTimeout(2400);
   }},
   { file: '18-claude-project', url: `/projects/${PROJ}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Claude'], { exact: true }); await page.waitForTimeout(2200);
       await page.mouse.wheel(0, 350); await page.waitForTimeout(900);
   }},
+  // Same empty-detail fix as feature 6, on the project's Library tab.
   { file: '19-library-project', url: `/projects/${PROJ}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['Library'], { exact: true }); await page.waitForTimeout(2200);
+      await page.waitForTimeout(1500); await clickAny(page, ['Library'], { exact: true }); await page.waitForTimeout(1800);
+      const entry = page.locator('[data-testid^="library-entry-"]').first();
+      await entry.waitFor({ state: 'visible', timeout: 6000 }); await entry.click({ timeout: 2500 });
+      await page.waitForTimeout(1500);
+      if (await page.getByText('Select an entry to view details.').filter({ visible: true }).count())
+        throw new Error('19 guard: detail pane still empty after click');
+      await page.mouse.wheel(0, 200); await page.waitForTimeout(900);
   }},
 ];
 
