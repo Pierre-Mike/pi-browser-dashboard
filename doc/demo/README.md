@@ -203,6 +203,13 @@ async function wakeTerminal(page, cmd = 'ls') {
   await page.waitForTimeout(2200);
 }
 
+// Click a button by its data-testid; returns false if it never became clickable.
+async function clickTestId(page, id, { timeout = 2500 } = {}) {
+  const loc = page.locator(`[data-testid="${id}"]`).first();
+  try { await loc.waitFor({ state: 'visible', timeout }); await loc.click({ timeout }); return true; }
+  catch { return false; }
+}
+
 const features = [
   { file: '01-activity-feed', url: '/', async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Activity'], { exact: true }); await page.waitForTimeout(1500);
@@ -238,16 +245,32 @@ const features = [
   { file: '08-tunnel', url: '/', async run(page) {
       await page.waitForTimeout(1200); await clickAny(page, ['Tunnel'], { exact: true }); await page.waitForTimeout(2200);
   }},
-  { file: '09-session-controls', url: `/sessions/${SESS}`, async run(page) {
-      await page.waitForTimeout(2000); await clickAny(page, ['Peek']); await page.waitForTimeout(2500);
+  // Peek triggers a Haiku call (~14s). Wait for the summary panel to render, then
+  // ffmpeg trims the "Peeking…" spinner off the front (ss=11) so the clip lands on
+  // the header controls + the rendered summary instead of a long spinner.
+  { file: '09-session-controls', url: `/sessions/${SESS}`, ss: 11.0, async run(page) {
+      await page.waitForTimeout(1500); await clickAny(page, ['Peek']);
+      try {
+        await page.locator('[data-testid="peek-summary"]').waitFor({ state: 'visible', timeout: 22000 });
+        await page.waitForTimeout(3000);
+      } catch { await page.waitForTimeout(1500); }
   }},
   { file: '10-chat', url: `/sessions/${SESS}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['chat', 'Chat'], { exact: true }); await page.waitForTimeout(1500);
       await page.mouse.wheel(0, 600); await page.waitForTimeout(900); await page.mouse.wheel(0, 600); await page.waitForTimeout(900);
   }},
+  // Canvas persists per session, so an un-touched session renders an *empty* grid.
+  // Clear any leftover nodes, then build a small graph (boxes + a file node + a link
+  // node) via the toolbar and Fit it — so the clip actually demonstrates the editor.
   { file: '11-canvas', url: `/sessions/${SESS}`, async run(page) {
-      await page.waitForTimeout(1500); await clickAny(page, ['canvas', 'Canvas'], { exact: true }); await page.waitForTimeout(2500);
-      await page.mouse.wheel(0, 200); await page.waitForTimeout(800);
+      await page.waitForTimeout(1200); await clickAny(page, ['canvas', 'Canvas'], { exact: true }); await page.waitForTimeout(1000);
+      await clickTestId(page, 'canvas-reset'); await page.waitForTimeout(700);
+      for (let i = 0; i < 3; i++) { await clickTestId(page, 'canvas-add-box'); await page.waitForTimeout(550); }
+      await clickTestId(page, 'canvas-add-file'); await page.waitForTimeout(550);
+      await clickTestId(page, 'canvas-add-link'); await page.waitForTimeout(650);
+      await clickTestId(page, 'canvas-fit'); await page.waitForTimeout(1800);
+      const n = await page.locator('.react-flow__node').count();
+      if (n < 5) throw new Error(`canvas guard: expected >=5 nodes, saw ${n}`);
   }},
   { file: '12-terminal-session', url: `/sessions/${SESS}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['terminal', 'Terminal'], { exact: true }); await page.waitForTimeout(1500);
@@ -277,7 +300,8 @@ const features = [
   }},
   { file: '16-terminal-project', url: `/projects/${PROJ}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Terminal'], { exact: true }); await page.waitForTimeout(1500);
-      await wakeTerminal(page, 'git log --oneline -5');
+      // --no-pager keeps git from dropping into a pager (the old clip ended on "(END)").
+      await wakeTerminal(page, 'git --no-pager log --oneline -8');
   }},
   { file: '17-files-tree', url: `/projects/${PROJ}`, async run(page) {
       await page.waitForTimeout(1500); await clickAny(page, ['Files'], { exact: true }); await page.waitForTimeout(2000);
@@ -294,10 +318,11 @@ const features = [
 
 const only = process.argv[2];
 
-function toGif(webm, gifPath) {
-  // -ss 1.0 trims the blank pre-React-mount intro; lighten: 7fps, 760px, 100 colors
+function toGif(webm, gifPath, ss = 1.0) {
+  // ss trims the front: 1.0 drops the blank pre-React-mount intro; a larger ss
+  // (e.g. feature 9) also skips a slow Peek spinner. Lighten: 7fps, 760px, 100 colors.
   const vf = 'fps=7,scale=760:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=100[p];[s1][p]paletteuse=dither=bayer';
-  execFileSync('ffmpeg', ['-y', '-ss', '1.0', '-i', webm, '-vf', vf, '-loop', '0', gifPath], { stdio: 'ignore' });
+  execFileSync('ffmpeg', ['-y', '-ss', String(ss), '-i', webm, '-vf', vf, '-loop', '0', gifPath], { stdio: 'ignore' });
 }
 
 async function launch() {
@@ -322,7 +347,7 @@ for (const f of features) {
   try {
     const webm = await video.path();
     const gifPath = join(GIFS, `${f.file}.gif`);
-    toGif(webm, gifPath);
+    toGif(webm, gifPath, f.ss ?? 1.0);
     bytes = statSync(gifPath).size;
     gif = `${f.file}.gif`;
   } catch (e) { err = `${err ? `${err} | ` : ''}gif:${e.message}`; }
