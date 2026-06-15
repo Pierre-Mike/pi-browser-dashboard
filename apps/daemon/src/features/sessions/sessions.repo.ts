@@ -359,7 +359,17 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       },
       getOne: async (short: string) => {
         await freshenOnRead()
-        return reg.sessions.get(short)
+        // The map is keyed by the job-dir short, but a session whose state.json
+        // sets `daemonShort` is exposed (and navigated to) under that alias.
+        // Fast path on the key; fall back to a scan over the exposed `.short`
+        // so the alias resolves — else the terminal WS, GET, stop & rm all
+        // 404 a session that lists fine.
+        const direct = reg.sessions.get(short)
+        if (direct) return direct
+        for (const session of reg.sessions.values()) {
+          if (session.short === short) return session
+        }
+        return undefined
       },
     }
   })
