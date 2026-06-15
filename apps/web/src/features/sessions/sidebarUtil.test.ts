@@ -3,6 +3,7 @@ import type { Project, SessionState } from "../../lib/types"
 import {
   activeProjectId,
   bucketProjects,
+  DEFAULT_BUCKET_KEY,
   dropTargetId,
   growLimit,
   isDraggingSelf,
@@ -50,11 +51,45 @@ describe("bucketProjects", () => {
     expect(out[0]?.sessions.map((s) => s.short)).toEqual(["s1", "s2"])
   })
 
-  it("buckets unknown-cwd sessions under cwd-tail title", () => {
-    const out = bucketProjects({ projects: [], sessions: [sess({ cwd: "/x/y/orphan" })] })
+  it("groups every unlinked-cwd session into a single Default bucket", () => {
+    const out = bucketProjects({
+      projects: [],
+      sessions: [
+        sess({ short: "a", cwd: "/x/y/orphan" }),
+        sess({ short: "b", cwd: "/tmp/scratch" }),
+      ],
+    })
     expect(out).toHaveLength(1)
-    expect(out[0]?.project).toBeNull()
-    expect(out[0]?.title).toBe("y/orphan")
+    const def = out[0]
+    expect(def?.key).toBe(DEFAULT_BUCKET_KEY)
+    expect(def?.title).toBe("Default")
+    expect(def?.project).toBeNull()
+    expect(def?.sessions.map((s) => s.short).sort()).toEqual(["a", "b"])
+  })
+
+  it("omits the Default bucket when no session is unlinked", () => {
+    const out = bucketProjects({ projects: [proj()], sessions: [sess()] })
+    expect(out.some((b) => b.key === DEFAULT_BUCKET_KEY)).toBe(false)
+  })
+
+  it("floats the Default bucket above every project, even pinned ones", () => {
+    const a = proj({ id: "a", name: "a-pinned", path: "/p/a" })
+    const out = bucketProjects({
+      projects: [a],
+      sessions: [sess({ cwd: "/p/a", short: "linked" }), sess({ cwd: "/tmp/x", short: "orphan" })],
+      pinnedIds: new Set(["a"]),
+    })
+    expect(out[0]?.key).toBe(DEFAULT_BUCKET_KEY)
+    expect(out[1]?.title).toBe("a-pinned")
+  })
+
+  it("never marks the Default bucket as pinned", () => {
+    const out = bucketProjects({
+      projects: [],
+      sessions: [sess({ cwd: "/x/y/orphan" })],
+      pinnedIds: new Set([DEFAULT_BUCKET_KEY, "/x/y/orphan"]),
+    })
+    expect(out[0]?.pinned).toBe(false)
   })
 
   it("keeps the bare project name (no warn prefix) for non-git projects", () => {
@@ -119,15 +154,6 @@ describe("bucketProjects", () => {
     expect(out.map((bk) => bk.title)).toEqual(["a-empty", "b-busy"])
     expect(out[0]?.pinned).toBe(true)
     expect(out[1]?.pinned).toBe(false)
-  })
-
-  it("does not pin orphan (project-less) buckets even if id matches", () => {
-    const out = bucketProjects({
-      projects: [],
-      sessions: [sess({ cwd: "/x/y/orphan" })],
-      pinnedIds: new Set(["/x/y/orphan"]),
-    })
-    expect(out[0]?.pinned).toBe(false)
   })
 
   it("defaults pinned to false when no set is passed", () => {

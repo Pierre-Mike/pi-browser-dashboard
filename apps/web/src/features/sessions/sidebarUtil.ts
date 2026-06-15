@@ -1,4 +1,3 @@
-import { cwdTail } from "../../lib/format"
 import type { Project, SessionState } from "../../lib/types"
 
 export type SidebarBucket = {
@@ -10,10 +9,20 @@ export type SidebarBucket = {
   pinned: boolean
 }
 
+// The single home for sessions not (yet) linked to a project — ad-hoc questions
+// and new-repo spawns land here, then move into a project bucket once their cwd
+// matches one. Always rendered first when it holds any session.
+export const DEFAULT_BUCKET_KEY = "default"
+
 const sessionRecency = (s: SessionState): number => {
   const t = Date.parse(s.updatedAt)
   return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
 }
+
+// Recent activity on top; unparseable timestamps sink (stable sort keeps their
+// relative input order).
+const byRecency = (x: SessionState, y: SessionState): number =>
+  sessionRecency(y) - sessionRecency(x)
 
 export const bucketProjects = ({
   projects,
@@ -38,34 +47,25 @@ export const bucketProjects = ({
       pinned: false,
     })
   }
+  const defaultBucket: SidebarBucket = {
+    key: DEFAULT_BUCKET_KEY,
+    title: "Default",
+    pathHint: "",
+    sessions: [],
+    project: null,
+    pinned: false,
+  }
   for (const s of sessions) {
     const proj = byPath.get(s.cwd)
-    if (proj) {
-      byKey.get(`p:${proj.id}`)?.sessions.push(s)
-      continue
-    }
-    const k = `c:${s.cwd}`
-    const existing = byKey.get(k)
-    if (existing) {
-      existing.sessions.push(s)
-    } else {
-      byKey.set(k, {
-        key: k,
-        title: cwdTail(s.cwd),
-        pathHint: s.cwd,
-        sessions: [s],
-        project: null,
-        pinned: false,
-      })
-    }
+    if (proj) byKey.get(`p:${proj.id}`)?.sessions.push(s)
+    else defaultBucket.sessions.push(s)
   }
 
   for (const b of byKey.values()) {
     if (b.project && pinnedIds.has(b.project.id)) b.pinned = true
-    // Recent activity on top; unparseable timestamps sink (stable sort keeps
-    // their relative input order).
-    b.sessions.sort((x, y) => sessionRecency(y) - sessionRecency(x))
+    b.sessions.sort(byRecency)
   }
+  defaultBucket.sessions.sort(byRecency)
 
   // pinnedIds iterates in pin order (topmost first per the user's manual
   // ranking); index it so two pinned buckets sort by that rank rather than by
@@ -83,7 +83,9 @@ export const bucketProjects = ({
     if (a.sessions.length !== b.sessions.length) return b.sessions.length - a.sessions.length
     return a.title.localeCompare(b.title)
   })
-  return out
+  // Default always leads — it's the landing zone for new, unlinked sessions —
+  // but stays hidden until it actually holds one (no empty box at the top).
+  return defaultBucket.sessions.length > 0 ? [defaultBucket, ...out] : out
 }
 
 export const SESSION_PAGE_SIZE = 5

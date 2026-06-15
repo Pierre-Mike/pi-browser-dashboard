@@ -24,7 +24,9 @@ export const Sidebar = () => {
   const activeShort = params.id
   const pathname = useLocation({ select: (l) => l.pathname })
   const activeProject = activeProjectId(pathname)
-  const [spawnProject, setSpawnProject] = useState<Project | null>(null)
+  // null = closed. { project: null } opens the modal for a project-less ("+ New
+  // session") spawn that lands in the Default bucket; { project } targets a repo.
+  const [spawn, setSpawn] = useState<{ project: Project | null } | null>(null)
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin, reorderPin } = usePinnedProjects()
   const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
@@ -89,6 +91,17 @@ export const Sidebar = () => {
           <NotifyToggle />
         </div>
       </div>
+      <div className="px-2 py-2 border-b border-slate-200 dark:border-slate-800">
+        <button
+          type="button"
+          data-testid="sidebar-new-session"
+          onClick={() => setSpawn({ project: null })}
+          title="Start a session not tied to a project (lands under Default)"
+          className="w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 dark:border-slate-700 px-2 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40"
+        >
+          <span className="text-sm leading-none">+</span> New session
+        </button>
+      </div>
       <nav className="flex-1 py-1 divide-y divide-slate-100 dark:divide-slate-900/70">
         {buckets.length === 0 ? (
           <div className="px-3 py-4 text-xs text-slate-500">No projects yet.</div>
@@ -110,7 +123,7 @@ export const Sidebar = () => {
                 drag={drag}
                 onToggleCollapsed={toggleCollapsed}
                 onTogglePin={togglePin}
-                onSpawn={setSpawnProject}
+                onSpawn={(project) => setSpawn({ project })}
                 onShowMore={showMore}
                 onSessionMenu={setSessionMenu}
               />
@@ -125,9 +138,9 @@ export const Sidebar = () => {
         ← Back to project grid
       </Link>
       <SpawnModal
-        open={spawnProject !== null}
-        project={spawnProject}
-        onClose={() => setSpawnProject(null)}
+        open={spawn !== null}
+        project={spawn?.project ?? null}
+        onClose={() => setSpawn(null)}
       />
       {sessionMenu ? (
         <SessionContextMenu
