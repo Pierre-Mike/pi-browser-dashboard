@@ -4,6 +4,7 @@ import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { NotifyToggle } from "../notifications/NotifyToggle"
 import { useProjects } from "../projects/useProjects"
+import { type SidebarVariant, sidebarAsideClass, sidebarLoadingClass } from "./navChrome"
 import { SessionContextMenu } from "./SessionContextMenu"
 import { type SessionMenu, SidebarBucket } from "./SidebarBucket"
 import {
@@ -17,7 +18,7 @@ import { useCollapsedBuckets } from "./useCollapsedBuckets"
 import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
 
-export const Sidebar = () => {
+export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = {}) => {
   const sessionsQ = useSessions()
   const projectsQ = useProjects()
   const params = useParams({ strict: false }) as { id?: string }
@@ -57,11 +58,7 @@ export const Sidebar = () => {
   }
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
-    return (
-      <aside className="hidden md:block w-72 shrink-0 border-r border-slate-200 dark:border-slate-800 p-3 text-xs text-slate-500">
-        Loading…
-      </aside>
-    )
+    return <aside className={sidebarLoadingClass(variant)}>Loading…</aside>
   }
 
   const buckets = bucketProjects({
@@ -72,10 +69,7 @@ export const Sidebar = () => {
   const totalSessions = buckets.reduce((n, b) => n + b.sessions.length, 0)
 
   return (
-    <aside
-      data-testid="sidebar"
-      className="hidden md:flex w-72 shrink-0 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-screen sticky top-0 overflow-y-auto"
-    >
+    <aside data-testid="sidebar" className={sidebarAsideClass(variant)}>
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800">
         <Link
           to="/"

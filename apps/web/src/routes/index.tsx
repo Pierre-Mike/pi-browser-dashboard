@@ -98,7 +98,7 @@ function IndexPage() {
         data-testid="dashboard-tabs"
         role="tablist"
         aria-label="Dashboard sections"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800"
+        className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((t) => {
           const active = tab === t.key
@@ -111,7 +111,7 @@ function IndexPage() {
               data-testid={`dashboard-tab-${t.key}`}
               data-active={active}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
                 active
                   ? "border-sky-500 text-sky-700 dark:text-sky-300"
                   : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
@@ -133,7 +133,7 @@ function IndexPage() {
               data-testid={`dashboard-tab-ext-${e.name}`}
               data-active={active}
               onClick={() => setTab(key)}
-              className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
                 active
                   ? "border-sky-500 text-sky-700 dark:text-sky-300"
                   : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
