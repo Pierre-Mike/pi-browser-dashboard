@@ -161,14 +161,19 @@ const ProjectTitle = ({
   </Link>
 )
 
-const OrphanTitle = ({ title }: { title: string }) => (
-  <span className="truncate flex-1 inline-flex items-center gap-1.5 text-[12px] font-medium italic text-slate-500 dark:text-slate-400">
+// The single project-less bucket: unlinked sessions (ad-hoc questions, new-repo
+// spawns) waiting to be matched to a project by cwd.
+const DefaultTitle = ({ title }: { title: string }) => (
+  <span
+    data-testid="sidebar-default-title"
+    className="truncate flex-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-600 dark:text-slate-300"
+  >
     <span
-      title="No matching project"
-      aria-label="No matching project"
+      title="Sessions not linked to a project"
+      aria-label="Sessions not linked to a project"
       className="text-[9px] uppercase tracking-wide px-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500"
     >
-      orphan
+      home
     </span>
     <span className="truncate">{title}</span>
   </span>
@@ -183,7 +188,7 @@ const BucketTitle = ({ bucket, active }: { bucket: Bucket; active: boolean }) =>
       active={active}
     />
   ) : (
-    <OrphanTitle title={bucket.title} />
+    <DefaultTitle title={bucket.title} />
   )
 
 const SessionCount = ({ count }: { count: number }) => (
@@ -253,8 +258,8 @@ const SpawnButton = ({
   </button>
 )
 
-// Pin + spawn live together because both need a real project (orphan buckets
-// get neither), so the project guard is paid once.
+// Pin + spawn live together because both need a real project (the Default
+// bucket gets neither), so the project guard is paid once.
 const BucketActions = ({
   bucket,
   onTogglePin,
