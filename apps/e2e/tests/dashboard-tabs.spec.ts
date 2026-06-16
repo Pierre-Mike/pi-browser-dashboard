@@ -30,6 +30,24 @@ test("dashboard root exposes Projects / Terminal tabs", async ({ page }) => {
   await expect(page.getByTestId("dashboard-tab-panel-projects")).toBeHidden()
 })
 
+// The Orchestration tab is global — one voice supervisor for all projects —
+// so it lives on the root dashboard. Selecting it shows its terminal host.
+test("dashboard exposes a global Orchestration tab with its own terminal", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+
+  const orchestrationTab = page.getByTestId("dashboard-tab-orchestration")
+  await expect(orchestrationTab).toBeVisible()
+
+  // Default is Terminal — orchestration panel hidden (and unmounted) until picked.
+  await expect(page.getByTestId("orchestration-terminal")).toBeHidden()
+
+  await orchestrationTab.click()
+  await expect(orchestrationTab).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("orchestration-terminal")).toBeVisible()
+  await expect(page.getByTestId("global-terminal")).toBeHidden()
+})
+
 test("dashboard terminal tab opens a ws to /terminal/global", async ({ page }) => {
   const wsUrls: string[] = []
   page.on("websocket", (ws) => {

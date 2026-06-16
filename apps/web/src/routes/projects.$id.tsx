@@ -7,7 +7,6 @@ const PROJECT_STATIC_TAB_KEYS = [
   "sessions",
   "github",
   "terminal",
-  "orchestration",
   "files",
   "claude",
   "library",
