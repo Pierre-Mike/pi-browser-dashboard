@@ -5,6 +5,7 @@ import { CanvasTab } from "../features/canvas/CanvasTab"
 import { ChatComposer } from "../features/sessions/ChatComposer"
 import { FilesTab, useSessionFiles } from "../features/sessions/FilesTab"
 import { TerminalTab } from "../features/sessions/TerminalTab"
+import { parseTranscriptResponse } from "../features/transcripts/loadTranscript"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
 import { api } from "../lib/api"
 import { stateColor } from "../lib/format"
@@ -46,11 +47,12 @@ function SessionDrillIn() {
       // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
       const client = api as any
       const res = await client.sessions[":id"].transcript.$get({ param: { id } })
-      if (!res.ok) throw new Error(`transcript: HTTP ${res.status}`)
-      const body = (await res.json()) as TranscriptMessage[] | { messages: TranscriptMessage[] }
-      if (Array.isArray(body)) return body
-      return body.messages ?? []
+      return parseTranscriptResponse(res)
     },
+    // A 404 reads as an empty transcript (session not ready yet). Poll while
+    // empty so the chat fills in on its own once the JSONL link is written,
+    // rather than waiting for the next SSE state edge to invalidate the query.
+    refetchInterval: (q) => (q.state.data && q.state.data.length > 0 ? false : 2_000),
   })
 
   const [copied, setCopied] = useState(false)

@@ -4,6 +4,7 @@ import { api } from "../../lib/api"
 import { ageStr, cwdTail, stateColor } from "../../lib/format"
 import type { SessionState, TranscriptMessage } from "../../lib/types"
 import { Modal } from "../library/dialogs/Modal"
+import { parseTranscriptResponse } from "../transcripts/loadTranscript"
 import { ChatComposer } from "./ChatComposer"
 import { type LastMessage, resolveLastMessage } from "./lastMessage"
 
@@ -19,9 +20,7 @@ const fetchTranscript = async (short: string): Promise<readonly TranscriptMessag
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
   const res = await client.sessions[":id"].transcript.$get({ param: { id: short } })
-  if (!res.ok) throw new Error(`transcript: HTTP ${res.status}`)
-  const body = (await res.json()) as TranscriptMessage[] | { messages: TranscriptMessage[] }
-  return Array.isArray(body) ? body : (body.messages ?? [])
+  return parseTranscriptResponse(res)
 }
 
 const MessageBody = ({ message, loading }: { message: LastMessage | null; loading: boolean }) => {
