@@ -128,6 +128,27 @@ test("file tree starts with directories collapsed", async ({ page }) => {
   await expect(tree.getByRole("treeitem", { name: "nested.ts" })).toBeVisible()
 })
 
+// The Orchestration tab hosts a terminal into the single machine-wide
+// "Orchestrator" zellij session (the voice supervisor), reachable from any
+// project page. Selecting it shows its terminal host and hides the others.
+test("project dashboard exposes an Orchestration tab with its own terminal", async ({ page }) => {
+  ensureProject("proj-orch", { gitInit: true })
+
+  await page.goto("/projects/proj-orch")
+  await expect(page.locator('[data-testid="project-dashboard"]')).toBeVisible({ timeout: 15_000 })
+
+  const orchestrationTab = page.getByTestId("project-tab-orchestration")
+  await expect(orchestrationTab).toBeVisible()
+
+  // Default is Terminal — orchestration panel hidden until selected.
+  await expect(page.getByTestId("orchestration-terminal")).toBeHidden()
+
+  await orchestrationTab.click()
+  await expect(orchestrationTab).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("orchestration-terminal")).toBeVisible()
+  await expect(page.getByTestId("project-terminal")).toBeHidden()
+})
+
 test("project dashboard hides GitHub tab when no github origin", async ({ page }) => {
   ensureProject("proj-tabs-no-gh", { gitInit: true })
 

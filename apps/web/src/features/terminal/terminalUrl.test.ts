@@ -71,6 +71,20 @@ describe("terminalWsUrl", () => {
     expect(u.pathname).toBe("/__api/terminal/global")
   })
 
+  it("routes the orchestrator kind to /terminal/orchestrator with no id segment", () => {
+    const url = terminalWsUrl({
+      baseUrl: "http://localhost:8787",
+      kind: "orchestrator",
+      cols: 100,
+      rows: 30,
+    })
+    const u = new URL(url)
+    expect(u.protocol).toBe("ws:")
+    expect(u.pathname).toBe("/terminal/orchestrator")
+    expect(u.searchParams.get("cols")).toBe("100")
+    expect(u.searchParams.get("rows")).toBe("30")
+  })
+
   it("encodes ids with special chars in the path segment", () => {
     const url = terminalWsUrl({
       baseUrl: "http://x",
@@ -107,6 +121,11 @@ describe("terminalKillUrl", () => {
   it("DELETE target for the global terminal: /terminal/global", () => {
     const url = terminalKillUrl({ baseUrl: "http://x", kind: "global" })
     expect(new URL(url).pathname).toBe("/terminal/global")
+  })
+
+  it("DELETE target for the orchestrator terminal: /terminal/orchestrator", () => {
+    const url = terminalKillUrl({ baseUrl: "http://x", kind: "orchestrator" })
+    expect(new URL(url).pathname).toBe("/terminal/orchestrator")
   })
 
   it("preserves https → https (does NOT cross over to ws/wss like the WS builder)", () => {

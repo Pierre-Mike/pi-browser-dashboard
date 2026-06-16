@@ -7,8 +7,12 @@ import {
   GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
   HEARTBEAT_PAYLOAD,
+  ORCHESTRATOR_ZELLIJ_SESSION,
+  orchestratorRepoDir,
+  orchestratorZellijCommand,
   parseClientMessage,
   projectZellijCommand,
+  resolveOrchestratorCwd,
   sessionZellijCommand,
   shouldAutoKillSession,
   zellijKillSessionArgv,
@@ -318,6 +322,83 @@ describe("GLOBAL_ZELLIJ_SESSION", () => {
 
   it("survives zellijSessionName unchanged — already a safe zellij identifier", () => {
     expect(zellijSessionName(GLOBAL_ZELLIJ_SESSION)).toBe(GLOBAL_ZELLIJ_SESSION)
+  })
+})
+
+describe("ORCHESTRATOR_ZELLIJ_SESSION", () => {
+  it("is the literal 'Orchestrator' — must match voice-event.sh's ORCHESTRATOR_SESSION so worker Stop/Notification hooks land in the same session this tab attaches", () => {
+    expect(ORCHESTRATOR_ZELLIJ_SESSION).toBe("Orchestrator")
+  })
+
+  it("survives zellijSessionName unchanged — already a safe, case-preserved zellij identifier", () => {
+    expect(zellijSessionName(ORCHESTRATOR_ZELLIJ_SESSION)).toBe(ORCHESTRATOR_ZELLIJ_SESSION)
+  })
+})
+
+describe("orchestratorRepoDir", () => {
+  it("honours an explicit PID_ORCHESTRATOR_DIR override", () => {
+    expect(orchestratorRepoDir({ PID_ORCHESTRATOR_DIR: "/opt/orc" })).toBe("/opt/orc")
+  })
+
+  it("defaults to ~/Github/Orchestrator under HOME — the repo whose CLAUDE.md carries the orchestrator instructions", () => {
+    expect(orchestratorRepoDir({ HOME: "/Users/me" })).toBe("/Users/me/Github/Orchestrator")
+  })
+
+  it("falls back to '/' when neither override nor HOME is set (daemon must always spawn somewhere)", () => {
+    expect(orchestratorRepoDir({})).toBe("/")
+    expect(orchestratorRepoDir({ HOME: "" })).toBe("/")
+    expect(orchestratorRepoDir({ PID_ORCHESTRATOR_DIR: "" })).toBe("/")
+  })
+})
+
+describe("resolveOrchestratorCwd", () => {
+  it("returns the repo dir when it exists on disk", () => {
+    const r = resolveOrchestratorCwd(
+      { HOME: "/Users/me" },
+      (p) => p === "/Users/me/Github/Orchestrator",
+    )
+    expect(r).toEqual({ ok: true, cwd: "/Users/me/Github/Orchestrator" })
+  })
+
+  it("honours the PID_ORCHESTRATOR_DIR override when it exists", () => {
+    const r = resolveOrchestratorCwd({ PID_ORCHESTRATOR_DIR: "/opt/orc" }, (p) => p === "/opt/orc")
+    expect(r).toEqual({ ok: true, cwd: "/opt/orc" })
+  })
+
+  it("fails cleanly (no spawn into a missing cwd → no daemon crash) when the repo is absent, naming the path and the override", () => {
+    const r = resolveOrchestratorCwd({ HOME: "/Users/me" }, () => false)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.reason).toContain("/Users/me/Github/Orchestrator")
+    expect(r.reason).toContain("PID_ORCHESTRATOR_DIR")
+  })
+})
+
+describe("orchestratorZellijCommand", () => {
+  const cmd = orchestratorZellijCommand({ cwd: "/Users/me/Github/Orchestrator" })
+
+  it("cds into the orchestrator repo before launching (so the orchestrator CLAUDE.md + relative scripts/ resolve)", () => {
+    expect(cmd).toContain(`cd '/Users/me/Github/Orchestrator'`)
+  })
+
+  it("attaches the existing session by the Orchestrator name on the reuse branch", () => {
+    expect(cmd).toContain(`grep -qx 'Orchestrator'`)
+    expect(cmd).toContain(`exec zellij attach 'Orchestrator'`)
+  })
+
+  it("creates the session under the Orchestrator name with the bootstrap layout on first open", () => {
+    expect(cmd).toContain(`exec zellij -s 'Orchestrator' -n "$layout_file"`)
+  })
+
+  it("bootstrap pane starts the TTS daemon, respawns sleep-killed workers, then drops into claude", () => {
+    expect(cmd).toContain("tts_daemon.sh")
+    expect(cmd).toContain("claude respawn --all")
+    expect(cmd).toContain("exec claude")
+  })
+
+  it("single-quote-escapes a cwd containing an apostrophe", () => {
+    const c = orchestratorZellijCommand({ cwd: "/it's/here" })
+    expect(c).toContain(`cd '/it'\\''s/here'`)
   })
 })
 

@@ -26,3 +26,15 @@ describe("ProjectDashboard activity panel", () => {
     expect(src).toMatch(/label:\s*`?Activity/)
   })
 })
+
+describe("ProjectDashboard orchestration tab", () => {
+  it("registers an Orchestration tab and renders its panel via OrchestrationPanel", () => {
+    expect(src).toMatch(/key:\s*"orchestration"/)
+    expect(src).toContain("OrchestrationPanel")
+    expect(src).toContain('data-testid="project-tab-panel-orchestration"')
+  })
+
+  it("treats the orchestration tab as a viewport-filling tab (it hosts a terminal)", () => {
+    expect(src).toMatch(/tab === "orchestration"/)
+  })
+})

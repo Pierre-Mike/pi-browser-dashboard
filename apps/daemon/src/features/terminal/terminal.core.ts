@@ -5,6 +5,13 @@
 // session that isn't tied to any specific repo.
 export const GLOBAL_ZELLIJ_SESSION = "default"
 
+// The orchestration tab attaches to one shared zellij session — the long-lived
+// voice supervisor. The name MUST equal voice-event.sh's ORCHESTRATOR_SESSION
+// ("Orchestrator"): that hook types every worker's Stop/Notification event into
+// the session by this name, so the supervisor the user watches here is the same
+// one the fleet reports into. One per machine, not one per project.
+export const ORCHESTRATOR_ZELLIJ_SESSION = "Orchestrator"
+
 // Pick the cwd the global terminal child should spawn in. HOME when present
 // (where the user's prompt expects to start), '/' otherwise — Bun.spawn rejects
 // an empty cwd.
@@ -12,6 +19,41 @@ export const globalTerminalCwd = (env: Readonly<Record<string, string | undefine
   const home = env.HOME
   if (home && home.length > 0) return home
   return "/"
+}
+
+// Resolve the Orchestrator repo dir — the cwd the supervisor boots in. Starting
+// there is what makes the session an orchestrator: the repo's CLAUDE.md is the
+// supervisor instruction set, and the bootstrap's `scripts/tts_daemon.sh` is
+// repo-relative. PID_ORCHESTRATOR_DIR overrides; default ~/Github/Orchestrator;
+// '/' only when nothing is known (Bun.spawn rejects an empty cwd).
+export const orchestratorRepoDir = (env: Readonly<Record<string, string | undefined>>): string => {
+  const explicit = env.PID_ORCHESTRATOR_DIR
+  if (explicit && explicit.length > 0) return explicit
+  const home = env.HOME
+  if (home && home.length > 0) return `${home}/Github/Orchestrator`
+  return "/"
+}
+
+// Resolve the orchestrator cwd, or fail with a message instead of spawning into
+// a missing directory. `Bun.spawn({ cwd })` throws synchronously on a
+// nonexistent cwd; thrown from the WS onOpen handler that crashes the whole
+// daemon. So we verify the repo dir exists up front (dirExists injected for
+// testability) and, when it doesn't, return a reason the route turns into a
+// clean WS close — the orchestrator only makes sense with its repo present.
+export const resolveOrchestratorCwd = (
+  env: Readonly<Record<string, string | undefined>>,
+  dirExists: (path: string) => boolean,
+):
+  | { readonly ok: true; readonly cwd: string }
+  | { readonly ok: false; readonly reason: string } => {
+  const dir = orchestratorRepoDir(env)
+  if (!dirExists(dir)) {
+    return {
+      ok: false,
+      reason: `Orchestrator repo not found at ${dir} — clone it there or set PID_ORCHESTRATOR_DIR to its path.`,
+    }
+  }
+  return { ok: true, cwd: dir }
 }
 
 // Reduce a project id to a zellij session name. Zellij names mostly accept
@@ -176,6 +218,63 @@ export const projectZellijCommand = (args: {
     cwd: args.cwd,
     sessionName: args.sessionName,
     layoutKdl: projectLayoutKdl(),
+  })
+
+// Bootstrap the bare orchestrator pane runs on first create:
+//   1. start the Kokoro TTS daemon (idempotent — skip if already running) so
+//      the supervisor can speak via scripts/say.sh;
+//   2. respawn any `claude --bg` workers a machine sleep killed;
+//   3. exec into claude.
+// Deliberately NO `--dangerously-skip-permissions`: the daemon must not boot an
+// auto-approving agent. claude starts with its normal permission gating; the
+// user is watching this pane and can approve, or opt into a looser mode via
+// their own claude config. Path-agnostic: scripts/tts_daemon.sh is repo-relative
+// and resolves because zellijAttachOrCreate cds into orchestratorRepoDir first.
+const ORCHESTRATOR_BOOTSTRAP_CMD =
+  "pgrep -f tts_daemon.sh >/dev/null || (bash scripts/tts_daemon.sh & disown); " +
+  "claude respawn --all >/dev/null 2>&1 || true; exec claude"
+
+// Layout for the orchestrator session. Same tab-bar/status-bar template as the
+// project/global layouts (so the zellij UI is visible), with a vertical split:
+// the left pane boots the supervisor via ORCHESTRATOR_BOOTSTRAP_CMD, the right
+// pane shows the `claude agents` fleet board. The bootstrap is wrapped in
+// `bash -lc` (same rationale as the drill-in claude pane: a direct command pane
+// gives claude a pty it rejects within seconds). The command is ASCII-safe and
+// quote-free, so inlining it into the double-quoted KDL arg is safe.
+const orchestratorLayoutKdl = (): string =>
+  `layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tab {
+        pane split_direction="vertical" {
+            pane name="orchestrator" command="bash" {
+                args "-lc" "${ORCHESTRATOR_BOOTSTRAP_CMD}"
+            }
+            pane name="agents" size="40%" command="claude" {
+                args "agents"
+            }
+        }
+    }
+}
+`
+
+// Orchestrator session terminal: zellij pinned to the ORCHESTRATOR_ZELLIJ_SESSION
+// name. First open materialises orchestratorLayoutKdl and boots the supervisor;
+// subsequent opens (and worker hooks, which also target this name) re-attach the
+// same live session. cwd must be orchestratorRepoDir so the repo CLAUDE.md loads
+// and the bootstrap's relative scripts/ resolve.
+export const orchestratorZellijCommand = (args: { readonly cwd: string }): string =>
+  zellijAttachOrCreate({
+    cwd: args.cwd,
+    sessionName: ORCHESTRATOR_ZELLIJ_SESSION,
+    layoutKdl: orchestratorLayoutKdl(),
   })
 
 // Layout for the drill-in zellij session. Two requirements pull against

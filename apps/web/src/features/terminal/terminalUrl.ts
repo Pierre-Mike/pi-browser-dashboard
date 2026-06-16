@@ -16,7 +16,7 @@ export type TerminalWsUrlInput =
     }
   | {
       readonly baseUrl: string
-      readonly kind: "global"
+      readonly kind: "global" | "orchestrator"
       readonly cols: number
       readonly rows: number
     }
@@ -24,6 +24,7 @@ export type TerminalWsUrlInput =
 const pathFor = (input: TerminalWsUrlInput): string => {
   if (input.kind === "session") return `/terminal/${input.id}`
   if (input.kind === "project") return `/terminal/project/${input.id}`
+  if (input.kind === "orchestrator") return "/terminal/orchestrator"
   return "/terminal/global"
 }
 
@@ -49,11 +50,12 @@ export const terminalWsUrl = (input: TerminalWsUrlInput): string => {
 // new zellij session.
 export type TerminalKillUrlInput =
   | { readonly baseUrl: string; readonly kind: "session" | "project"; readonly id: string }
-  | { readonly baseUrl: string; readonly kind: "global" }
+  | { readonly baseUrl: string; readonly kind: "global" | "orchestrator" }
 
 const killPathFor = (input: TerminalKillUrlInput): string => {
   if (input.kind === "session") return `/terminal/${input.id}`
   if (input.kind === "project") return `/terminal/project/${input.id}`
+  if (input.kind === "orchestrator") return "/terminal/orchestrator"
   return "/terminal/global"
 }
 
