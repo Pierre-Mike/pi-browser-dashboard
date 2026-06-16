@@ -18,10 +18,13 @@ test("spawn → wait settled → click card → reply modal → open full → dr
     await expect(page.getByRole("button", { name: /Open in CLI/i })).toBeVisible()
     await expect(page.getByRole("heading", { level: 1 })).toContainText(short)
 
-    // Transcript either renders or shows a clear error — both are valid wiring
-    // outcomes; JSONL availability is a supervisor timing concern, not ours.
-    const transcriptOrError = page.getByText(/^(User|Assistant|Result|Failed to load transcript)/i)
-    await expect(transcriptOrError.first()).toBeVisible({ timeout: 30_000 })
+    // The sandbox has no Claude auth, so this session never writes JSONL and the
+    // transcript endpoint 404s. A not-ready transcript must render the empty chat
+    // surface (attached, even with zero height) — NEVER a "Failed to load
+    // transcript" error. That 404 is benign and the chat polls until the JSONL
+    // appears.
+    await expect(page.getByTestId("chat-transcript")).toBeAttached({ timeout: 30_000 })
+    await expect(page.getByText(/Failed to load transcript/i)).toHaveCount(0)
   } finally {
     rmSession(short)
   }
