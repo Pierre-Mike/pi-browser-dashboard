@@ -5,6 +5,7 @@ import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
 import { useExtensions } from "../features/extensions/useExtensions"
 import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
+import { OrchestrationPanel } from "../features/projects/OrchestrationPanel"
 import { useProjects } from "../features/projects/useProjects"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
 import { useSessions } from "../features/sessions/useSessions"
@@ -13,6 +14,7 @@ import { coerceExtTab } from "../lib/tabParams"
 
 const STATIC_TAB_KEYS = [
   "terminal",
+  "orchestration",
   "projects",
   "claude",
   "library",
@@ -26,6 +28,9 @@ type TabKey = StaticTabKey | `ext:${string}`
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "terminal", label: "Terminal" },
+  // Orchestration is global by design: one voice supervisor coordinates work
+  // across ALL projects, so it lives on the root dashboard, not per-project.
+  { key: "orchestration", label: "Orchestration" },
   { key: "projects", label: "Activity" },
   { key: "claude", label: "Claude" },
   { key: "library", label: "Library" },
@@ -87,7 +92,11 @@ function IndexPage() {
     (e) => e.enabled !== false && e.tier === "iframe" && (e.contributes?.tabs?.length ?? 0) > 0,
   )
   const fillViewport =
-    tab === "terminal" || tab === "claude" || tab === "library" || tab.startsWith("ext:")
+    tab === "terminal" ||
+    tab === "orchestration" ||
+    tab === "claude" ||
+    tab === "library" ||
+    tab.startsWith("ext:")
 
   return (
     <div
@@ -159,6 +168,17 @@ function IndexPage() {
         className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <GlobalTerminal />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="dashboard-tab-panel-orchestration"
+        className={tab === "orchestration" ? "flex flex-col flex-1 min-h-0" : "hidden"}
+      >
+        {/* Mount only when active: TerminalView opens its WS on mount, attaching
+            (and on first open booting) the machine-wide "Orchestrator" session.
+            Lazy mount keeps the supervisor from booting on every dashboard load. */}
+        {tab === "orchestration" ? <OrchestrationPanel /> : null}
       </div>
 
       <div

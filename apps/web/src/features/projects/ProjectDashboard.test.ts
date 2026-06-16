@@ -25,16 +25,9 @@ describe("ProjectDashboard activity panel", () => {
   it("labels the panel as Activity", () => {
     expect(src).toMatch(/label:\s*`?Activity/)
   })
-})
 
-describe("ProjectDashboard orchestration tab", () => {
-  it("registers an Orchestration tab and renders its panel via OrchestrationPanel", () => {
-    expect(src).toMatch(/key:\s*"orchestration"/)
-    expect(src).toContain("OrchestrationPanel")
-    expect(src).toContain('data-testid="project-tab-panel-orchestration"')
-  })
-
-  it("treats the orchestration tab as a viewport-filling tab (it hosts a terminal)", () => {
-    expect(src).toMatch(/tab === "orchestration"/)
+  it("does NOT host the Orchestration tab — the supervisor is global, surfaced on the root dashboard, not per-project", () => {
+    expect(src).not.toContain("OrchestrationPanel")
+    expect(src).not.toMatch(/key:\s*"orchestration"/)
   })
 })
