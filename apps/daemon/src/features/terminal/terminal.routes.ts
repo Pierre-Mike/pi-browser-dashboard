@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -15,8 +15,11 @@ import {
   GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
   HEARTBEAT_PAYLOAD,
+  ORCHESTRATOR_ZELLIJ_SESSION,
+  orchestratorZellijCommand,
   parseClientMessage,
   projectZellijCommand,
+  resolveOrchestratorCwd,
   sessionZellijCommand,
   shouldAutoKillSession,
   zellijKillSessionArgv,
@@ -352,6 +355,20 @@ const resolveGlobalCommand = async (_c: Context): Promise<Resolved> => {
   return { ok: true, cwd, cmd, sessionName: GLOBAL_ZELLIJ_SESSION }
 }
 
+// Orchestrator terminal: pinned to the single zellij session named
+// "Orchestrator". No id in the URL — there's exactly one supervisor per daemon.
+// cwd is the Orchestrator repo so its CLAUDE.md (the supervisor instructions)
+// loads and the bootstrap's relative scripts/ resolve.
+const resolveOrchestratorCommand = async (_c: Context): Promise<Resolved> => {
+  // Bail before spawn if the repo dir is missing — spawning into a nonexistent
+  // cwd throws synchronously and crashes the daemon. resolveOrchestratorCwd
+  // returns a message the WS surfaces instead.
+  const r = resolveOrchestratorCwd(process.env, (p) => existsSync(p))
+  if (!r.ok) return { ok: false, reason: r.reason }
+  const cmd = orchestratorZellijCommand({ cwd: r.cwd })
+  return { ok: true, cwd: r.cwd, cmd, sessionName: ORCHESTRATOR_ZELLIJ_SESSION }
+}
+
 const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
   const id = c.req.param("id") ?? ""
   if (!id) return { ok: false, reason: "missing_id" }
@@ -407,8 +424,12 @@ const resolveSessionKillName = async (id: string): Promise<string | null> => {
 
 const app = new Hono()
   .get("/global", makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true }))
+  .get("/orchestrator", makeWsHandler({ resolveCommand: resolveOrchestratorCommand, pty: true }))
   .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
   .delete("/global", async (c) => c.json(await killZellijSession(GLOBAL_ZELLIJ_SESSION)))
+  .delete("/orchestrator", async (c) =>
+    c.json(await killZellijSession(ORCHESTRATOR_ZELLIJ_SESSION)),
+  )
   .delete("/project/:id", async (c) => {
     const id = c.req.param("id") ?? ""
     return c.json(await killZellijSession(await resolveProjectKillName(id)))

@@ -11,13 +11,22 @@ import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 type Props = {
   readonly reconnectTitle: string
   readonly testId?: string
-} & ({ readonly kind: "session" | "project"; readonly id: string } | { readonly kind: "global" })
+} & (
+  | { readonly kind: "session" | "project"; readonly id: string }
+  | { readonly kind: "global" | "orchestrator" }
+)
 
 // Server → client control frames are JSON text starting with '{'. Inline
 // errors / exit notices that the daemon paints into the terminal start with
 // "\r\n", so the leading-byte check is enough to route without parsing every
 // pty chunk.
 const isControlFrame = (data: string): boolean => data.length > 0 && data.charCodeAt(0) === 0x7b
+
+// "global" and "orchestrator" are the id-less terminal kinds (one fixed zellij
+// session each, no URL id segment). Extracted as a guard so the kind→URL
+// branches below stay single-decision: narrows to the no-id terminalUrl variant.
+const isIdlessKind = (kind: Props["kind"]): kind is "global" | "orchestrator" =>
+  kind === "global" || kind === "orchestrator"
 
 const PREFERS_DARK = "(prefers-color-scheme: dark)"
 
@@ -107,16 +116,15 @@ export const TerminalView = (props: Props) => {
       safeFit()
       lastCols = term.cols
       lastRows = term.rows
-      const url =
-        kind === "global"
-          ? terminalWsUrl({ baseUrl: wsBase(), kind: "global", cols: term.cols, rows: term.rows })
-          : terminalWsUrl({
-              baseUrl: wsBase(),
-              kind,
-              id,
-              cols: term.cols,
-              rows: term.rows,
-            })
+      const url = isIdlessKind(kind)
+        ? terminalWsUrl({ baseUrl: wsBase(), kind, cols: term.cols, rows: term.rows })
+        : terminalWsUrl({
+            baseUrl: wsBase(),
+            kind,
+            id,
+            cols: term.cols,
+            rows: term.rows,
+          })
       const sock = new WebSocket(url)
       sock.binaryType = "arraybuffer"
       ws = sock
@@ -200,10 +208,9 @@ export const TerminalView = (props: Props) => {
     if (restarting) return
     setRestarting(true)
     try {
-      const url =
-        kind === "global"
-          ? terminalKillUrl({ baseUrl: wsBase(), kind: "global" })
-          : terminalKillUrl({ baseUrl: wsBase(), kind, id })
+      const url = isIdlessKind(kind)
+        ? terminalKillUrl({ baseUrl: wsBase(), kind })
+        : terminalKillUrl({ baseUrl: wsBase(), kind, id })
       try {
         await fetch(url, { method: "DELETE" })
       } catch {

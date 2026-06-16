@@ -10,6 +10,7 @@ import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
+import { OrchestrationPanel } from "./OrchestrationPanel"
 import { ProjectTerminal } from "./ProjectTerminal"
 
 const route = getRouteApi("/projects/$id")
@@ -18,7 +19,14 @@ type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
 
-type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "library"
+type StaticTabKey =
+  | "sessions"
+  | "github"
+  | "terminal"
+  | "orchestration"
+  | "files"
+  | "claude"
+  | "library"
 // Extension-contributed project panels are namespaced (`ext:<name>`).
 type TabKey = StaticTabKey | `ext:${string}`
 
@@ -65,6 +73,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   const tabs: readonly Tab[] = useMemo(() => {
     const base: Tab[] = [
       { key: "terminal", label: "Terminal" },
+      { key: "orchestration", label: "Orchestration" },
       { key: "sessions", label: `Activity${sessions.length ? ` · ${sessions.length}` : ""}` },
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
@@ -79,7 +88,11 @@ export const ProjectDashboard = ({ project }: Props) => {
   const navigate = route.useNavigate()
   const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const fillViewport =
-    tab === "terminal" || tab === "files" || tab === "claude" || tab === "library"
+    tab === "terminal" ||
+    tab === "orchestration" ||
+    tab === "files" ||
+    tab === "claude" ||
+    tab === "library"
 
   return (
     <div
@@ -238,6 +251,19 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "terminal" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <ProjectTerminal projectId={project.id} />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-orchestration"
+        className={tab === "orchestration" ? "flex flex-col flex-1 min-h-0" : "hidden"}
+      >
+        {/* Mount only when active: TerminalView opens its WS on mount, and the
+            orchestrator WS attaches/creates the machine-wide "Orchestrator"
+            zellij session. Eager-mounting (like ProjectTerminal) would boot the
+            supervisor on every project-page load and add a second
+            `terminal-host` to the DOM. Lazy mount avoids both. */}
+        {tab === "orchestration" ? <OrchestrationPanel /> : null}
       </div>
 
       <div
