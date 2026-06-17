@@ -22,7 +22,7 @@ describe("root dashboard orchestration tab", () => {
   })
 })
 
-describe("root dashboard navigation polish (daisyUI dock)", () => {
+describe("root dashboard navigation polish (shared daisyUI dock)", () => {
   it("renders an icon next to every static tab via a keyed ICONS map", () => {
     // One icon per static tab key — the bar must read at a glance.
     expect(src).toMatch(/const ICONS:\s*Record<StaticTabKey,\s*ReactNode>/)
@@ -36,24 +36,19 @@ describe("root dashboard navigation polish (daisyUI dock)", () => {
       "extensions",
       "tunnel",
     ]) {
-      expect(src).toMatch(new RegExp(`${key}:\\s*[(<]`))
+      expect(src).toMatch(new RegExp(`${key}:\\s*TAB_ICONS`))
     }
   })
 
-  it("gives extension tabs an icon too", () => {
-    expect(src).toMatch(/const EXT_ICON\s*=/)
+  it("gives extension tabs the shared extension icon too", () => {
     expect(src).toContain("{EXT_ICON}")
   })
 
-  it("styles the active tab as a daisyUI primary fill via a shared tabClass helper", () => {
-    expect(src).toMatch(/const tabClass\s*=\s*\(active: boolean\)/)
-    expect(src).toContain("bg-primary text-primary-content")
-    // Both tab loops share the helper instead of inlining border styles.
-    const usages = src.match(/className=\{tabClass\(active\)\}/g) ?? []
+  it("uses the shared tab-dock helpers instead of inlining the styling", () => {
+    // The look lives in lib/tabDock so the dashboard + project page stay identical.
+    expect(src).toContain('from "../lib/tabDock"')
+    expect(src).toContain("className={tabDockNavClass}")
+    const usages = src.match(/className=\{tabButtonClass\(active\)\}/g) ?? []
     expect(usages.length).toBe(2)
-  })
-
-  it("frames the tabs as a rounded dock rather than a bottom-border strip", () => {
-    expect(src).toMatch(/data-testid="dashboard-tabs"[\s\S]*?rounded-xl/)
   })
 })

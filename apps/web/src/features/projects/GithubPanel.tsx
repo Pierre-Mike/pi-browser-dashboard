@@ -14,19 +14,19 @@ type Props = { projectId: string; githubUrl: string }
 
 const runTone = (status: GithubRunStatus, conclusion: GithubRunConclusion): string => {
   if (status !== "completed") {
-    return "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200"
+    return "badge-info"
   }
   switch (conclusion) {
     case "success":
-      return "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200"
+      return "badge-success"
     case "failure":
     case "timed_out":
-      return "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200"
+      return "badge-error"
     case "cancelled":
     case "skipped":
-      return "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+      return "badge-ghost"
     default:
-      return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
+      return "badge-warning"
   }
 }
 
@@ -41,17 +41,13 @@ const RunRow = ({ run }: { run: GithubWorkflowRun }) => (
     target="_blank"
     rel="noreferrer"
     data-testid="gh-run"
-    className="flex items-center gap-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-900/60 rounded px-2 py-1 -mx-2 min-w-0"
+    className="flex items-center gap-2 text-xs hover:bg-base-200 rounded px-2 py-1 -mx-2 min-w-0"
   >
-    <span
-      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${runTone(run.status, run.conclusion)}`}
-    >
+    <span className={`badge badge-sm shrink-0 ${runTone(run.status, run.conclusion)}`}>
       {runLabel(run.status, run.conclusion)}
     </span>
-    <span className="truncate flex-1 text-slate-700 dark:text-slate-200">{run.name}</span>
-    <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 shrink-0">
-      {run.headBranch}
-    </span>
+    <span className="truncate flex-1 text-base-content">{run.name}</span>
+    <span className="font-mono text-[10px] text-base-content/60 shrink-0">{run.headBranch}</span>
   </a>
 )
 
@@ -67,7 +63,7 @@ const PrRow = ({
 }) => (
   <div
     data-testid="gh-pr"
-    className="flex items-center gap-2 text-xs rounded px-2 py-1 -mx-2 min-w-0 hover:bg-slate-50 dark:hover:bg-slate-900/60"
+    className="flex items-center gap-2 text-xs rounded px-2 py-1 -mx-2 min-w-0 hover:bg-base-200"
   >
     <button
       type="button"
@@ -76,19 +72,11 @@ const PrRow = ({
       aria-expanded={expanded}
       className="flex items-center gap-2 min-w-0 flex-1 text-left"
     >
-      <span className="shrink-0 w-3 text-slate-400">{expanded ? "▾" : "▸"}</span>
-      <span className="shrink-0 font-mono text-[10px] text-slate-500 dark:text-slate-400">
-        #{pr.number}
-      </span>
-      {pr.isDraft ? (
-        <span className="shrink-0 rounded-full bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-700 dark:text-slate-300">
-          draft
-        </span>
-      ) : null}
-      <span className="truncate flex-1 text-slate-700 dark:text-slate-200">{pr.title}</span>
-      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 shrink-0">
-        {pr.author}
-      </span>
+      <span className="shrink-0 w-3 text-base-content/40">{expanded ? "▾" : "▸"}</span>
+      <span className="shrink-0 font-mono text-[10px] text-base-content/60">#{pr.number}</span>
+      {pr.isDraft ? <span className="badge badge-sm badge-ghost shrink-0">draft</span> : null}
+      <span className="truncate flex-1 text-base-content">{pr.title}</span>
+      <span className="font-mono text-[10px] text-base-content/60 shrink-0">{pr.author}</span>
     </button>
     <a
       href={pr.url}
@@ -96,7 +84,7 @@ const PrRow = ({
       rel="noreferrer"
       data-testid="gh-pr-link"
       title="Open on GitHub"
-      className="shrink-0 text-sky-700 dark:text-sky-300 hover:underline"
+      className="shrink-0 text-primary hover:underline"
     >
       ↗
     </a>
@@ -104,9 +92,9 @@ const PrRow = ({
 )
 
 const NOTE_CLASS: Record<"muted" | "warn" | "error", string> = {
-  muted: "text-[11px] text-slate-500 dark:text-slate-400 px-5 py-2",
-  warn: "text-[11px] text-amber-700 dark:text-amber-300 px-5 py-2",
-  error: "text-[11px] text-rose-600 px-5 py-2",
+  muted: "text-[11px] text-base-content/50 px-5 py-2",
+  warn: "text-[11px] text-warning px-5 py-2",
+  error: "text-[11px] text-error px-5 py-2",
 }
 
 const PrDiffNote = ({
@@ -174,24 +162,27 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
   return (
     <section
       data-testid="github-panel"
-      className="flex flex-col gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3"
+      className="flex flex-col gap-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
     >
       <header className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">GitHub</h2>
+        <h2 className="text-sm font-semibold text-base-content">GitHub</h2>
         <a
           href={`${githubUrl}/pulls`}
           target="_blank"
           rel="noreferrer"
-          className="text-[11px] text-sky-700 dark:text-sky-300 hover:underline"
+          className="text-[11px] text-primary hover:underline"
         >
           View all on GitHub ↗
         </a>
       </header>
 
       {q.isLoading ? (
-        <div className="text-xs text-slate-500">Loading PRs and CI…</div>
+        <div className="flex items-center gap-2 text-xs text-base-content/50">
+          <span className="loading loading-spinner loading-sm" />
+          Loading PRs and CI…
+        </div>
       ) : q.isError ? (
-        <div className="text-xs text-rose-600">
+        <div className="text-xs text-error">
           Failed to load GitHub data: {q.error instanceof Error ? q.error.message : "unknown error"}
         </div>
       ) : (
@@ -199,27 +190,25 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
           {q.data?.warning ? (
             <div
               data-testid="gh-warning"
-              className="text-[11px] rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 px-2 py-1"
+              className="text-[11px] rounded bg-warning/10 border border-warning/30 text-warning px-2 py-1"
             >
               {q.data.warning}
             </div>
           ) : null}
 
           <div className="flex flex-col gap-1">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] uppercase tracking-wide text-base-content/50">
               Open PRs ({q.data?.prs.length ?? 0})
             </div>
             {q.data && q.data.prs.length > 0 ? (
               <PrList projectId={projectId} prs={q.data.prs} />
             ) : (
-              <div className="text-xs text-slate-500 dark:text-slate-400 italic">
-                No open pull requests.
-              </div>
+              <div className="text-xs text-base-content/50 italic">No open pull requests.</div>
             )}
           </div>
 
           <div className="flex flex-col gap-1">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] uppercase tracking-wide text-base-content/50">
               Recent CI runs ({q.data?.runs.length ?? 0})
             </div>
             {q.data && q.data.runs.length > 0 ? (
@@ -229,9 +218,7 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
                 ))}
               </div>
             ) : (
-              <div className="text-xs text-slate-500 dark:text-slate-400 italic">
-                No workflow runs yet.
-              </div>
+              <div className="text-xs text-base-content/50 italic">No workflow runs yet.</div>
             )}
           </div>
         </>
