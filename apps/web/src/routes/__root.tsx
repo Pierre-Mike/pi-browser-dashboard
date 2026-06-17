@@ -10,7 +10,7 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100">
       <MobileNav>
         <Sidebar variant="drawer" />
       </MobileNav>

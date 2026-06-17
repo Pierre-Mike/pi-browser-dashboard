@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
+import type { ReactNode } from "react"
 import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { ExtensionHost } from "../features/extensions/ExtensionHost"
 import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
@@ -25,6 +26,60 @@ type StaticTabKey = (typeof STATIC_TAB_KEYS)[number]
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
 // with a static key.
 type TabKey = StaticTabKey | `ext:${string}`
+
+// A small inline icon set keeps the nav glanceable — colour + shape lets the
+// eye land on the right section without reading every label. No icon font /
+// extra dep: a 16px stroked SVG that inherits `currentColor`.
+const Icon = ({ d }: { d: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className="shrink-0"
+  >
+    <path d={d} />
+  </svg>
+)
+
+const ICONS: Record<StaticTabKey, ReactNode> = {
+  terminal: <Icon d="M4 17l6-5-6-5M12 19h8" />,
+  orchestration: (
+    <Icon d="M12 3v3m0 12v3m9-9h-3M6 12H3m13.5-6.5L14.5 8m-5 8L7.5 18m9 0L14.5 16m-5-8L7.5 6M12 9a3 3 0 100 6 3 3 0 000-6z" />
+  ),
+  projects: <Icon d="M3 12h4l3 8 4-16 3 8h4" />,
+  claude: <Icon d="M12 2l2.4 6.5L21 11l-6.6 2.5L12 20l-2.4-6.5L3 11l6.6-2.5z" />,
+  library: (
+    <Icon d="M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 006.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z" />
+  ),
+  extensions: (
+    <Icon d="M14 7h3a2 2 0 012 2v3m-5-5V5a2 2 0 00-2-2H9a2 2 0 00-2 2v2H5a2 2 0 00-2 2v3h2.5a2 2 0 110 4H3v3a2 2 0 002 2h3v-2.5a2 2 0 114 0V21h3a2 2 0 002-2v-3" />
+  ),
+  tunnel: (
+    <Icon d="M12 3C7 3 3 6 3 9v9a3 3 0 003 3h12a3 3 0 003-3V9c0-3-4-6-9-6zm-4 9h.01M16 12h.01M9 18h6" />
+  ),
+}
+
+const EXT_ICON = (
+  <Icon d="M14 7h3a2 2 0 012 2v3m-5-5V5a2 2 0 00-2-2H9a2 2 0 00-2 2v2H5a2 2 0 00-2 2v3h2.5a2 2 0 110 4H3v3a2 2 0 002 2h3v-2.5a2 2 0 114 0V21h3a2 2 0 002-2v-3" />
+)
+
+// Shared tab-button look: a soft segmented "dock". Active = primary fill with a
+// lift; idle = muted, warming on hover. Icon + label so the bar reads at a
+// glance — this is the surface the user lives in all day.
+const tabClass = (active: boolean): string =>
+  [
+    "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5",
+    "text-xs font-medium transition-all duration-150",
+    active
+      ? "bg-primary text-primary-content shadow-sm shadow-primary/30"
+      : "text-slate-500 dark:text-slate-400 hover:bg-base-300/70 hover:text-slate-800 dark:hover:text-slate-100",
+  ].join(" ")
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "terminal", label: "Terminal" },
@@ -73,8 +128,18 @@ const ProjectsPanel = () => {
   const projects = projectsQ.data ?? []
   if (sessions.length === 0 && projects.length === 0) {
     return (
-      <div className="text-sm text-slate-500">
-        No projects or sessions yet. Spawn one from the bar above.
+      <div className="card border border-slate-200/80 dark:border-slate-800 bg-base-200/50 shadow-sm">
+        <div className="card-body items-center gap-3 py-10 text-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-content text-xl font-black shadow-sm shadow-primary/30">
+            π
+          </span>
+          <h2 className="card-title text-base">Welcome home</h2>
+          <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
+            No projects or sessions yet. Spawn your first one from{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-200">+ New session</span> in
+            the sidebar, or open the Terminal tab to get going.
+          </p>
+        </div>
       </div>
     )
   }
@@ -107,7 +172,7 @@ function IndexPage() {
         data-testid="dashboard-tabs"
         role="tablist"
         aria-label="Dashboard sections"
-        className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800 bg-base-200/60 px-1.5 py-1.5 shadow-sm backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((t) => {
           const active = tab === t.key
@@ -120,12 +185,9 @@ function IndexPage() {
               data-testid={`dashboard-tab-${t.key}`}
               data-active={active}
               onClick={() => setTab(t.key)}
-              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
+              className={tabClass(active)}
             >
+              {ICONS[t.key]}
               {t.label}
             </button>
           )
@@ -142,12 +204,9 @@ function IndexPage() {
               data-testid={`dashboard-tab-ext-${e.name}`}
               data-active={active}
               onClick={() => setTab(key)}
-              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
+              className={tabClass(active)}
             >
+              {EXT_ICON}
               {e.name}
             </button>
           )
