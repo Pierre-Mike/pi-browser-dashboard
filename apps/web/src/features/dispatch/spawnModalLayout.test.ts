@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
+import {
+  SPAWN_INTENT_INPUT,
+  SPAWN_MODAL_SHELL,
+  SPAWN_SKILLS_CONTAINER,
+  skillChipClass,
+} from "./spawnModalLayout"
 
 describe("spawnModalLayout", () => {
   it("makes the modal shell wide enough for many skill pills", () => {
@@ -14,6 +19,10 @@ describe("spawnModalLayout", () => {
 
   it("keeps the skills list scrollable when it overflows", () => {
     expect(SPAWN_SKILLS_CONTAINER).toContain("overflow-y-auto")
+  })
+
+  it("never draws a horizontal scrollbar on the skills list", () => {
+    expect(SPAWN_SKILLS_CONTAINER).toContain("overflow-x-hidden")
   })
 
   it("keeps skills wrapping across rows", () => {
@@ -37,5 +46,26 @@ describe("spawnModalLayout", () => {
   it("keeps the placeholder visible but muted in both modes", () => {
     expect(SPAWN_INTENT_INPUT).toContain("placeholder:text-slate-400")
     expect(SPAWN_INTENT_INPUT).toContain("dark:placeholder:text-slate-500")
+  })
+
+  describe("skillChipClass", () => {
+    it("lets a long skill id wrap inside the pill instead of overflowing the row", () => {
+      const cls = skillChipClass(false)
+      expect(cls).toContain("max-w-full")
+      expect(cls).toContain("shrink")
+      expect(cls).toContain("break-all")
+      expect(cls).toContain("whitespace-normal")
+    })
+
+    it("marks the selected chip as primary", () => {
+      expect(skillChipClass(true)).toContain("btn-primary")
+      expect(skillChipClass(true)).not.toContain("btn-ghost")
+    })
+
+    it("renders an unselected chip as a subtle ghost pill", () => {
+      const cls = skillChipClass(false)
+      expect(cls).toContain("btn-ghost")
+      expect(cls).not.toContain("btn-primary")
+    })
   })
 })
