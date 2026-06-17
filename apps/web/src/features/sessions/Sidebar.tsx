@@ -70,13 +70,19 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
 
   return (
     <aside data-testid="sidebar" className={sidebarAsideClass(variant)}>
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur">
         <Link
           to="/"
           data-testid="sidebar-projects-link"
-          className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline"
+          className="group inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300"
         >
-          Projects
+          <span
+            aria-hidden="true"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary text-primary-content text-[11px] font-black shadow-sm shadow-primary/30 transition-transform group-hover:scale-105"
+          >
+            π
+          </span>
+          <span className="group-hover:underline">Projects</span>
         </Link>
         <div className="flex items-center gap-2">
           <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
@@ -91,9 +97,9 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
           data-testid="sidebar-new-session"
           onClick={() => setSpawn({ project: null })}
           title="Start a session not tied to a project (lands under Default)"
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-300 dark:border-slate-700 px-2 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40"
+          className="btn btn-sm btn-primary w-full gap-1.5 text-xs font-medium normal-case shadow-sm shadow-primary/30"
         >
-          <span className="text-sm leading-none">+</span> New session
+          <span className="text-base leading-none">+</span> New session
         </button>
       </div>
       <nav className="flex-1 py-1 divide-y divide-slate-100 dark:divide-slate-900/70">

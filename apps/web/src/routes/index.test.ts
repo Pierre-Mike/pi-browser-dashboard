@@ -21,3 +21,39 @@ describe("root dashboard orchestration tab", () => {
     expect(src).toMatch(/STATIC_TAB_KEYS\s*=\s*\[[\s\S]*"orchestration"[\s\S]*\]/)
   })
 })
+
+describe("root dashboard navigation polish (daisyUI dock)", () => {
+  it("renders an icon next to every static tab via a keyed ICONS map", () => {
+    // One icon per static tab key — the bar must read at a glance.
+    expect(src).toMatch(/const ICONS:\s*Record<StaticTabKey,\s*ReactNode>/)
+    expect(src).toContain("{ICONS[t.key]}")
+    for (const key of [
+      "terminal",
+      "orchestration",
+      "projects",
+      "claude",
+      "library",
+      "extensions",
+      "tunnel",
+    ]) {
+      expect(src).toMatch(new RegExp(`${key}:\\s*[(<]`))
+    }
+  })
+
+  it("gives extension tabs an icon too", () => {
+    expect(src).toMatch(/const EXT_ICON\s*=/)
+    expect(src).toContain("{EXT_ICON}")
+  })
+
+  it("styles the active tab as a daisyUI primary fill via a shared tabClass helper", () => {
+    expect(src).toMatch(/const tabClass\s*=\s*\(active: boolean\)/)
+    expect(src).toContain("bg-primary text-primary-content")
+    // Both tab loops share the helper instead of inlining border styles.
+    const usages = src.match(/className=\{tabClass\(active\)\}/g) ?? []
+    expect(usages.length).toBe(2)
+  })
+
+  it("frames the tabs as a rounded dock rather than a bottom-border strip", () => {
+    expect(src).toMatch(/data-testid="dashboard-tabs"[\s\S]*?rounded-xl/)
+  })
+})
