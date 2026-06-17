@@ -139,10 +139,8 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
                   data-selected={selected}
                   onClick={() => toggleSkill(id)}
                   disabled={busy}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-mono transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    selected
-                      ? "border-sky-500 bg-sky-600 text-white"
-                      : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className={`btn btn-xs h-auto min-h-0 rounded-full py-1 font-mono normal-case ${
+                    selected ? "btn-primary" : "btn-outline border-slate-300 dark:border-slate-700"
                   }`}
                 >
                   /{id}
@@ -172,14 +170,14 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
               type="button"
               onClick={handleClose}
               disabled={busy}
-              className="text-sm rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="btn btn-sm btn-ghost normal-case"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy || prependSkill(skills, intent).trim().length === 0}
-              className="text-sm rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 font-medium text-white"
+              className="btn btn-sm btn-primary normal-case shadow-sm shadow-primary/30"
             >
               {busy ? "Spawning…" : "Spawn"}
             </button>

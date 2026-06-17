@@ -1,5 +1,6 @@
 import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
+import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "../../lib/tabDock"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
@@ -23,6 +24,14 @@ type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "l
 type TabKey = StaticTabKey | `ext:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
+
+// Each project tab borrows the shared section glyph (see lib/tabDock) so a
+// "Terminal" / "Claude" / "Library" tab looks identical to the root dashboard.
+const projectTabIcon = (key: TabKey) => {
+  if (key.startsWith("ext:")) return EXT_ICON
+  if (key === "sessions") return TAB_ICONS.activity
+  return TAB_ICONS[key] ?? null
+}
 
 const emptyCounts = (): Counts => ({
   blocked: 0,
@@ -168,7 +177,7 @@ export const ProjectDashboard = ({ project }: Props) => {
           type="button"
           data-testid="dashboard-spawn"
           onClick={() => setSpawnOpen(true)}
-          className="text-[11px] font-medium rounded-md border border-sky-400 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50 shrink-0"
+          className="btn btn-primary btn-xs gap-1 normal-case shrink-0 shadow-sm shadow-primary/30"
         >
           Spawn +
         </button>
@@ -178,7 +187,7 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tabs"
         role="tablist"
         aria-label="Project sections"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800"
+        className={tabDockNavClass}
       >
         {tabs.map((t) => {
           const active = tab === t.key
@@ -191,12 +200,9 @@ export const ProjectDashboard = ({ project }: Props) => {
               data-testid={`project-tab-${t.key}`}
               data-active={active}
               onClick={() => setTab(t.key)}
-              className={`px-3 py-1 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
+              className={tabButtonClass(active)}
             >
+              {projectTabIcon(t.key)}
               {t.label}
             </button>
           )
@@ -209,8 +215,12 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "sessions" ? "flex flex-col gap-3" : "hidden"}
       >
         {sessions.length === 0 ? (
-          <div className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
-            No sessions yet — use <span className="font-medium">Spawn new +</span> to start one.
+          <div className="card border border-dashed border-slate-300 dark:border-slate-800 bg-base-200/40">
+            <div className="card-body items-center gap-1 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+              No sessions yet — use{" "}
+              <span className="font-medium text-slate-700 dark:text-slate-200">Spawn +</span> to
+              start one.
+            </div>
           </div>
         ) : (
           <RecentSessionsFeed

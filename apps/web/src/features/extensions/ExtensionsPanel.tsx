@@ -8,8 +8,8 @@ const CAPABILITIES = ["fs", "exec", "net", "events", "git"] as const
 type Capability = (typeof CAPABILITIES)[number]
 
 const TIER_COLORS: Record<string, string> = {
-  iframe: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
-  esm: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  iframe: "badge-info",
+  esm: "badge-secondary",
 }
 
 type ExtRowProps = { ext: ExtensionManifest }
@@ -63,21 +63,17 @@ const ExtRow = ({ ext }: ExtRowProps) => {
   return (
     <div
       data-testid={`ext-row-${ext.name}`}
-      className="flex flex-col gap-2 rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-white dark:bg-slate-900"
+      className="flex flex-col gap-2 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
     >
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">
-          {ext.name}
-        </span>
-        <span
-          className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${TIER_COLORS[ext.tier] ?? ""}`}
-        >
+        <span className="font-mono text-sm font-semibold text-base-content">{ext.name}</span>
+        <span className={`badge badge-sm ${TIER_COLORS[ext.tier] ?? "badge-ghost"}`}>
           {ext.tier}
         </span>
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">{ext.scope}</span>
-        <span className="text-[11px] text-slate-400 dark:text-slate-500">v{ext.version}</span>
+        <span className="text-[11px] text-base-content/50">{ext.scope}</span>
+        <span className="text-[11px] text-base-content/50">v{ext.version}</span>
         <div className="ml-auto flex items-center gap-1.5">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+          <span className={`badge badge-sm ${ext.enabled ? "badge-success" : "badge-ghost"}`}>
             {ext.enabled ? "enabled" : "disabled"}
           </span>
           <button
@@ -108,15 +104,9 @@ const ExtRow = ({ ext }: ExtRowProps) => {
                 data-testid={`ext-grant-${ext.name}-${cap}`}
                 checked={isGranted}
                 onChange={() => toggleGrant(cap)}
-                className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-sky-500 focus:ring-sky-400"
+                className="checkbox checkbox-xs checkbox-primary"
               />
-              <span
-                className={
-                  isGranted
-                    ? "text-slate-700 dark:text-slate-200"
-                    : "text-slate-400 dark:text-slate-500"
-                }
-              >
+              <span className={isGranted ? "text-base-content" : "text-base-content/40"}>
                 {cap}
               </span>
             </label>
@@ -131,11 +121,16 @@ export const ExtensionsPanel = () => {
   const q = useExtensions()
 
   if (q.isLoading) {
-    return <div className="text-sm text-slate-500">Loading extensions…</div>
+    return (
+      <div className="flex items-center gap-2 text-sm text-base-content/50">
+        <span className="loading loading-spinner loading-sm" />
+        Loading extensions…
+      </div>
+    )
   }
   if (q.isError) {
     return (
-      <div className="text-sm text-rose-600">
+      <div className="text-sm text-error">
         Failed to load extensions: {q.error instanceof Error ? q.error.message : "unknown error"}
       </div>
     )
@@ -145,7 +140,7 @@ export const ExtensionsPanel = () => {
 
   if (exts.length === 0) {
     return (
-      <div className="text-sm text-slate-500 py-8 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg">
+      <div className="text-sm text-base-content/50 py-8 text-center border border-dashed border-base-300 rounded-lg">
         No extensions installed.
       </div>
     )

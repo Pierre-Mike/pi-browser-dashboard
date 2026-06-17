@@ -35,13 +35,19 @@ export const LibraryPanel = (props: Props) => {
   const [focus, setFocus] = useState<{ category: LibraryCategory; name: string } | null>(null)
   const syncM = useSyncMutation()
 
-  if (q.isLoading) return <div className="text-sm text-slate-500">Loading catalog…</div>
+  if (q.isLoading)
+    return (
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span className="loading loading-spinner loading-sm" />
+        Loading catalog…
+      </div>
+    )
   if (q.isError) {
     const msg = q.error instanceof Error ? q.error.message : "unknown error"
     if (msg.includes("HTTP 404")) {
       return <LibrarySetupCard />
     }
-    return <div className="text-sm text-rose-600">Failed to load catalog: {msg}</div>
+    return <div className="alert alert-error text-sm">Failed to load catalog: {msg}</div>
   }
   const bundle = q.data
   if (!bundle) return null
@@ -59,17 +65,17 @@ export const LibraryPanel = (props: Props) => {
               setAddDefaults(undefined)
               setAddOpen(true)
             }}
-            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+            className="btn btn-sm btn-primary normal-case shadow-sm shadow-primary/30"
           >
             + Add entry
           </button>
-          <span className="inline-flex items-center rounded border border-slate-300 dark:border-slate-700 overflow-hidden">
+          <span className="inline-flex items-center rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden bg-base-100">
             <select
               value={syncScope}
               onChange={(e) => setSyncScope(e.target.value as "all" | InstallScope)}
               data-testid="library-sync-scope"
               title={projectId ? undefined : "open a project to sync local"}
-              className="text-xs bg-transparent px-1.5 py-1 focus:outline-none"
+              className="select select-sm select-bordered border-0 rounded-none bg-transparent focus:outline-none"
             >
               <option value="all">all</option>
               <option value="global">global</option>
@@ -91,9 +97,16 @@ export const LibraryPanel = (props: Props) => {
                       },
                 )
               }
-              className="text-xs px-2 py-1 border-l border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              className="btn btn-sm btn-ghost normal-case border-l border-slate-300 dark:border-slate-700 rounded-none disabled:opacity-50"
             >
-              {syncM.isPending ? "Syncing…" : "Sync"}
+              {syncM.isPending ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  Syncing…
+                </>
+              ) : (
+                "Sync"
+              )}
             </button>
           </span>
         </span>
@@ -106,7 +119,7 @@ export const LibraryPanel = (props: Props) => {
         }}
       />
       {syncM.isError ? (
-        <div className="text-xs text-rose-600">
+        <div className="alert alert-error text-xs">
           {syncM.error instanceof Error ? syncM.error.message : "sync failed"}
         </div>
       ) : null}
@@ -171,10 +184,8 @@ export const LibraryPanel = (props: Props) => {
                 type="button"
                 data-testid={`agentic-category-${cat}`}
                 onClick={() => setAgenticCategory(cat)}
-                className={`rounded px-2 py-1 ${
-                  active
-                    ? "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200"
-                    : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className={`btn btn-xs normal-case ${
+                  active ? "btn-primary shadow-sm shadow-primary/30" : "btn-ghost"
                 }`}
               >
                 {cat}
@@ -204,14 +215,14 @@ export const LibraryPanel = (props: Props) => {
 }
 
 const CountChip = ({ n, label }: { n: number; label: string }) => (
-  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-medium">
+  <span className="badge badge-sm badge-ghost gap-1 font-medium">
     <span className="font-mono tabular-nums">{n}</span>
     <span className="opacity-80">{label}</span>
   </span>
 )
 
 const HooksPlaceholder = () => (
-  <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
+  <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-base-200/40">
     Hooks editor lands in a follow-up. Until then, view configured hooks under the{" "}
     <span className="font-mono">Claude</span> tab.
   </div>
