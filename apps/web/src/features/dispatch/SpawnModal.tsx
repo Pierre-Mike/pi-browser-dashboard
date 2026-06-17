@@ -8,7 +8,12 @@ import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
 import { mergeSkillOptions } from "./skillOptions"
-import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
+import {
+  SPAWN_INTENT_INPUT,
+  SPAWN_MODAL_SHELL,
+  SPAWN_SKILLS_CONTAINER,
+  skillChipClass,
+} from "./spawnModalLayout"
 
 type Props = {
   open: boolean
@@ -126,7 +131,12 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           data-testid="spawn-skill"
           className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
         >
-          <legend className="shrink-0">Skills (select any)</legend>
+          <legend className="shrink-0 px-0 font-medium text-slate-600 dark:text-slate-300">
+            Skills{" "}
+            <span className="font-normal text-slate-400 dark:text-slate-500">
+              · {skills.length ? `${skills.length} selected` : "select any"}
+            </span>
+          </legend>
           <div className={SPAWN_SKILLS_CONTAINER}>
             {skillOptions.map((id) => {
               const selected = skills.includes(id)
@@ -139,11 +149,9 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
                   data-selected={selected}
                   onClick={() => toggleSkill(id)}
                   disabled={busy}
-                  className={`btn btn-xs h-auto min-h-0 rounded-full py-1 font-mono normal-case ${
-                    selected ? "btn-primary" : "btn-outline border-slate-300 dark:border-slate-700"
-                  }`}
+                  className={skillChipClass(selected)}
                 >
-                  /{id}
+                  {selected ? <span aria-hidden="true">✓</span> : null}/{id}
                 </button>
               )
             })}
