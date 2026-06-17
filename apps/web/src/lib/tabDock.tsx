@@ -6,7 +6,8 @@ import type { ReactNode } from "react"
 // and lets the styling be unit-tested without a renderer.
 
 // A 16px stroked SVG that inherits `currentColor` — no icon font / extra dep.
-export const Icon = ({ d }: { d: string }) => (
+// Module-private: callers consume the pre-built TAB_ICONS / EXT_ICON values.
+const Icon = ({ d }: { d: string }) => (
   <svg
     viewBox="0 0 24 24"
     width="16"

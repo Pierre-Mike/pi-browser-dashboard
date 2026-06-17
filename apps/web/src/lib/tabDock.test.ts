@@ -1,7 +1,17 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "./tabDock"
 
+const src = readFileSync(join(import.meta.dir, "tabDock.tsx"), "utf8")
+
 describe("shared tab dock", () => {
+  it("keeps the raw Icon component module-private (callers use TAB_ICONS/EXT_ICON)", () => {
+    // Exporting Icon with no external consumer trips the fallow dead-code gate.
+    expect(src).toMatch(/^const Icon = /m)
+    expect(src).not.toMatch(/export const Icon\b/)
+  })
+
   it("frames the dock as a rounded, scrollable bar tinted by base-200", () => {
     expect(tabDockNavClass).toContain("rounded-xl")
     expect(tabDockNavClass).toContain("bg-base-200/60")
