@@ -7,7 +7,7 @@ import { SessionReplyModal } from "./SessionReplyModal"
 type Props = { session: SessionState }
 
 const SURFACE_CLS =
-  "flex flex-col gap-1.5 text-left -m-1 p-1 rounded cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 focus:outline-none focus:ring-2 focus:ring-sky-400"
+  "flex flex-col gap-1.5 text-left -m-1 p-1 rounded cursor-pointer hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-sky-400"
 
 export const SessionCard = ({ session }: Props) => {
   const tone = stateColor(session.state)
@@ -27,7 +27,7 @@ export const SessionCard = ({ session }: Props) => {
         data-testid="session-card"
         data-short={session.short}
         data-state={session.state}
-        className={`rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-3 flex flex-col gap-1.5 ring-1 ${tone.ring}`}
+        className={`rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
       >
         <button type="button" onClick={() => setReplyOpen(true)} className={SURFACE_CLS}>
           <div className="flex items-center justify-between gap-2">
@@ -38,7 +38,7 @@ export const SessionCard = ({ session }: Props) => {
               </span>
             </span>
             <span
-              className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}
+              className={`badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
             >
               {tone.label}
             </span>

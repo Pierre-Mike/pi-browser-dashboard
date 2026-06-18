@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
+import type { ReactNode } from "react"
 import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { ExtensionHost } from "../features/extensions/ExtensionHost"
 import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
@@ -10,6 +11,7 @@ import { useProjects } from "../features/projects/useProjects"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
 import { useSessions } from "../features/sessions/useSessions"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
+import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "../lib/tabDock"
 import { coerceExtTab } from "../lib/tabParams"
 
 const STATIC_TAB_KEYS = [
@@ -25,6 +27,18 @@ type StaticTabKey = (typeof STATIC_TAB_KEYS)[number]
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
 // with a static key.
 type TabKey = StaticTabKey | `ext:${string}`
+
+// Map each dashboard tab key onto a shared section icon (see lib/tabDock). The
+// "projects" tab is labelled Activity, so it borrows the activity glyph.
+const ICONS: Record<StaticTabKey, ReactNode> = {
+  terminal: TAB_ICONS.terminal,
+  orchestration: TAB_ICONS.orchestration,
+  projects: TAB_ICONS.activity,
+  claude: TAB_ICONS.claude,
+  library: TAB_ICONS.library,
+  extensions: TAB_ICONS.extensions,
+  tunnel: TAB_ICONS.tunnel,
+}
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "terminal", label: "Terminal" },
@@ -73,8 +87,18 @@ const ProjectsPanel = () => {
   const projects = projectsQ.data ?? []
   if (sessions.length === 0 && projects.length === 0) {
     return (
-      <div className="text-sm text-slate-500">
-        No projects or sessions yet. Spawn one from the bar above.
+      <div className="card border border-slate-200/80 dark:border-slate-800 bg-base-200/50 shadow-sm">
+        <div className="card-body items-center gap-3 py-10 text-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-content text-xl font-black shadow-sm shadow-primary/30">
+            π
+          </span>
+          <h2 className="card-title text-base">Welcome home</h2>
+          <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
+            No projects or sessions yet. Spawn your first one from{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-200">+ New session</span> in
+            the sidebar, or open the Terminal tab to get going.
+          </p>
+        </div>
       </div>
     )
   }
@@ -107,7 +131,7 @@ function IndexPage() {
         data-testid="dashboard-tabs"
         role="tablist"
         aria-label="Dashboard sections"
-        className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={tabDockNavClass}
       >
         {TABS.map((t) => {
           const active = tab === t.key
@@ -120,12 +144,9 @@ function IndexPage() {
               data-testid={`dashboard-tab-${t.key}`}
               data-active={active}
               onClick={() => setTab(t.key)}
-              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
+              className={tabButtonClass(active)}
             >
+              {ICONS[t.key]}
               {t.label}
             </button>
           )
@@ -142,12 +163,9 @@ function IndexPage() {
               data-testid={`dashboard-tab-ext-${e.name}`}
               data-active={active}
               onClick={() => setTab(key)}
-              className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
-                active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
+              className={tabButtonClass(active)}
             >
+              {EXT_ICON}
               {e.name}
             </button>
           )

@@ -122,14 +122,14 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
               type="button"
               onClick={handleClose}
               disabled={busy}
-              className="text-sm rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="btn btn-sm btn-ghost normal-case"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={busy || prependSkill(skillState.selected, intent).trim().length === 0}
-              className="text-sm rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 font-medium text-white"
+              className="btn btn-sm btn-primary normal-case shadow-sm shadow-primary/30"
             >
               {busy ? "Spawning…" : "Spawn"}
             </button>

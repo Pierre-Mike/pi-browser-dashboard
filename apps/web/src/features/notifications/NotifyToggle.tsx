@@ -48,10 +48,8 @@ export const NotifyToggle = () => {
       aria-pressed={enabled}
       aria-label={title}
       title={title}
-      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[11px] leading-none ${
-        enabled
-          ? "text-sky-600 dark:text-sky-400"
-          : "text-slate-400 dark:text-slate-500 hover:text-sky-600 dark:hover:text-sky-400"
+      className={`btn btn-ghost btn-xs btn-circle shrink-0 text-[11px] ${
+        enabled ? "text-primary" : "text-base-content/40 hover:text-primary"
       } ${denied ? "opacity-40 cursor-not-allowed" : ""}`}
     >
       {enabled ? "🔔" : "🔕"}

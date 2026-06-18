@@ -186,7 +186,7 @@ function SessionDrillIn() {
   if (resolveSessionView({ isLoading: sessionQ.isLoading, data: session }) === "not-found") {
     return (
       <div className="flex flex-col gap-2">
-        <Link to="/" className="text-xs text-slate-500 hover:underline">
+        <Link to="/" className="btn btn-sm btn-ghost normal-case text-xs">
           ← All sessions
         </Link>
         <div data-testid="session-not-found" className="text-sm text-slate-600 dark:text-slate-400">
@@ -198,7 +198,7 @@ function SessionDrillIn() {
 
   return (
     <div className="flex flex-col h-screen -my-4">
-      <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200 dark:border-slate-800">
+      <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-base-100">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-semibold truncate" title={session?.name ?? id}>
@@ -206,14 +206,14 @@ function SessionDrillIn() {
             </h1>
             {session && tone ? (
               <span
-                className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}
+                className={`badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
               >
                 {tone.label}
               </span>
             ) : null}
           </div>
           {session ? (
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-2 mt-0.5">
+            <div className="text-[11px] text-base-content/50 flex flex-wrap gap-x-2 mt-0.5">
               <span className="font-mono">{session.short}</span>
               <span title={session.cwd} className="truncate">
                 {session.cwd}
@@ -222,11 +222,7 @@ function SessionDrillIn() {
           ) : null}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={onCopy}
-            className="text-xs rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
+          <button type="button" onClick={onCopy} className="btn btn-xs btn-ghost normal-case">
             {copied ? "Copied" : "Open in CLI ↗"}
           </button>
           <button
@@ -234,9 +230,10 @@ function SessionDrillIn() {
             data-testid="peek"
             onClick={onPeek}
             disabled={peeking}
-            className="text-xs rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn btn-xs btn-ghost normal-case disabled:opacity-40"
             title="Trigger a fresh Haiku peek (costs one call against your quota)"
           >
+            {peeking ? <span className="loading loading-spinner loading-xs" /> : null}
             {peeking ? "Peeking…" : "Peek"}
           </button>
           <button
@@ -244,9 +241,10 @@ function SessionDrillIn() {
             data-testid="stop"
             onClick={onStop}
             disabled={!canStop}
-            className="text-xs font-medium rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 px-2 py-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-transparent disabled:border-slate-300 disabled:dark:border-slate-700 disabled:text-slate-500"
+            className="btn btn-xs normal-case border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-30 disabled:bg-transparent disabled:border-slate-300 disabled:dark:border-slate-700 disabled:text-slate-500"
             title="claude stop — process exits, registry keeps the entry (claude respawn to recover)"
           >
+            {stopping ? <span className="loading loading-spinner loading-xs" /> : null}
             {stopping ? "Stopping…" : "Kill"}
           </button>
           <button
@@ -255,13 +253,14 @@ function SessionDrillIn() {
             onClick={onDelete}
             onBlur={cancelConfirm}
             disabled={deleting}
-            className={`text-xs font-medium rounded border px-2 py-0.5 disabled:opacity-30 disabled:cursor-not-allowed ${
+            className={`btn btn-xs normal-case disabled:opacity-30 ${
               confirmDelete
                 ? "border-rose-500 bg-rose-500 text-white hover:bg-rose-600 dark:hover:bg-rose-400"
                 : "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-900/50"
             }`}
             title="claude rm — remove session entirely; worktree cleaned if no uncommitted changes"
           >
+            {deleting ? <span className="loading loading-spinner loading-xs" /> : null}
             {deleting ? "Deleting…" : confirmDelete ? "Confirm?" : "Delete"}
           </button>
         </div>
@@ -269,13 +268,13 @@ function SessionDrillIn() {
       {peekSummary ? (
         <div
           data-testid="peek-summary"
-          className="mx-1 mt-2 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 p-2 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap"
+          className="mx-1 mt-2 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-200 p-2 text-xs text-base-content/80 whitespace-pre-wrap"
         >
           {peekSummary}
         </div>
       ) : null}
 
-      <div className="flex gap-1 border-b border-slate-200 dark:border-slate-800 px-1">
+      <div className="flex gap-1 border-b border-slate-200/80 dark:border-slate-800 px-1 bg-base-100">
         {(["terminal", "chat", "canvas"] as const).map((t) => (
           <button
             key={t}
@@ -285,8 +284,8 @@ function SessionDrillIn() {
             onClick={() => setTab(t)}
             className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px capitalize ${
               tab === t
-                ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                ? "border-primary text-primary"
+                : "border-transparent text-base-content/50 hover:text-base-content"
             }`}
           >
             {t}
@@ -300,13 +299,13 @@ function SessionDrillIn() {
             onClick={() => setTab("files")}
             className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${
               tab === "files"
-                ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                ? "border-primary text-primary"
+                : "border-transparent text-base-content/50 hover:text-base-content"
             }`}
             title="View the diff of files changed in this session's worktree"
           >
             Files
-            <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-mono">
+            <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full bg-base-200 text-[10px] font-mono">
               {fileCount}
             </span>
           </button>
@@ -317,9 +316,12 @@ function SessionDrillIn() {
         <>
           <div className="flex-1 min-h-0 overflow-y-auto px-1 py-4">
             {transcriptQ.isLoading ? (
-              <div className="text-sm text-slate-500">Loading transcript…</div>
+              <div className="flex items-center gap-2 text-sm text-base-content/50">
+                <span className="loading loading-spinner loading-sm" />
+                Loading transcript…
+              </div>
             ) : transcriptQ.isError ? (
-              <div className="text-sm text-rose-600">
+              <div className="text-sm text-error">
                 Failed to load transcript:{" "}
                 {transcriptQ.error instanceof Error ? transcriptQ.error.message : "unknown error"}
               </div>
@@ -341,7 +343,10 @@ function SessionDrillIn() {
             <CanvasTab session={session} />
           </div>
         ) : (
-          <div className="px-1 py-4 text-sm text-slate-500">Loading session…</div>
+          <div className="px-1 py-4 flex items-center gap-2 text-sm text-base-content/50">
+            <span className="loading loading-spinner loading-sm" />
+            Loading session…
+          </div>
         )
       ) : tab === "files" ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -352,7 +357,10 @@ function SessionDrillIn() {
           <TerminalTab session={session} />
         </div>
       ) : (
-        <div className="px-1 py-4 text-sm text-slate-500">Loading session…</div>
+        <div className="px-1 py-4 flex items-center gap-2 text-sm text-base-content/50">
+          <span className="loading loading-spinner loading-sm" />
+          Loading session…
+        </div>
       )}
     </div>
   )

@@ -59,7 +59,7 @@ export const SessionReplyModal = ({ open, session, onClose }: Props) => {
     <Modal open={open} onClose={onClose} title={session.name || short} testId="session-reply-modal">
       <div className="flex items-center justify-between gap-2">
         <span
-          className={`text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}
+          className={`badge badge-sm font-semibold uppercase tracking-wide ${tone.bg} ${tone.text}`}
         >
           {tone.label}
         </span>

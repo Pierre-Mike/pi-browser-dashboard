@@ -23,16 +23,28 @@ export const ClaudeConfigPanel = (props: Props) => {
   const q = isGlobal ? globalQ : projectQ
   const [sub, setSub] = useState<Sub>("hooks")
 
-  if (q.isLoading) return <div className="text-sm text-slate-500">Loading…</div>
+  if (q.isLoading)
+    return (
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span className="loading loading-spinner loading-sm" />
+        Loading…
+      </div>
+    )
   if (q.isError) {
     return (
-      <div className="text-sm text-rose-600">
+      <div className="alert alert-error text-sm">
         Failed to load Claude config: {q.error instanceof Error ? q.error.message : "unknown error"}
       </div>
     )
   }
   const bundle = q.data
-  if (!bundle) return <div className="text-sm text-slate-500">No data</div>
+  if (!bundle)
+    return (
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span className="loading loading-spinner loading-sm" />
+        No data
+      </div>
+    )
 
   const isEmpty =
     bundle.hooks.length === 0 &&
@@ -54,7 +66,7 @@ export const ClaudeConfigPanel = (props: Props) => {
         <CountChip n={bundle.hookScripts.length} label="scripts" />
       </header>
       {isEmpty ? (
-        <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
+        <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-base-200/40">
           No Claude config found at <span className="font-mono">{bundle.root}</span>.
         </div>
       ) : null}
@@ -106,7 +118,7 @@ export const ClaudeConfigPanel = (props: Props) => {
 }
 
 const CountChip = ({ n, label }: { n: number; label: string }) => (
-  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-medium">
+  <span className="badge badge-sm badge-ghost gap-1 font-medium">
     <span className="font-mono tabular-nums">{n}</span>
     <span className="opacity-80">{label}</span>
   </span>
@@ -127,7 +139,7 @@ const eventTone: Record<string, string> = {
 const HookCard = ({ hook }: { hook: HookEntry }) => (
   <div
     data-testid="claude-config-hook"
-    className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 flex flex-col gap-1"
+    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 p-2 flex flex-col gap-1 shadow-sm"
   >
     <div className="flex flex-wrap items-center gap-1.5">
       <span
@@ -153,11 +165,11 @@ const HookCard = ({ hook }: { hook: HookEntry }) => (
       ) : null}
       {hook.statusMessage ? (
         <span className="text-[10px] italic text-slate-500 truncate max-w-[300px]">
-          “{hook.statusMessage}”
+          "{hook.statusMessage}"
         </span>
       ) : null}
     </div>
-    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-950/60 rounded p-2 max-h-32 overflow-auto">
+    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-base-200/60 rounded p-2 max-h-32 overflow-auto">
       {hook.command}
     </pre>
   </div>
@@ -192,7 +204,7 @@ const HooksTab = ({ bundle }: { bundle: ScopeBundle }) => {
             {bundle.hookScripts.map((s: HookScript) => (
               <li
                 key={s.path}
-                className="text-xs flex items-center justify-between gap-2 rounded border border-slate-200 dark:border-slate-800 px-2 py-1"
+                className="text-xs flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 px-2 py-1"
               >
                 <span className="font-mono">{s.name}</span>
                 <span className="text-slate-500 tabular-nums">{s.bytes} B</span>
@@ -226,16 +238,16 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
                 type="button"
                 data-testid={`claude-config-skill-${s.id}`}
                 onClick={() => setSelected(s.id)}
-                className={`w-full text-left text-xs rounded px-2 py-1.5 border ${
+                className={`w-full text-left text-xs rounded-lg px-2 py-1.5 border transition-colors ${
                   active
-                    ? "border-sky-400 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700"
-                    : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                    ? "border-sky-400 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700 shadow-sm shadow-sky-200/50 dark:shadow-sky-900/30"
+                    : "border-slate-200 dark:border-slate-800 hover:bg-base-200/60 hover:border-slate-300 dark:hover:border-slate-700"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{s.name}</span>
                   {s.hasEvals ? (
-                    <span className="text-[9px] uppercase tracking-wide rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-1 py-0.5">
+                    <span className="badge badge-sm bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border-0">
                       evals
                     </span>
                   ) : null}
@@ -252,18 +264,21 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
       </ul>
       <div className="md:col-span-2 flex flex-col min-h-0">
         {selected === null ? (
-          <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-800 rounded-lg py-8 text-center">
+          <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg py-8 text-center bg-base-200/40">
             Select a skill to view its SKILL.md.
           </div>
         ) : detailQ.isLoading ? (
-          <div className="text-sm text-slate-500">Loading…</div>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <span className="loading loading-spinner loading-sm" />
+            Loading…
+          </div>
         ) : detailQ.isError ? (
-          <div className="text-sm text-rose-600">
+          <div className="alert alert-error text-sm">
             {detailQ.error instanceof Error ? detailQ.error.message : "failed"}
           </div>
         ) : detailQ.data ? (
-          <article className="flex flex-col min-h-0 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
+          <article className="flex flex-col min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 shadow-sm">
+            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-base-200/40 rounded-t-lg">
               <h4 className="text-sm font-semibold">{detailQ.data.name}</h4>
               <span className="text-[10px] text-slate-500 font-mono truncate">
                 {detailQ.data.path}
@@ -285,11 +300,11 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
 }
 
 const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsSummary }) => (
-  <section className="rounded-md border border-slate-200 dark:border-slate-800 overflow-hidden">
-    <header className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+  <section className="rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden bg-base-100 shadow-sm">
+    <header className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-base-200/40">
       <span className="text-xs font-semibold">{title}</span>
       {settings.parseError ? (
-        <span className="text-[10px] text-rose-600">parse error: {settings.parseError}</span>
+        <span className="badge badge-sm badge-error">parse error: {settings.parseError}</span>
       ) : null}
     </header>
     {settings.permissions ? (
@@ -330,7 +345,7 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
       <summary className="cursor-pointer text-xs text-slate-600 dark:text-slate-400">
         Raw JSON
       </summary>
-      <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-slate-50 dark:bg-slate-950/60 rounded p-2 mt-1 max-h-80 overflow-auto">
+      <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-base-200/60 rounded p-2 mt-1 max-h-80 overflow-auto">
         {settings.raw}
       </pre>
     </details>
@@ -358,7 +373,7 @@ const ClaudeMdTab = ({ bundle }: { bundle: ScopeBundle }) => {
   return (
     <div
       data-testid="claude-config-claude-md"
-      className="flex-1 min-h-0 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-auto"
+      className="flex-1 min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 overflow-auto shadow-sm"
     >
       <MarkdownView text={bundle.claudeMd} />
     </div>
