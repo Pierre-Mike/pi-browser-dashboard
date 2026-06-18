@@ -3,7 +3,7 @@ import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
-import { type GitError, gitLog, gitPull, gitStatus } from "./git.repo"
+import { type GitError, type GitResult, gitLog, gitPull, gitStatus } from "./git.repo"
 import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
 import type { FileError } from "./projects.repo"
@@ -24,6 +24,24 @@ const errorToStatus = (e: FileError): 400 | 403 | 404 | 413 => {
 }
 
 const gitErrorToStatus = (e: GitError): 404 | 500 => (e === "not_a_repo" ? 404 : 500)
+
+// Shared shape for the /:id/git/* routes: resolve the project path (404 if
+// unknown), run a GitResult-returning op, and map a GitError to its status.
+// `shape` lets a route wrap the value (e.g. { commits }); defaults to identity.
+const gitRoute = async <A>(
+  // biome-ignore lint/suspicious/noExplicitAny: Hono Context generics vary per route
+  c: any,
+  {
+    op,
+    shape = (v) => v,
+  }: { op: (path: string) => Promise<GitResult<A>>; shape?: (value: A) => unknown },
+): Promise<Response> => {
+  const path = await projectPath(c.req.param("id"))
+  if (!path) return c.json({ error: "project not found" }, 404)
+  const res = await op(path)
+  if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
+  return c.json(shape(res.value))
+}
 
 // Resolve a project id to its absolute path, or null when unknown.
 const projectPath = (id: string): Promise<string | null> =>
@@ -142,29 +160,13 @@ const app = new Hono()
       ? c.json(await fetchPrDiff(path, Number(c.req.param("prNumber"))))
       : c.json({ error: "project not found" }, 404)
   })
-  .get("/:id/git/status", async (c) => {
-    const path = await projectPath(c.req.param("id"))
-    if (!path) return c.json({ error: "project not found" }, 404)
-    const res = await gitStatus(path)
-    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
-    return c.json(res.value)
-  })
-  .get("/:id/git/log", async (c) => {
-    const path = await projectPath(c.req.param("id"))
-    if (!path) return c.json({ error: "project not found" }, 404)
+  .get("/:id/git/status", (c) => gitRoute(c, { op: (path) => gitStatus(path) }))
+  .get("/:id/git/log", (c) => {
     const limitRaw = c.req.query("limit")
     const limit = limitRaw !== undefined ? Number(limitRaw) : undefined
-    const res = await gitLog(path, limit)
-    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
-    return c.json({ commits: res.value })
+    return gitRoute(c, { op: (path) => gitLog(path, limit), shape: (commits) => ({ commits }) })
   })
-  .post("/:id/git/pull", async (c) => {
-    const path = await projectPath(c.req.param("id"))
-    if (!path) return c.json({ error: "project not found" }, 404)
-    const res = await gitPull(path)
-    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
-    return c.json(res.value)
-  })
+  .post("/:id/git/pull", (c) => gitRoute(c, { op: (path) => gitPull(path) }))
   // Per-project pid-settings live under this router: GET/POST
   // /projects/:id/pid-settings. The sub-app reads the `:id` parent param.
   .route("/", pidSettingsApp)

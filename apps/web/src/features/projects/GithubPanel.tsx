@@ -1,6 +1,7 @@
 import { PatchDiff } from "@pierre/diffs/react"
 import { type ReactNode, useMemo, useState } from "react"
 import type {
+  GithubProjectSummary,
   GithubPullRequest,
   GithubRunConclusion,
   GithubRunStatus,
@@ -105,8 +106,8 @@ const PrDiffNote = ({
   children: ReactNode
 }) => <div className={NOTE_CLASS[tone]}>{children}</div>
 
-const diffErrorText = (e: unknown): string =>
-  e instanceof Error ? e.message : "failed to load diff"
+const errMsg = (e: unknown, fallback: string): string => (e instanceof Error ? e.message : fallback)
+const diffErrorText = (e: unknown): string => errMsg(e, "failed to load diff")
 
 // PatchDiff renders one file each, so split the PR's unified diff per file and
 // render one PatchDiff apiece — same Shiki options as the session FilesTab.
@@ -161,27 +162,24 @@ const PrList = ({ projectId, prs }: { projectId: string; prs: readonly GithubPul
 const pullNote = (
   m: ReturnType<typeof useProjectGitPull>,
 ): { tone: string; text: string } | null => {
-  if (m.isError)
-    return { tone: "text-error", text: m.error instanceof Error ? m.error.message : "pull failed" }
-  if (m.data) {
-    return {
-      tone: "text-base-content/50",
-      text: m.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes.",
-    }
-  }
-  return null
+  if (m.isError) return { tone: "text-error", text: errMsg(m.error, "pull failed") }
+  if (!m.data) return null
+  const text = m.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes."
+  return { tone: "text-base-content/50", text }
 }
 
-export const GithubPanel = ({ projectId, githubUrl }: Props) => {
-  const q = useProjectGithub(projectId, true)
-  const pull = useProjectGitPull(projectId)
+// Header: title, the ff-only Pull button, and the external GitHub link, plus
+// the pull-result note underneath.
+const GithubHeader = ({
+  githubUrl,
+  pull,
+}: {
+  githubUrl: string
+  pull: ReturnType<typeof useProjectGitPull>
+}) => {
   const note = pullNote(pull)
-
   return (
-    <section
-      data-testid="github-panel"
-      className="flex flex-col gap-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
-    >
+    <>
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-base-content">GitHub</h2>
         <div className="flex items-center gap-2">
@@ -206,60 +204,98 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
           </a>
         </div>
       </header>
-
       {note ? (
         <div data-testid="gh-pull-note" className={`text-[11px] px-1 ${note.tone}`}>
           {note.text}
         </div>
       ) : null}
+    </>
+  )
+}
 
-      {q.isLoading ? (
-        <div className="flex items-center gap-2 text-xs text-base-content/50">
-          <span className="loading loading-spinner loading-sm" />
-          Loading PRs and CI…
-        </div>
-      ) : q.isError ? (
-        <div className="text-xs text-error">
-          Failed to load GitHub data: {q.error instanceof Error ? q.error.message : "unknown error"}
-        </div>
-      ) : (
-        <>
-          {q.data?.warning ? (
-            <div
-              data-testid="gh-warning"
-              className="text-[11px] rounded bg-warning/10 border border-warning/30 text-warning px-2 py-1"
-            >
-              {q.data.warning}
-            </div>
-          ) : null}
+// A labelled list section ("Open PRs (n)") with an italic empty-state fallback.
+const Section = ({
+  label,
+  empty,
+  children,
+}: {
+  label: string
+  empty: string
+  children: ReactNode | null
+}) => (
+  <div className="flex flex-col gap-1">
+    <div className="text-[11px] uppercase tracking-wide text-base-content/50">{label}</div>
+    {children ?? <div className="text-xs text-base-content/50 italic">{empty}</div>}
+  </div>
+)
 
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] uppercase tracking-wide text-base-content/50">
-              Open PRs ({q.data?.prs.length ?? 0})
-            </div>
-            {q.data && q.data.prs.length > 0 ? (
-              <PrList projectId={projectId} prs={q.data.prs} />
-            ) : (
-              <div className="text-xs text-base-content/50 italic">No open pull requests.</div>
-            )}
-          </div>
+const RunsSection = ({ runs }: { runs: readonly GithubWorkflowRun[] }) => (
+  <Section label={`Recent CI runs (${runs.length})`} empty="No workflow runs yet.">
+    {runs.length > 0 ? (
+      <div className="flex flex-col">
+        {runs.slice(0, 5).map((run) => (
+          <RunRow key={run.id} run={run} />
+        ))}
+      </div>
+    ) : null}
+  </Section>
+)
 
-          <div className="flex flex-col gap-1">
-            <div className="text-[11px] uppercase tracking-wide text-base-content/50">
-              Recent CI runs ({q.data?.runs.length ?? 0})
-            </div>
-            {q.data && q.data.runs.length > 0 ? (
-              <div className="flex flex-col">
-                {q.data.runs.slice(0, 5).map((run) => (
-                  <RunRow key={run.id} run={run} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-base-content/50 italic">No workflow runs yet.</div>
-            )}
-          </div>
-        </>
-      )}
+const Warning = ({ warning }: { warning?: string }) =>
+  warning ? (
+    <div
+      data-testid="gh-warning"
+      className="text-[11px] rounded bg-warning/10 border border-warning/30 text-warning px-2 py-1"
+    >
+      {warning}
+    </div>
+  ) : null
+
+// The loaded data view: warning banner, open PRs, and recent CI runs.
+const GithubData = ({ projectId, data }: { projectId: string; data: GithubProjectSummary }) => (
+  <>
+    <Warning warning={data.warning} />
+    <Section label={`Open PRs (${data.prs.length})`} empty="No open pull requests.">
+      {data.prs.length > 0 ? <PrList projectId={projectId} prs={data.prs} /> : null}
+    </Section>
+    <RunsSection runs={data.runs} />
+  </>
+)
+
+const GithubBody = ({
+  projectId,
+  q,
+}: {
+  projectId: string
+  q: ReturnType<typeof useProjectGithub>
+}) => {
+  if (q.isLoading)
+    return (
+      <div className="flex items-center gap-2 text-xs text-base-content/50">
+        <span className="loading loading-spinner loading-sm" />
+        Loading PRs and CI…
+      </div>
+    )
+  if (q.isError)
+    return (
+      <div className="text-xs text-error">
+        Failed to load GitHub data: {errMsg(q.error, "unknown error")}
+      </div>
+    )
+  if (!q.data) return null
+  return <GithubData projectId={projectId} data={q.data} />
+}
+
+export const GithubPanel = ({ projectId, githubUrl }: Props) => {
+  const q = useProjectGithub(projectId, true)
+  const pull = useProjectGitPull(projectId)
+  return (
+    <section
+      data-testid="github-panel"
+      className="flex flex-col gap-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
+    >
+      <GithubHeader githubUrl={githubUrl} pull={pull} />
+      <GithubBody projectId={projectId} q={q} />
     </section>
   )
 }
