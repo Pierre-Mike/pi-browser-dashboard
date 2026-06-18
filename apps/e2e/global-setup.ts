@@ -214,7 +214,7 @@ export default async function globalSetup(): Promise<void> {
   writeFileSync(
     join(testExt, "index.html"),
     `<!doctype html><html><head><meta charset='utf-8'><title>test-extension</title>
-<style>body{font-family:system-ui,sans-serif;padding:1.5rem;margin:0}</style>
+<style>html,body{height:100%;margin:0}body{font-family:system-ui,sans-serif;padding:1.5rem;box-sizing:border-box}</style>
 </head><body>
 <button data-testid="test-extension-button" type="button">Test Extension</button>
 </body></html>`,
