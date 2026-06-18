@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { Hono } from "hono"
 import type { ExtensionApi } from "./api"
-import { loadExtensions } from "./loader"
+import { findProjectRoot, loadExtensions } from "./loader"
 import type { ExtensionManifest } from "./manifest"
 import { createRegistry } from "./registry"
 import { writeState } from "./state"
@@ -374,5 +374,32 @@ describe("loadExtensions", () => {
       state: {},
     })
     expect(res.loaded).toContain("no-state-ext")
+  })
+
+  describe("findProjectRoot", () => {
+    it("walks up from a subdir to the nearest ancestor with a .pid dir", () => {
+      const root = mkdtempSync(join(tmpdir(), "pid-proj-"))
+      cleanups.push(root)
+      mkdirSync(join(root, ".pid", "extensions"), { recursive: true })
+      const sub = join(root, "apps", "daemon")
+      mkdirSync(sub, { recursive: true })
+      // realpath() to normalise macOS /var → /private/var symlink differences.
+      expect(realpathSync(findProjectRoot(sub))).toBe(realpathSync(root))
+    })
+
+    it("walks up to an ancestor with a .git dir when no .pid exists", () => {
+      const root = mkdtempSync(join(tmpdir(), "pid-proj-git-"))
+      cleanups.push(root)
+      mkdirSync(join(root, ".git"), { recursive: true })
+      const sub = join(root, "apps", "daemon")
+      mkdirSync(sub, { recursive: true })
+      expect(realpathSync(findProjectRoot(sub))).toBe(realpathSync(root))
+    })
+
+    it("falls back to the start dir when no project marker is found", () => {
+      const lonely = mkdtempSync(join(tmpdir(), "pid-lonely-"))
+      cleanups.push(lonely)
+      expect(realpathSync(findProjectRoot(lonely))).toBe(realpathSync(lonely))
+    })
   })
 })
