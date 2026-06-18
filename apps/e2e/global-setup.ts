@@ -199,27 +199,6 @@ export default async function globalSetup(): Promise<void> {
   ].join("")
   writeFileSync(join(fixtureExt, "index.html"), fixtureHtml)
 
-  // Seed the test-extension: an iframe-tier projectPanel that shows a button.
-  const testExt = join(extRoot, "test-extension")
-  mkdirSync(testExt, { recursive: true })
-  writeFileSync(
-    join(testExt, "manifest.json"),
-    JSON.stringify({
-      name: "test-extension",
-      version: "0.0.1",
-      tier: "iframe",
-      contributes: { projectPanels: [{ key: "main" }] },
-    }),
-  )
-  writeFileSync(
-    join(testExt, "index.html"),
-    `<!doctype html><html><head><meta charset='utf-8'><title>test-extension</title>
-<style>html,body{height:100%;margin:0}body{font-family:system-ui,sans-serif;padding:1.5rem;box-sizing:border-box}</style>
-</head><body>
-<button data-testid="test-extension-button" type="button">Test Extension</button>
-</body></html>`,
-  )
-
   const daemonEnv = {
     ...process.env,
     CLAUDE_CONFIG_DIR: sandbox,
@@ -273,6 +252,7 @@ export default async function globalSetup(): Promise<void> {
   globalThis.__PID_E2E__ = { sandbox, workspace, daemon, web }
   process.env.PID_E2E_SANDBOX = sandbox
   process.env.PID_E2E_WORKSPACE = workspace
+  process.env.PID_E2E_EXT_LOCAL_DIR = extRoot
 
   const manifest = {
     sandbox,
@@ -294,6 +274,7 @@ export default async function globalSetup(): Promise<void> {
       ...(stubBin ? { PATH: pathWithStub ?? "" } : {}),
     },
     daemonPid: daemon.pid ?? null,
+    extLocalDir: extRoot,
   }
   writeFileSync(join(sandbox, ".e2e-manifest.json"), JSON.stringify(manifest, null, 2))
   process.stderr.write(`[e2e] ready (daemon pid=${daemon.pid})\n`)

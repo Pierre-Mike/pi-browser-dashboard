@@ -104,6 +104,7 @@ type Manifest = {
   daemonPort: number
   daemonEnv: Record<string, string>
   daemonPid: number | null
+  extLocalDir?: string
 }
 
 const readManifest = (): Manifest => {
@@ -173,6 +174,12 @@ export const startDaemon = async (): Promise<void> => {
 export const restartDaemon = async (): Promise<void> => {
   await killDaemon()
   await startDaemon()
+}
+
+export const extLocalDir = (): string => {
+  const dir = process.env.PID_E2E_EXT_LOCAL_DIR ?? readManifest().extLocalDir
+  if (!dir) throw new Error("PID_E2E_EXT_LOCAL_DIR not set — is globalSetup running?")
+  return dir
 }
 
 export const rmSession = (short: string): void => {

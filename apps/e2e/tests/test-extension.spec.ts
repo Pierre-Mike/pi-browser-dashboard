@@ -1,9 +1,50 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { ensureProject } from "./helpers"
+import { ensureProject, extLocalDir, restartDaemon } from "./helpers"
 
-// The test-extension is a local iframe-tier extension seeded by global-setup.
+// TDD: test-extension is NOT globally seeded by global-setup.ts.
+// Before this describe block's beforeAll seeds it, no project should have the tab.
+test("test-extension absent from projects before local seeding", async ({ page }) => {
+  ensureProject("no-ext-proj", { gitInit: true })
+  await page.goto("/projects/no-ext-proj")
+  await expect(page.getByTestId("project-dashboard")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("project-tab-ext:test-extension")).not.toBeVisible()
+})
+
+// The test-extension is a LOCAL iframe-tier extension seeded per-spec.
 // It contributes a projectPanel so it appears in the project view after Settings.
 test.describe("test-extension project panel", () => {
+  test.beforeAll(async () => {
+    const extDir = extLocalDir()
+    const testExt = join(extDir, "test-extension")
+    mkdirSync(testExt, { recursive: true })
+    writeFileSync(
+      join(testExt, "manifest.json"),
+      JSON.stringify({
+        name: "test-extension",
+        version: "0.0.1",
+        tier: "iframe",
+        contributes: { projectPanels: [{ key: "main" }] },
+      }),
+    )
+    writeFileSync(
+      join(testExt, "index.html"),
+      `<!doctype html><html><head><meta charset='utf-8'><title>test-extension</title>
+<style>html,body{height:100%;margin:0}body{font-family:system-ui,sans-serif;padding:1.5rem;box-sizing:border-box}</style>
+</head><body>
+<button data-testid="test-extension-button" type="button">Test Extension</button>
+</body></html>`,
+    )
+    await restartDaemon()
+  })
+
+  test.afterAll(async () => {
+    const extDir = extLocalDir()
+    rmSync(join(extDir, "test-extension"), { recursive: true, force: true })
+    await restartDaemon()
+  })
+
   test("tab appears after Settings and renders a button", async ({ page }) => {
     ensureProject("test-ext-proj", { gitInit: true })
 
