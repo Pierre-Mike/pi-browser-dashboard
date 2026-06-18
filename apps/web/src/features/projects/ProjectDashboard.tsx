@@ -7,6 +7,7 @@ import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
 import { useExtensions } from "../extensions/useExtensions"
 import { LibraryPanel } from "../library/LibraryPanel"
+import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
@@ -19,7 +20,7 @@ type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
 
-type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "library"
+type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "library" | "settings"
 // Extension-contributed project panels are namespaced (`ext:<name>`).
 type TabKey = StaticTabKey | `ext:${string}`
 
@@ -80,6 +81,7 @@ export const ProjectDashboard = ({ project }: Props) => {
     base.push({ key: "files", label: "Files" })
     base.push({ key: "claude", label: "Claude" })
     base.push({ key: "library", label: "Library" })
+    base.push({ key: "settings", label: "Settings" })
     for (const e of extPanels) base.push({ key: `ext:${e.name}`, label: e.name })
     return base
   }, [project.githubUrl, sessions.length, extPanels])
@@ -272,6 +274,14 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "library" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
         <LibraryPanel scope="project" projectId={project.id} />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-settings"
+        className={tab === "settings" ? "flex flex-col gap-3" : "hidden"}
+      >
+        <PidSettingsPanel projectId={project.id} />
       </div>
 
       {extPanels.map((e) => {

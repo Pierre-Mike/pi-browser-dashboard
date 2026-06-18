@@ -10,6 +10,7 @@ const PROJECT_STATIC_TAB_KEYS = [
   "files",
   "claude",
   "library",
+  "settings",
 ] as const
 type ProjectTabKey = (typeof PROJECT_STATIC_TAB_KEYS)[number] | `ext:${string}`
 
