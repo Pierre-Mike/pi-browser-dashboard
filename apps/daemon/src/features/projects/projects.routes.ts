@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
 import { type GitError, gitLog, gitStatus } from "./git.repo"
 import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
@@ -157,5 +158,8 @@ const app = new Hono()
     if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
     return c.json({ commits: res.value })
   })
+  // Per-project pid-settings live under this router: GET/POST
+  // /projects/:id/pid-settings. The sub-app reads the `:id` parent param.
+  .route("/", pidSettingsApp)
 
 export { app }

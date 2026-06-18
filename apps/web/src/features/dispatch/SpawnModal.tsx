@@ -1,14 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { api } from "../../lib/api"
 import type { Project } from "../../lib/types"
-import { useGlobalClaudeConfig, useProjectClaudeConfig } from "../claude-config/useClaudeConfig"
 import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
-import { mergeSkillOptions } from "./skillOptions"
-import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL, SPAWN_SKILLS_CONTAINER } from "./spawnModalLayout"
+import { SpawnSkillPicker } from "./SpawnSkillPicker"
+import { dispatchSpawn } from "./spawnDispatch"
+import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL } from "./spawnModalLayout"
+import { useSpawnSkills } from "./useSpawnSkills"
 
 type Props = {
   open: boolean
@@ -16,39 +16,21 @@ type Props = {
   onClose: () => void
 }
 
-const DEFAULT_SKILL = "goal"
-
 export const SpawnModal = ({ open, project, onClose }: Props) => {
   const qc = useQueryClient()
   const [intent, setIntent] = useState("")
-  const [skills, setSkills] = useState<string[]>([DEFAULT_SKILL])
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const claudeConfig = useGlobalClaudeConfig()
-  const projectConfig = useProjectClaudeConfig(project?.id ?? "")
-
-  const skillOptions = useMemo(
-    () =>
-      mergeSkillOptions({
-        defaultSkill: DEFAULT_SKILL,
-        globalSkills: claudeConfig.data?.skills,
-        projectSkills: project ? projectConfig.data?.skills : [],
-      }),
-    [claudeConfig.data, projectConfig.data, project],
-  )
+  const skillState = useSpawnSkills(open, project)
 
   const handleClose = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["claude-config", "project"] })
     onClose()
   }, [qc, onClose])
 
-  const toggleSkill = (id: string) =>
-    setSkills((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
-
   useEffect(() => {
     if (!open) return
     setIntent("")
-    setSkills([DEFAULT_SKILL])
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
   }, [open])
@@ -71,15 +53,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    const text = prependSkill(skills, intent).trim()
+    const text = prependSkill(skillState.selected, intent).trim()
     if (!text || busy) return
     setBusy(true)
     try {
-      const body: { intent: string; cwd?: string } = { intent: text }
-      if (project) body.cwd = project.path
-      // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
-      const client = api as any
-      await client.dispatch.$post({ json: body })
+      await dispatchSpawn(text, project)
       qc.invalidateQueries({ queryKey: ["sessions"] })
       handleClose()
     } catch (err) {
@@ -122,35 +100,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </span>
           ) : null}
         </div>
-        <fieldset
-          data-testid="spawn-skill"
-          className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
-        >
-          <legend className="shrink-0">Skills (select any)</legend>
-          <div className={SPAWN_SKILLS_CONTAINER}>
-            {skillOptions.map((id) => {
-              const selected = skills.includes(id)
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={selected}
-                  data-skill={id}
-                  data-selected={selected}
-                  onClick={() => toggleSkill(id)}
-                  disabled={busy}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-mono transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    selected
-                      ? "border-sky-500 bg-sky-600 text-white"
-                      : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  /{id}
-                </button>
-              )
-            })}
-          </div>
-        </fieldset>
+        <SpawnSkillPicker skills={skillState} disabled={busy} />
         <textarea
           ref={inputRef}
           value={intent}
@@ -178,7 +128,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </button>
             <button
               type="submit"
-              disabled={busy || prependSkill(skills, intent).trim().length === 0}
+              disabled={busy || prependSkill(skillState.selected, intent).trim().length === 0}
               className="text-sm rounded-md bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 font-medium text-white"
             >
               {busy ? "Spawning…" : "Spawn"}

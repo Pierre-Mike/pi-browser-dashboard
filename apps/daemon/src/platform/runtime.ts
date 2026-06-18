@@ -4,6 +4,7 @@ import { GhIssueClientLive } from "../features/issue-driver/gh-issue.repo"
 import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.repo"
 import { GitClientLive } from "../features/library/installer"
 import { LibraryRepoLive } from "../features/library/library.repo"
+import { PidSettingsRepoLive } from "../features/pid-settings/pid-settings.repo"
 import { ProjectsRepoLive } from "../features/projects/projects.repo"
 import { FilesRepoLive } from "../features/sessions/files.repo"
 import { SessionRegistryLive } from "../features/sessions/sessions.repo"
@@ -24,6 +25,7 @@ const LibraryLive = Layer.provide(
   Layer.mergeAll(ConfigRepoLive, ProjectsLive, GitClientLive),
 )
 const TunnelLive = Layer.provide(TunnelRepoLive, ConfigRepoLive)
+const PidSettingsLive = Layer.provide(PidSettingsRepoLive, ProjectsLive)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
     globalCap: ISSUE_DRIVER_GLOBAL_CAP,
@@ -45,6 +47,7 @@ const AppLayer = Layer.mergeAll(
   LibraryLive,
   IssueDriverLive,
   TunnelLive,
+  PidSettingsLive,
 )
 
 export const appRuntime = ManagedRuntime.make(AppLayer)

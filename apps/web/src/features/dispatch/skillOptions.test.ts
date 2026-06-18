@@ -51,4 +51,24 @@ describe("mergeSkillOptions", () => {
       }),
     ).toEqual(["goal", "deploy"])
   })
+
+  it("surfaces pinned skills after the default, before global/project skills", () => {
+    expect(
+      mergeSkillOptions({
+        defaultSkill: "goal",
+        pinned: ["align"],
+        globalSkills: [{ id: "deploy" }],
+      }),
+    ).toEqual(["goal", "align", "deploy"])
+  })
+
+  it("dedupes a pinned skill that equals the default or a loaded skill", () => {
+    expect(
+      mergeSkillOptions({
+        defaultSkill: "goal",
+        pinned: ["goal", "deploy"],
+        globalSkills: [{ id: "deploy" }],
+      }),
+    ).toEqual(["goal", "deploy"])
+  })
 })
