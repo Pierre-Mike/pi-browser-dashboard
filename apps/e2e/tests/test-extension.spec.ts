@@ -1,7 +1,11 @@
 import { cpSync, rmSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { expect, test } from "@playwright/test"
 import { ensureProject, extLocalDir, restartDaemon } from "./helpers"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // TDD: test-extension is NOT globally seeded by global-setup.ts.
 // Before this describe block's beforeAll seeds it, no project should have the tab.
