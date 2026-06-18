@@ -3,7 +3,7 @@ import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
-import { type GitError, gitLog, gitStatus } from "./git.repo"
+import { type GitError, gitLog, gitPull, gitStatus } from "./git.repo"
 import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
 import type { FileError } from "./projects.repo"
@@ -157,6 +157,13 @@ const app = new Hono()
     const res = await gitLog(path, limit)
     if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
     return c.json({ commits: res.value })
+  })
+  .post("/:id/git/pull", async (c) => {
+    const path = await projectPath(c.req.param("id"))
+    if (!path) return c.json({ error: "project not found" }, 404)
+    const res = await gitPull(path)
+    if (!res.ok) return c.json({ error: res.error }, gitErrorToStatus(res.error))
+    return c.json(res.value)
   })
   // Per-project pid-settings live under this router: GET/POST
   // /projects/:id/pid-settings. The sub-app reads the `:id` parent param.

@@ -7,8 +7,10 @@ import { join } from "node:path"
 import {
   GIT_LOG_FORMAT,
   type GitLogEntry,
+  type GitPullResult,
   type GitStatus,
   parseGitLog,
+  parseGitPull,
   parseGitStatusPorcelain,
 } from "./git.core"
 
@@ -85,6 +87,15 @@ export const gitLog = async (
   const res = await runGit(repoPath, ["log", `-n`, String(n), `--format=${GIT_LOG_FORMAT}`])
   if (!res.ok) return res
   return { ok: true, value: parseGitLog(res.value) }
+}
+
+// Fast-forward-only pull. `--ff-only` keeps it non-interactive: a divergent
+// branch fails cleanly (git_failed) instead of opening a merge editor that
+// would hang the spawn. Stderr is folded into the surfaced output on failure.
+export const gitPull = async (repoPath: string): Promise<GitResult<GitPullResult>> => {
+  const res = await runGit(repoPath, ["pull", "--ff-only"])
+  if (!res.ok) return res
+  return { ok: true, value: parseGitPull(res.value) }
 }
 
 // Coerce an untrusted limit into [1, MAX_LOG_LIMIT], defaulting when absent.

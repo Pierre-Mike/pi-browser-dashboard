@@ -8,7 +8,7 @@ import type {
 } from "../../lib/types"
 import { PATCH_DIFF_OPTIONS } from "../diffs/diffsOptions"
 import { parseUnifiedDiff } from "../sessions/diffParse"
-import { useProjectGithub, useProjectPrDiff } from "./useProjectGithub"
+import { useProjectGithub, useProjectGitPull, useProjectPrDiff } from "./useProjectGithub"
 
 type Props = { projectId: string; githubUrl: string }
 
@@ -156,8 +156,26 @@ const PrList = ({ projectId, prs }: { projectId: string; prs: readonly GithubPul
   )
 }
 
+// Pull-result feedback: success shows whether HEAD moved, error shows why
+// (a non-fast-forward pull fails rather than opening a merge editor).
+const pullNote = (
+  m: ReturnType<typeof useProjectGitPull>,
+): { tone: string; text: string } | null => {
+  if (m.isError)
+    return { tone: "text-error", text: m.error instanceof Error ? m.error.message : "pull failed" }
+  if (m.data) {
+    return {
+      tone: "text-base-content/50",
+      text: m.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes.",
+    }
+  }
+  return null
+}
+
 export const GithubPanel = ({ projectId, githubUrl }: Props) => {
   const q = useProjectGithub(projectId, true)
+  const pull = useProjectGitPull(projectId)
+  const note = pullNote(pull)
 
   return (
     <section
@@ -166,15 +184,34 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
     >
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-base-content">GitHub</h2>
-        <a
-          href={`${githubUrl}/pulls`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[11px] text-primary hover:underline"
-        >
-          View all on GitHub ↗
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="gh-pull"
+            onClick={() => pull.mutate()}
+            disabled={pull.isPending}
+            title="git pull --ff-only"
+            className="btn btn-xs btn-ghost gap-1"
+          >
+            {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "⇩"}
+            Pull
+          </button>
+          <a
+            href={`${githubUrl}/pulls`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-primary hover:underline"
+          >
+            View all on GitHub ↗
+          </a>
+        </div>
       </header>
+
+      {note ? (
+        <div data-testid="gh-pull-note" className={`text-[11px] px-1 ${note.tone}`}>
+          {note.text}
+        </div>
+      ) : null}
 
       {q.isLoading ? (
         <div className="flex items-center gap-2 text-xs text-base-content/50">

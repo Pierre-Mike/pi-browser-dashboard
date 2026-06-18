@@ -33,6 +33,28 @@ describe("GithubPanel inline PR-diff viewer", () => {
   })
 })
 
+describe("GithubPanel git pull button", () => {
+  it("renders a pull button wired to the pull mutation", () => {
+    expect(src).toContain('data-testid="gh-pull"')
+    expect(src).toContain("useProjectGitPull")
+  })
+
+  it("disables the button while a pull is in flight", () => {
+    expect(src).toMatch(/disabled=\{[^}]*isPending/)
+  })
+})
+
+describe("useProjectGitPull", () => {
+  it("POSTs to the per-project git pull endpoint", () => {
+    expect(hookSrc).toContain("useProjectGitPull")
+    expect(hookSrc).toMatch(/git\.pull\.\$post/)
+  })
+
+  it("invalidates github + git-status queries on success", () => {
+    expect(hookSrc).toMatch(/invalidateQueries/)
+  })
+})
+
 describe("useProjectPrDiff", () => {
   it("targets the per-PR diff endpoint", () => {
     expect(hookSrc).toContain("useProjectPrDiff")

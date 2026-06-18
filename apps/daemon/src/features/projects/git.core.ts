@@ -52,6 +52,19 @@ export const toTreeGitStatus = (status: GitStatus): readonly TreeGitStatusEntry[
     return badge ? [{ path: renameTarget(e.path), status: badge }] : []
   })
 
+export type GitPullResult = {
+  // git prints "Already up to date." when there was nothing to fetch/merge.
+  readonly alreadyUpToDate: boolean
+  readonly output: string
+}
+
+// Parse `git pull --ff-only` stdout. We only distinguish the no-op case from a
+// real update; the trimmed output is surfaced to the UI verbatim.
+export const parseGitPull = (out: string): GitPullResult => {
+  const output = out.trim()
+  return { alreadyUpToDate: /already up to date\.?/i.test(output), output }
+}
+
 export type GitLogEntry = {
   readonly hash: string
   readonly author: string
