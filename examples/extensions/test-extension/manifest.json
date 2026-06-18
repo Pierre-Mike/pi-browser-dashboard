@@ -1,0 +1,8 @@
+{
+  "name": "test-extension",
+  "version": "0.0.1",
+  "tier": "iframe",
+  "contributes": {
+    "projectPanels": [{ "key": "main" }]
+  }
+}
