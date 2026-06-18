@@ -31,3 +31,25 @@ describe("ProjectDashboard activity panel", () => {
     expect(src).not.toMatch(/key:\s*"orchestration"/)
   })
 })
+
+describe("ProjectDashboard fillViewport", () => {
+  it("extension tabs trigger fill-viewport so the iframe stretches to full height without scrollbars", () => {
+    // fillViewport must be true for any ext:* tab, not just the static viewport tabs.
+    // The condition must include a check for ext: tabs.
+    // Match the entire fillViewport assignment (may span multiple lines until the blank line).
+    const fillViewportBlock = src.match(/const fillViewport[\s\S]+?(?=\n\n)/)
+    expect(fillViewportBlock).not.toBeNull()
+    const condition = fillViewportBlock![0]
+    // Must check for extension tab pattern (tab.startsWith("ext:") or similar)
+    expect(condition).toMatch(/ext/)
+  })
+
+  it("extension tab panel has the same fill-height classes as terminal/files/claude/library panels", () => {
+    // The ext panel div must use flex flex-col flex-1 min-h-0 when active.
+    expect(src).toContain('"flex flex-col flex-1 min-h-0"')
+    // Confirm it's used by the ext panel (the ext panel must be adjacent to ExtensionHost).
+    const extPanelBlock = src.match(/extPanels\.map[\s\S]+?ExtensionHost/)
+    expect(extPanelBlock).not.toBeNull()
+    expect(extPanelBlock![0]).toContain("flex flex-col flex-1 min-h-0")
+  })
+})

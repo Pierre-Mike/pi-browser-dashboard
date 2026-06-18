@@ -40,5 +40,11 @@ test.describe("test-extension project panel", () => {
     const frame = page.frameLocator('[data-testid="extension-host-test-extension"]')
     await expect(frame.getByTestId("test-extension-button")).toBeVisible({ timeout: 15_000 })
     await expect(frame.getByTestId("test-extension-button")).toContainText("Test Extension")
+
+    // The dashboard container must use h-screen when an ext: tab is active,
+    // so the iframe fills the viewport without X/Y scrollbars.
+    const dashboard = page.getByTestId("project-dashboard")
+    const dashClass = await dashboard.getAttribute("class")
+    expect(dashClass).toContain("h-screen")
   })
 })

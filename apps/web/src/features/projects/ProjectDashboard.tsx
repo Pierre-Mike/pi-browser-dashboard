@@ -90,7 +90,11 @@ export const ProjectDashboard = ({ project }: Props) => {
   const navigate = route.useNavigate()
   const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const fillViewport =
-    tab === "terminal" || tab === "files" || tab === "claude" || tab === "library"
+    tab === "terminal" ||
+    tab === "files" ||
+    tab === "claude" ||
+    tab === "library" ||
+    tab.startsWith("ext:")
 
   return (
     <div
