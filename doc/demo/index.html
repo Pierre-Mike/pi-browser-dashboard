@@ -239,7 +239,7 @@
     <a class="btn" href="https://github.com/Pierre-Mike/pi-browser-dashboard#quick-start" target="_blank" rel="noopener">Quick start</a>
   </div>
   <div class="stats">
-    <div class="stat"><div class="n" id="statFeatures">19</div><div class="l">Features</div></div>
+    <div class="stat"><div class="n" id="statFeatures">22</div><div class="l">Features</div></div>
     <div class="stat"><div class="n" id="statStories">8</div><div class="l">User stories</div></div>
     <div class="stat"><div class="n">3</div><div class="l">Surfaces</div></div>
     <div class="stat"><div class="n">0</div><div class="l">Databases</div></div>
@@ -250,7 +250,7 @@
   <div class="walk-head">
     <div class="story-kicker"><span class="ico">🗓️</span>A day driving the fleet</div>
     <h2>One bug report, start to finish.</h2>
-    <p>Every feature in this dashboard exists to move one of these eight moments forward. Here's how they chain together on an ordinary morning — each step jumps to the feature that powers it.</p>
+    <p>Every feature in this dashboard exists to move one of these eight moments forward. Here's how they chain together on an ordinary morning — each step jumps to the feature that powers it. New: Orchestration tab, Project Settings, Git Pull, and extensions that contribute their own project-panel tabs.</p>
   </div>
   <div class="steps" id="walkSteps"></div>
 </section>
@@ -273,113 +273,116 @@
 </footer>
 
 <script>
-// Feature tour data — 19 features regrouped into 8 user stories. Each story
+// Feature tour data — 22 features regrouped into 9 user stories. Each story
 // carries a `scenario`: a moment from a real workflow, so the page reads as
-// "things you do", not "things the app has".
+// “things you do”, not “things the app has”.
 const STORIES = [
   {
-    id: "story-1", nav: "Monitor", icon: "📡",
-    kicker: "Monitor the fleet",
-    title: "“Show me everything my agents are doing, at a glance.”",
-    desc: "A live grid of session cards refreshed over SSE from the supervisor's roster. Group, pin, and filter — across the whole machine or a single project.",
-    scenario: "It's 9am and six agents ran overnight. You open one page and instantly see which finished, which are blocked waiting on you, and which are still churning — no terminals opened.",
+    id: “story-1”, nav: “Monitor”, icon: “📡”,
+    kicker: “Monitor the fleet”,
+    title: “”Show me everything my agents are doing, at a glance.””,
+    desc: “A live grid of session cards refreshed over SSE from the supervisor's roster. Group, pin, and filter — across the whole machine or a single project. One Orchestration tab gives a single pane on the voice supervisor coordinating work across every project.”,
+    scenario: “It's 9am and six agents ran overnight. You open one page and instantly see which finished, which are blocked waiting on you, and which are still churning — no terminals opened.”,
     items: [
-      { gif: "01-activity-feed", surface: "Home", title: "Activity feed", desc: "Sessions / projects grid with live state badges and card hover detail." },
-      { gif: "02-sidebar", surface: "Home", title: "Sidebar navigation", desc: "Project buckets — pinned plus by-state grouping, with “show more”." },
-      { gif: "14-project-sessions", surface: "Project", title: "Project sessions", desc: "Per-project session-card grid with state pills and a spawn button." },
+      { gif: “01-activity-feed”, surface: “Home”, title: “Activity feed”, desc: “Sessions / projects grid with live state badges and card hover detail.” },
+      { gif: “02-sidebar”, surface: “Home”, title: “Sidebar navigation”, desc: “Project buckets — pinned plus by-state grouping, with “show more”.” },
+      { gif: “14-project-sessions”, surface: “Project”, title: “Project sessions”, desc: “Per-project session-card grid with state pills and a spawn button.” },
+      { gif: “20-orchestration”, surface: “Home”, title: “Orchestration”, desc: “Global tab showing the voice supervisor session that coordinates work across all projects.” },
     ],
   },
   {
-    id: "story-2", nav: "Dispatch", icon: "🚀",
-    kicker: "Dispatch & steer",
-    title: "“Spawn the work and keep my hands on the controls.”",
-    desc: "Type a prompt, pick an agent and permission mode, fan out N parallel sessions in one click — then peek, open in CLI, or stop any session from its header.",
-    scenario: "A bug report lands. You type the fix prompt, pick the tdd skill and auto-accept mode, and fan out three attempts at once — then peek at each summary to pick the winner.",
+    id: “story-2”, nav: “Dispatch”, icon: “🚀”,
+    kicker: “Dispatch & steer”,
+    title: “”Spawn the work and keep my hands on the controls.””,
+    desc: “Type a prompt, pick an agent and permission mode, fan out N parallel sessions in one click — then peek, open in CLI, or stop any session from its header.”,
+    scenario: “A bug report lands. You type the fix prompt, pick the tdd skill and auto-accept mode, and fan out three attempts at once — then peek at each summary to pick the winner.”,
     items: [
-      { gif: "03-spawn-modal", surface: "Home", title: "Spawn modal", desc: "Dispatch bar: prompt box, skill chips, permission mode, N-sessions." },
-      { gif: "09-session-controls", surface: "Session", title: "Session controls + Peek", desc: "Header (name / state / short id / cwd), Open-in-CLI, Peek summary, Delete." },
+      { gif: “03-spawn-modal”, surface: “Home”, title: “Spawn modal”, desc: “Dispatch bar: prompt box, skill chips, permission mode, N-sessions.” },
+      { gif: “09-session-controls”, surface: “Session”, title: “Session controls + Peek”, desc: “Header (name / state / short id / cwd), Open-in-CLI, Peek summary, Delete.” },
     ],
   },
   {
-    id: "story-3", nav: "Follow", icon: "👁️",
-    kicker: "Follow the work",
-    title: "“Watch the work as it happens.”",
-    desc: "Read the agent's reasoning as a rendered transcript, inspect the worktree diff line-by-line, or open the JSON-Canvas it's sketching the plan on.",
-    scenario: "An agent has been running ten minutes. You scroll its transcript to see which files it touched and why, watch the worktree diff grow line by line, and open the canvas it planned on.",
+    id: “story-3”, nav: “Follow”, icon: “👁️”,
+    kicker: “Follow the work”,
+    title: “”Watch the work as it happens.””,
+    desc: “Read the agent's reasoning as a rendered transcript, inspect the worktree diff line-by-line, or open the JSON-Canvas it's sketching the plan on.”,
+    scenario: “An agent has been running ten minutes. You scroll its transcript to see which files it touched and why, watch the worktree diff grow line by line, and open the canvas it planned on.”,
     items: [
-      { gif: "10-chat", surface: "Session", title: "Chat transcript", desc: "JSONL transcript: tool-use, tool-result and assistant blocks, rendered." },
-      { gif: "13-files-diff", surface: "Session", title: "Files diff", desc: "Syntax-highlighted worktree diff of everything the session changed." },
-      { gif: "11-canvas", surface: "Session", title: "Canvas", desc: "JSON-Canvas editor: Box/Link/File/Group/Export toolbar, grid, minimap, zoom." },
+      { gif: “10-chat”, surface: “Session”, title: “Chat transcript”, desc: “JSONL transcript: tool-use, tool-result and assistant blocks, rendered.” },
+      { gif: “13-files-diff”, surface: “Session”, title: “Files diff”, desc: “Syntax-highlighted worktree diff of everything the session changed.” },
+      { gif: “11-canvas”, surface: “Session”, title: “Canvas”, desc: “JSON-Canvas editor: Box/Link/File/Group/Export toolbar, grid, minimap, zoom.” },
     ],
   },
   {
-    id: "story-4", nav: "Review", icon: "🔀",
-    kicker: "Review & ship",
-    title: "“Review the code and ship the PR.”",
-    desc: "Browse the project file tree with previews, then read pull requests and their diffs inline — without leaving the dashboard.",
-    scenario: "The agent says it's done. You skim the file tree, open the pull request it raised, read the diff inline with full syntax highlighting, and approve — before the coffee gets cold.",
+    id: “story-4”, nav: “Review”, icon: “🔀”,
+    kicker: “Review & ship”,
+    title: “”Review the code and ship the PR.””,
+    desc: “Browse the project file tree with previews, read pull requests and their diffs inline, and pull the latest changes — without leaving the dashboard.”,
+    scenario: “The agent says it's done. You skim the file tree, open the pull request it raised, read the diff inline with full syntax highlighting, hit Git Pull to sync — before the coffee gets cold.”,
     items: [
-      { gif: "17-files-tree", surface: "Project", title: "Project files tree", desc: "Full file tree with markdown / image / PDF preview." },
-      { gif: "15-github", surface: "Project", title: "GitHub / PR diff", desc: "Pull-request list with an inline, syntax-highlighted PR-diff viewer." },
+      { gif: “17-files-tree”, surface: “Project”, title: “Project files tree”, desc: “Full file tree with markdown / image / PDF preview.” },
+      { gif: “15-github”, surface: “Project”, title: “GitHub / PR diff”, desc: “Pull-request list with an inline, syntax-highlighted PR-diff viewer.” },
+      { gif: “22-git-pull”, surface: “Project”, title: “Git pull”, desc: “One-click git pull from the GitHub tab — sync the project without leaving the browser.” },
     ],
   },
   {
-    id: "story-5", nav: "Terminal", icon: "⌨️",
-    kicker: "Drop to a shell",
-    title: "“Drop into a real terminal when I need one.”",
-    desc: "Embedded xterm.js attached to a zellij layout — globally, per session, or rooted at a project path. Fall back to the CLI without losing context.",
-    scenario: "The agent gets stuck on a flaky test. You drop into its live shell, re-run the test yourself, tweak an env var, and hand control back — same worktree, nothing lost.",
+    id: “story-5”, nav: “Terminal”, icon: “⌨️”,
+    kicker: “Drop to a shell”,
+    title: “”Drop into a real terminal when I need one.””,
+    desc: “Embedded xterm.js attached to a zellij layout — globally, per session, or rooted at a project path. Fall back to the CLI without losing context.”,
+    scenario: “The agent gets stuck on a flaky test. You drop into its live shell, re-run the test yourself, tweak an env var, and hand control back — same worktree, nothing lost.”,
     items: [
-      { gif: "04-terminal-global", surface: "Home", title: "Global terminal", desc: "Attached to the zellij “default” shell — a live prompt in the browser." },
-      { gif: "12-terminal-session", surface: "Session", title: "Session terminal", desc: "xterm attached to the per-session zellij layout." },
-      { gif: "16-terminal-project", surface: "Project", title: "Project terminal", desc: "Shell rooted at the project's path." },
+      { gif: “04-terminal-global”, surface: “Home”, title: “Global terminal”, desc: “Attached to the zellij “default” shell — a live prompt in the browser.” },
+      { gif: “12-terminal-session”, surface: “Session”, title: “Session terminal”, desc: “xterm attached to the per-session zellij layout.” },
+      { gif: “16-terminal-project”, surface: “Project”, title: “Project terminal”, desc: “Shell rooted at the project's path.” },
     ],
   },
   {
-    id: "story-6", nav: "Configure", icon: "⚙️",
-    kicker: "Tune Claude",
-    title: "“See and tune how Claude is configured.”",
-    desc: "Browse hooks, skills, settings.json and CLAUDE.md — both your global ~/.claude config and a project's local .claude overrides.",
-    scenario: "A hook isn't firing. You open the config panel, compare your global ~/.claude settings against the project's local .claude overrides, and spot the skill that was shadowing it.",
+    id: “story-6”, nav: “Configure”, icon: “⚙️”,
+    kicker: “Tune Claude”,
+    title: “”See and tune how Claude is configured.””,
+    desc: “Browse hooks, skills, settings.json and CLAUDE.md — both your global ~/.claude config and a project's local .claude overrides. Set per-project defaults (default skill, permission mode) from the Settings tab.”,
+    scenario: “A hook isn't firing. You open the config panel, compare your global ~/.claude settings against the project's local .claude overrides, spot the shadowed skill, then flip the default-skill setting in the project's Settings tab.”,
     items: [
-      { gif: "05-claude-config", surface: "Home", title: "Claude config", desc: "hooks / skills / settings.json / CLAUDE.md from ~/.claude." },
-      { gif: "18-claude-project", surface: "Project", title: "Project Claude config", desc: "A project's .claude hooks, skills and settings." },
+      { gif: “05-claude-config”, surface: “Home”, title: “Claude config”, desc: “hooks / skills / settings.json / CLAUDE.md from ~/.claude.” },
+      { gif: “18-claude-project”, surface: “Project”, title: “Project Claude config”, desc: “A project's .claude hooks, skills and settings.” },
+      { gif: “21-project-settings”, surface: “Project”, title: “Project settings”, desc: “Per-project .pid/settings: default skill, permission mode, and other daemon-level options.” },
     ],
   },
   {
-    id: "story-7", nav: "Extend", icon: "🧩",
-    kicker: "Customize & extend",
-    title: "“Extend the dashboard with my own tools.”",
-    desc: "Install skills, agents and tools from the catalog, then add iframe extensions gated by per-capability toggles — global or scoped to a project.",
-    scenario: "Your team has a house style for code review. You install the shared skill from the library, toggle on the extension that surfaces it, and scope it to just this project.",
+    id: “story-7”, nav: “Extend”, icon: “🧩”,
+    kicker: “Customize & extend”,
+    title: “”Extend the dashboard with my own tools.””,
+    desc: “Install skills, agents and tools from the catalog, then add iframe extensions gated by per-capability toggles — global or scoped to a project. Extensions can contribute tabs directly to the project panel.”,
+    scenario: “Your team has a house style for code review. You install the shared skill from the library, enable the iframe extension that surfaces it, and it adds its own tab right inside the project panel.”,
     items: [
-      { gif: "06-library", surface: "Home", title: "Library", desc: "Skills / agents / tools catalog with one-click install entries." },
-      { gif: "07-extensions", surface: "Home", title: "Extensions", desc: "Installed iframe extensions with per-capability toggles." },
-      { gif: "19-library-project", surface: "Project", title: "Project Library", desc: "Catalog with an all / global / local scope selector." },
+      { gif: “06-library”, surface: “Home”, title: “Library”, desc: “Skills / agents / tools catalog with one-click install entries.” },
+      { gif: “07-extensions”, surface: “Home”, title: “Extensions”, desc: “Installed iframe extensions with per-capability toggles.” },
+      { gif: “19-library-project”, surface: “Project”, title: “Project Library”, desc: “Catalog with an all / global / local scope selector.” },
     ],
   },
   {
-    id: "story-8", nav: "Remote", icon: "🌐",
-    kicker: "Reach it anywhere",
-    title: "“Reach my dashboard from any device.”",
-    desc: "Start a Cloudflare tunnel from the UI and share the URL — the same grid of sessions, now on your phone.",
-    scenario: "You're away from your desk when a session blocks. You start a Cloudflare tunnel, open the URL on your phone, approve the permission, and the agent picks up right where it stopped.",
+    id: “story-8”, nav: “Remote”, icon: “🌐”,
+    kicker: “Reach it anywhere”,
+    title: “”Reach my dashboard from any device.””,
+    desc: “Start a Cloudflare tunnel from the UI and share the URL — the same grid of sessions, now on your phone.”,
+    scenario: “You're away from your desk when a session blocks. You start a Cloudflare tunnel, open the URL on your phone, approve the permission, and the agent picks up right where it stopped.”,
     items: [
-      { gif: "08-tunnel", surface: "Home", title: "Tunnel", desc: "Cloudflare tunnel start / stop with URL controls." },
+      { gif: “08-tunnel”, surface: “Home”, title: “Tunnel”, desc: “Cloudflare tunnel start / stop with URL controls.” },
     ],
   },
 ];
 
-// The end-to-end walkthrough — the eight moments above, in the order a real
-// task hits them. Each step points back at the story that powers it.
+// The end-to-end walkthrough — moments in the order a real task hits them.
+// Each step points back at the story that powers it.
 const WALK = [
   { to: "story-2", title: "Dispatch the fix", text: "A bug report lands. Type the prompt, pick a skill and permission mode, fan out a few parallel attempts." },
   { to: "story-1", title: "Watch the fleet light up", text: "The new sessions appear on the live grid with state badges — running, blocked, done — updating over SSE." },
   { to: "story-3", title: "Follow the reasoning", text: "Open the front-runner and read its transcript and growing diff to see exactly what it's doing, and why." },
   { to: "story-5", title: "Jump in when it's stuck", text: "It trips on a flaky test. Drop into the session's live shell, re-run it, and hand control back." },
-  { to: "story-4", title: "Review the PR inline", text: "It raises a pull request. Skim the file tree, then read the PR diff inline — no tab-switching to GitHub." },
-  { to: "story-6", title: "Tune what felt off", text: "A hook misbehaved mid-run. Compare global vs project Claude config and fix the shadowed skill." },
-  { to: "story-7", title: "Teach it your way", text: "Install your team's review skill from the library and enable the extension that surfaces it." },
+  { to: "story-4", title: "Review the PR and pull", text: "It raises a pull request. Skim the file tree, read the PR diff inline, then git pull to sync — no tab-switching." },
+  { to: "story-6", title: "Tune what felt off", text: "A hook misbehaved mid-run. Compare global vs project Claude config, fix the shadowed skill, update project settings." },
+  { to: "story-7", title: "Teach it your way", text: "Install your team's review skill from the library and enable the extension that adds a tab to the project panel." },
   { to: "story-8", title: "Approve from your phone", text: "You step away; another session blocks. Open the tunnel URL on mobile and approve — it keeps going." },
 ];
 
