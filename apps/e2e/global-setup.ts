@@ -199,6 +199,27 @@ export default async function globalSetup(): Promise<void> {
   ].join("")
   writeFileSync(join(fixtureExt, "index.html"), fixtureHtml)
 
+  // Seed the test-extension: an iframe-tier projectPanel that shows a button.
+  const testExt = join(extRoot, "test-extension")
+  mkdirSync(testExt, { recursive: true })
+  writeFileSync(
+    join(testExt, "manifest.json"),
+    JSON.stringify({
+      name: "test-extension",
+      version: "0.0.1",
+      tier: "iframe",
+      contributes: { projectPanels: [{ key: "main" }] },
+    }),
+  )
+  writeFileSync(
+    join(testExt, "index.html"),
+    `<!doctype html><html><head><meta charset='utf-8'><title>test-extension</title>
+<style>body{font-family:system-ui,sans-serif;padding:1.5rem;margin:0}</style>
+</head><body>
+<button data-testid="test-extension-button" type="button">Test Extension</button>
+</body></html>`,
+  )
+
   const daemonEnv = {
     ...process.env,
     CLAUDE_CONFIG_DIR: sandbox,
