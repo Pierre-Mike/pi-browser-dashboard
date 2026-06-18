@@ -4,6 +4,7 @@ import {
   GIT_LOG_FORMAT,
   type GitStatus,
   parseGitLog,
+  parseGitPull,
   parseGitStatusPorcelain,
   toTreeGitStatus,
 } from "./git.core"
@@ -117,5 +118,24 @@ describe("parseGitLog", () => {
 
   it("wires GIT_LOG_FORMAT to the field separator", () => {
     expect(GIT_LOG_FORMAT.split(GIT_LOG_FIELD_SEP)).toEqual(["%H", "%an", "%aI", "%s"])
+  })
+})
+
+describe("parseGitPull", () => {
+  it("flags an up-to-date pull and trims the output", () => {
+    const s = parseGitPull("Already up to date.\n")
+    expect(s.alreadyUpToDate).toBe(true)
+    expect(s.output).toBe("Already up to date.")
+  })
+
+  it("treats a fast-forward pull as a real update", () => {
+    const out = "Updating abc123..def456\nFast-forward\n a.txt | 1 +\n"
+    const s = parseGitPull(out)
+    expect(s.alreadyUpToDate).toBe(false)
+    expect(s.output).toContain("Fast-forward")
+  })
+
+  it("matches the up-to-date message case-insensitively", () => {
+    expect(parseGitPull("already up to date").alreadyUpToDate).toBe(true)
   })
 })
