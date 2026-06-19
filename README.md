@@ -24,31 +24,49 @@ rendering than a terminal can manage.
 - **Stateless daemon** — no database. The supervisor owns processes,
   worktrees, and persistence; the daemon is a thin watcher + shell-out.
 
-## Requirements
+## Getting started
 
-- [Bun](https://bun.sh) ≥ 1.1
-- [Claude Code](https://claude.com/claude-code) CLI on `PATH`, interactively
-  signed in at least once. The dashboard never talks to the Anthropic API
-  directly — it shells out to `claude --bg`, `claude stop`, `claude rm`, etc.
-- macOS or Linux. Windows is untested.
-- `zellij` for the embedded terminal (optional).
+### 1. Prerequisites
 
-## Quick start
+| Tool | Version | Check | Notes |
+| --- | --- | --- | --- |
+| [Bun](https://bun.sh) | ≥ 1.1 | `bun --version` | Runtime + package manager. |
+| [Claude Code](https://claude.com/claude-code) | any | `claude --version` | Must be on `PATH` and signed in at least once (`claude` then follow the login prompt). |
+| OS | — | — | macOS or Linux. Windows is untested. |
+| [`zellij`](https://zellij.dev) | any | `zellij --version` | Optional — only needed for the in-browser terminal. |
+
+The dashboard never talks to the Anthropic API directly. It shells out to
+`claude --bg`, `claude stop`, `claude rm`, etc., so your existing Claude Code
+login is all the auth it needs.
+
+### 2. Install and run
 
 ```bash
 git clone https://github.com/Pierre-Mike/pi-browser-dashboard.git
 cd pi-browser-dashboard
-bun install
-bun run dev
+bun install        # also wires git hooks via the `prepare` script
+bun run dev        # starts the daemon + web app together
 ```
 
-This starts:
+`bun run dev` launches two processes:
 
-- daemon on `http://localhost:8787`
-- web app on `http://localhost:5173`
+- **daemon** on `http://localhost:8787`
+- **web app** on `http://localhost:5173`
 
-Open the web app. The grid will populate once you spawn a session, either
-from the dispatch bar or via `claude --bg "<prompt>"` in any directory.
+### 3. Open the dashboard and spawn your first session
+
+1. Open **`http://localhost:5173`** in any browser (on this machine or another
+   device on your network).
+2. The grid starts empty. Spawn a session one of two ways:
+   - **From the dashboard** — type a prompt in the dispatch bar, pick an agent
+     and permission mode, and hit spawn.
+   - **From the CLI** — run `claude --bg "<prompt>"` in any project directory.
+3. A card appears within a second or two and streams live as the session
+   works. Click it to drill into the transcript, terminal, and project view.
+
+That's it — you're running. If the grid stays empty after spawning, confirm
+the daemon is up (`curl http://localhost:8787/health`) and that `claude`
+is signed in.
 
 ### Environment
 
