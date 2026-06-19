@@ -1,3 +1,4 @@
+import { dirname } from "node:path"
 import { Hono } from "hono"
 import { sanitizeManifest } from "../../platform/extensions/manifest"
 import { extensionRegistry } from "../../platform/extensions/registry"
@@ -92,9 +93,15 @@ export const extensionListEntry = (
   const state = readState(stateFileFor(e))
   const sanitized = sanitizeManifest(e.manifest)
   const grants = grantsFor(state, e.manifest.name)
+  // A local extension belongs to the project whose `.pid/extensions/<name>`
+  // dir holds it (the repo root, 3 levels up). The UI scopes its project panel
+  // to that path so a local ext shows only on its own project, not all of them.
+  // Global extensions have no owning project and show everywhere.
+  const projectPath = e.scope === "local" ? dirname(dirname(dirname(e.dir))) : undefined
   return {
     ...sanitized,
     scope: e.scope,
+    ...(projectPath ? { projectPath } : {}),
     requested: sanitized.permissions,
     granted: permissionKeysFromGrants(grants),
     enabled: isEnabled(state, e.manifest.name),

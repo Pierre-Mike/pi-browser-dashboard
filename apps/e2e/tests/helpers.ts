@@ -156,11 +156,11 @@ export const killDaemon = async (): Promise<void> => {
   await waitForPortFree(m.daemonPort)
 }
 
-export const startDaemon = async (): Promise<void> => {
+export const startDaemon = async (envOverride: Record<string, string> = {}): Promise<void> => {
   const m = readManifest()
   const child = spawn("bun", ["run", m.daemonMain], {
     cwd: join(m.sandbox, "workspace"),
-    env: { ...process.env, ...m.daemonEnv },
+    env: { ...process.env, ...m.daemonEnv, ...envOverride },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   })
@@ -171,9 +171,9 @@ export const startDaemon = async (): Promise<void> => {
   writeManifest({ ...m, daemonPid: child.pid ?? null })
 }
 
-export const restartDaemon = async (): Promise<void> => {
+export const restartDaemon = async (envOverride: Record<string, string> = {}): Promise<void> => {
   await killDaemon()
-  await startDaemon()
+  await startDaemon(envOverride)
 }
 
 export const extLocalDir = (): string => {

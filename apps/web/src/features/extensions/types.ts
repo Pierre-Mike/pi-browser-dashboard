@@ -18,6 +18,9 @@ export type ExtensionManifest = {
   contributes?: ExtensionContributes
   permissions: string[]
   scope: ExtensionScope
+  // Present only for local extensions: the repo root that owns the extension.
+  // The dashboard renders a local ext's project panel only on this project.
+  projectPath?: string
   requested: string[]
   granted: string[]
   enabled: boolean
