@@ -60,35 +60,30 @@ const Pill = ({ label, value, tone }: { label: string; value: number; tone: stri
   </span>
 )
 
-const errMsg = (e: unknown, fallback: string): string => (e instanceof Error ? e.message : fallback)
-
-// ff-only Pull, sitting beside the top GitHub link. Title reflects the last
-// result (a non-fast-forward pull fails rather than opening a merge editor).
-const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> }) => {
-  const title = pull.isError
-    ? errMsg(pull.error, "pull failed")
-    : pull.data
-      ? pull.data.alreadyUpToDate
-        ? "Already up to date."
-        : "Pulled latest changes."
-      : "git pull --ff-only"
-  return (
-    <button
-      type="button"
-      data-testid="gh-pull"
-      onClick={() => pull.mutate()}
-      disabled={pull.isPending}
-      title={title}
-      className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 hover:opacity-80 ${
-        pull.isError
-          ? "bg-rose-600 text-rose-50"
-          : "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
-      }`}
-    >
-      {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "Pull ⇩"}
-    </button>
-  )
+// Title reflects the last pull result (a non-fast-forward pull fails rather
+// than opening a merge editor).
+const pullTitle = (pull: ReturnType<typeof useProjectGitPull>): string => {
+  if (pull.isError) return "pull failed"
+  if (!pull.data) return "git pull --ff-only"
+  return pull.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes."
 }
+
+const PULL_BTN_BASE = "text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 hover:opacity-80"
+const PULL_BTN_TONE = "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+
+// ff-only Pull, sitting beside the top GitHub link.
+const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> }) => (
+  <button
+    type="button"
+    data-testid="gh-pull"
+    onClick={() => pull.mutate()}
+    disabled={pull.isPending}
+    title={pullTitle(pull)}
+    className={`${PULL_BTN_BASE} ${pull.isError ? "bg-rose-600 text-rose-50" : PULL_BTN_TONE}`}
+  >
+    {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "Pull ⇩"}
+  </button>
+)
 
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
