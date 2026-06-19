@@ -32,6 +32,16 @@ describe("ProjectDashboard activity panel", () => {
   })
 })
 
+describe("ProjectDashboard extension panel scoping", () => {
+  it("shows a local extension's project panel only on its owning project, not every project", () => {
+    // The extPanels filter must gate local-scope panels by project path:
+    // a local ext (e.g. test-extension) appears only on project.path === e.projectPath.
+    // Global extensions still show everywhere.
+    expect(src).toMatch(/e\.scope\s*!==\s*["']local["']/)
+    expect(src).toMatch(/e\.projectPath\s*===\s*project\.path/)
+  })
+})
+
 describe("ProjectDashboard fillViewport", () => {
   it("extension tabs trigger fill-viewport so the iframe stretches to full height without scrollbars", () => {
     // fillViewport must be true for any ext:* tab, not just the static viewport tabs.

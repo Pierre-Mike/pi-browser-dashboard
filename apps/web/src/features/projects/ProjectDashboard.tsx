@@ -67,9 +67,14 @@ export const ProjectDashboard = ({ project }: Props) => {
   const counts = tally(sessions)
 
   // Only enabled iframe-tier extensions that contribute a project panel.
+  // A local extension belongs to one project (its `.pid/extensions` repo), so
+  // its panel shows only on that project; global extensions show everywhere.
   const extPanels = (extensionsQ.data ?? []).filter(
     (e) =>
-      e.enabled !== false && e.tier === "iframe" && (e.contributes?.projectPanels?.length ?? 0) > 0,
+      e.enabled !== false &&
+      e.tier === "iframe" &&
+      (e.contributes?.projectPanels?.length ?? 0) > 0 &&
+      (e.scope !== "local" || e.projectPath === project.path),
   )
 
   const tabs: readonly Tab[] = useMemo(() => {

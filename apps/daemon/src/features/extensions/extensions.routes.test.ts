@@ -102,6 +102,18 @@ describe("extension management routes", () => {
     expect(((await listEntry("alpha"))?.granted as string[]) ?? []).toContain("fs")
   })
 
+  it("local ext exposes its owning projectPath so the UI can scope its panel to that project", async () => {
+    // <project>/.pid/extensions/<name> → projectPath is the repo root, 3 levels up.
+    const extDir = join(stateDir, ".pid", "extensions", "alpha")
+    extensionRegistry.register({ manifest: mk("alpha"), dir: extDir, scope: "local" })
+    expect((await listEntry("alpha"))?.projectPath).toBe(stateDir)
+  })
+
+  it("global ext has no projectPath — its panel is not project-scoped", async () => {
+    extensionRegistry.register({ manifest: mk("beta"), dir: "/anything", scope: "global" })
+    expect((await listEntry("beta"))?.projectPath).toBeUndefined()
+  })
+
   it("404s for an unknown extension", async () => {
     expect((await post("/extensions/nope/enable")).status).toBe(404)
     expect((await post("/extensions/nope/grants", { fs: ["/x"] })).status).toBe(404)
