@@ -9,7 +9,7 @@ import type {
 } from "../../lib/types"
 import { PATCH_DIFF_OPTIONS } from "../diffs/diffsOptions"
 import { parseUnifiedDiff } from "../sessions/diffParse"
-import { useProjectGithub, useProjectGitPull, useProjectPrDiff } from "./useProjectGithub"
+import { useProjectGithub, useProjectPrDiff } from "./useProjectGithub"
 
 type Props = { projectId: string; githubUrl: string }
 
@@ -157,61 +157,21 @@ const PrList = ({ projectId, prs }: { projectId: string; prs: readonly GithubPul
   )
 }
 
-// Pull-result feedback: success shows whether HEAD moved, error shows why
-// (a non-fast-forward pull fails rather than opening a merge editor).
-const pullNote = (
-  m: ReturnType<typeof useProjectGitPull>,
-): { tone: string; text: string } | null => {
-  if (m.isError) return { tone: "text-error", text: errMsg(m.error, "pull failed") }
-  if (!m.data) return null
-  const text = m.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes."
-  return { tone: "text-base-content/50", text }
-}
-
-// Header: title, the ff-only Pull button, and the external GitHub link, plus
-// the pull-result note underneath.
-const GithubHeader = ({
-  githubUrl,
-  pull,
-}: {
-  githubUrl: string
-  pull: ReturnType<typeof useProjectGitPull>
-}) => {
-  const note = pullNote(pull)
-  return (
-    <>
-      <header className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-base-content">GitHub</h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="gh-pull"
-            onClick={() => pull.mutate()}
-            disabled={pull.isPending}
-            title="git pull --ff-only"
-            className="btn btn-xs btn-ghost gap-1"
-          >
-            {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "⇩"}
-            Pull
-          </button>
-          <a
-            href={`${githubUrl}/pulls`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] text-primary hover:underline"
-          >
-            View all on GitHub ↗
-          </a>
-        </div>
-      </header>
-      {note ? (
-        <div data-testid="gh-pull-note" className={`text-[11px] px-1 ${note.tone}`}>
-          {note.text}
-        </div>
-      ) : null}
-    </>
-  )
-}
+// Header: title and the external GitHub link. (The ff-only Pull button now
+// lives in the project dashboard header, next to the GitHub repo link.)
+const GithubHeader = ({ githubUrl }: { githubUrl: string }) => (
+  <header className="flex items-center justify-between gap-2">
+    <h2 className="text-sm font-semibold text-base-content">GitHub</h2>
+    <a
+      href={`${githubUrl}/pulls`}
+      target="_blank"
+      rel="noreferrer"
+      className="text-[11px] text-primary hover:underline"
+    >
+      View all on GitHub ↗
+    </a>
+  </header>
+)
 
 // A labelled list section ("Open PRs (n)") with an italic empty-state fallback.
 const Section = ({
@@ -288,13 +248,12 @@ const GithubBody = ({
 
 export const GithubPanel = ({ projectId, githubUrl }: Props) => {
   const q = useProjectGithub(projectId, true)
-  const pull = useProjectGitPull(projectId)
   return (
     <section
       data-testid="github-panel"
       className="flex flex-col gap-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
     >
-      <GithubHeader githubUrl={githubUrl} pull={pull} />
+      <GithubHeader githubUrl={githubUrl} />
       <GithubBody projectId={projectId} q={q} />
     </section>
   )

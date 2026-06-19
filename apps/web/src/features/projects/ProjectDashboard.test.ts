@@ -42,6 +42,27 @@ describe("ProjectDashboard extension panel scoping", () => {
   })
 })
 
+describe("ProjectDashboard git pull button", () => {
+  it("hosts the pull button in the header, wired to the pull mutation", () => {
+    expect(src).toContain('data-testid="gh-pull"')
+    expect(src).toContain("useProjectGitPull")
+  })
+
+  it("disables the button while a pull is in flight", () => {
+    expect(src).toMatch(/disabled=\{[^}]*isPending/)
+  })
+
+  it("places the pull button alongside the top GitHub link", () => {
+    // The Pull button is rendered in the header h1, right after the GitHub link.
+    const header = src.match(/<h1[\s\S]+?<\/h1>/)
+    expect(header).not.toBeNull()
+    expect(header![0]).toContain('data-testid="github-link"')
+    expect(header![0]).toContain("<GitPullButton")
+    // and it only appears when the project has a GitHub URL
+    expect(header![0]).toMatch(/project\.githubUrl \? <GitPullButton/)
+  })
+})
+
 describe("ProjectDashboard fillViewport", () => {
   it("extension tabs trigger fill-viewport so the iframe stretches to full height without scrollbars", () => {
     // fillViewport must be true for any ext:* tab, not just the static viewport tabs.

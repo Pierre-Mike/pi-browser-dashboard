@@ -34,13 +34,9 @@ describe("GithubPanel inline PR-diff viewer", () => {
 })
 
 describe("GithubPanel git pull button", () => {
-  it("renders a pull button wired to the pull mutation", () => {
-    expect(src).toContain('data-testid="gh-pull"')
-    expect(src).toContain("useProjectGitPull")
-  })
-
-  it("disables the button while a pull is in flight", () => {
-    expect(src).toMatch(/disabled=\{[^}]*isPending/)
+  it("no longer owns the pull button — it moved to the dashboard header next to the GitHub link", () => {
+    expect(src).not.toContain('data-testid="gh-pull"')
+    expect(src).not.toContain("useProjectGitPull")
   })
 })
 
