@@ -13,6 +13,7 @@ import { useSessions } from "../sessions/useSessions"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
 import { ProjectTerminal } from "./ProjectTerminal"
+import { useProjectGitPull } from "./useProjectGithub"
 
 const route = getRouteApi("/projects/$id")
 
@@ -59,9 +60,35 @@ const Pill = ({ label, value, tone }: { label: string; value: number; tone: stri
   </span>
 )
 
+// Title reflects the last pull result (a non-fast-forward pull fails rather
+// than opening a merge editor).
+const pullTitle = (pull: ReturnType<typeof useProjectGitPull>): string => {
+  if (pull.isError) return "pull failed"
+  if (!pull.data) return "git pull --ff-only"
+  return pull.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes."
+}
+
+const PULL_BTN_BASE = "text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 hover:opacity-80"
+const PULL_BTN_TONE = "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+
+// ff-only Pull, sitting beside the top GitHub link.
+const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> }) => (
+  <button
+    type="button"
+    data-testid="gh-pull"
+    onClick={() => pull.mutate()}
+    disabled={pull.isPending}
+    title={pullTitle(pull)}
+    className={`${PULL_BTN_BASE} ${pull.isError ? "bg-rose-600 text-rose-50" : PULL_BTN_TONE}`}
+  >
+    {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "Pull ⇩"}
+  </button>
+)
+
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
   const extensionsQ = useExtensions()
+  const pull = useProjectGitPull(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
@@ -147,6 +174,7 @@ export const ProjectDashboard = ({ project }: Props) => {
               GitHub ↗
             </a>
           ) : null}
+          {project.githubUrl ? <GitPullButton pull={pull} /> : null}
         </h1>
         <span
           className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1"
