@@ -321,7 +321,6 @@ describe("loadExtensions", () => {
     // state from <project>/.pid/extensions-state.json. Guard against a leaked
     // env override from a sibling test.
     const savedEnv = process.env.PID_EXT_STATE_FILE
-    // biome-ignore lint/performance/noDelete: a real override would defeat the test
     delete process.env.PID_EXT_STATE_FILE
     const emptyGlobal = mkdtempSync(join(tmpdir(), "pid-ext-g-empty-"))
     const projA = mkdtempSync(join(tmpdir(), "pid-proj-a-"))

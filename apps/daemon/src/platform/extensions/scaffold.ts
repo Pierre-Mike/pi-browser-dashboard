@@ -104,7 +104,7 @@ const buildIndexHtml = (name: string): string => `<!DOCTYPE html>
 </html>
 `
 
-export const buildScaffold = (name: string, opts: ScaffoldOptions = {}): ScaffoldResult => {
+export const buildScaffold = (name: string, _opts: ScaffoldOptions = {}): ScaffoldResult => {
   const nameError = validateName(name)
   if (nameError) return { ok: false, error: nameError }
 

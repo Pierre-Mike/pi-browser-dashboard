@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { ConfigRepoTest } from "../../platform/config.repo"
-import { ProjectsRepoLive, ProjectsService } from "../projects/projects.repo"
+import { ProjectsRepoLive } from "../projects/projects.repo"
 import { ClaudeConfigRepoLive, ClaudeConfigService, MAX_TEXT_BYTES } from "./claude-config.repo"
 
 let projectsRoot: string
@@ -78,6 +78,7 @@ describe("ClaudeConfigRepo readGlobal", () => {
 })
 
 describe("ClaudeConfigRepo readProject", () => {
+  // fallow-ignore-next-line complexity
   it("returns project-scoped config and detects evals dir", async () => {
     const b = await withLayer(Effect.flatMap(ClaudeConfigService, (s) => s.readProject("demo")))
     expect(b.scope).toBe("project")

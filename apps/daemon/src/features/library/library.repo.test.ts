@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { ConfigRepoTest } from "../../platform/config.repo"
-import { ProjectsRepoLive, ProjectsService } from "../projects/projects.repo"
+import { ProjectsRepoLive } from "../projects/projects.repo"
 import { type GitClientRecorder, GitClientTestLayer, makeGitClientRecorder } from "./installer"
 import { LibraryRepoLive, LibraryService } from "./library.repo"
 
@@ -68,9 +68,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  // biome-ignore lint/performance/noDelete: `process.env.X = undefined` coerces to the string "undefined" and would leak into sibling tests.
   delete process.env.PID_LIBRARY_DIR
-  // biome-ignore lint/performance/noDelete: same reason as above.
   delete process.env.PID_AGENTIC_REPO_PATH
   await rm(projectsRoot, { recursive: true, force: true })
   await rm(homeShim, { recursive: true, force: true })
@@ -92,6 +90,7 @@ const withLayer = <A, E>(
 }
 
 describe("LibraryRepo readCatalog", () => {
+  // fallow-ignore-next-line complexity
   it("returns catalog entries with global and local install status", async () => {
     const b = await withLayer(Effect.flatMap(LibraryService, (s) => s.readCatalog("demo")))
     expect(b.catalog.entries).toHaveLength(3)

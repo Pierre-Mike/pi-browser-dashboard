@@ -46,6 +46,7 @@ const usePreferredScheme = (): ColorScheme => {
   return scheme
 }
 
+// fallow-ignore-next-line complexity
 export const TerminalView = (props: Props) => {
   const { kind, reconnectTitle, testId } = props
   const id = "id" in props ? props.id : ""
@@ -53,7 +54,7 @@ export const TerminalView = (props: Props) => {
   const termRef = useRef<Terminal | null>(null)
   const scheme = usePreferredScheme()
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
-  const [reconnectKey, setReconnectKey] = useState(0)
+  const [_reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
@@ -93,6 +94,7 @@ export const TerminalView = (props: Props) => {
     const timers: ReturnType<typeof setTimeout>[] = []
     let disposed = false
 
+    // fallow-ignore-next-line complexity
     const sendResize = (cols: number, rows: number): void => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
       if (cols === lastCols && rows === lastRows) return
@@ -179,6 +181,7 @@ export const TerminalView = (props: Props) => {
     const ro = new ResizeObserver(safeFit)
     ro.observe(host)
 
+    // fallow-ignore-next-line complexity
     return () => {
       disposed = true
       offDrop()

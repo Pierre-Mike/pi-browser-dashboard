@@ -51,7 +51,7 @@ export const FilesTab = ({ short }: Props) => {
       </div>
     )
   }
-  if (!q.data || !q.data.changed) {
+  if (!q.data?.changed) {
     return (
       <div data-testid="files-empty" className="px-1 py-4 text-sm text-slate-500">
         No file changes in this session's worktree.

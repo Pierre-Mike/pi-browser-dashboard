@@ -147,7 +147,7 @@ export const ungroupNode = (
 ): ReadonlyArray<GroupableNode> => {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const group = byId.get(groupId)
-  if (!group || group.type !== "group") return nodes
+  if (group?.type !== "group") return nodes
 
   return nodes
     .filter((n) => n.id !== groupId)

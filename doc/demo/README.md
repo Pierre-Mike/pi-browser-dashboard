@@ -22,7 +22,7 @@ bun add -d playwright          # launches your installed Chrome via channel:'chr
 
 bun run dev                    # start the app on :5173 (in another shell)
 # save the "Recorder script" below as record.mjs at the repo root, then:
-node record.mjs                # record all 19 features
+node record.mjs                # record all 22 features
 node record.mjs 11             # re-record only feature 11 (canvas)
 DEMO_SESSION=<id> DEMO_SESSION_DIFF=<id> DEMO_PROJECT=<slug> node record.mjs
 DEMO_BASE=http://localhost:5180 node record.mjs   # record against a different host/port
@@ -70,6 +70,7 @@ The session/project IDs used as demo targets were read from the live app's rende
 | 6 | Library | [`06-library.gif`](./gifs/06-library.gif) | Skills/agents/tools catalog + install entries. |
 | 7 | Extensions | [`07-extensions.gif`](./gifs/07-extensions.gif) | Installed extensions + capability toggles. |
 | 8 | Tunnel | [`08-tunnel.gif`](./gifs/08-tunnel.gif) | Cloudflare tunnel start/stop + URL controls. |
+| 20 | Orchestration | [`20-orchestration.gif`](./gifs/20-orchestration.gif) | Global tab showing the voice supervisor session coordinating all projects. |
 
 ### B. Session detail — `/sessions/$id`
 
@@ -91,6 +92,8 @@ The session/project IDs used as demo targets were read from the live app's rende
 | 17 | Project files tree | [`17-files-tree.gif`](./gifs/17-files-tree.gif) | File tree + file preview. |
 | 18 | Project Claude config | [`18-claude-project.gif`](./gifs/18-claude-project.gif) | Project `.claude` hooks/skills/settings. |
 | 19 | Project Library | [`19-library-project.gif`](./gifs/19-library-project.gif) | Catalog + scope selector (all/global/local). |
+| 21 | Project settings | [`21-project-settings.gif`](./gifs/21-project-settings.gif) | Per-project .pid/settings: default skill, permission mode. |
+| 22 | Git pull | [`22-git-pull.gif`](./gifs/22-git-pull.gif) | One-click git pull from the GitHub tab. |
 
 ## Gallery
 
@@ -118,6 +121,9 @@ The session/project IDs used as demo targets were read from the live app's rende
 ![Files tree](./gifs/17-files-tree.gif)
 ![Project Claude config](./gifs/18-claude-project.gif)
 ![Project Library](./gifs/19-library-project.gif)
+![Orchestration](./gifs/20-orchestration.gif)
+![Project settings](./gifs/21-project-settings.gif)
+![Git pull](./gifs/22-git-pull.gif)
 
 ## Recorder script
 
@@ -146,10 +152,10 @@ const GIFS = join(ROOT, 'doc', 'demo', 'gifs');
 mkdirSync(GIFS, { recursive: true });
 
 // real session/project discovered from the running app (override via env)
-const SESS = process.env.DEMO_SESSION || '0d3e5351';
+const SESS = process.env.DEMO_SESSION || '6eb099c3';
 // A separate session whose worktree has a small, untruncated diff — the main
 // demo session changes too many files, so its diff renders as "truncated".
-const SESS_DIFF = process.env.DEMO_SESSION_DIFF || 'dde8d1df';
+const SESS_DIFF = process.env.DEMO_SESSION_DIFF || '37741839';
 const PROJ = process.env.DEMO_PROJECT || 'pi-browser-dashboard';
 const VW = { width: 1280, height: 800 };
 const log = (...a) => console.log('[rec]', ...a);
@@ -342,6 +348,22 @@ const features = [
       if (await page.getByText('Select an entry to view details.').filter({ visible: true }).count())
         throw new Error('19 guard: detail pane still empty after click');
       await page.mouse.wheel(0, 200); await page.waitForTimeout(900);
+  }},
+  // NEW: Orchestration tab — global home tab showing the voice supervisor session.
+  { file: '20-orchestration', url: '/', async run(page) {
+      await page.waitForTimeout(1200); await clickAny(page, ['Orchestration'], { exact: true }); await page.waitForTimeout(2200);
+      await page.mouse.wheel(0, 300); await page.waitForTimeout(900);
+  }},
+  // NEW: Project Settings tab — per-project .pid/settings (default skill, etc).
+  { file: '21-project-settings', url: `/projects/${PROJ}`, async run(page) {
+      await page.waitForTimeout(1500); await clickAny(page, ['Settings'], { exact: true }); await page.waitForTimeout(2200);
+      await page.mouse.wheel(0, 300); await page.waitForTimeout(900);
+  }},
+  // NEW: Git pull button in the GitHub tab.
+  { file: '22-git-pull', url: `/projects/${PROJ}`, async run(page) {
+      await page.waitForTimeout(1500); await clickAny(page, ['GitHub'], { exact: true }); await page.waitForTimeout(2000);
+      await page.mouse.wheel(0, 200); await page.waitForTimeout(800);
+      await clickAny(page, ['Pull', 'git pull', 'Git pull', 'Pull origin']); await page.waitForTimeout(2500);
   }},
 ];
 
