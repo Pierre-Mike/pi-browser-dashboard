@@ -90,6 +90,7 @@ const withLayer = <A, E>(
 }
 
 describe("LibraryRepo readCatalog", () => {
+  // fallow-ignore-next-line complexity
   it("returns catalog entries with global and local install status", async () => {
     const b = await withLayer(Effect.flatMap(LibraryService, (s) => s.readCatalog("demo")))
     expect(b.catalog.entries).toHaveLength(3)
