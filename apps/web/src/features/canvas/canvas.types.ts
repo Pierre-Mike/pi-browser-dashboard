@@ -44,18 +44,6 @@ export type CanvasSnapshot = {
   readonly viewport?: CanvasViewport
 }
 
-export type ServerFrame =
-  | {
-      readonly kind: "snapshot"
-      readonly snapshot: CanvasSnapshot
-      readonly origin: "self" | "remote"
-    }
-  | { readonly kind: "error"; readonly message: string }
-
-export type ClientFrame =
-  | { readonly kind: "snapshot"; readonly snapshot: CanvasSnapshot }
-  | { readonly kind: "request" }
-
 export const emptyCanvas = (): CanvasSnapshot => ({
   version: 1,
   updatedAt: new Date(0).toISOString(),
