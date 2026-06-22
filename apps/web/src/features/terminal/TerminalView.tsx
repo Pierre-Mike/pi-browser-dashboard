@@ -53,7 +53,7 @@ export const TerminalView = (props: Props) => {
   const termRef = useRef<Terminal | null>(null)
   const scheme = usePreferredScheme()
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
-  const [reconnectKey, setReconnectKey] = useState(0)
+  const [_reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {

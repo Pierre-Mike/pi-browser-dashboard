@@ -149,7 +149,6 @@ describe("stateFileFor", () => {
 
   afterEach(() => {
     if (savedEnv === undefined) {
-      // biome-ignore lint/performance/noDelete: keep env clean for sibling tests
       delete process.env.PID_EXT_STATE_FILE
     } else {
       process.env.PID_EXT_STATE_FILE = savedEnv
@@ -157,7 +156,6 @@ describe("stateFileFor", () => {
   })
 
   it("global scope resolves to the shared home state file", () => {
-    // biome-ignore lint/performance/noDelete: ensure no override is in effect
     delete process.env.PID_EXT_STATE_FILE
     expect(stateFileFor({ scope: "global", dir: "/anything/here" })).toBe(
       join(homedir(), ".pid/extensions-state.json"),
@@ -165,14 +163,12 @@ describe("stateFileFor", () => {
   })
 
   it("local scope resolves to the project's .pid directory, not home", () => {
-    // biome-ignore lint/performance/noDelete: ensure no override is in effect
     delete process.env.PID_EXT_STATE_FILE
     const dir = "/projA/.pid/extensions/my-ext"
     expect(stateFileFor({ scope: "local", dir })).toBe("/projA/.pid/extensions-state.json")
   })
 
   it("local extensions in different projects resolve to different state files", () => {
-    // biome-ignore lint/performance/noDelete: ensure no override is in effect
     delete process.env.PID_EXT_STATE_FILE
     const a = stateFileFor({ scope: "local", dir: "/projA/.pid/extensions/shared" })
     const b = stateFileFor({ scope: "local", dir: "/projB/.pid/extensions/shared" })

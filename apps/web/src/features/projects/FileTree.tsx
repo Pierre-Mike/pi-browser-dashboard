@@ -38,7 +38,6 @@ const Breadcrumbs = ({ path }: { path: string }) => {
     >
       <span className="text-slate-400">.</span>
       {parts.map((p, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: breadcrumb segments are positionally stable per path
         <span key={i} className="flex items-center gap-1 min-w-0">
           <span className="text-slate-300 dark:text-slate-600">/</span>
           <span

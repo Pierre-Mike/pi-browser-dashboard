@@ -39,7 +39,7 @@ describe("ProjectDashboard fillViewport", () => {
     // Match the entire fillViewport assignment (may span multiple lines until the blank line).
     const fillViewportBlock = src.match(/const fillViewport[\s\S]+?(?=\n\n)/)
     expect(fillViewportBlock).not.toBeNull()
-    const condition = fillViewportBlock![0]
+    const condition = fillViewportBlock?.[0]
     // Must check for extension tab pattern (tab.startsWith("ext:") or similar)
     expect(condition).toMatch(/ext/)
   })
@@ -50,6 +50,6 @@ describe("ProjectDashboard fillViewport", () => {
     // Confirm it's used by the ext panel (the ext panel must be adjacent to ExtensionHost).
     const extPanelBlock = src.match(/extPanels\.map[\s\S]+?ExtensionHost/)
     expect(extPanelBlock).not.toBeNull()
-    expect(extPanelBlock![0]).toContain("flex flex-col flex-1 min-h-0")
+    expect(extPanelBlock?.[0]).toContain("flex flex-col flex-1 min-h-0")
   })
 })

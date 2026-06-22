@@ -28,7 +28,6 @@ beforeEach(() => {
 
 afterEach(() => {
   extensionRegistry.clear()
-  // biome-ignore lint/performance/noDelete: `process.env.X = undefined` coerces to the string "undefined" and would leak into sibling tests.
   delete process.env.PID_EXT_STATE_FILE
   try {
     rmSync(stateDir, { recursive: true, force: true })
@@ -86,7 +85,6 @@ describe("extension management routes", () => {
 
   it("local ext grants persist to the project's .pid state file, not a shared one", async () => {
     // Drop the env override so the route uses scope-based resolution.
-    // biome-ignore lint/performance/noDelete: exercise the real per-project path
     delete process.env.PID_EXT_STATE_FILE
     // A realistic local install dir: <project>/.pid/extensions/<name>.
     const extDir = join(stateDir, ".pid", "extensions", "alpha")

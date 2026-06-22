@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test"
 import {
-  cardLocator,
   dispatchDirect,
   killDaemon,
   restartDaemon,
