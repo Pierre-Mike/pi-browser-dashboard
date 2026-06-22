@@ -1,5 +1,46 @@
 import { describe, expect, it } from "bun:test"
-import { resolveSpawnCwd } from "./shell.repo"
+import { buildDispatchArgs, resolveSpawnCwd } from "./shell.repo"
+
+describe("buildDispatchArgs", () => {
+  it("builds a bare background dispatch with just the intent", () => {
+    expect(buildDispatchArgs({ intent: "do it" })).toEqual(["claude", "--bg", "do it"])
+  })
+
+  it("passes --effort before the intent when an effort level is given", () => {
+    expect(buildDispatchArgs({ intent: "do it", effort: "high" })).toEqual([
+      "claude",
+      "--bg",
+      "--effort",
+      "high",
+      "do it",
+    ])
+  })
+
+  it("omits --effort when no level is given", () => {
+    expect(buildDispatchArgs({ intent: "do it" })).not.toContain("--effort")
+  })
+
+  it("combines agent, permission mode and effort flags", () => {
+    expect(
+      buildDispatchArgs({
+        intent: "go",
+        agent: "reviewer",
+        permissionMode: "default",
+        effort: "max",
+      }),
+    ).toEqual([
+      "claude",
+      "--bg",
+      "--agent",
+      "reviewer",
+      "--permission-mode",
+      "default",
+      "--effort",
+      "max",
+      "go",
+    ])
+  })
+})
 
 describe("resolveSpawnCwd", () => {
   it("keeps an explicit cwd when one is given", () => {

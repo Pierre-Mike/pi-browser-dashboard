@@ -8,6 +8,7 @@ type DispatchBody = {
   readonly cwd?: unknown
   readonly agent?: unknown
   readonly permissionMode?: unknown
+  readonly effort?: unknown
 }
 
 const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
@@ -32,11 +33,12 @@ export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
     const cwd = asString(body.cwd)
     const agent = asString(body.agent)
     const permissionMode = asString(body.permissionMode)
+    const effort = asString(body.effort)
 
     const exit = await runtime.runPromiseExit(
       Effect.gen(function* () {
         const shell = yield* ShellRepo
-        return yield* shell.dispatch({ intent, cwd, agent, permissionMode })
+        return yield* shell.dispatch({ intent, cwd, agent, permissionMode, effort })
       }),
     )
 

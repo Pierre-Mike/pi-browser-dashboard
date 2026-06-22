@@ -56,7 +56,13 @@ describe("POST /dispatch", () => {
       expect(res.status).toBe(200)
       expect(await res.json()).toEqual({ short: "xyz9" })
       expect(spy.calls).toEqual([
-        { intent: "fix bug", cwd: "/repo", agent: "reviewer", permissionMode: undefined },
+        {
+          intent: "fix bug",
+          cwd: "/repo",
+          agent: "reviewer",
+          permissionMode: undefined,
+          effort: undefined,
+        },
       ])
     } finally {
       await dispose()
@@ -69,6 +75,17 @@ describe("POST /dispatch", () => {
     try {
       await post(app, { intent: "go", permissionMode: "bypassPermissions" })
       expect(spy.calls[0]?.permissionMode).toBe("bypassPermissions")
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("forwards effort when provided", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      await post(app, { intent: "go", effort: "high" })
+      expect(spy.calls[0]?.effort).toBe("high")
     } finally {
       await dispose()
     }
@@ -134,6 +151,7 @@ describe("POST /dispatch", () => {
         cwd: undefined,
         agent: undefined,
         permissionMode: undefined,
+        effort: undefined,
       })
     } finally {
       await dispose()

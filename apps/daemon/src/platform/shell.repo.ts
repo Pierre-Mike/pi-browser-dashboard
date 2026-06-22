@@ -12,6 +12,7 @@ export type DispatchInput = {
   readonly cwd?: string
   readonly agent?: string
   readonly permissionMode?: string
+  readonly effort?: string
 }
 
 export type SendInput = {
@@ -130,10 +131,16 @@ const parseShort = (stdout: string): string | null => {
   return null
 }
 
-const buildDispatchArgs = ({ intent, agent, permissionMode }: DispatchInput): string[] => {
+export const buildDispatchArgs = ({
+  intent,
+  agent,
+  permissionMode,
+  effort,
+}: DispatchInput): string[] => {
   const args: string[] = ["claude", "--bg"]
   if (agent) args.push("--agent", agent)
   if (permissionMode) args.push("--permission-mode", permissionMode)
+  if (effort) args.push("--effort", effort)
   args.push(intent)
   return args
 }
