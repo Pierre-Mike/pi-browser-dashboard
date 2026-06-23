@@ -412,7 +412,7 @@ for (const s of STORIES) {
   const sec = document.createElement("section");
   sec.className = "story"; sec.id = s.id;
   const cards = s.items.map(it => `
-    <article class="card\" data-gif=\"${it.gif}\" data-title=\"${it.title}\" data-desc=\"${it.desc.replace(/\"/g, \"&quot;")}">
+    <article class="card\" data-gif=\"${it.gif}\" data-title=\"${it.title}\" data-desc=\"${it.desc.replace(/"/g, "&quot;")}">
       <div class="media\">
         <span class="surface\">${it.surface}</span>
         <span class="zoom\">⤢ Expand</span>
@@ -460,7 +460,7 @@ document.querySelectorAll(".card .media").forEach(m => {
 });
 document.getElementById("lbClose").addEventListener("click", closeLB);
 lb.addEventListener("click", (e) => { if (e.target === lb) closeLB(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape\" && lb.classList.contains(\"open")) closeLB(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lb.classList.contains("open")) closeLB(); });
 
 document.getElementById("statFeatures").textContent = STORIES.reduce((n, s) => n + s.items.length, 0);
 document.getElementById("statStories").textContent = STORIES.length;
