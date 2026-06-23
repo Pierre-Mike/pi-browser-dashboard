@@ -584,3 +584,186 @@ describe("POST /sessions/:id/send", () => {
     }
   })
 })
+
+describe("session file-browser routes", () => {
+  let work: string
+  beforeEach(async () => {
+    work = await mkdtemp(join(tmpdir(), "pid-session-files-"))
+    await mkdir(join(work, "src"), { recursive: true })
+    await writeFile(join(work, "README.md"), "# hello\n")
+    await writeFile(join(work, "src", "index.ts"), "export const x = 1\n")
+  })
+  afterEach(async () => {
+    await rm(work, { recursive: true, force: true })
+  })
+
+  describe("GET /:id/tree", () => {
+    it("lists the worktree files, posix-relative and sorted", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/tree")
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { paths: string[]; truncated: boolean }
+        expect(body.paths).toEqual(["README.md", "src/index.ts"])
+        expect(body.truncated).toBe(false)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("falls back to cwd when worktreePath is absent", async () => {
+      const sessions = new Map([
+        ["ab12", makeSession({ short: "ab12", worktreePath: undefined, cwd: work })],
+      ])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/tree")
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { paths: string[] }
+        expect(body.paths).toContain("README.md")
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("adds gitStatus badges when ?gitStatus=1", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/tree?gitStatus=1")
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { paths: string[]; gitStatus: unknown[] }
+        // Non-git tmp dir → empty badge list, but the field must be present.
+        expect(Array.isArray(body.gitStatus)).toBe(true)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("omits gitStatus without the query flag", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/tree")
+        const body = (await res.json()) as Record<string, unknown>
+        expect("gitStatus" in body).toBe(false)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 404 not_found for an unknown session", async () => {
+      const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
+      try {
+        const res = await app.request("/missing/tree")
+        expect(res.status).toBe(404)
+        expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 404 no_worktree when the session has neither worktreePath nor cwd", async () => {
+      const sessions = new Map([
+        ["ab12", makeSession({ short: "ab12", worktreePath: undefined, cwd: undefined })],
+      ])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/tree")
+        expect(res.status).toBe(404)
+        expect(await res.json()).toEqual({ error: "no_worktree", short: "ab12" })
+      } finally {
+        await dispose()
+      }
+    })
+  })
+
+  describe("GET /:id/file", () => {
+    it("reads a text file under the worktree", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/file?path=README.md")
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { content: string; isBinary: boolean }
+        expect(body.content).toBe("# hello\n")
+        expect(body.isBinary).toBe(false)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 400 missing_path when no path is given", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/file")
+        expect(res.status).toBe(400)
+        expect(await res.json()).toEqual({ error: "missing_path" })
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 403 forbidden on a parent-directory escape", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/file?path=../etc/passwd")
+        expect(res.status).toBe(403)
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 404 not_found for an unknown session", async () => {
+      const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
+      try {
+        const res = await app.request("/missing/file?path=README.md")
+        expect(res.status).toBe(404)
+        expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
+      } finally {
+        await dispose()
+      }
+    })
+  })
+
+  describe("GET /:id/raw", () => {
+    it("streams the file bytes with the right content-type", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/raw?path=README.md")
+        expect(res.status).toBe(200)
+        expect(res.headers.get("Content-Type")).toContain("text/markdown")
+        expect(await res.text()).toBe("# hello\n")
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("forces a download with Content-Disposition when ?download=1", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/raw?path=README.md&download=1")
+        expect(res.status).toBe(200)
+        expect(res.headers.get("Content-Disposition")).toContain("attachment")
+      } finally {
+        await dispose()
+      }
+    })
+
+    it("returns 400 missing_path when no path is given", async () => {
+      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
+      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
+      try {
+        const res = await app.request("/ab12/raw")
+        expect(res.status).toBe(400)
+      } finally {
+        await dispose()
+      }
+    })
+  })
+})

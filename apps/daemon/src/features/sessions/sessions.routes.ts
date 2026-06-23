@@ -3,6 +3,9 @@ import { Effect, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { ShellRepo } from "../../platform/shell.repo"
+import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.repo"
+import { errorToStatus, treeGitStatusAt } from "../projects/fileBrowser.routes"
+import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.repo"
 import { SessionRegistry } from "./sessions.repo"
 
@@ -33,6 +36,24 @@ const readTranscript = async (
     }
   }
   return { messages, truncated }
+}
+
+// Resolve a session's file-browse root: its isolated worktree when present,
+// else its cwd (non-isolated sessions). Returns `undefined` when the session is
+// unknown and `null` when it has neither path — the routes map these to a
+// not_found vs no_worktree 404 respectively.
+const sessionRoot = async (
+  runtime: SessionsRouteRuntime,
+  id: string,
+): Promise<string | null | undefined> => {
+  const session = await runtime.runPromise(
+    Effect.gen(function* () {
+      const reg = yield* SessionRegistry
+      return yield* Effect.promise(() => reg.getOne(id))
+    }),
+  )
+  if (!session) return undefined
+  return session.worktreePath ?? session.cwd ?? null
 }
 
 export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
@@ -116,6 +137,53 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         return c.json({ error: "diff_failed", short: id, reason }, 500)
       }
       return c.json({ short: id, ...result.value })
+    })
+    // Browse a session's worktree as a full file tree, mirroring the projects
+    // file-browser routes but keyed by session short → worktreePath (falling
+    // back to the session cwd for non-isolated sessions).
+    .get("/:id/tree", async (c) => {
+      const id = c.req.param("id")
+      const root = await sessionRoot(runtime, id)
+      if (root === undefined) return c.json({ error: "not_found", short: id }, 404)
+      if (root === null) return c.json({ error: "no_worktree", short: id }, 404)
+      const tree = await treeAt(root)
+      if (!tree.ok) return c.json({ error: tree.error }, errorToStatus(tree.error))
+      const withGit = c.req.query("gitStatus") === "1"
+      return c.json(
+        withGit ? { ...tree.value, gitStatus: await treeGitStatusAt(root) } : tree.value,
+      )
+    })
+    .get("/:id/file", async (c) => {
+      const id = c.req.param("id")
+      const path = c.req.query("path") ?? ""
+      if (!path) return c.json({ error: "missing_path" }, 400)
+      const root = await sessionRoot(runtime, id)
+      if (root === undefined) return c.json({ error: "not_found", short: id }, 404)
+      if (root === null) return c.json({ error: "no_worktree", short: id }, 404)
+      const result = await readFileAt(root, path)
+      if (!result.ok) return c.json({ error: result.error }, errorToStatus(result.error))
+      return c.json(result.value)
+    })
+    .get("/:id/raw", async (c) => {
+      const id = c.req.param("id")
+      const path = c.req.query("path") ?? ""
+      if (!path) return c.json({ error: "missing_path" }, 400)
+      const root = await sessionRoot(runtime, id)
+      if (root === undefined) return c.json({ error: "not_found", short: id }, 404)
+      if (root === null) return c.json({ error: "no_worktree", short: id }, 404)
+      const result = await resolveRawAt(root, path)
+      if (!result.ok) return c.json({ error: result.error }, errorToStatus(result.error))
+      const { absPath, size, mime } = result.value
+      const headers: Record<string, string> = {
+        "Content-Type": mime,
+        "Content-Length": String(size),
+        "Cache-Control": "private, max-age=30",
+        "X-Content-Type-Options": "nosniff",
+      }
+      if (c.req.query("download") === "1") {
+        headers["Content-Disposition"] = contentDispositionAttachment(path)
+      }
+      return new Response(Bun.file(absPath).stream(), { status: 200, headers })
     })
     .post("/:id/stop", async (c) => {
       const id = c.req.param("id")

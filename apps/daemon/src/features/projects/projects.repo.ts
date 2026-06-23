@@ -2,13 +2,10 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
+import { readFileAt, resolveRawAt, treeAt } from "./fileBrowser.repo"
 import {
   compareProjectsByCommit,
   type FileEntry,
-  isSkippedTreeDir,
-  looksBinary,
-  MAX_TREE_FILES,
-  mimeFromPath,
   parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
@@ -51,9 +48,6 @@ type FileContent = {
 }
 
 export type FileError = "not_found" | "not_a_directory" | "not_a_file" | "forbidden" | "too_large"
-
-const MAX_READ_BYTES = 1_000_000 // 1 MB hard cap on text previews
-const MAX_RAW_BYTES = 50_000_000 // 50 MB hard cap on raw media streams
 
 type RawFile = {
   readonly absPath: string
@@ -181,44 +175,6 @@ const classifyEntry = async (parentAbs: string, name: string): Promise<FileEntry
   }
 }
 
-// Read one directory's child files and sub-directories, posix-relative to the
-// root. Skipped dirs (VCS/deps/build) and unreadable dirs yield nothing — a
-// permission error deep in the tree must not fail the whole listing.
-const scanDir = async (root: string, rel: string): Promise<{ files: string[]; dirs: string[] }> => {
-  const abs = rel === "" ? root : join(root, rel)
-  const files: string[] = []
-  const dirs: string[] = []
-  let dirents: { name: string; isDirectory: () => boolean; isFile: () => boolean }[] = []
-  try {
-    dirents = await readdir(abs, { withFileTypes: true })
-  } catch {
-    return { files, dirs }
-  }
-  for (const d of dirents) {
-    const childRel = rel === "" ? d.name : `${rel}/${d.name}`
-    if (d.isDirectory() && !isSkippedTreeDir(d.name)) dirs.push(childRel)
-    else if (d.isFile()) files.push(childRel)
-  }
-  return { files, dirs }
-}
-
-// Breadth-light recursive walk: collect every file path under `root` via
-// scanDir, stopping at MAX_TREE_FILES. Paths are posix-relative (forward
-// slashes) so the payload renders identically on every platform.
-const walkTree = async (root: string): Promise<{ paths: string[]; truncated: boolean }> => {
-  const paths: string[] = []
-  const stack: string[] = [""]
-  while (stack.length > 0) {
-    const { files, dirs } = await scanDir(root, stack.pop() as string)
-    for (const f of files) {
-      if (paths.length >= MAX_TREE_FILES) return { paths, truncated: true }
-      paths.push(f)
-    }
-    stack.push(...dirs)
-  }
-  return { paths, truncated: false }
-}
-
 export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService> = Layer.effect(
   ProjectsService,
   Effect.gen(function* () {
@@ -267,59 +223,27 @@ export const ProjectsRepoLive: Layer.Layer<ProjectsService, never, ConfigService
         Effect.gen(function* () {
           const root = findProjectPath(config.projectsRoot, id)
           if (!root) return yield* Effect.fail<FileError>("not_found")
-          const s = yield* Effect.tryPromise(() => stat(root)).pipe(
-            Effect.mapError<unknown, FileError>(() => "not_found"),
-          )
-          if (!s.isDirectory()) return yield* Effect.fail<FileError>("not_a_directory")
-          const { paths, truncated } = yield* Effect.tryPromise(() => walkTree(root)).pipe(
-            Effect.orElseSucceed(() => ({ paths: [] as string[], truncated: false })),
-          )
-          paths.sort()
-          return { paths, truncated }
+          const res = yield* Effect.promise(() => treeAt(root))
+          if (!res.ok) return yield* Effect.fail<FileError>(res.error)
+          return res.value
         }),
 
       readFile: (id, relPath) =>
         Effect.gen(function* () {
           const root = findProjectPath(config.projectsRoot, id)
           if (!root) return yield* Effect.fail<FileError>("not_found")
-          const resolved = resolveProjectPath(root, relPath)
-          if (!resolved.ok) return yield* Effect.fail<FileError>("forbidden")
-          const s = yield* Effect.tryPromise(() => stat(resolved.absPath)).pipe(
-            Effect.mapError<unknown, FileError>(() => "not_found"),
-          )
-          if (!s.isFile()) return yield* Effect.fail<FileError>("not_a_file")
-          if (s.size > MAX_READ_BYTES) return yield* Effect.fail<FileError>("too_large")
-          const bytes = yield* Effect.tryPromise(() => readFile(resolved.absPath)).pipe(
-            Effect.mapError<unknown, FileError>(() => "not_found"),
-          )
-          const data = bytes as unknown as Uint8Array
-          const isBinary = looksBinary(data)
-          return {
-            path: resolved.relPath,
-            size: s.size,
-            isBinary,
-            truncated: false,
-            content: isBinary ? "" : new TextDecoder("utf-8", { fatal: false }).decode(data),
-          }
+          const res = yield* Effect.promise(() => readFileAt(root, relPath))
+          if (!res.ok) return yield* Effect.fail<FileError>(res.error)
+          return res.value
         }),
 
       resolveRaw: (id, relPath) =>
         Effect.gen(function* () {
           const root = findProjectPath(config.projectsRoot, id)
           if (!root) return yield* Effect.fail<FileError>("not_found")
-          const resolved = resolveProjectPath(root, relPath)
-          if (!resolved.ok) return yield* Effect.fail<FileError>("forbidden")
-          const s = yield* Effect.tryPromise(() => stat(resolved.absPath)).pipe(
-            Effect.mapError<unknown, FileError>(() => "not_found"),
-          )
-          if (!s.isFile()) return yield* Effect.fail<FileError>("not_a_file")
-          if (s.size > MAX_RAW_BYTES) return yield* Effect.fail<FileError>("too_large")
-          return {
-            absPath: resolved.absPath,
-            relPath: resolved.relPath,
-            size: s.size,
-            mime: mimeFromPath(resolved.relPath),
-          }
+          const res = yield* Effect.promise(() => resolveRawAt(root, relPath))
+          if (!res.ok) return yield* Effect.fail<FileError>(res.error)
+          return res.value
         }),
     }
   }),

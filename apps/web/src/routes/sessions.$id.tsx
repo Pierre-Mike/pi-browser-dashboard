@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
 import { CanvasTab } from "../features/canvas/CanvasTab"
+import { FileTree } from "../features/projects/FileTree"
 import { ChatComposer } from "../features/sessions/ChatComposer"
-import { FilesTab, useSessionFiles } from "../features/sessions/FilesTab"
 import { TerminalTab } from "../features/sessions/TerminalTab"
 import { parseTranscriptResponse } from "../features/transcripts/loadTranscript"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
@@ -155,24 +155,6 @@ function SessionDrillIn() {
   const navigate = Route.useNavigate()
   const setTab = (next: Tab) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
 
-  const filesQ = useSessionFiles(id)
-  const filesChanged = filesQ.data?.changed === true
-  const fileCount = filesQ.data?.files.length ?? 0
-
-  // Refetch the diff when the session state changes — `session.state` SSE
-  // events flow through queryClient.setQueryData(["sessions", id], …), so
-  // observing that cache version is enough without coupling to the SSE bus.
-  const sessionVersion = session?.updatedAt
-  useEffect(() => {
-    if (sessionVersion) filesQ.refetch()
-  }, [sessionVersion, filesQ.refetch])
-
-  // If the tab was on `files` and the changes disappeared, drop back to terminal.
-  useEffect(() => {
-    if (tab === "files" && !filesChanged)
-      navigate({ search: (prev) => ({ ...prev, tab: "terminal" }), replace: true })
-  }, [tab, filesChanged, navigate])
-
   const bottomRef = useRef<HTMLDivElement>(null)
   const messageCount = transcriptQ.data?.length ?? 0
   // biome-ignore lint/correctness/useExhaustiveDependencies: messageCount triggers scroll on new transcript messages
@@ -291,25 +273,19 @@ function SessionDrillIn() {
             {t}
           </button>
         ))}
-        {filesChanged ? (
-          <button
-            type="button"
-            data-testid="tab-files"
-            data-active={tab === "files" ? "true" : "false"}
-            onClick={() => setTab("files")}
-            className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${
-              tab === "files"
-                ? "border-primary text-primary"
-                : "border-transparent text-base-content/50 hover:text-base-content"
-            }`}
-            title="View the diff of files changed in this session's worktree"
-          >
-            Files
-            <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] px-1 rounded-full bg-base-200 text-[10px] font-mono">
-              {fileCount}
-            </span>
-          </button>
-        ) : null}
+        <button
+          type="button"
+          data-testid="tab-files"
+          data-active={tab === "files" ? "true" : "false"}
+          onClick={() => setTab("files")}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px capitalize ${
+            tab === "files"
+              ? "border-primary text-primary"
+              : "border-transparent text-base-content/50 hover:text-base-content"
+          }`}
+        >
+          files
+        </button>
       </div>
 
       {tab === "chat" ? (
@@ -350,7 +326,7 @@ function SessionDrillIn() {
         )
       ) : tab === "files" ? (
         <div className="flex-1 min-h-0 flex flex-col">
-          <FilesTab short={id} />
+          <FileTree resource={{ kind: "sessions", id }} />
         </div>
       ) : session ? (
         <div className="flex-1 min-h-0">
