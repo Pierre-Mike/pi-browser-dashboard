@@ -294,7 +294,7 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tab-panel-files"
         className={tab === "files" ? "flex flex-col flex-1 min-h-0" : "hidden"}
       >
-        <FileTree projectId={project.id} />
+        <FileTree resource={{ kind: "projects", id: project.id }} />
       </div>
 
       <div

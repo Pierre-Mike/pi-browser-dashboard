@@ -2,26 +2,12 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
-import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
+import { errorToStatus, treeGitStatusAt } from "./fileBrowser.routes"
+import type { TreeGitStatusEntry } from "./git.core"
 import { type GitError, type GitResult, gitLog, gitPull, gitStatus } from "./git.repo"
 import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
 import { contentDispositionAttachment } from "./projects.core"
-import type { FileError } from "./projects.repo"
 import { ProjectsService } from "./projects.repo"
-
-const errorToStatus = (e: FileError): 400 | 403 | 404 | 413 => {
-  switch (e) {
-    case "forbidden":
-      return 403
-    case "not_a_directory":
-    case "not_a_file":
-      return 400
-    case "too_large":
-      return 413
-    default:
-      return 404
-  }
-}
 
 const gitErrorToStatus = (e: GitError): 404 | 500 => (e === "not_a_repo" ? 404 : 500)
 
@@ -59,8 +45,7 @@ const projectPath = (id: string): Promise<string | null> =>
 const treeGitStatus = async (id: string): Promise<readonly TreeGitStatusEntry[]> => {
   const path = await projectPath(id)
   if (!path) return []
-  const res = await gitStatus(path)
-  return res.ok ? toTreeGitStatus(res.value) : []
+  return treeGitStatusAt(path)
 }
 
 const app = new Hono()

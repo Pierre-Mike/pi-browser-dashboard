@@ -8,12 +8,8 @@ import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
 import { MarkdownView } from "./MarkdownView"
 import { formatSize, TREE_INITIAL_EXPANSION, TREE_UNSAFE_CSS } from "./treeUtil"
-import {
-  projectDownloadUrl,
-  projectRawUrl,
-  useProjectFile,
-  useProjectTree,
-} from "./useProjectFiles"
+import type { FileResource } from "./useProjectFiles"
+import { fileDownloadUrl, fileRawUrl, useFileContent, useFileResource } from "./useProjectFiles"
 
 const ICON_FOR_KIND: Record<FileKind, string> = {
   markdown: "📝",
@@ -109,15 +105,15 @@ const CodeView = ({ name, content }: { name: string; content: string }) => (
 )
 
 const FileBody = ({
-  projectId,
+  resource,
   file,
   kind,
 }: {
-  projectId: string
+  resource: FileResource
   file: FileContent
   kind: FileKind
 }) => {
-  const rawUrl = projectRawUrl(projectId, file.path)
+  const rawUrl = fileRawUrl(resource, file.path)
   switch (kind) {
     case "markdown":
       return (
@@ -211,8 +207,8 @@ const FileBody = ({
   }
 }
 
-const FilePreview = ({ projectId, path }: { projectId: string; path: string }) => {
-  const q = useProjectFile(projectId, path)
+const FilePreview = ({ resource, path }: { resource: FileResource; path: string }) => {
+  const q = useFileContent(resource, path)
   const [copied, setCopied] = useState(false)
 
   const copyPath = async (): Promise<void> => {
@@ -240,8 +236,8 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
   const f = q.data
   if (!f) return null
   const kind: FileKind = classifyFile(f.path, f.isBinary)
-  const rawUrl = projectRawUrl(projectId, f.path)
-  const downloadUrl = projectDownloadUrl(projectId, f.path)
+  const rawUrl = fileRawUrl(resource, f.path)
+  const downloadUrl = fileDownloadUrl(resource, f.path)
   const fileName = basenameOf(f.path)
   return (
     <div
@@ -283,7 +279,7 @@ const FilePreview = ({ projectId, path }: { projectId: string; path: string }) =
         </div>
       </div>
       <div className="flex-1 min-h-0">
-        <FileBody projectId={projectId} file={f} kind={kind} />
+        <FileBody resource={resource} file={f} kind={kind} />
       </div>
     </div>
   )
@@ -321,8 +317,8 @@ const TreePane = ({
 }
 
 type SidebarProps = {
-  projectId: string
-  tree: ReturnType<typeof useProjectTree>
+  resource: FileResource
+  tree: ReturnType<typeof useFileResource>
   selected: string | null
   onSelect: (path: string) => void
 }
@@ -330,16 +326,16 @@ type SidebarProps = {
 const errorMessage = (e: unknown, fallback: string): string =>
   e instanceof Error ? e.message : fallback
 
-const treePaths = (tree: ReturnType<typeof useProjectTree>): readonly string[] =>
+const treePaths = (tree: ReturnType<typeof useFileResource>): readonly string[] =>
   tree.data?.paths ?? []
 
 const treeGitStatus = (
-  tree: ReturnType<typeof useProjectTree>,
+  tree: ReturnType<typeof useFileResource>,
 ): readonly GitStatusEntry[] | undefined => tree.data?.gitStatus
 
-// Loading / error / tree states. The TreePane is keyed by project so a project
-// switch rebuilds the (once-built) @pierre/trees model with the new path list.
-const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
+// Loading / error / tree states. The TreePane is keyed by resource id so a
+// resource switch rebuilds the (once-built) @pierre/trees model.
+const TreeBody = ({ resource, tree, selected, onSelect }: SidebarProps) => {
   if (tree.isLoading) {
     return <div className="text-[11px] text-slate-400 italic px-3 py-2">loading…</div>
   }
@@ -352,7 +348,7 @@ const TreeBody = ({ projectId, tree, selected, onSelect }: SidebarProps) => {
   }
   return (
     <TreePane
-      key={projectId}
+      key={resource.id}
       paths={treePaths(tree)}
       gitStatus={treeGitStatus(tree)}
       selected={selected}
@@ -386,8 +382,8 @@ const EmptyPreview = () => (
   </div>
 )
 
-export const FileTree = ({ projectId }: { projectId: string }) => {
-  const tree = useProjectTree(projectId)
+export const FileTree = ({ resource }: { resource: FileResource }) => {
+  const tree = useFileResource(resource)
   const [selected, setSelected] = useState<string | null>(null)
   const handleSelect = useCallback((path: string) => setSelected(path), [])
 
@@ -397,13 +393,13 @@ export const FileTree = ({ projectId }: { projectId: string }) => {
       className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm flex-1 min-h-0"
     >
       <FileTreeSidebar
-        projectId={projectId}
+        resource={resource}
         tree={tree}
         selected={selected}
         onSelect={handleSelect}
       />
       <section className="min-h-0 overflow-hidden">
-        {selected ? <FilePreview projectId={projectId} path={selected} /> : <EmptyPreview />}
+        {selected ? <FilePreview resource={resource} path={selected} /> : <EmptyPreview />}
       </section>
     </div>
   )
