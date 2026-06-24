@@ -31,7 +31,8 @@ export type ParseResult = { ok: true; value: ExtensionManifest } | { ok: false; 
 
 const TIERS: ReadonlySet<string> = new Set<ExtensionTier>(["iframe", "esm"])
 // name is used as a path segment, so disallow slashes, dots-leading, traversal.
-const NAME_RE = /^[a-z0-9][a-z0-9._-]*$/
+// Exported so the pid-apps feature reuses the same identifier rule (no redefine).
+export const NAME_RE = /^[a-z0-9][a-z0-9._-]*$/
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
