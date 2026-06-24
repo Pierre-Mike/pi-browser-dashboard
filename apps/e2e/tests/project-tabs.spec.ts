@@ -42,18 +42,19 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
     await expect(terminalTab).toBeVisible()
     await expect(filesTab).toBeVisible()
 
-    // Default tab is Terminal — the terminal host is visible, other panels hidden.
-    await expect(terminalTab).toHaveAttribute("data-active", "true")
-    await expect(page.getByTestId("project-terminal")).toBeVisible()
-    await expect(page.getByTestId("github-panel")).toBeHidden()
-    await expect(page.getByTestId("project-file-tree")).toBeHidden()
-
-    // Switch to Sessions.
-    await sessionsTab.click()
+    // Default tab is Activity (sessions) — the session feed is visible, other panels hidden.
     await expect(sessionsTab).toHaveAttribute("data-active", "true")
     await waitForCard({ page, short, timeout: 20_000 })
     await expect(cardLocator(page, short)).toBeVisible()
+    await expect(page.getByTestId("github-panel")).toBeHidden()
+    await expect(page.getByTestId("project-file-tree")).toBeHidden()
     await expect(page.getByTestId("project-terminal")).toBeHidden()
+
+    // Switch to Terminal.
+    await terminalTab.click()
+    await expect(terminalTab).toHaveAttribute("data-active", "true")
+    await expect(page.getByTestId("project-terminal")).toBeVisible()
+    await expect(cardLocator(page, short)).toBeHidden()
 
     // Switch to GitHub.
     await githubTab.click()

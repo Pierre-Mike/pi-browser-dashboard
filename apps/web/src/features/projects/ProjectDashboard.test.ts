@@ -26,6 +26,11 @@ describe("ProjectDashboard activity panel", () => {
     expect(src).toMatch(/label:\s*`?Activity/)
   })
 
+  it("defaults to the Activity (sessions) tab, not the terminal", () => {
+    expect(src).toMatch(/tab\s*=\s*"sessions"\s*\}\s*=\s*route\.useSearch\(\)/)
+    expect(src).not.toMatch(/tab\s*=\s*"terminal"\s*\}\s*=\s*route\.useSearch\(\)/)
+  })
+
   it("does NOT host the Orchestration tab — the supervisor is global, surfaced on the root dashboard, not per-project", () => {
     expect(src).not.toContain("OrchestrationPanel")
     expect(src).not.toMatch(/key:\s*"orchestration"/)

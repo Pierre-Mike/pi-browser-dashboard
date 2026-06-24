@@ -118,7 +118,7 @@ export const ProjectDashboard = ({ project }: Props) => {
     return base
   }, [project.githubUrl, sessions.length, extPanels])
 
-  const { tab = "terminal" } = route.useSearch()
+  const { tab = "sessions" } = route.useSearch()
   const navigate = route.useNavigate()
   const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const fillViewport =
