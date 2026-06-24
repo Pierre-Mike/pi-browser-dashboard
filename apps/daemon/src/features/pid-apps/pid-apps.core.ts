@@ -143,3 +143,19 @@ export const discoverPidApps = (
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   return [...apps, ...dirApps]
 }
+
+// Maps an appId to its directory RELATIVE to .pid/: the bare-root "default" app
+// is the .pid dir itself (""), every other app is its own subdir.
+export const appRootFor = (appId: string): string => (appId === DEFAULT_APP_ID ? "" : appId)
+
+// Guard for the SERVE route: an appId is servable iff it is the literal default
+// app or a valid, non-reserved identifier. Enforced independently of discovery so
+// a direct request for a reserved name (e.g. "extensions") cannot leak internals.
+export const isValidAppId = (appId: string): boolean =>
+  appId === DEFAULT_APP_ID || (!RESERVED_PID_ENTRIES.has(appId) && NAME_RE.test(appId))
+
+// For the bare-root "default" app (whose root is the entire .pid dir), refuse any
+// asset whose top path segment is a reserved pid internal, so .pid/settings.json,
+// .pid/extensions/*, etc. can never be served through the default app.
+export const isReservedDefaultAsset = (relPath: string): boolean =>
+  RESERVED_PID_ENTRIES.has(relPath.split(/[/\\]/)[0] ?? "")

@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.repo"
+import { isSafeSegment } from "../claude-config/claude-config.core"
 import { readFileAt, resolveRawAt, treeAt } from "./fileBrowser.repo"
 import {
   compareProjectsByCommit,
@@ -56,7 +57,7 @@ type RawFile = {
   readonly mime: string
 }
 
-type ProjectsServiceApi = {
+export type ProjectsServiceApi = {
   readonly list: () => Effect.Effect<readonly Project[], never, never>
   readonly listDir: (
     id: string,
@@ -71,6 +72,22 @@ export class ProjectsService extends Context.Tag("ProjectsService")<
   ProjectsService,
   ProjectsServiceApi
 >() {}
+
+export type ProjectResolveError = "not_found" | "forbidden"
+
+// Resolve a project id to its absolute root path: unsafe ids fail "forbidden",
+// unknown ids fail "not_found". Shared by the per-project pid features
+// (pid-settings, pid-apps) so id->path resolution lives in exactly one place.
+export const resolveProjectDir = (
+  projects: ProjectsServiceApi,
+  projectId: string,
+): Effect.Effect<string, ProjectResolveError> =>
+  Effect.gen(function* () {
+    if (!isSafeSegment(projectId)) return yield* Effect.fail<ProjectResolveError>("forbidden")
+    const proj = (yield* projects.list()).find((p) => p.id === projectId)
+    if (!proj) return yield* Effect.fail<ProjectResolveError>("not_found")
+    return proj.path
+  })
 
 const readBranch = async (gitHeadPath: string): Promise<string | null> => {
   try {

@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { isSafeSegment } from "../claude-config/claude-config.core"
-import { ProjectsService } from "../projects/projects.repo"
+import { ProjectsService, resolveProjectDir } from "../projects/projects.repo"
 import {
   mergePidSettings,
   type PidSettings,
@@ -54,14 +54,10 @@ export const PidSettingsRepoLive: Layer.Layer<PidSettingsService, never, Project
     Effect.gen(function* () {
       const projects = yield* ProjectsService
 
+      // id->path resolution is shared with the other per-project pid features
+      // via resolveProjectDir (ProjectResolveError === PidSettingsError).
       const resolvePath = (projectId: string) =>
-        Effect.gen(function* () {
-          if (!isSafeSegment(projectId)) return yield* Effect.fail<PidSettingsError>("forbidden")
-          const list = yield* projects.list()
-          const proj = list.find((p) => p.id === projectId)
-          if (!proj) return yield* Effect.fail<PidSettingsError>("not_found")
-          return pidSettingsPathFor(proj.path)
-        })
+        resolveProjectDir(projects, projectId).pipe(Effect.map(pidSettingsPathFor))
 
       return {
         readProject: (projectId) =>
