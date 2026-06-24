@@ -56,6 +56,16 @@ describe("demo feature-tour page stays consistent with the recordings", () => {
     for (const m of html.matchAll(/\bto:\s*"(story-\d+)"/g)) expect(storyIds.has(m[1])).toBe(true)
   })
 
+  it("the inlined render script parses as valid JS", () => {
+    // The whole tour is generated at runtime by the inlined <script>. A syntax
+    // error there (e.g. a stray backslash outside a string) silently blanks the
+    // page — every section renders empty, so "I don't see any feature". The
+    // data-consistency checks above all pass on a page that never renders.
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1]
+    expect(script).toBeTruthy()
+    expect(() => new Function(script as string)).not.toThrow()
+  })
+
   it("hero stat fallbacks match the data", () => {
     const features = referencedGifs.length
     const stories = [...html.matchAll(/kicker:\s*"/g)].length
