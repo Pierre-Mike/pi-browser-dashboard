@@ -1,6 +1,7 @@
 import { join, normalize } from "node:path"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { resolveCorsOrigin } from "./cors.core"
 import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
@@ -16,8 +17,6 @@ import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
 import { extensionRegistry } from "./platform/extensions/registry"
-
-const DEFAULT_ORIGINS = ["http://localhost:5173"]
 
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
@@ -42,17 +41,14 @@ const extMime = (rel: string): string => {
   if (dot === -1) return "application/octet-stream"
   return EXT_MIME_BY_EXT[rel.toLowerCase().slice(dot + 1)] ?? "application/octet-stream"
 }
-const extraOrigins = (process.env.PID_CORS_ORIGINS ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean)
-const allowedOrigins = [...DEFAULT_ORIGINS, ...extraOrigins]
-
 const app = new Hono()
   .use(
     "*",
     cors({
-      origin: allowedOrigins,
+      // Evaluated per-request so the embedded-daemon path (Electrobun) can inject
+      // PID_CORS_ORIGINS / PID_ALLOW_VIEWS_ORIGIN before serving even though this
+      // module is imported earlier. See cors.core.ts.
+      origin: (origin) => resolveCorsOrigin(origin, process.env),
       allowHeaders: ["Content-Type", "Last-Event-ID"],
       allowMethods: ["GET", "POST", "OPTIONS"],
       credentials: false,

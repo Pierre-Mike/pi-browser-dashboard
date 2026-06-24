@@ -3,6 +3,7 @@
   "entry": [
     "src/main.ts",
     "src/main.tsx",
+    "**/electrobun.config.ts",
     "**/*.test.ts",
     "**/*.spec.ts",
     "global-setup.ts",
