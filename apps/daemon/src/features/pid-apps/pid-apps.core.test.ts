@@ -2,9 +2,12 @@ import { describe, expect, it } from "bun:test"
 import { NAME_RE } from "../../platform/extensions/manifest"
 import {
   applyPidAppManifest,
+  appRootFor,
   DEFAULT_APP_ID,
   DEFAULT_ENTRY,
   discoverPidApps,
+  isReservedDefaultAsset,
+  isValidAppId,
   PID_APP_CSP,
   type PidApp,
   type PidAppDirEntry,
@@ -157,5 +160,47 @@ describe("NAME_RE reuse", () => {
   it("is the shared extension name regex (imported, not redefined)", () => {
     expect(NAME_RE.test("ok-1.2")).toBe(true)
     expect(NAME_RE.test("Bad")).toBe(false)
+  })
+})
+
+describe("appRootFor", () => {
+  it("maps the default app to the .pid root and others to their own subdir", () => {
+    expect(appRootFor("default")).toBe("")
+    expect(appRootFor("spec")).toBe("spec")
+  })
+})
+
+describe("isValidAppId", () => {
+  it("accepts the literal default app and valid non-reserved ids", () => {
+    expect(isValidAppId("default")).toBe(true)
+    expect(isValidAppId("spec")).toBe(true)
+    expect(isValidAppId("my-plan.v2")).toBe(true)
+  })
+
+  it("rejects reserved names so the serve route can't leak pid internals", () => {
+    expect(isValidAppId("extensions")).toBe(false)
+    expect(isValidAppId("settings.json")).toBe(false)
+    expect(isValidAppId("extensions-state.json")).toBe(false)
+  })
+
+  it("rejects NAME_RE-invalid ids (uppercase, spaces, traversal)", () => {
+    expect(isValidAppId("UPPER")).toBe(false)
+    expect(isValidAppId("bad name")).toBe(false)
+    expect(isValidAppId("..")).toBe(false)
+    expect(isValidAppId("")).toBe(false)
+  })
+})
+
+describe("isReservedDefaultAsset", () => {
+  it("flags assets whose top segment is a reserved pid internal", () => {
+    expect(isReservedDefaultAsset("settings.json")).toBe(true)
+    expect(isReservedDefaultAsset("extensions/foo/manifest.json")).toBe(true)
+    expect(isReservedDefaultAsset("extensions-state.json")).toBe(true)
+  })
+
+  it("allows ordinary asset paths under the default app", () => {
+    expect(isReservedDefaultAsset("index.html")).toBe(false)
+    expect(isReservedDefaultAsset("assets/app.js")).toBe(false)
+    expect(isReservedDefaultAsset("myplan/index.html")).toBe(false)
   })
 })
