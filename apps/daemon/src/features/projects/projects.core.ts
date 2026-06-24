@@ -34,6 +34,13 @@ export const resolveProjectPath = (root: string, input: string | undefined): Res
   return { ok: true, absPath, relPath: back }
 }
 
+// String-layer guard for a user-supplied relative asset path, applied BEFORE any
+// filesystem access: reject "..", backslashes, and absolute paths. Shared by the
+// extension and pid-app static-asset routes (one rule, no drift). An empty string
+// is allowed — callers decide whether "" means "serve the entry/index".
+export const validateRelPath = (rel: string): boolean =>
+  !rel.includes("..") && !rel.includes("\\") && !rel.startsWith("/")
+
 // Heuristic binary detection: scan the first N bytes for a NUL. Matches the
 // approach used by git and ripgrep — cheap, no false negatives on real binaries,
 // and short-circuits as soon as one is found.

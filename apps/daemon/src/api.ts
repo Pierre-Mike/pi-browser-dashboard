@@ -9,6 +9,7 @@ import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
+import { validateRelPath } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
@@ -90,7 +91,7 @@ const app = new Hono()
       return c.json({ error: "bad_path" }, 400)
     }
     // Reject traversal / absolute escapes before touching the filesystem.
-    if (!rel || rel.includes("..") || rel.includes("\\") || rel.startsWith("/")) {
+    if (!rel || !validateRelPath(rel)) {
       return c.json({ error: "bad_path" }, 400)
     }
     const baseDir = normalize(ext.dir)

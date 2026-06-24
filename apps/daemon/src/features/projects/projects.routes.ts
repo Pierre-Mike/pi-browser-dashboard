@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { app as pidAppsApp } from "../pid-apps/pid-apps.routes"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { errorToStatus, treeGitStatusAt } from "./fileBrowser.routes"
 import type { TreeGitStatusEntry } from "./git.core"
@@ -155,5 +156,8 @@ const app = new Hono()
   // Per-project pid-settings live under this router: GET/POST
   // /projects/:id/pid-settings. The sub-app reads the `:id` parent param.
   .route("/", pidSettingsApp)
+  // Per-project pid-apps (HTML dropped into <project>/.pid/): GET
+  // /projects/:id/pid-apps and /projects/:id/pid-apps/:appId/*.
+  .route("/", pidAppsApp)
 
 export { app }
