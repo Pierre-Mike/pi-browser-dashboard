@@ -112,8 +112,8 @@
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-06-24</dd>
-        <dt>modified</dt>     <dd>2026-06-24</dd>
-        <dt>commits</dt>      <dd>96cb23a (base); feature commits appended per phase PR</dd>
+        <dt>modified</dt>     <dd>2026-06-24 (created); 2026-06-24 (built — all 6 phases merged)</dd>
+        <dt>commits</dt>      <dd>01796447 #318 plan · 16c7ef5c #320 P1 · d178efb1 #321 P2 · 7ad36a2b #322 P3 · 58f88902 #326 P4-5 · f7805c75 #327 P6</dd>
         <dt>agent name</dt>   <dd>Claude Opus 4.8 (1M context)</dd>
         <dt>session id</dt>   <dd>6a99f1d7-e252-4d15-b6ce-a03e119f26fd</dd>
         <dt>back refs</dt>    <dd>PR #116 (extension daemon host, iframe roadmap); apps/daemon/src/platform/extensions/*; apps/web/src/features/extensions/ExtensionHost.tsx; examples/extensions/*</dd>
@@ -258,169 +258,169 @@
   <section id="phases">
     <h2>Implementation Phases</h2>
     <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom. Each phase is one auto-merge PR; each builds on the last. Every behavior change is <strong>test-first</strong> (write the failing test, watch it go RED, then GREEN, then refactor).</p>
-    <p class="legend">Status markers: <code class="status">[]</code> idle · <code class="status wip">[wip]</code> in progress · <code class="status x">[x]</code> complete · <code class="status f">[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them.</p>
+    <p class="legend">Status markers: <code class="status x">[x]</code> complete · <code class="status f">[f]</code> failed · <code class="status wip">[wip]</code> in progress · <code>[]</code> idle. <strong>All phases below are complete and merged to main</strong> — see Amendments.</p>
 
     <!-- PHASE 1 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 1: Pure discovery core <span class="pill">functional core · no I/O</span></h3>
+      <h3><code class="status x">[x]</code> Phase 1: Pure discovery core <span class="pill">functional core · no I/O</span></h3>
       <p>Land the manifest-less discovery rules, tolerant manifest parser, shared constants (reserved names, CSP), and the extracted <code>validateRelPath</code> as <strong>pure, total functions</strong>, so every zero-config / scoping rule is pinned by millisecond unit tests before any wiring.</p>
 
       <h4>1. Discovery + constants</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Export <code>NAME_RE</code> from <code>platform/extensions/manifest.ts</code> and import it into the core — do NOT redefine the regex (Fallow flags the duplicate constant).</li>
-        <li><code class="status">[]</code> Define types: <code>type PidApp = { readonly id: string; readonly label: string; readonly entry: string; readonly root: string }</code> (<code>root</code> is relative to <code>.pid/</code>: <code>'&lt;id&gt;'</code> for dir apps, <code>''</code> for the bare <code>default</code>) and <code>type PidAppDirEntry = { name: string; isDir: boolean; hasIndexHtml: boolean }</code>.</li>
-        <li><code class="status">[]</code> <code>export const RESERVED_PID_ENTRIES = ['extensions', 'extensions-state.json', 'settings.json'] as const</code> — single source of truth, consumed by discovery AND the serve route. Also treat <code>'default'</code> as a reserved <em>dir</em> name so a physical <code>.pid/default/</code> can't shadow the bare-root default.</li>
-        <li><code class="status">[]</code> <code>discoverPidApps(entries, hasRootIndex): readonly PidApp[]</code> — apply zero-config rules, exclude reserved, validate dir names against <code>NAME_RE</code> (skip non-conforming, never throw), sort deterministically (default first, then dir apps alphabetical).</li>
+        <li><code class="status x">[x]</code> Export <code>NAME_RE</code> from <code>platform/extensions/manifest.ts</code> and import it into the core — do NOT redefine the regex (Fallow flags the duplicate constant).</li>
+        <li><code class="status x">[x]</code> Define types: <code>type PidApp = { readonly id: string; readonly label: string; readonly entry: string; readonly root: string }</code> (<code>root</code> is relative to <code>.pid/</code>: <code>'&lt;id&gt;'</code> for dir apps, <code>''</code> for the bare <code>default</code>) and <code>type PidAppDirEntry = { name: string; isDir: boolean; hasIndexHtml: boolean }</code>.</li>
+        <li><code class="status x">[x]</code> <code>export const RESERVED_PID_ENTRIES = ['extensions', 'extensions-state.json', 'settings.json'] as const</code> — single source of truth, consumed by discovery AND the serve route. Also treat <code>'default'</code> as a reserved <em>dir</em> name so a physical <code>.pid/default/</code> can't shadow the bare-root default.</li>
+        <li><code class="status x">[x]</code> <code>discoverPidApps(entries, hasRootIndex): readonly PidApp[]</code> — apply zero-config rules, exclude reserved, validate dir names against <code>NAME_RE</code> (skip non-conforming, never throw), sort deterministically (default first, then dir apps alphabetical).</li>
       </ul>
 
       <h4>2. Tolerant manifest + path validation</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>parsePidAppManifest(text: string | null): { title?: string; entry?: string; icon?: string }</code> — never throws (mirror <code>parsePidSettings</code> field-by-field tolerance). <strong>Validate <code>entry</code> in the core</strong>: single path segment, no <code>/</code>/<code>..</code>, and <strong><code>*.html</code>/<code>*.htm</code> only</strong> (blocks the SVG-as-entry script vector); drop the field if invalid.</li>
-        <li><code class="status">[]</code> <code>export function validateRelPath(rel: string): boolean</code> in <code>projects.core.ts</code> (pure, zero deps): reject empty, <code>..</code> segments, backslashes, leading <code>/</code>. This is the extraction that de-dups <code>api.ts:93</code> (refactored to call it in Phase 3).</li>
-        <li><code class="status">[]</code> <code>export const PID_APP_CSP</code> in the core (string constant, with an inline comment explaining the <code>'unsafe-inline'</code> tradeoff) so it is unit-tested at the fastest layer: <code>default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self'; font-src data: 'self'; connect-src 'none'</code> (note: <code>blob:</code> removed from <code>img-src</code> per security review).</li>
+        <li><code class="status x">[x]</code> <code>parsePidAppManifest(text: string | null): { title?: string; entry?: string; icon?: string }</code> — never throws (mirror <code>parsePidSettings</code> field-by-field tolerance). <strong>Validate <code>entry</code> in the core</strong>: single path segment, no <code>/</code>/<code>..</code>, and <strong><code>*.html</code>/<code>*.htm</code> only</strong> (blocks the SVG-as-entry script vector); drop the field if invalid.</li>
+        <li><code class="status x">[x]</code> <code>export function validateRelPath(rel: string): boolean</code> in <code>projects.core.ts</code> (pure, zero deps): reject empty, <code>..</code> segments, backslashes, leading <code>/</code>. This is the extraction that de-dups <code>api.ts:93</code> (refactored to call it in Phase 3).</li>
+        <li><code class="status x">[x]</code> <code>export const PID_APP_CSP</code> in the core (string constant, with an inline comment explaining the <code>'unsafe-inline'</code> tradeoff) so it is unit-tested at the fastest layer: <code>default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self'; font-src data: 'self'; connect-src 'none'</code> (note: <code>blob:</code> removed from <code>img-src</code> per security review).</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p>Pure <code>bun:test</code> — no filesystem, no mocks. Every rule gets a failing assertion first.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED: <code>discoverPidApps([], true)</code> → one app <code>{id:'default', root:''}</code>; subdir w/ index → <code>id = dirname, root = dirname</code>; subdir w/o index → omitted; reserved names → never apps; <code>NAME_RE</code>-failing dir (<code>'Bad Name'</code>, <code>'../x'</code>) → skipped, no throw; deterministic ordering.</li>
-        <li><code class="status">[]</code> RED: <strong>collision</strong> — <code>discoverPidApps([{name:'default',isDir:true,hasIndexHtml:true}], true)</code> → bare-root <code>default</code> wins, the <code>default</code> subdir is skipped (locked behavior, not underdetermined).</li>
-        <li><code class="status">[]</code> RED: <code>parsePidAppManifest(null|''|'{bad')</code> → <code>{}</code>; valid title/icon kept; wrong-typed dropped; <code>entry:'../x'</code>/<code>'a/b'</code>/<code>'x.svg'</code> dropped, <code>entry:'main.html'</code> kept.</li>
-        <li><code class="status">[]</code> RED: <code>validateRelPath</code> truth table (<code>''</code>, <code>'a/../b'</code>, <code>'..'</code>, <code>'a\\b'</code>, <code>'/abs'</code> → false; <code>'a/b.css'</code> → true); <code>PID_APP_CSP</code> exact-value snapshot.</li>
-        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.core.test.ts</code> — proves the rules.</li>
+        <li><code class="status x">[x]</code> RED: <code>discoverPidApps([], true)</code> → one app <code>{id:'default', root:''}</code>; subdir w/ index → <code>id = dirname, root = dirname</code>; subdir w/o index → omitted; reserved names → never apps; <code>NAME_RE</code>-failing dir (<code>'Bad Name'</code>, <code>'../x'</code>) → skipped, no throw; deterministic ordering.</li>
+        <li><code class="status x">[x]</code> RED: <strong>collision</strong> — <code>discoverPidApps([{name:'default',isDir:true,hasIndexHtml:true}], true)</code> → bare-root <code>default</code> wins, the <code>default</code> subdir is skipped (locked behavior, not underdetermined).</li>
+        <li><code class="status x">[x]</code> RED: <code>parsePidAppManifest(null|''|'{bad')</code> → <code>{}</code>; valid title/icon kept; wrong-typed dropped; <code>entry:'../x'</code>/<code>'a/b'</code>/<code>'x.svg'</code> dropped, <code>entry:'main.html'</code> kept.</li>
+        <li><code class="status x">[x]</code> RED: <code>validateRelPath</code> truth table (<code>''</code>, <code>'a/../b'</code>, <code>'..'</code>, <code>'a\\b'</code>, <code>'/abs'</code> → false; <code>'a/b.css'</code> → true); <code>PID_APP_CSP</code> exact-value snapshot.</li>
+        <li><code class="status x">[x]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.core.test.ts</code> — proves the rules.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 1 until every box is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- PHASE 2 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 2: Daemon repo over the real filesystem <span class="pill">imperative shell · Effect Layer</span></h3>
+      <h3><code class="status x">[x]</code> Phase 2: Daemon repo over the real filesystem <span class="pill">imperative shell · Effect Layer</span></h3>
       <p>Discover apps and resolve+stat asset paths for a real project dir, reusing <code>ProjectsService</code> for resolution and <code>resolveProjectPath</code> for lexical containment, plus the <strong>realpath</strong> guard. Errors are typed (<code>PidAppError = 'not_found' | 'forbidden' | 'too_large'</code>).</p>
 
       <h4>1. Shared resolver + service</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Extract the project-id resolver duplicated in <code>pid-settings.repo.ts</code> (isSafeSegment → <code>projects.list()</code> → find → path) into a shared helper (e.g. <code>projects/projects.pid-utils.ts</code> <code>resolveProjectDir(projectId, projects): Effect&lt;string, ...&gt;</code>) and refactor <code>pid-settings.repo.ts</code> to use it (Fallow flags the duplication otherwise).</li>
-        <li><code class="status">[]</code> <code>PidAppsService</code> Context.Tag (Effect Layer, depends on <code>ProjectsService</code>): <code>listApps(projectId)</code> and <code>resolveAsset(projectId, appId, rel)</code> returning <code>RawFile = { absPath, size, mime }</code>.</li>
-        <li><code class="status">[]</code> <code>listApps</code>: resolve path (unknown → <code>not_found</code>, unsafe id → <code>forbidden</code>), <code>readdir</code> <code>&lt;path&gt;/.pid</code> with <code>withFileTypes</code>, probe each subdir for <code>index.html</code> with a <strong>bounded concurrency</strong> (<code>{ concurrency: 8 }</code>, mirror <code>probeProject</code>) and a <strong>max-apps cap (50)</strong>, then <code>discoverPidApps</code>, then apply optional <code>pid-app.json</code> overrides.</li>
+        <li><code class="status x">[x]</code> Extract the project-id resolver duplicated in <code>pid-settings.repo.ts</code> (isSafeSegment → <code>projects.list()</code> → find → path) into a shared helper (e.g. <code>projects/projects.pid-utils.ts</code> <code>resolveProjectDir(projectId, projects): Effect&lt;string, ...&gt;</code>) and refactor <code>pid-settings.repo.ts</code> to use it (Fallow flags the duplication otherwise).</li>
+        <li><code class="status x">[x]</code> <code>PidAppsService</code> Context.Tag (Effect Layer, depends on <code>ProjectsService</code>): <code>listApps(projectId)</code> and <code>resolveAsset(projectId, appId, rel)</code> returning <code>RawFile = { absPath, size, mime }</code>.</li>
+        <li><code class="status x">[x]</code> <code>listApps</code>: resolve path (unknown → <code>not_found</code>, unsafe id → <code>forbidden</code>), <code>readdir</code> <code>&lt;path&gt;/.pid</code> with <code>withFileTypes</code>, probe each subdir for <code>index.html</code> with a <strong>bounded concurrency</strong> (<code>{ concurrency: 8 }</code>, mirror <code>probeProject</code>) and a <strong>max-apps cap (50)</strong>, then <code>discoverPidApps</code>, then apply optional <code>pid-app.json</code> overrides.</li>
       </ul>
 
       <h4>2. Secure asset resolution</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>resolveAsset</code>: validate <code>appId</code> against <code>NAME_RE</code> or literal <code>'default'</code> AND assert <code>appId ∉ RESERVED_PID_ENTRIES</code> (independent of discovery). Compute <code>appRoot = join(pidDir, app.root)</code> (branchless via <code>PidApp.root</code>).</li>
-        <li><code class="status">[]</code> Reuse <code>resolveProjectPath(appRoot, rel)</code> for lexical containment; default <code>rel === ''</code> → <code>app.entry</code> (<code>index.html</code> unless overridden).</li>
-        <li><code class="status">[]</code> <strong>MUST-FIX (security):</strong> after lexical resolve, <code>fs.realpath(absPath)</code> and assert it still starts with <code>fs.realpath(appRoot)</code> → else <code>forbidden</code>. Closes symlink escape (the drop zone is untrusted; this is NOT deferrable).</li>
-        <li><code class="status">[]</code> <strong>MUST-FIX (default app):</strong> for <code>appId === 'default'</code> (<code>appRoot = .pid</code> itself), additionally reject any resolved path whose top segment ∈ <code>RESERVED_PID_ENTRIES</code> (no serving <code>.pid/settings.json</code> etc. via <code>default</code>).</li>
-        <li><code class="status">[]</code> Size cap (<code>MAX_RAW_BYTES</code>, 50 MB to match <code>/raw</code>) → <code>too_large</code>; <code>mime</code> from the shared map (extend the single map for <code>woff/woff2/map</code> — do NOT add a third MIME map).</li>
-        <li><code class="status">[]</code> <code>PidAppsRepoTest</code> in-memory factory mirroring <code>PidSettingsRepoTest</code> for fast route tests.</li>
+        <li><code class="status x">[x]</code> <code>resolveAsset</code>: validate <code>appId</code> against <code>NAME_RE</code> or literal <code>'default'</code> AND assert <code>appId ∉ RESERVED_PID_ENTRIES</code> (independent of discovery). Compute <code>appRoot = join(pidDir, app.root)</code> (branchless via <code>PidApp.root</code>).</li>
+        <li><code class="status x">[x]</code> Reuse <code>resolveProjectPath(appRoot, rel)</code> for lexical containment; default <code>rel === ''</code> → <code>app.entry</code> (<code>index.html</code> unless overridden).</li>
+        <li><code class="status x">[x]</code> <strong>MUST-FIX (security):</strong> after lexical resolve, <code>fs.realpath(absPath)</code> and assert it still starts with <code>fs.realpath(appRoot)</code> → else <code>forbidden</code>. Closes symlink escape (the drop zone is untrusted; this is NOT deferrable).</li>
+        <li><code class="status x">[x]</code> <strong>MUST-FIX (default app):</strong> for <code>appId === 'default'</code> (<code>appRoot = .pid</code> itself), additionally reject any resolved path whose top segment ∈ <code>RESERVED_PID_ENTRIES</code> (no serving <code>.pid/settings.json</code> etc. via <code>default</code>).</li>
+        <li><code class="status x">[x]</code> Size cap (<code>MAX_RAW_BYTES</code>, 50 MB to match <code>/raw</code>) → <code>too_large</code>; <code>mime</code> from the shared map (extend the single map for <code>woff/woff2/map</code> — do NOT add a third MIME map).</li>
+        <li><code class="status x">[x]</code> <code>PidAppsRepoTest</code> in-memory factory mirroring <code>PidSettingsRepoTest</code> for fast route tests.</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p><code>bun:test</code> + <code>mkdtempSync</code> + a <code>ProjectsRepoTest</code> fixture. The fixture wiring is the first RED step (per TDD review).</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED fixture (write FIRST): <code>const proj = { id: 'p', path: tmpDir, name: 'p', isGitRepo: false, lastModified: 0 }; const layer = Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj]))</code> — confirm the exact <code>Project</code> shape against the real type before asserting.</li>
-        <li><code class="status">[]</code> RED: <code>listApps</code> → <code>['default']</code> for bare <code>.pid/index.html</code>, <code>['myplan']</code> for <code>.pid/myplan/index.html</code>; no <code>.pid</code> → <code>[]</code>; unknown id → <code>not_found</code>; unsafe id → <code>forbidden</code>.</li>
-        <li><code class="status">[]</code> RED: <code>resolveAsset(default,'index.html')</code> → <code>RawFile{mime:'text/html'}</code>; nested <code>assets/app.js</code> → <code>text/javascript</code>; <code>pid-app.json</code> title/entry override applied.</li>
-        <li><code class="status">[]</code> RED (security): traversal <code>'../../secret'</code> → <code>forbidden</code>; <strong>symlink</strong> inside <code>.pid</code> → outside file → <code>forbidden</code>; <code>resolveAsset('default','settings.json')</code> → <code>forbidden</code>.</li>
-        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> green; re-run <code>pid-settings.repo.test.ts</code> after the resolver extraction.</li>
+        <li><code class="status x">[x]</code> RED fixture (write FIRST): <code>const proj = { id: 'p', path: tmpDir, name: 'p', isGitRepo: false, lastModified: 0 }; const layer = Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj]))</code> — confirm the exact <code>Project</code> shape against the real type before asserting.</li>
+        <li><code class="status x">[x]</code> RED: <code>listApps</code> → <code>['default']</code> for bare <code>.pid/index.html</code>, <code>['myplan']</code> for <code>.pid/myplan/index.html</code>; no <code>.pid</code> → <code>[]</code>; unknown id → <code>not_found</code>; unsafe id → <code>forbidden</code>.</li>
+        <li><code class="status x">[x]</code> RED: <code>resolveAsset(default,'index.html')</code> → <code>RawFile{mime:'text/html'}</code>; nested <code>assets/app.js</code> → <code>text/javascript</code>; <code>pid-app.json</code> title/entry override applied.</li>
+        <li><code class="status x">[x]</code> RED (security): traversal <code>'../../secret'</code> → <code>forbidden</code>; <strong>symlink</strong> inside <code>.pid</code> → outside file → <code>forbidden</code>; <code>resolveAsset('default','settings.json')</code> → <code>forbidden</code>.</li>
+        <li><code class="status x">[x]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> green; re-run <code>pid-settings.repo.test.ts</code> after the resolver extraction.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 2 until every box is checked</strong>, including the symlink and default-reserved tests. Loop until green.</div>
     </div>
 
     <!-- PHASE 3 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Daemon HTTP routes + secure streaming + CSP <span class="pill">HTTP boundary</span></h3>
+      <h3><code class="status x">[x]</code> Phase 3: Daemon HTTP routes + secure streaming + CSP <span class="pill">HTTP boundary</span></h3>
       <p>Expose <code>GET /projects/:id/pid-apps</code> and <code>GET /projects/:id/pid-apps/:appId/*</code> with pre-fs traversal rejection (after decode), streaming + <code>nosniff</code> + strict per-response CSP, mounted on the projects router. Refactor <code>api.ts</code> to the shared <code>validateRelPath</code>.</p>
 
       <h4>1. Routes (mirror pid-settings exactly)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Export <code>createApp(run: RunPromise)</code> factory (injectable runtime → route tests use <code>PidAppsRepoTest</code> without <code>appRuntime</code>) and keep the live <code>const app = createApp(...)</code> export, exactly like <code>pid-settings.routes.ts</code>.</li>
-        <li><code class="status">[]</code> Define a <strong>local</strong> <code>errorToStatus(e: PidAppError): 403 | 404 | 413</code> — do NOT reuse <code>fileBrowser</code>'s (incompatible <code>FileError</code> type).</li>
-        <li><code class="status">[]</code> List route: <code>listApps</code> → JSON; map errors via the local <code>errorToStatus</code>.</li>
-        <li><code class="status">[]</code> Serve route: extract <code>rel</code> from the wildcard (<strong>confirm Hono 4.x</strong> <code>c.req.param('*')</code> vs path slice — else <code>rel</code> is empty and always serves index), <code>decodeURIComponent</code>, then <code>validateRelPath</code> BEFORE any fs touch; stream <code>Bun.file(absPath)</code>.</li>
+        <li><code class="status x">[x]</code> Export <code>createApp(run: RunPromise)</code> factory (injectable runtime → route tests use <code>PidAppsRepoTest</code> without <code>appRuntime</code>) and keep the live <code>const app = createApp(...)</code> export, exactly like <code>pid-settings.routes.ts</code>.</li>
+        <li><code class="status x">[x]</code> Define a <strong>local</strong> <code>errorToStatus(e: PidAppError): 403 | 404 | 413</code> — do NOT reuse <code>fileBrowser</code>'s (incompatible <code>FileError</code> type).</li>
+        <li><code class="status x">[x]</code> List route: <code>listApps</code> → JSON; map errors via the local <code>errorToStatus</code>.</li>
+        <li><code class="status x">[x]</code> Serve route: extract <code>rel</code> from the wildcard (<strong>confirm Hono 4.x</strong> <code>c.req.param('*')</code> vs path slice — else <code>rel</code> is empty and always serves index), <code>decodeURIComponent</code>, then <code>validateRelPath</code> BEFORE any fs touch; stream <code>Bun.file(absPath)</code>.</li>
       </ul>
 
       <h4>2. Headers + mount + dedup</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Set on <strong>every</strong> response (entry HTML and every sub-resource): <code>Content-Security-Policy: PID_APP_CSP</code>, <code>X-Content-Type-Options: nosniff</code>. Cache-Control: <code>no-cache, must-revalidate</code> for <code>.html</code> (drop-and-see), <code>private, max-age=30</code> for static assets.</li>
-        <li><code class="status">[]</code> Refactor <code>api.ts</code> extension route to call the shared <code>validateRelPath</code> (removes the copy-pasted guard; Fallow duplication clears).</li>
-        <li><code class="status">[]</code> Mount in <code>projects.routes.ts</code>: <code>.route('/', pidAppsApp)</code> beside <code>pidSettingsApp</code>.</li>
+        <li><code class="status x">[x]</code> Set on <strong>every</strong> response (entry HTML and every sub-resource): <code>Content-Security-Policy: PID_APP_CSP</code>, <code>X-Content-Type-Options: nosniff</code>. Cache-Control: <code>no-cache, must-revalidate</code> for <code>.html</code> (drop-and-see), <code>private, max-age=30</code> for static assets.</li>
+        <li><code class="status x">[x]</code> Refactor <code>api.ts</code> extension route to call the shared <code>validateRelPath</code> (removes the copy-pasted guard; Fallow duplication clears).</li>
+        <li><code class="status x">[x]</code> Mount in <code>projects.routes.ts</code>: <code>.route('/', pidAppsApp)</code> beside <code>pidSettingsApp</code>.</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p>Route tests drive the mounted app. <strong>Serve-path tests use <code>PidAppsRepoLive</code> over a real tmp dir</strong> (real <code>absPath</code>); list/error tests may use the in-memory stub — resolve the real-vs-synthetic ambiguity per TDD review.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED: <code>GET /projects/:id/pid-apps</code> → 200 JSON array; unknown id → 404; unsafe id → 403.</li>
-        <li><code class="status">[]</code> RED: <code>GET .../default/index.html</code> → 200, <code>Content-Type: text/html</code>, header asserts <code>nosniff</code> + CSP contains <code>default-src 'none'</code> and <code>connect-src 'none'</code>; a JS sub-resource ALSO carries CSP+nosniff.</li>
-        <li><code class="status">[]</code> RED (traversal): <code>..%2f..%2fsettings.json</code> AND <strong>double-encoded</strong> <code>..%252f..%252f</code> → 400/404, secret never in body.</li>
-        <li><code class="status">[]</code> RED (reserved): <code>GET .../extensions/manifest.json</code> → 404/403 (serve route blocks reserved appId independently of discovery).</li>
-        <li><code class="status">[]</code> RED (regression): existing <code>/:id/files</code>, <code>/:id/raw</code>, <code>/:id/git/*</code> still resolve after the mount (route-order); bare <code>.../default/</code> → index.html.</li>
-        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts</code> and full <code>bun run test</code> green.</li>
+        <li><code class="status x">[x]</code> RED: <code>GET /projects/:id/pid-apps</code> → 200 JSON array; unknown id → 404; unsafe id → 403.</li>
+        <li><code class="status x">[x]</code> RED: <code>GET .../default/index.html</code> → 200, <code>Content-Type: text/html</code>, header asserts <code>nosniff</code> + CSP contains <code>default-src 'none'</code> and <code>connect-src 'none'</code>; a JS sub-resource ALSO carries CSP+nosniff.</li>
+        <li><code class="status x">[x]</code> RED (traversal): <code>..%2f..%2fsettings.json</code> AND <strong>double-encoded</strong> <code>..%252f..%252f</code> → 400/404, secret never in body.</li>
+        <li><code class="status x">[x]</code> RED (reserved): <code>GET .../extensions/manifest.json</code> → 404/403 (serve route blocks reserved appId independently of discovery).</li>
+        <li><code class="status x">[x]</code> RED (regression): existing <code>/:id/files</code>, <code>/:id/raw</code>, <code>/:id/git/*</code> still resolve after the mount (route-order); bare <code>.../default/</code> → index.html.</li>
+        <li><code class="status x">[x]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts</code> and full <code>bun run test</code> green.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 3</strong> until headers, both traversal encodings, the reserved-appId block, and the route-order regression all pass.</div>
     </div>
 
     <!-- PHASE 4 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: Web list hook + sandboxed iframe host <span class="pill">web · no RPC</span></h3>
+      <h3><code class="status x">[x]</code> Phase 4: Web list hook + sandboxed iframe host <span class="pill">web · no RPC</span></h3>
       <p>Fetch the per-project app list and render each app in a sandboxed iframe identical in posture to <code>ExtensionHost</code> — but with <strong>no postMessage/RPC bridge</strong>.</p>
 
       <h4>1. Hook + host</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>usePidApps(projectId)</code>: <code>useQuery(['pid-apps', projectId])</code> over the <code>hc</code> client, mirroring <code>useExtensions.ts</code>; returns <code>PidApp[]</code>. Lower <code>staleTime</code> (e.g. 5s) so a freshly dropped app appears fast.</li>
-        <li><code class="status">[]</code> <code>PidAppHost</code>: <code>&lt;iframe sandbox="allow-scripts" src={`${apiBase()}/projects/${projectId}/pid-apps/${appId}/`} data-testid={`pid-app-host-${appId}`} className="w-full h-full border-0" /&gt;</code>. <strong>Must NOT import or call <code>mountRpcBridge</code></strong>, and must NOT route through <code>ExtensionHost</code>.</li>
+        <li><code class="status x">[x]</code> <code>usePidApps(projectId)</code>: <code>useQuery(['pid-apps', projectId])</code> over the <code>hc</code> client, mirroring <code>useExtensions.ts</code>; returns <code>PidApp[]</code>. Lower <code>staleTime</code> (e.g. 5s) so a freshly dropped app appears fast.</li>
+        <li><code class="status x">[x]</code> <code>PidAppHost</code>: <code>&lt;iframe sandbox="allow-scripts" src={`${apiBase()}/projects/${projectId}/pid-apps/${appId}/`} data-testid={`pid-app-host-${appId}`} className="w-full h-full border-0" /&gt;</code>. <strong>Must NOT import or call <code>mountRpcBridge</code></strong>, and must NOT route through <code>ExtensionHost</code>.</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <p>Unit tests. <strong>Specify the <code>apiBase()</code> mock first</strong> (wrapper prop or module mock) so the URL assertion is meaningful, not vacuous (TDD review).</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED: <code>PidAppHost</code> iframe has <code>sandbox="allow-scripts"</code> and <strong>NOT</strong> <code>allow-same-origin</code>; <code>src</code> derived from mocked <code>apiBase()</code> ends with <code>/projects/p/pid-apps/default/</code>; <code>data-testid='pid-app-host-default'</code>.</li>
-        <li><code class="status">[]</code> RED: assert <code>PidAppHost</code> source does not reference <code>mountRpcBridge</code>/<code>ExtensionHost</code> (no-bridge invariant).</li>
-        <li><code class="status">[]</code> RED: <code>usePidApps</code> uses <code>queryKey ['pid-apps','p']</code> AND hits the <code>/projects/p/pid-apps</code> URL — assert via fetch spy / msw, not queryKey alone.</li>
-        <li><code class="status">[]</code> <code>bun test apps/web/src/features/pid-apps/</code> green.</li>
+        <li><code class="status x">[x]</code> RED: <code>PidAppHost</code> iframe has <code>sandbox="allow-scripts"</code> and <strong>NOT</strong> <code>allow-same-origin</code>; <code>src</code> derived from mocked <code>apiBase()</code> ends with <code>/projects/p/pid-apps/default/</code>; <code>data-testid='pid-app-host-default'</code>.</li>
+        <li><code class="status x">[x]</code> RED: assert <code>PidAppHost</code> source does not reference <code>mountRpcBridge</code>/<code>ExtensionHost</code> (no-bridge invariant).</li>
+        <li><code class="status x">[x]</code> RED: <code>usePidApps</code> uses <code>queryKey ['pid-apps','p']</code> AND hits the <code>/projects/p/pid-apps</code> URL — assert via fetch spy / msw, not queryKey alone.</li>
+        <li><code class="status x">[x]</code> <code>bun test apps/web/src/features/pid-apps/</code> green.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 4</strong> until the sandbox attr, the <code>apiBase()</code>-derived src, and the no-RPC invariant are all locked.</div>
     </div>
 
     <!-- PHASE 5 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 5: Wire pid-app tabs into ProjectDashboard <span class="pill">user-visible payoff</span></h3>
+      <h3><code class="status x">[x]</code> Phase 5: Wire pid-app tabs into ProjectDashboard <span class="pill">user-visible payoff</span></h3>
       <p>Surface discovered apps as per-project <code>pidapp:&lt;id&gt;</code> tabs reusing the existing ext-tab machinery. Independently shippable on top of Phase 4.</p>
 
       <h4>1. Tabs</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> In <code>ProjectDashboard.tsx</code>: call <code>usePidApps(project.id)</code>; push a <code>pidapp:&lt;id&gt;</code> tab per app (alongside <code>ext:&lt;name&gt;</code>); extend the <code>TabKey</code> union to <code>`pidapp:${string}`</code>.</li>
-        <li><code class="status">[]</code> Add <code>pidapp:</code> to <code>projectTabIcon</code> (new <code>PIDAPP_ICON</code> in <code>tabDock.tsx</code>, a distinct "page" glyph) and to the <code>fillViewport</code> predicate (else the iframe renders at zero height).</li>
-        <li><code class="status">[]</code> Render a tabpanel per app containing <code>&lt;PidAppHost projectId={project.id} appId={app.id} /&gt;</code>, mirroring the <code>extPanels.map</code> block.</li>
+        <li><code class="status x">[x]</code> In <code>ProjectDashboard.tsx</code>: call <code>usePidApps(project.id)</code>; push a <code>pidapp:&lt;id&gt;</code> tab per app (alongside <code>ext:&lt;name&gt;</code>); extend the <code>TabKey</code> union to <code>`pidapp:${string}`</code>.</li>
+        <li><code class="status x">[x]</code> Add <code>pidapp:</code> to <code>projectTabIcon</code> (new <code>PIDAPP_ICON</code> in <code>tabDock.tsx</code>, a distinct "page" glyph) and to the <code>fillViewport</code> predicate (else the iframe renders at zero height).</li>
+        <li><code class="status x">[x]</code> Render a tabpanel per app containing <code>&lt;PidAppHost projectId={project.id} appId={app.id} /&gt;</code>, mirroring the <code>extPanels.map</code> block.</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <p><strong>Match the repo's established convention</strong>: existing <code>ProjectDashboard.test.ts</code> is src-text (<code>readFileSync</code> grep), not a render harness. Keep that pattern but assert co-occurring, specific patterns so RED is meaningful (jsdom render-testing is NOT established here — do not introduce it mid-phase).</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED: source contains <code>usePidApps(</code> called with <code>project.id</code>; a <code>pidapp:</code> tab push; <code>PidAppHost</code> in a panel; <code>fillViewport</code> block matches <code>/pidapp/</code>.</li>
-        <li><code class="status">[]</code> RED: tab/panel testids present (<code>project-tab-pidapp-</code>, <code>project-tab-panel-pidapp-</code>); empty-list path renders no pid-app tab; per-project scoping (hook called with <code>project.id</code>) asserted.</li>
-        <li><code class="status">[]</code> <code>bun test apps/web/src/features/projects/ProjectDashboard.test.ts</code> green; full <code>bun run test</code> green. (True render behavior is proven in Phase 6 e2e.)</li>
+        <li><code class="status x">[x]</code> RED: source contains <code>usePidApps(</code> called with <code>project.id</code>; a <code>pidapp:</code> tab push; <code>PidAppHost</code> in a panel; <code>fillViewport</code> block matches <code>/pidapp/</code>.</li>
+        <li><code class="status x">[x]</code> RED: tab/panel testids present (<code>project-tab-pidapp-</code>, <code>project-tab-panel-pidapp-</code>); empty-list path renders no pid-app tab; per-project scoping (hook called with <code>project.id</code>) asserted.</li>
+        <li><code class="status x">[x]</code> <code>bun test apps/web/src/features/projects/ProjectDashboard.test.ts</code> green; full <code>bun run test</code> green. (True render behavior is proven in Phase 6 e2e.)</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 5</strong> until the tab, panel, fillViewport, and scoping assertions pass and no existing tab-order test breaks.</div>
     </div>
 
     <!-- PHASE 6 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 6: End-to-end + docs <span class="pill">real daemon + browser</span></h3>
+      <h3><code class="status x">[x]</code> Phase 6: End-to-end + docs <span class="pill">real daemon + browser</span></h3>
       <p>Prove the whole path in a real daemon+browser: seed a project with <code>.pid/index.html</code>, open it, see the tab, load the sandboxed iframe, and confirm the serve route rejects traversal. Document the convention.</p>
 
       <h4>1. Seed + spec + docs</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>global-setup.ts</code>: seed a workspace project (under <code>PID_PROJECTS_ROOT</code>; dir name a <strong>valid id</strong> — no dot, no uppercase — since <code>probeProject</code> skips dotfiles) containing <code>.pid/index.html</code> and <code>.pid/plan/index.html</code>; mirror the e2e-iframe extension seeding.</li>
-        <li><code class="status">[]</code> <code>pid-apps.spec.ts</code>: navigate to the seeded project (derive id from the dir name — the e2e manifest doesn't carry <code>.pid</code> paths), expect <code>project-tab-pidapp-default</code> visible, click, expect <code>[data-testid=pid-app-host-default]</code> to load the seeded HTML (assert visible body text); request-level: <code>GET /projects/:id/pid-apps</code> lists the app and <code>.../default/..%2f..%2fsettings.json</code> → 400/404.</li>
-        <li><code class="status">[]</code> <code>AGENTS.md</code>: document the <code>.pid/</code> convention (zero-config index.html, optional <code>pid-app.json</code>, sandbox/CSP/traversal posture, and the <strong>no-auth / tunnel-exposure</strong> caveat) beside the extension docs. Markdown only — no committed <code>.ts</code>/<code>.mjs</code> (trips the biome+fallow doc gate).</li>
+        <li><code class="status x">[x]</code> <code>global-setup.ts</code>: seed a workspace project (under <code>PID_PROJECTS_ROOT</code>; dir name a <strong>valid id</strong> — no dot, no uppercase — since <code>probeProject</code> skips dotfiles) containing <code>.pid/index.html</code> and <code>.pid/plan/index.html</code>; mirror the e2e-iframe extension seeding.</li>
+        <li><code class="status x">[x]</code> <code>pid-apps.spec.ts</code>: navigate to the seeded project (derive id from the dir name — the e2e manifest doesn't carry <code>.pid</code> paths), expect <code>project-tab-pidapp-default</code> visible, click, expect <code>[data-testid=pid-app-host-default]</code> to load the seeded HTML (assert visible body text); request-level: <code>GET /projects/:id/pid-apps</code> lists the app and <code>.../default/..%2f..%2fsettings.json</code> → 400/404.</li>
+        <li><code class="status x">[x]</code> <code>AGENTS.md</code>: document the <code>.pid/</code> convention (zero-config index.html, optional <code>pid-app.json</code>, sandbox/CSP/traversal posture, and the <strong>no-auth / tunnel-exposure</strong> caveat) beside the extension docs. Markdown only — no committed <code>.ts</code>/<code>.mjs</code> (trips the biome+fallow doc gate).</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <p>Playwright against the real daemon with the e2e stub. Known gotcha (memory): port conflicts + stub.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> RED first in <code>pid-apps.spec.ts</code> (mirror <code>extensions-iframe.spec.ts</code>): tab visible → iframe loads → body text asserted; traversal request rejected.</li>
-        <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1</code> + free ports (default 18787/15173 collide); run <code>bunx playwright test pid-apps</code> (or <code>./scripts/check-e2e.sh</code>).</li>
-        <li><code class="status">[]</code> Full pre-push gate green: floor → unit → e2e.</li>
+        <li><code class="status x">[x]</code> RED first in <code>pid-apps.spec.ts</code> (mirror <code>extensions-iframe.spec.ts</code>): tab visible → iframe loads → body text asserted; traversal request rejected.</li>
+        <li><code class="status x">[x]</code> <code>PID_E2E_USE_STUB=1</code> + free ports (default 18787/15173 collide); run <code>bunx playwright test pid-apps</code> (or <code>./scripts/check-e2e.sh</code>).</li>
+        <li><code class="status x">[x]</code> Full pre-push gate green: floor → unit → e2e.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit Phase 6</strong> until the e2e spec passes locally and the full gate is green.</div>
     </div>
@@ -431,13 +431,13 @@
     <h2>Validation Commands</h2>
     <p>Run these to validate the entire feature is complete and the repo gates are green. (Confirm exact npm-script names against <code>package.json</code>; commands below reflect the repo's known conventions.)</p>
     <ul class="checklist">
-      <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — daemon core + repo + routes unit/integration pass.</li>
-      <li><code class="status">[]</code> <code>bun test apps/web/src/features/pid-apps/</code> — web hook + host unit pass.</li>
-      <li><code class="status">[]</code> <code>bun run test</code> — full unit suite green (no regression in projects/extensions/pid-settings).</li>
-      <li><code class="status">[]</code> <code>bunx biome check .</code> — lint/format clean (pre-commit gate).</li>
-      <li><code class="status">[]</code> <code>fallow audit</code> — no new dead code, complexity (CRAP&lt;30 / cyclo&lt;5), or duplication on changed files (esp. that <code>validateRelPath</code>, the resolver, and <code>NAME_RE</code> are de-duplicated).</li>
-      <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1 bunx playwright test pid-apps</code> — end-to-end seed → tab → iframe → traversal-reject.</li>
-      <li><code class="status">[]</code> Manual smoke: drop a self-contained HTML (e.g. this plan) into a project's <code>.pid/myplan/index.html</code>, open the project, confirm the <code>pidapp:myplan</code> tab renders it; confirm project B shows no such tab.</li>
+      <li><code class="status x">[x]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — daemon core + repo + routes unit/integration pass.</li>
+      <li><code class="status x">[x]</code> <code>bun test apps/web/src/features/pid-apps/</code> — web hook + host unit pass.</li>
+      <li><code class="status x">[x]</code> <code>bun run test</code> — full unit suite green (no regression in projects/extensions/pid-settings).</li>
+      <li><code class="status x">[x]</code> <code>bunx biome check .</code> — lint/format clean (pre-commit gate).</li>
+      <li><code class="status x">[x]</code> <code>fallow audit</code> — no new dead code, complexity (CRAP&lt;30 / cyclo&lt;5), or duplication on changed files (esp. that <code>validateRelPath</code>, the resolver, and <code>NAME_RE</code> are de-duplicated).</li>
+      <li><code class="status x">[x]</code> <code>PID_E2E_USE_STUB=1 bunx playwright test pid-apps</code> — end-to-end seed → tab → iframe → traversal-reject.</li>
+      <li><code class="status x">[x]</code> Manual smoke: drop a self-contained HTML (e.g. this plan) into a project's <code>.pid/myplan/index.html</code>, open the project, confirm the <code>pidapp:myplan</code> tab renders it; confirm project B shows no such tab.</li>
     </ul>
     <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely not possible, mark it <code>[f]</code> and move on.</strong></div>
   </section>
@@ -537,6 +537,11 @@
     <details open>
       <summary>2026-06-24 — Plan created</summary>
       <p>Authored from a multi-agent research workflow (6 recon scouts → architect synthesis on Opus → 3 adversarial critics: security, ts-axioms, TDD). All blocking critic findings were folded into the phase checklists before first save: symlink/realpath guard, CSP-on-every-response, reserved-name check on the serve route, double-encoded traversal test, <code>validateRelPath</code>/<code>NAME_RE</code>/project-resolver de-duplication, local <code>errorToStatus</code>, the <code>default</code>-app wide-root guard, explicit <code>ProjectsRepoTest</code> fixture wiring, real-vs-synthetic <code>absPath</code> in route tests, <code>apiBase()</code> mock strategy, and the src-text test convention for <code>ProjectDashboard</code>.</p>
+    </details>
+    <details open>
+      <summary>2026-06-24 — Built &amp; merged (all 6 phases)</summary>
+      <p>Implemented test-first, one auto-merge PR per phase, each rebased onto the prior merge with every gate green (Biome, Fallow <code>--base origin/main</code>, unit, Playwright): <strong>#320</strong> Phase 1 pure core (20 tests) · <strong>#321</strong> Phase 2 daemon repo + realpath/symlink guard · <strong>#322</strong> Phase 3 routes + CSP + single/double-encoded traversal guards · <strong>#326</strong> Phases 4+5 web hook + sandboxed iframe + <code>pidapp:</code> tabs · <strong>#327</strong> Phase 6 e2e (Playwright drives seed→tab→iframe→traversal) + docs. Every security must-fix shipped as planned.</p>
+      <p><strong>As-built deviations from the plan:</strong> (1) Phases 4 &amp; 5 merged as a single PR — the hook/host have no production consumer without the dashboard wiring, so a separate Phase-4 PR tripped Fallow's dead-code (unused-file) gate. (2) <code>validateRelPath</code> / <code>PID_APP_CSP</code> landed in the phase that first consumes them in production, for the same reason. (3) <code>projectTabIcon</code> and <code>tabs</code> in <code>ProjectDashboard</code> were refactored (data-driven icon lookup + map/spread) so my additions stayed under the complexity gate. (4) Biome <code>useMaxParams</code> (max 2) forced object grouping (<code>{appId, rel}</code>, <code>pidAppSrc(base, {…})</code>). (5) Web tests follow the repo's pure-logic + src-text convention (no RTL); component behaviour is covered by the Phase 6 e2e. (6) Questionable #1 resolved: kept the bare-root <code>default</code> app, guarded by the reserved-internal exclusion.</p>
     </details>
   </section>
 
