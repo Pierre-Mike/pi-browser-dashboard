@@ -84,3 +84,25 @@ describe("ProjectDashboard fillViewport", () => {
     expect(extPanelBlock?.[0]).toContain("flex flex-col flex-1 min-h-0")
   })
 })
+
+describe("ProjectDashboard pid-app tabs", () => {
+  it("lists the project's pid-apps as per-project tabs, scoped by project.id", () => {
+    // The hook is called with this project's id, so app A never appears on B.
+    expect(src).toContain("usePidApps(project.id)")
+    expect(src).toMatch(/key:\s*`pidapp:\$\{a\.id\}`/)
+  })
+
+  it("renders each pid-app in a sandboxed PidAppHost panel (not the RPC ExtensionHost)", () => {
+    const block = src.match(/pidApps\.map\(\(a\) => \{[\s\S]+?<\/div>/)
+    expect(block).not.toBeNull()
+    expect(block?.[0]).toContain("PidAppHost")
+    expect(block?.[0]).not.toContain("ExtensionHost")
+    expect(block?.[0]).toContain("flex flex-col flex-1 min-h-0")
+    expect(src).toContain("data-testid={`project-tab-panel-pidapp-")
+  })
+
+  it("fill-viewports pid-app tabs so the iframe stretches to full height", () => {
+    const fillViewportBlock = src.match(/const fillViewport[\s\S]+?(?=\n\n)/)
+    expect(fillViewportBlock?.[0]).toMatch(/pidapp/)
+  })
+})

@@ -55,6 +55,12 @@ export const TAB_ICONS: Record<string, ReactNode> = {
 // Generic icon for extension-contributed tabs / panels (puzzle piece).
 export const EXT_ICON = TAB_ICONS.extensions
 
+// Icon for per-project pid-app tabs (a document/page — these render dropped
+// HTML such as specs and plans).
+export const PIDAPP_ICON = (
+  <Icon d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" />
+)
+
 // The dock container: a soft rounded bar that scrolls horizontally without a
 // visible scrollbar. Same on every surface.
 export const tabDockNavClass =
