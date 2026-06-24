@@ -1,0 +1,63 @@
+name: Desktop release
+
+# Builds the Electrobun desktop app natively on each OS (no cross-compile) and
+# attaches the artifacts to a GitHub Release. Trigger by pushing a v* tag, or run
+# manually via the Actions tab for a dry build.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-13, windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Native WebKitGTK webview deps (bundleCEF:false) — Linux only.
+      - name: Install Linux webview deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build desktop bundle
+        run: bun run build:desktop
+
+      - name: Collect artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-dashboard-${{ matrix.os }}
+          path: apps/desktop/artifacts/**
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

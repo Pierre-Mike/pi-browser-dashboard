@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "dev": "bun run dev:daemon & bun run dev:web & wait",
+    "build:web:desktop": "cd apps/web && VITE_API_URL=http://localhost:8787 bun run build",
+    "build:desktop": "bun run build:web:desktop && cd apps/desktop && bun run build",
     "dev:daemon": "cd apps/daemon && bun run dev",
     "dev:web": "cd apps/web && bun run dev",
     "test": "cd apps/daemon && bun test",

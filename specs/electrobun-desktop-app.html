@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Electrobun Desktop App + CI Release</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --ink: #e6e9ef;
+    --muted: #9aa4b2;
+    --accent: #5b8cff;
+    --accent-2: #36d399;
+    --warn: #fbbd23;
+    --fail: #f87272;
+    --border: #262b35;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.55; }
+  main { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 6rem; }
+  h1 { font-size: 1.9rem; letter-spacing: -0.02em; }
+  h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: .4rem; }
+  h3 { margin-top: 1.6rem; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .9em; }
+  p code, li code { background: var(--panel); padding: .1em .35em; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+  pre code { background: none; border: none; }
+  section { margin-top: 1rem; }
+  .meta dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; font-family: var(--mono); font-size: .82rem; color: var(--muted); }
+  .meta dt { color: var(--accent); }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .9rem; margin: .5rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  figure { margin: 1.25rem 0; text-align: center; }
+  figcaption { color: var(--muted); font-size: .82rem; margin-top: .4rem; }
+  .tag { font-family: var(--mono); font-size: .7rem; padding: .1em .5em; border-radius: 999px; text-transform: uppercase; }
+  .tag.existing { background: #1d2733; color: var(--accent); border: 1px solid var(--accent); }
+  .tag.new { background: #112b22; color: var(--accent-2); border: 1px solid var(--accent-2); }
+  .phase { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding: .2rem 0; }
+  .status { color: var(--warn); font-weight: 700; }
+  .loop { margin-top: .8rem; padding: .6rem .8rem; background: #1a1d12; border: 1px solid var(--warn); border-radius: 8px; color: var(--warn); font-size: .85rem; }
+  .imgph { display:block; padding: 2.5rem 1rem; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-family: var(--mono); font-size: .8rem; }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Plan: Electrobun Desktop App + GitHub-Actions Release</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-06-24T00:00:00Z</dd>
+        <dt>modified</dt>     <dd>2026-06-24T00:00:00Z</dd>
+        <dt>commits</dt>      <dd>e3a6daf</dd>
+        <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
+        <dt>session id</dt>   <dd>66765220</dd>
+        <dt>back refs</dt>    <dd>specs/pid-html-extensions.html</dd>
+        <dt>forward refs</dt> <dd></dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <span class="imgph">HERO: web SPA + Bun daemon fused inside one Electrobun window, three OS download badges</span>
+    <figcaption>One TypeScript codebase shipped as a tiny native desktop app for macOS, Windows, and Linux.</figcaption>
+  </figure>
+
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Package <code>pi-browser-dashboard</code> — today a Vite/React SPA (<code>apps/web</code>) talking to a Bun/Hono daemon (<code>apps/daemon</code>, port 8787) — as a single cross-platform <strong>Electrobun</strong> desktop application, and bundle it in CI so users can download installers from GitHub Releases. Electrobun runs the main process on Bun and renders through the OS-native webview, yielding ~14&nbsp;MB bundles with built-in incremental updates.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The dashboard currently requires a developer to run two processes (<code>bun run dev</code> launches daemon + Vite) and open a browser. There is no installable artifact. The browser deployment also leans on a Cloudflare quick-tunnel and a same-origin <code>/__api</code> Vite proxy (see <code>apps/web/src/lib/apiBase.ts</code>) — neither exists in a packaged app, so the SPA-to-daemon transport and CORS must be re-wired for a native webview origin. The daemon's <code>main.ts</code> is a top-level-await script that auto-starts a tunnel; it cannot be cleanly embedded as-is.</p>
+    <figure>
+      <span class="imgph">PROBLEM: two terminals + browser tab vs. a single double-clickable app icon</span>
+      <figcaption>Two manual processes and a browser today; no downloadable build.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Add an <code>apps/desktop</code> Electrobun package. Its Bun main process boots the daemon <em>in-process</em> (via a new <code>startDaemon()</code> export) with the tunnel disabled and CORS opened for the webview origin, then opens a <code>BrowserWindow</code> loading the production SPA build via the <code>views://</code> protocol. The SPA is built with <code>VITE_API_URL=http://localhost:8787</code> so <code>apiBase()</code>/<code>wsBase()</code> hit the embedded daemon directly (bypassing the dev-only <code>/__api</code> proxy). A new <code>desktop-release.yml</code> GitHub Actions workflow runs <code>electrobun build</code> on a per-OS matrix (macOS / Windows / Linux) and attaches the artifacts to a GitHub Release on tag push.</p>
+    <figure>
+      <span class="imgph">SOLUTION: Electrobun(Bun main → startDaemon():8787 ↔ native webview → views:// SPA), CI matrix → GitHub Release</span>
+      <figcaption>Embedded daemon + native webview in one process; CI matrix produces downloadable installers.</figcaption>
+    </figure>
+  </section>
+
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/main.ts</code> — top-level-await boot script; refactor to call an extracted <code>startDaemon()</code> so it is embeddable + testable.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/api.ts</code> — Hono app + CORS allow-list; extend to accept the <code>views://</code> webview origin under a desktop env flag.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/lib/apiBase.ts</code> — already honours <code>VITE_API_URL</code>; no change, but it is the contract the desktop build relies on.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/vite.config.ts</code> — confirm prod <code>build</code> emits to <code>dist/</code> and reads <code>VITE_API_URL</code>.</li>
+      <li><span class="tag existing">existing</span> <code>package.json</code> (root) — <code>apps/*</code> already globs desktop; add build/dev scripts.</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/unit-tests.yml</code> — pattern to mirror (setup-bun, frozen lockfile) for the release workflow.</li>
+      <li><span class="tag existing">existing</span> <code>lefthook.yml</code> / <code>.fallowrc.json</code> — gates (biome, tdd-gate, fallow audit) the new code must pass.</li>
+    </ul>
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/server.ts</code> — extracted <code>startDaemon(opts)</code> imperative shell (returns the running server/handle).</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/server.test.ts</code> — unit tests: respects port, tunnel disabled, returns handle.</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/package.json</code> — Electrobun package (<code>electrobun</code> dep, build/dev scripts).</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/electrobun.config.ts</code> — app metadata, build targets, <code>views</code> → web <code>dist/</code>, release <code>baseUrl</code>.</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/src/main.ts</code> — Electrobun main: boot daemon, open <code>BrowserWindow</code>.</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/src/desktopEnv.ts</code> — pure helper computing daemon launch env (port, CORS origins, tunnel off).</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/src/desktopEnv.test.ts</code> — unit tests for the pure env helper.</li>
+      <li><span class="tag new">new</span> <code>.github/workflows/desktop-release.yml</code> — per-OS matrix build + GitHub Release upload.</li>
+      <li><span class="tag new">new</span> <code>apps/desktop/README.md</code> — local build + run-the-app instructions.</li>
+    </ul>
+  </section>
+
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed.</p>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Make the daemon embeddable (TDD)</h3>
+      <p>Extract the boot logic from <code>apps/daemon/src/main.ts</code> into <code>startDaemon(opts)</code> so the Electrobun main process can start the same server in-process with the tunnel off and custom CORS. Keep <code>main.ts</code> as a thin CLI that calls it (behaviour-preserving).</p>
+      <figure><span class="imgph">PHASE1: main.ts(CLI) → startDaemon(opts) → Bun.serve + SessionRegistry, tunnel optional</span><figcaption>Imperative-shell extraction; ts-axioms functional-core boundary preserved.</figcaption></figure>
+      <h4>1. Red — write failing tests</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>server.test.ts</code>: <code>startDaemon({ port: 0, tunnel: false })</code> resolves a handle exposing the bound port and a <code>stop()</code>.</li>
+        <li><code class="status">[]</code> <code>server.test.ts</code>: with <code>tunnel:false</code> no Cloudflare tunnel is started (assert TunnelService not invoked / env honoured).</li>
+        <li><code class="status">[]</code> <code>server.test.ts</code>: <code>corsOrigins</code> option is forwarded into the Hono CORS allow-list.</li>
+      </ul>
+      <h4>2. Green — extract <code>startDaemon</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Create <code>apps/daemon/src/server.ts</code> exporting <code>startDaemon(opts: { port?; tunnel?; corsOrigins?; issuePollMs? })</code>.</li>
+        <li><code class="status">[]</code> Move <code>Bun.serve</code> + <code>SessionRegistry</code> warmup + issue-poll heartbeat out of <code>main.ts</code> into it.</li>
+        <li><code class="status">[]</code> Rewrite <code>main.ts</code> to read env (PORT, PID_TUNNEL_AUTOSTART, …) and delegate to <code>startDaemon</code> — no behaviour change for <code>bun run dev</code>.</li>
+        <li><code class="status">[]</code> Make CORS origin list accept injected origins (param) in addition to <code>PID_CORS_ORIGINS</code>; add <code>views://</code>-scheme allowance gated by a <code>corsOrigins</code> entry or callback.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p><code>bun test</code> (daemon). Cover: port binding with <code>port:0</code>, tunnel-off path, CORS injection, and that the legacy CLI path still serves <code>/health</code>.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>cd apps/daemon &amp;&amp; bun test</code> — daemon unit suite green incl. new server tests.</li>
+        <li><code class="status">[]</code> <code>bun run dev:daemon</code> then <code>curl localhost:8787/health</code> — CLI boot unchanged.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit this phase until every box above is checked.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: Scaffold the Electrobun desktop package (TDD on pure logic)</h3>
+      <p>Add <code>apps/desktop</code> with the Electrobun dependency, config, and main process. Keep all decidable logic in a pure, unit-tested <code>desktopEnv.ts</code>; the <code>main.ts</code> is a thin imperative shell.</p>
+      <figure><span class="imgph">PHASE2: apps/desktop {config.ts, main.ts, desktopEnv.ts(pure)+test}</span><figcaption>New workspace package; pure core isolated from the Electrobun runtime.</figcaption></figure>
+      <h4>1. Red — pure env helper tests</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>desktopEnv.test.ts</code>: <code>daemonLaunchEnv()</code> returns <code>PID_TUNNEL_AUTOSTART=0</code>, a fixed <code>PORT</code>, and CORS origins including the webview origin.</li>
+        <li><code class="status">[]</code> <code>desktopEnv.test.ts</code>: <code>webviewUrl()</code> returns <code>views://mainview/index.html</code>.</li>
+      </ul>
+      <h4>2. Green — package + config + main</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>apps/desktop/package.json</code>: name <code>@pid/desktop</code>, dep <code>electrobun</code>, dep <code>@pid/daemon: workspace:*</code>; scripts <code>dev</code>/<code>build</code> wrapping <code>electrobun</code>.</li>
+        <li><code class="status">[]</code> <code>bun install</code> to vendor Electrobun; pin its version in <code>bun.lock</code>.</li>
+        <li><code class="status">[]</code> <code>apps/desktop/src/desktopEnv.ts</code>: pure helpers (<code>WEBVIEW_ORIGIN</code>, <code>daemonLaunchEnv</code>, <code>webviewUrl</code>).</li>
+        <li><code class="status">[]</code> <code>apps/desktop/src/main.ts</code>: <code>await startDaemon(daemonLaunchEnv())</code> then <code>new BrowserWindow({ title, url: webviewUrl() })</code>; stop daemon on app quit.</li>
+        <li><code class="status">[]</code> <code>apps/desktop/electrobun.config.ts</code>: app id/name/version, build targets (mac arm64+x64, win x64, linux x64), <code>views.mainview</code> → <code>../web/dist</code>, <code>release.baseUrl</code> = GitHub Releases URL.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p><code>bun test</code> (desktop pure helpers). Electrobun runtime APIs are not unit-tested here (covered by the local build in Phase 4).</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>cd apps/desktop &amp;&amp; bun test</code> — desktopEnv suite green.</li>
+        <li><code class="status">[]</code> <code>bun install --frozen-lockfile</code> — lockfile consistent.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit this phase until every box above is checked.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Wire SPA build + CORS for the native webview (TDD)</h3>
+      <p>Build the SPA for the embedded daemon and confirm cross-origin requests from the <code>views://</code> webview reach <code>localhost:8787</code>.</p>
+      <h4>1. Red — transport tests</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Daemon CORS test: a request with <code>Origin: views://mainview</code> is allowed when the desktop CORS origin is injected.</li>
+        <li><code class="status">[]</code> Web test (extend existing apiBase tests): with <code>VITE_API_URL=http://localhost:8787</code>, <code>apiBase()</code>/<code>wsBase()</code> return the daemon URL (no <code>/__api</code>).</li>
+      </ul>
+      <h4>2. Green — build wiring</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add root script <code>build:desktop</code>: <code>VITE_API_URL=http://localhost:8787 bun run --cwd apps/web build</code> then <code>bun run --cwd apps/desktop build</code>.</li>
+        <li><code class="status">[]</code> Confirm <code>apps/web</code> prod build emits to <code>dist/</code> consumed by <code>electrobun.config.ts</code> views path.</li>
+        <li><code class="status">[]</code> Inject the webview origin into daemon CORS via <code>daemonLaunchEnv()</code> (Phase 1 plumbing).</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p>Unit (CORS + apiBase) plus a manual smoke in Phase 4. WebSocket (terminal/canvas) cross-origin behaviour validated manually.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>bun run test &amp;&amp; bun run test:web</code> — both suites green.</li>
+        <li><code class="status">[]</code> <code>bun run lint:ci</code> — biome clean.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit this phase until every box above is checked.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Local build &amp; smoke (current platform = macOS)</h3>
+      <p>Produce a real bundle on the dev machine and verify the app launches, loads the SPA, lists sessions, and the terminal attaches.</p>
+      <h4>1. Build &amp; run</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>bun run build:desktop</code> — produces <code>apps/desktop/artifacts/</code> (.app + .dmg on macOS).</li>
+        <li><code class="status">[]</code> Launch the built <code>.app</code>; confirm window opens and SPA renders.</li>
+        <li><code class="status">[]</code> Smoke: sessions list loads (REST), <code>/events</code> SSE connects, a terminal attaches (WS) — or document any WS/mixed-content gotcha + fix.</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <p>Manual launch + (optional) GIF capture via the browser recorder for the README.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> App boots, SPA + daemon talk locally — recorded in <code>apps/desktop/README.md</code>.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit this phase until the app runs end-to-end locally.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: GitHub Actions release workflow (per-OS matrix)</h3>
+      <p>Build natively on each OS (no cross-compile) and attach artifacts to a GitHub Release.</p>
+      <figure><span class="imgph">PHASE5: tag v* → matrix[macOS,Windows,Linux] → electrobun build → upload to GitHub Release</span><figcaption>Native build matrix; flat artifacts uploaded as release assets.</figcaption></figure>
+      <h4>1. Author workflow</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>.github/workflows/desktop-release.yml</code>: trigger on <code>push: tags: ['v*']</code> + <code>workflow_dispatch</code>; <code>permissions: contents: write</code>.</li>
+        <li><code class="status">[]</code> Matrix: <code>macos-latest</code> (arm64), <code>macos-13</code> (x64), <code>windows-latest</code>, <code>ubuntu-latest</code>.</li>
+        <li><code class="status">[]</code> Steps: checkout → <code>oven-sh/setup-bun</code> → <code>bun install --frozen-lockfile</code> → <code>bun run build:desktop</code> → upload <code>apps/desktop/artifacts/*</code>.</li>
+        <li><code class="status">[]</code> Attach to Release via <code>softprops/action-gh-release</code> (or <code>gh release upload</code>) keyed on the tag.</li>
+        <li><code class="status">[]</code> Linux: install GTK/WebKit deps (<code>libgtk-3</code>, <code>libwebkit2gtk</code>) before build.</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <p>Validate YAML + a dry run via <code>workflow_dispatch</code> on the PR branch; confirm artifacts appear. A lightweight doc-consistency test asserts the workflow exists and covers 3 OSes.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>actionlint</code> (or YAML parse) on the workflow — valid.</li>
+        <li><code class="status">[]</code> <code>workflow_dispatch</code> run produces downloadable artifacts on all three OS legs.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit this phase until a dispatch run is green on all OS legs.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 6: Ship — PR + auto-merge</h3>
+      <p>Open the PR, watch CI to terminal state, enable auto-merge (squash) once green.</p>
+      <h4>1. PR</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Conventional-commit PR; body links this spec and lists download instructions.</li>
+        <li><code class="status">[]</code> Watch unit-tests + pr-e2e to terminal state; fix red.</li>
+        <li><code class="status">[]</code> Enable auto-merge (<code>gh pr merge --squash --auto</code>); fall back to manual squash if auto-merge is rejected.</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> All required checks green on the PR.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until the PR is green and merging.</div>
+    </div>
+  </section>
+
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>bun run test</code> — daemon unit suite (incl. <code>startDaemon</code> + CORS).</li>
+      <li><code class="status">[]</code> <code>bun run test:web</code> — web unit suite (apiBase wiring).</li>
+      <li><code class="status">[]</code> <code>cd apps/desktop &amp;&amp; bun test</code> — desktop pure helpers.</li>
+      <li><code class="status">[]</code> <code>bun run lint:ci</code> — biome clean.</li>
+      <li><code class="status">[]</code> <code>bun run dead-code:audit -- --base origin/main</code> — fallow audit passes on changed files.</li>
+      <li><code class="status">[]</code> <code>bun run build:desktop</code> — local bundle produced + app launches.</li>
+      <li><code class="status">[]</code> <code>desktop-release.yml</code> dispatch — downloadable artifacts on macOS/Windows/Linux.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked. Mark impossible steps [f] and move on.</strong></div>
+  </section>
+
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <figure><span class="imgph">QUESTIONABLES: views:// → ws://localhost:8787 (mixed-content?) + code-signing keys</span><figcaption>Two highest-risk unknowns: WS transport from the native webview and signing.</figcaption></figure>
+    <details>
+      <summary>Embed the daemon in-process vs. spawn it as a subprocess?</summary>
+      <p class="qa-answer"><strong>Decision: in-process via <code>startDaemon()</code>.</strong> Single Bun runtime, single bundle, easiest lifecycle (no orphaned child on crash). The extraction is independently useful and testable. Fallback to <code>Bun.spawn</code> only if Electrobun's main-process sandbox blocks <code>Bun.serve</code>.</p>
+    </details>
+    <details>
+      <summary>Will terminal/canvas WebSockets work from a <code>views://</code> origin to <code>ws://localhost:8787</code>?</summary>
+      <p class="qa-answer">Likely yes — native webviews permit <code>ws://localhost</code> and WS handshakes are not blocked by CORS the same way. Mixed-content (secure scheme → insecure ws) is the risk. Validated manually in Phase 4; mitigation if blocked: serve the daemon over <code>ws://127.0.0.1</code> with an allow-list, or have the daemon serve the SPA itself (same-origin) instead of <code>views://</code>.</p>
+    </details>
+    <details>
+      <summary>Exact webview <code>Origin</code> header value?</summary>
+      <p class="qa-answer">Electrobun's custom scheme emits an origin like <code>views://mainview</code> (confirm at runtime via daemon request log). Plan handles this by injecting the origin into CORS from <code>desktopEnv.ts</code>, plus a <code>views://</code>-scheme allowance in the daemon CORS callback so a minor string mismatch doesn't break it.</p>
+    </details>
+    <details>
+      <summary>Code-signing / notarization?</summary>
+      <p class="qa-answer"><strong>Out of scope for v1.</strong> Ship unsigned artifacts (users right-click-open on macOS, SmartScreen prompt on Windows). Signing keys (<code>APPLE_*</code>, Windows cert) added later as repo secrets + config — noted as future work, not a blocker for "download from GitHub".</p>
+    </details>
+    <details>
+      <summary>Auto-update <code>baseUrl</code> — GitHub Releases?</summary>
+      <p class="qa-answer">Set <code>release.baseUrl</code> to the repo's GitHub Releases download URL so Electrobun's updater can pull <code>update.json</code> + patches. Updater is configured but not a v1 acceptance criterion; the acceptance bar is a downloadable install.</p>
+    </details>
+  </section>
+
+  <section id="notes">
+    <h2>Notes</h2>
+    <p><strong>New dependency:</strong> <code>electrobun</code> (added to <code>apps/desktop</code> via <code>bun add</code>). It vendors Bun/Zig/WebView2/CEF during build — CI build legs are heavier; cache where possible.</p>
+    <p><strong>ts-axioms alignment:</strong> functional-core / imperative-shell preserved — <code>desktopEnv.ts</code> and the daemon's pure parsers stay pure; <code>main.ts</code> and <code>server.ts</code> are the only impure shells. Biome + Lefthook + Fallow gates apply unchanged.</p>
+    <p><strong>TDD order per phase:</strong> red (failing test) → green (impl) → refactor. Pre-commit tdd-gate requires a test alongside each behaviour change.</p>
+    <pre><code>// apps/desktop/src/main.ts (sketch)
+import { BrowserWindow } from "electrobun/bun"
+import { startDaemon } from "@pid/daemon/server"
+import { daemonLaunchEnv, webviewUrl } from "./desktopEnv"
+
+const daemon = await startDaemon(daemonLaunchEnv())
+const win = new BrowserWindow({ title: "pi dashboard", url: webviewUrl() })
+process.on("exit", () => daemon.stop())</code></pre>
+    <pre><code>// apps/desktop/electrobun.config.ts (sketch)
+export default {
+  app: { name: "pi-dashboard", identifier: "sh.pi.dashboard", version: "0.1.0" },
+  build: {
+    mac:   { arch: ["arm64", "x64"] },
+    win:   { arch: ["x64"] },
+    linux: { arch: ["x64"] },
+    views: { mainview: { entrypoint: "../web/dist" } },
+  },
+  release: { baseUrl: "https://github.com/<owner>/pi-browser-dashboard/releases/latest/download/" },
+}</code></pre>
+    <p><strong>Rejected:</strong> Tauri/Electron — heavier, not Bun-native, and the user explicitly asked for Electrobun. Serving the SPA from the daemon (same-origin, no <code>views://</code>) is kept as the WS-fallback, not the default, to keep the daemon stateless per <code>apps/daemon/CLAUDE.md</code>.</p>
+  </section>
+
+  <section id="amendments">
+    <h2>Amendments</h2>
+  </section>
+
+</main>
+</body>
+</html>

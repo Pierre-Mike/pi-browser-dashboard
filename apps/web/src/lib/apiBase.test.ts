@@ -23,6 +23,12 @@ describe("computeApiBase", () => {
   it("falls back to the local daemon when there is no window", () => {
     expect(computeApiBase(undefined, null)).toBe("http://localhost:8787")
   })
+
+  it("desktop: from a views:// webview, VITE_API_URL hits the embedded daemon directly (no /__api proxy)", () => {
+    const base = computeApiBase("http://localhost:8787", "views://mainview")
+    expect(base).toBe("http://localhost:8787")
+    expect(base).not.toContain(API_PREFIX)
+  })
 })
 
 describe("computeWsBase", () => {
