@@ -13,7 +13,7 @@ import { TerminalView } from "../terminal/TerminalView"
 // session, so the conversation and worker context survive browser refreshes.
 export const OrchestrationPanel = () => (
   <div className="flex flex-col flex-1 min-h-0 w-full gap-1">
-    <p className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
+    <p className="text-[11px] text-base-content/60 shrink-0">
       The orchestrator supervises every worker session by voice and dispatches new ones on your
       behalf. Worker completions and questions stream into this session automatically.
     </p>

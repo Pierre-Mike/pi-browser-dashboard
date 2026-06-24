@@ -251,7 +251,7 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
   return (
     <section
       data-testid="github-panel"
-      className="flex flex-col gap-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-100 p-3"
+      className="flex flex-col gap-3 rounded-lg border border-base-300 bg-base-100 p-3"
     >
       <GithubHeader githubUrl={githubUrl} />
       <GithubBody projectId={projectId} q={q} />

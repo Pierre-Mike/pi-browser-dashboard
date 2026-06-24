@@ -70,17 +70,17 @@ const toolPreview = (name: string, input: unknown): string => {
 const StatusBadge = ({ result }: { result?: ToolResultInfo }) => {
   if (!result) {
     return (
-      <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 px-1.5 py-px text-[9px] uppercase tracking-wide">
+      <span className="shrink-0 rounded-full bg-base-300 text-base-content/60 px-1.5 py-px text-[9px] uppercase tracking-wide">
         pending
       </span>
     )
   }
   return result.isError ? (
-    <span className="shrink-0 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-1.5 py-px text-[9px] uppercase tracking-wide">
+    <span className="shrink-0 rounded-full bg-error/15 text-error px-1.5 py-px text-[9px] uppercase tracking-wide">
       error
     </span>
   ) : (
-    <span className="shrink-0 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-px text-[9px] uppercase tracking-wide">
+    <span className="shrink-0 rounded-full bg-success/15 text-success px-1.5 py-px text-[9px] uppercase tracking-wide">
       ok
     </span>
   )
@@ -100,46 +100,44 @@ const ToolCall = ({
   const preview = toolPreview(name, input)
   const icon = TOOL_ICON[name] ?? "▸"
   return (
-    <div className="mt-1.5 text-[11px] rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 max-w-full">
+    <div className="mt-1.5 text-[11px] rounded-md border border-base-300 bg-base-200 max-w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-left rounded-md"
+        className="flex w-full items-center gap-1.5 px-2 py-1 hover:bg-base-300 text-left rounded-md"
       >
-        <span className="text-slate-400 shrink-0 w-3 text-center">{open ? "▾" : "▸"}</span>
+        <span className="text-base-content/60 shrink-0 w-3 text-center">{open ? "▾" : "▸"}</span>
         <span className="shrink-0 font-mono" aria-hidden>
           {icon}
         </span>
-        <span className="shrink-0 font-mono font-semibold text-slate-700 dark:text-slate-200">
-          {name}
-        </span>
+        <span className="shrink-0 font-mono font-semibold text-base-content/80">{name}</span>
         {!open && preview ? (
-          <span className="font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1">
-            {preview}
-          </span>
+          <span className="font-mono text-base-content/60 truncate min-w-0 flex-1">{preview}</span>
         ) : (
           <span className="flex-1" />
         )}
         <StatusBadge result={result} />
       </button>
       {open ? (
-        <div className="border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex flex-col gap-1.5">
+        <div className="border-t border-base-300 px-2 py-1.5 flex flex-col gap-1.5">
           <div>
-            <div className="text-[9px] uppercase tracking-wide text-slate-400 mb-0.5">
+            <div className="text-[9px] uppercase tracking-wide text-base-content/60 mb-0.5">
               Arguments
             </div>
-            <pre className="rounded bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">
+            <pre className="rounded bg-base-300 border border-base-300 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-base-content/80">
               {inputStr}
             </pre>
           </div>
           {result ? (
             <div>
-              <div className="text-[9px] uppercase tracking-wide text-slate-400 mb-0.5">Result</div>
+              <div className="text-[9px] uppercase tracking-wide text-base-content/60 mb-0.5">
+                Result
+              </div>
               <pre
                 className={`rounded p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words border ${
                   result.isError
-                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 border-rose-200 dark:border-rose-900"
-                    : "bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800"
+                    ? "bg-error/15 text-error border-error/30"
+                    : "bg-base-300 text-base-content/80 border-base-300"
                 }`}
               >
                 {result.text}
@@ -161,24 +159,24 @@ const Thinking = ({ text }: { text: string }) => {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-start gap-1.5 rounded-md border border-violet-200 dark:border-violet-900 bg-violet-50/70 dark:bg-violet-950/30 px-2 py-1 hover:bg-violet-100 dark:hover:bg-violet-900/40 text-left max-w-full"
+        className="inline-flex items-start gap-1.5 rounded-md border border-secondary/30 bg-secondary/10 px-2 py-1 hover:bg-secondary/20 text-left max-w-full"
         title="Internal reasoning"
       >
-        <span className="text-violet-400 shrink-0 w-3 text-center mt-0.5">{open ? "▾" : "▸"}</span>
+        <span className="text-secondary/60 shrink-0 w-3 text-center mt-0.5">
+          {open ? "▾" : "▸"}
+        </span>
         <span className="shrink-0" aria-hidden>
           💭
         </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wide font-semibold text-violet-700 dark:text-violet-300 mt-0.5">
+        <span className="shrink-0 text-[10px] uppercase tracking-wide font-semibold text-secondary mt-0.5">
           Thinking
         </span>
         {!open ? (
-          <span className="italic text-violet-700/80 dark:text-violet-300/80 truncate min-w-0 mt-0.5">
-            {preview}
-          </span>
+          <span className="italic text-secondary/80 truncate min-w-0 mt-0.5">{preview}</span>
         ) : null}
       </button>
       {open ? (
-        <div className="mt-1 rounded border border-violet-200 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2.5 text-[12px] italic text-violet-900 dark:text-violet-200 whitespace-pre-wrap break-words leading-relaxed">
+        <div className="mt-1 rounded border border-secondary/30 bg-secondary/10 p-2.5 text-[12px] italic text-base-content whitespace-pre-wrap break-words leading-relaxed">
           {text}
         </div>
       ) : null}
@@ -196,20 +194,22 @@ const ToolResult = ({ text, isError }: { text: string; isError?: boolean }) => {
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono ${
           isError
-            ? "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200"
-            : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            ? "border-error/30 bg-error/15 text-error"
+            : "border-base-300 bg-base-200 text-base-content/80 hover:bg-base-300"
         }`}
       >
-        <span className="text-slate-400">{open ? "▾" : "▸"}</span>
+        <span className="text-base-content/60">{open ? "▾" : "▸"}</span>
         <span>{isError ? "error" : "result"}</span>
-        {!open ? <span className="text-slate-400 truncate max-w-[40ch]">{single}</span> : null}
+        {!open ? (
+          <span className="text-base-content/60 truncate max-w-[40ch]">{single}</span>
+        ) : null}
       </button>
       {open ? (
         <pre
           className={`mt-1 rounded p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words ${
             isError
-              ? "bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 border border-rose-200 dark:border-rose-900"
-              : "bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+              ? "bg-error/15 text-error border border-error/30"
+              : "bg-base-300 text-base-content/80 border border-base-300"
           }`}
         >
           {text}
@@ -222,10 +222,10 @@ const ToolResult = ({ text, isError }: { text: string; isError?: boolean }) => {
 const Avatar = ({ kind }: { kind: "user" | "assistant" | "system" }) => {
   const tone =
     kind === "user"
-      ? "bg-sky-500 text-white"
+      ? "bg-primary text-primary-content"
       : kind === "assistant"
-        ? "bg-slate-700 dark:bg-slate-300 text-white dark:text-slate-900"
-        : "bg-amber-500 text-white"
+        ? "bg-neutral text-neutral-content"
+        : "bg-accent text-accent-content"
   const letter = kind === "user" ? "U" : kind === "assistant" ? "C" : "S"
   return (
     <div
@@ -253,7 +253,7 @@ const blockKey = (b: PairedBlock, idx: number): string => {
 const UserBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <div className="flex flex-col items-end w-full min-w-0">
-      <div className="w-full rounded-2xl rounded-tr-sm bg-sky-500 text-white px-3.5 py-2 shadow-sm text-right">
+      <div className="w-full rounded-2xl rounded-tr-sm bg-primary text-primary-content px-3.5 py-2 shadow-sm text-right">
         {blocks.map((b, i) =>
           b.kind === "text" ? (
             <pre
@@ -263,13 +263,13 @@ const UserBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string }) =
               {b.text}
             </pre>
           ) : b.kind === "tool_result" ? (
-            <div key={blockKey(b, i)} className="text-sky-50 text-left">
+            <div key={blockKey(b, i)} className="text-primary-content/70 text-left">
               <ToolResult text={b.text} isError={b.isError} />
             </div>
           ) : null,
         )}
       </div>
-      {time ? <div className="text-[10px] text-slate-400 mt-0.5 px-1">{time}</div> : null}
+      {time ? <div className="text-[10px] text-base-content/60 mt-0.5 px-1">{time}</div> : null}
     </div>
     <Avatar kind="user" />
   </div>
@@ -279,9 +279,9 @@ const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string
   <div className="flex gap-2 w-full">
     <Avatar kind="assistant" />
     <div className="flex flex-col items-start w-full min-w-0">
-      <div className="w-full rounded-2xl rounded-tl-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3.5 py-2 text-slate-900 dark:text-slate-100 shadow-sm">
+      <div className="w-full rounded-2xl rounded-tl-sm bg-base-100 border border-base-300 px-3.5 py-2 text-base-content shadow-sm">
         {blocks.length === 0 ? (
-          <span className="text-slate-400 italic text-sm">…</span>
+          <span className="text-base-content/60 italic text-sm">…</span>
         ) : (
           blocks.map((b, i) => {
             if (b.kind === "text") {
@@ -306,14 +306,14 @@ const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string
           })
         )}
       </div>
-      {time ? <div className="text-[10px] text-slate-400 mt-0.5 px-1">{time}</div> : null}
+      {time ? <div className="text-[10px] text-base-content/60 mt-0.5 px-1">{time}</div> : null}
     </div>
   </div>
 )
 
 const ResultBubble = ({ text, time }: { text: string; time: string }) => (
   <div className="flex justify-center">
-    <div className="max-w-[78%] rounded-xl border border-emerald-300 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-emerald-900 dark:text-emerald-100 text-xs">
+    <div className="max-w-[78%] rounded-xl border border-success/30 bg-success/15 px-3 py-2 text-base-content text-xs">
       <div className="text-[10px] uppercase tracking-wide font-semibold opacity-60 mb-0.5">
         Result {time ? `· ${time}` : ""}
       </div>

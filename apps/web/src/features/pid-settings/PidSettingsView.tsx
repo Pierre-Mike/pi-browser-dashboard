@@ -11,26 +11,24 @@ type Props = {
 export const PidSettingsView = ({ form }: Props) => (
   <div data-testid="pid-settings-panel" className="flex flex-col gap-3 max-w-3xl">
     <div className="flex flex-col gap-0.5">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Project settings</h2>
-      <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-        {PID_SETTINGS_REL_PATH}
-      </span>
+      <h2 className="text-sm font-semibold text-base-content/80">Project settings</h2>
+      <span className="text-[11px] font-mono text-base-content/60">{PID_SETTINGS_REL_PATH}</span>
     </div>
 
     {form.loading ? (
-      <p className="text-xs text-slate-500 dark:text-slate-400">Loading settings…</p>
+      <p className="text-xs text-base-content/60">Loading settings…</p>
     ) : form.error ? (
-      <p data-testid="pid-settings-error" className="text-xs text-rose-500">
+      <p data-testid="pid-settings-error" className="text-xs text-error">
         Couldn't load this project's settings.
       </p>
     ) : (
       <fieldset
         data-testid="pid-settings-default-skills"
-        className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        className="flex flex-col gap-1.5 text-xs text-base-content/60"
       >
-        <legend className="shrink-0 px-0 font-medium text-slate-600 dark:text-slate-300">
+        <legend className="shrink-0 px-0 font-medium text-base-content/80">
           Default skills{" "}
-          <span className="font-normal text-slate-400 dark:text-slate-500">
+          <span className="font-normal text-base-content/60">
             · pre-selected when spawning in this project
           </span>
         </legend>
@@ -73,9 +71,9 @@ export const PidSettingsView = ({ form }: Props) => (
             Reset
           </button>
           {form.dirty ? (
-            <span className="text-[11px] text-amber-500">Unsaved changes</span>
+            <span className="text-[11px] text-warning">Unsaved changes</span>
           ) : (
-            <span className="text-[11px] text-slate-400">Saved</span>
+            <span className="text-[11px] text-base-content/60">Saved</span>
           )}
         </div>
       </fieldset>

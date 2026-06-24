@@ -29,18 +29,16 @@ const Breadcrumbs = ({ path }: { path: string }) => {
   const parts = path.split("/").filter(Boolean)
   return (
     <nav
-      className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 truncate"
+      className="flex items-center gap-1 text-[11px] text-base-content/60 truncate"
       data-testid="file-breadcrumbs"
     >
-      <span className="text-slate-400">.</span>
+      <span className="text-base-content/60">.</span>
       {parts.map((p, i) => (
         <span key={i} className="flex items-center gap-1 min-w-0">
-          <span className="text-slate-300 dark:text-slate-600">/</span>
+          <span className="text-base-content/40">/</span>
           <span
             className={
-              i === parts.length - 1
-                ? "text-slate-700 dark:text-slate-200 font-medium truncate"
-                : "truncate"
+              i === parts.length - 1 ? "text-base-content/80 font-medium truncate" : "truncate"
             }
           >
             {p}
@@ -69,7 +67,7 @@ const ToolbarButton = ({
   title?: string
 }) => {
   const cls =
-    "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+    "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-base-300 hover:bg-base-200 text-base-content/80"
   if (href) {
     return (
       <a
@@ -98,7 +96,7 @@ const ToolbarButton = ({
 const CodeView = ({ name, content }: { name: string; content: string }) => (
   <div
     data-testid="file-code"
-    className="text-[12px] leading-snug bg-slate-50 dark:bg-slate-950/60 overflow-auto h-full"
+    className="text-[12px] leading-snug bg-base-100 overflow-auto h-full"
   >
     <PierreFile file={{ name, contents: content }} options={CODE_FILE_OPTIONS} />
   </div>
@@ -117,10 +115,7 @@ const FileBody = ({
   switch (kind) {
     case "markdown":
       return (
-        <div
-          data-testid="file-body-markdown"
-          className="overflow-auto h-full bg-white dark:bg-slate-950"
-        >
+        <div data-testid="file-body-markdown" className="overflow-auto h-full bg-base-100">
           <MarkdownView text={file.content} />
         </div>
       )
@@ -131,7 +126,7 @@ const FileBody = ({
           title={file.path}
           src={rawUrl}
           sandbox="allow-same-origin"
-          className="w-full h-full border-0 bg-white"
+          className="w-full h-full border-0 bg-base-100"
         />
       )
     case "image":
@@ -139,7 +134,7 @@ const FileBody = ({
       return (
         <div
           data-testid="file-body-image"
-          className="flex items-center justify-center h-full overflow-auto bg-[conic-gradient(at_top_left,_#f8fafc,_#e2e8f0)] dark:bg-[conic-gradient(at_top_left,_#0f172a,_#1e293b)]"
+          className="flex items-center justify-center h-full overflow-auto bg-base-200"
         >
           <img src={rawUrl} alt={file.path} className="max-w-full max-h-full object-contain" />
         </div>
@@ -148,10 +143,10 @@ const FileBody = ({
       return (
         <div
           data-testid="file-body-audio"
-          className="flex flex-col items-center justify-center gap-3 h-full p-6 bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950"
+          className="flex flex-col items-center justify-center gap-3 h-full p-6 bg-gradient-to-b from-base-100 to-base-200"
         >
           <div className="text-5xl">🎵</div>
-          <div className="text-sm font-medium text-slate-700 dark:text-slate-200 break-all text-center">
+          <div className="text-sm font-medium text-base-content/80 break-all text-center">
             {basenameOf(file.path)}
           </div>
           {/* biome-ignore lint/a11y/useMediaCaption: user-supplied media; no captions available */}
@@ -164,7 +159,7 @@ const FileBody = ({
       return (
         <div
           data-testid="file-body-video"
-          className="flex items-center justify-center h-full bg-black"
+          className="flex items-center justify-center h-full bg-neutral"
         >
           {/* biome-ignore lint/a11y/useMediaCaption: user-supplied media; no captions available */}
           <video controls src={rawUrl} className="max-w-full max-h-full">
@@ -178,7 +173,7 @@ const FileBody = ({
           data-testid="file-body-pdf"
           title={file.path}
           src={rawUrl}
-          className="w-full h-full border-0 bg-white"
+          className="w-full h-full border-0 bg-base-100"
         />
       )
     case "canvas":
@@ -187,7 +182,7 @@ const FileBody = ({
       return (
         <div
           data-testid="file-body-binary"
-          className="flex flex-col items-center justify-center gap-2 h-full text-slate-500"
+          className="flex flex-col items-center justify-center gap-2 h-full text-base-content/60"
         >
           <div className="text-4xl">■</div>
           <div className="text-xs">Binary file — no inline preview</div>
@@ -195,7 +190,7 @@ const FileBody = ({
             href={rawUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-xs text-sky-600 dark:text-sky-400 hover:underline"
+            className="text-xs text-primary hover:underline"
           >
             Download {basenameOf(file.path)}
           </a>
@@ -223,12 +218,14 @@ const FilePreview = ({ resource, path }: { resource: FileResource; path: string 
 
   if (q.isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-xs text-slate-500">Loading…</div>
+      <div className="flex items-center justify-center h-full text-xs text-base-content/60">
+        Loading…
+      </div>
     )
   }
   if (q.isError) {
     return (
-      <div className="flex items-center justify-center h-full text-xs text-rose-500 px-4 text-center">
+      <div className="flex items-center justify-center h-full text-xs text-error px-4 text-center">
         {q.error instanceof Error ? q.error.message : "failed to load"}
       </div>
     )
@@ -240,28 +237,24 @@ const FilePreview = ({ resource, path }: { resource: FileResource; path: string 
   const downloadUrl = fileDownloadUrl(resource, f.path)
   const fileName = basenameOf(f.path)
   return (
-    <div
-      data-testid="file-preview"
-      className="flex flex-col h-full min-h-0 bg-white dark:bg-slate-950"
-    >
-      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/70 backdrop-blur">
+    <div data-testid="file-preview" className="flex flex-col h-full min-h-0 bg-base-100">
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-base-300 bg-base-100/80 backdrop-blur">
         <div className="min-w-0 flex flex-col gap-0.5">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-base leading-none">{ICON_FOR_KIND[kind]}</span>
-            <span
-              data-testid="file-name"
-              className="font-mono text-sm truncate text-slate-800 dark:text-slate-100"
-            >
+            <span data-testid="file-name" className="font-mono text-sm truncate text-base-content">
               {basenameOf(f.path)}
             </span>
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-base-300 text-base-content/80">
               {kind}
             </span>
           </div>
           <Breadcrumbs path={f.path} />
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] text-slate-400 tabular-nums mr-1">{formatSize(f.size)}</span>
+          <span className="text-[10px] text-base-content/60 tabular-nums mr-1">
+            {formatSize(f.size)}
+          </span>
           <ToolbarButton
             href={downloadUrl}
             download={fileName}
@@ -337,11 +330,11 @@ const treeGitStatus = (
 // resource switch rebuilds the (once-built) @pierre/trees model.
 const TreeBody = ({ resource, tree, selected, onSelect }: SidebarProps) => {
   if (tree.isLoading) {
-    return <div className="text-[11px] text-slate-400 italic px-3 py-2">loading…</div>
+    return <div className="text-[11px] text-base-content/60 italic px-3 py-2">loading…</div>
   }
   if (tree.isError) {
     return (
-      <div className="text-[11px] text-rose-500 px-3 py-2">
+      <div className="text-[11px] text-error px-3 py-2">
         {errorMessage(tree.error, "failed to load tree")}
       </div>
     )
@@ -359,12 +352,12 @@ const TreeBody = ({ resource, tree, selected, onSelect }: SidebarProps) => {
 
 // Left column: the tree plus its truncation chrome.
 const FileTreeSidebar = (props: SidebarProps) => (
-  <aside className="flex flex-col min-h-0 border-r border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+  <aside className="flex flex-col min-h-0 border-r border-base-300 bg-base-100/60">
     <div data-testid="file-tree-scroll" className="flex-1 min-h-0 overflow-auto">
       <TreeBody {...props} />
     </div>
     {props.tree.data?.truncated ? (
-      <div className="text-[10px] text-amber-600 dark:text-amber-300 px-3 py-1 border-t border-slate-200 dark:border-slate-800">
+      <div className="text-[10px] text-warning px-3 py-1 border-t border-base-300">
         listing truncated — some files hidden
       </div>
     ) : null}
@@ -372,10 +365,10 @@ const FileTreeSidebar = (props: SidebarProps) => (
 )
 
 const EmptyPreview = () => (
-  <div className="flex flex-col items-center justify-center gap-2 h-full text-slate-500 text-center px-6">
+  <div className="flex flex-col items-center justify-center gap-2 h-full text-base-content/60 text-center px-6">
     <div className="text-4xl">📂</div>
     <div className="text-sm font-medium">Pick a file to preview</div>
-    <div className="text-xs text-slate-400 max-w-sm">
+    <div className="text-xs text-base-content/60 max-w-sm">
       Markdown renders as Markdown · HTML opens in a sandboxed frame · images, PDFs, audio and video
       play inline.
     </div>
@@ -390,7 +383,7 @@ export const FileTree = ({ resource }: { resource: FileResource }) => {
   return (
     <div
       data-testid="project-file-tree"
-      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white/60 dark:bg-slate-900/60 shadow-sm flex-1 min-h-0"
+      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-base-300 rounded-xl overflow-hidden bg-base-100/60 shadow-sm flex-1 min-h-0"
     >
       <FileTreeSidebar
         resource={resource}

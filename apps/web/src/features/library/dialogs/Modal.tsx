@@ -37,7 +37,7 @@ export const Modal = ({ open, title, onClose, children, testId }: Props) => {
       ref={ref}
       aria-label={title}
       data-testid={testId}
-      className="fixed inset-0 z-50 m-0 max-w-none max-h-none w-full h-full bg-slate-900/40 dark:bg-slate-950/60 backdrop:bg-slate-900/40"
+      className="fixed inset-0 z-50 m-0 max-w-none max-h-none w-full h-full bg-base-content/40 backdrop:bg-base-content/40"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -52,13 +52,13 @@ export const Modal = ({ open, title, onClose, children, testId }: Props) => {
       }}
     >
       <div className={MODAL_PANEL}>
-        <header className="flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-slate-800">
+        <header className="flex items-center justify-between px-4 py-2 border-b border-base-300">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             data-testid="library-modal-close"
-            className="text-xs rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="text-xs rounded px-2 py-1 hover:bg-base-200"
           >
             Close
           </button>

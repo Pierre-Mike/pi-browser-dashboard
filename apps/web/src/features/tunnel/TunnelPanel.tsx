@@ -44,7 +44,7 @@ export const TunnelPanel = () => {
   return (
     <div
       data-testid="tunnel-panel"
-      className="flex flex-col gap-3 max-w-2xl rounded-lg border border-slate-200/80 dark:border-slate-800 bg-base-200/40 p-4"
+      className="flex flex-col gap-3 max-w-2xl rounded-lg border border-base-300 bg-base-200/40 p-4"
     >
       <header className="flex items-center justify-between gap-3">
         <div className="flex flex-col">

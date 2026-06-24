@@ -25,7 +25,7 @@ export const InstallDialog = ({ open, onClose, entry, projectId, initialScope }:
       onClose={onClose}
       testId="library-install-dialog"
     >
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-base-content/60">
         Pull <span className="font-mono">{entry.name}</span> from{" "}
         <span className="font-mono break-all">{entry.source}</span>.
       </p>
@@ -58,27 +58,23 @@ export const InstallDialog = ({ open, onClose, entry, projectId, initialScope }:
           />
           Local (project <span className="font-mono">.claude/...</span>)
           {!canLocal ? (
-            <span className="text-[10px] text-slate-400">— open a project to enable</span>
+            <span className="text-[10px] text-base-content/60">— open a project to enable</span>
           ) : null}
         </label>
       </fieldset>
       {m.isError ? (
-        <div className="text-xs text-rose-600">
+        <div className="text-xs text-error">
           {m.error instanceof Error ? m.error.message : "install failed"}
         </div>
       ) : null}
       {entry.requires && entry.requires.length > 0 ? (
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-base-content/60">
           Will also install required entries:{" "}
           <span className="font-mono">{entry.requires.join(", ")}</span>
         </p>
       ) : null}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-xs rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-base-300">
+        <button type="button" onClick={onClose} className="btn btn-sm btn-ghost">
           Cancel
         </button>
         <button
@@ -96,7 +92,7 @@ export const InstallDialog = ({ open, onClose, entry, projectId, initialScope }:
               { onSuccess: () => onClose() },
             )
           }}
-          className="text-xs rounded px-3 py-1 bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-60"
+          className="btn btn-sm btn-primary"
         >
           {m.isPending ? "Installing…" : "Install"}
         </button>

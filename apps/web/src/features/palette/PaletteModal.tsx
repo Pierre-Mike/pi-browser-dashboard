@@ -75,7 +75,7 @@ export const PaletteModal = ({ open, entries, query, onQueryChange, onSelect, on
         />
         <div className="max-h-80 overflow-y-auto">
           {entries.length === 0 ? (
-            <div className="px-4 py-3 text-xs text-slate-500">No matches.</div>
+            <div className="px-4 py-3 text-xs text-base-content/60">No matches.</div>
           ) : (
             entries.map((entry, i) => (
               <button
@@ -86,9 +86,7 @@ export const PaletteModal = ({ open, entries, query, onQueryChange, onSelect, on
                 onMouseEnter={() => setHighlighted(i)}
                 onClick={() => onSelect(i)}
                 className={`block w-full text-left px-4 py-2 text-sm ${
-                  i === highlighted
-                    ? "bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-100"
-                    : "text-slate-700 dark:text-slate-200"
+                  i === highlighted ? "bg-primary/15 text-primary" : "text-base-content/80"
                 }`}
               >
                 {entry.label}

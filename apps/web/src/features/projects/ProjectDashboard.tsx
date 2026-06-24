@@ -85,7 +85,7 @@ const pullTitle = (pull: ReturnType<typeof useProjectGitPull>): string => {
 }
 
 const PULL_BTN_BASE = "text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 hover:opacity-80"
-const PULL_BTN_TONE = "bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900"
+const PULL_BTN_TONE = "bg-neutral text-neutral-content"
 
 // ff-only Pull, sitting beside the top GitHub link.
 const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> }) => (
@@ -95,7 +95,7 @@ const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> })
     onClick={() => pull.mutate()}
     disabled={pull.isPending}
     title={pullTitle(pull)}
-    className={`${PULL_BTN_BASE} ${pull.isError ? "bg-rose-600 text-rose-50" : PULL_BTN_TONE}`}
+    className={`${PULL_BTN_BASE} ${pull.isError ? "bg-error text-error-content" : PULL_BTN_TONE}`}
   >
     {pull.isPending ? <span className="loading loading-spinner loading-xs" /> : "Pull ⇩"}
   </button>
@@ -159,7 +159,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <Link
           to="/"
-          className="text-[11px] text-slate-500 dark:text-slate-400 hover:underline shrink-0"
+          className="text-[11px] text-base-content/60 hover:underline shrink-0"
           title="All projects"
         >
           ←
@@ -168,7 +168,7 @@ export const ProjectDashboard = ({ project }: Props) => {
           <span className="truncate">{project.name}</span>
           {project.isGitRepo ? null : (
             <span
-              className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5"
+              className="text-[10px] uppercase tracking-wide rounded bg-warning/15 text-warning px-1.5 py-0.5"
               title="No git → supervisor cannot isolate worktrees; siblings race on disk"
             >
               ⚠ no isolation
@@ -179,7 +179,7 @@ export const ProjectDashboard = ({ project }: Props) => {
               data-testid="project-dashboard-branch"
               data-branch={project.branch}
               title={`current branch: ${project.branch}`}
-              className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
+              className="inline-flex items-center gap-1 rounded bg-base-200 text-base-content/80 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
             >
               <span aria-hidden>⎇</span>
               {project.branch}
@@ -192,7 +192,7 @@ export const ProjectDashboard = ({ project }: Props) => {
               target="_blank"
               rel="noreferrer"
               title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
-              className="text-[10px] uppercase tracking-wide rounded bg-slate-900 text-slate-50 dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 hover:opacity-80"
+              className="text-[10px] uppercase tracking-wide rounded bg-neutral text-neutral-content px-1.5 py-0.5 hover:opacity-80"
             >
               GitHub ↗
             </a>
@@ -200,39 +200,27 @@ export const ProjectDashboard = ({ project }: Props) => {
           {project.githubUrl ? <GitPullButton pull={pull} /> : null}
         </h1>
         <span
-          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1"
+          className="text-[11px] font-mono text-base-content/60 truncate min-w-0 flex-1"
           title={project.path}
         >
           {project.path}
         </span>
         <div className="flex flex-wrap items-center gap-1">
           {counts.working > 0 ? (
-            <Pill
-              label="working"
-              value={counts.working}
-              tone="bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200"
-            />
+            <Pill label="working" value={counts.working} tone="bg-primary/15 text-primary" />
           ) : null}
           {counts.blocked > 0 ? (
-            <Pill
-              label="blocked"
-              value={counts.blocked}
-              tone="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
-            />
+            <Pill label="blocked" value={counts.blocked} tone="bg-warning/15 text-warning" />
           ) : null}
           {counts.needs_input > 0 ? (
             <Pill
               label="needs input"
               value={counts.needs_input}
-              tone="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
+              tone="bg-warning/15 text-warning"
             />
           ) : null}
           {counts.failed > 0 ? (
-            <Pill
-              label="failed"
-              value={counts.failed}
-              tone="bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200"
-            />
+            <Pill label="failed" value={counts.failed} tone="bg-error/15 text-error" />
           ) : null}
         </div>
         <button
@@ -277,11 +265,10 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "sessions" ? "flex flex-col gap-3" : "hidden"}
       >
         {sessions.length === 0 ? (
-          <div className="card border border-dashed border-slate-300 dark:border-slate-800 bg-base-200/40">
-            <div className="card-body items-center gap-1 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <div className="card border border-dashed border-base-300 bg-base-200/40">
+            <div className="card-body items-center gap-1 py-8 text-center text-sm text-base-content/60">
               No sessions yet — use{" "}
-              <span className="font-medium text-slate-700 dark:text-slate-200">Spawn +</span> to
-              start one.
+              <span className="font-medium text-base-content/80">Spawn +</span> to start one.
             </div>
           </div>
         ) : (

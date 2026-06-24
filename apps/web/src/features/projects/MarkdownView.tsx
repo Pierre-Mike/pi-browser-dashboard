@@ -41,12 +41,12 @@ const FencedBlock = ({
 }
 
 const HEADING_CLASS: Record<number, string> = {
-  1: "text-2xl font-bold mt-6 mb-3 border-b border-slate-200 dark:border-slate-800 pb-1.5",
-  2: "text-xl font-bold mt-5 mb-2 border-b border-slate-200 dark:border-slate-800 pb-1",
+  1: "text-2xl font-bold mt-6 mb-3 border-b border-base-300 pb-1.5",
+  2: "text-xl font-bold mt-5 mb-2 border-b border-base-300 pb-1",
   3: "text-lg font-semibold mt-4 mb-2",
   4: "text-base font-semibold mt-3 mb-1.5",
   5: "text-sm font-semibold mt-3 mb-1",
-  6: "text-xs font-semibold uppercase tracking-wide mt-3 mb-1 text-slate-500",
+  6: "text-xs font-semibold uppercase tracking-wide mt-3 mb-1 text-base-content/60",
 }
 
 const heading =
@@ -68,11 +68,11 @@ const components: Components = {
   ol: ({ children }) => <ol className="list-decimal pl-6 my-3 space-y-1">{children}</ol>,
   li: ({ children }) => <li>{children}</li>,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-slate-300 dark:border-slate-700 pl-3 my-3 text-slate-600 dark:text-slate-300 italic">
+    <blockquote className="border-l-4 border-base-300 pl-3 my-3 text-base-content/80 italic">
       {children}
     </blockquote>
   ),
-  hr: () => <hr className="my-4 border-slate-200 dark:border-slate-800" />,
+  hr: () => <hr className="my-4 border-base-300" />,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ href, children }) => (
@@ -80,7 +80,7 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="text-sky-600 dark:text-sky-400 hover:underline"
+      className="text-primary hover:underline"
     >
       {children}
     </a>
@@ -90,9 +90,7 @@ const components: Components = {
       <table className="w-full text-sm border-collapse">{children}</table>
     </div>
   ),
-  tr: ({ children }) => (
-    <tr className="border-b border-slate-200 dark:border-slate-800 last:border-b-0">{children}</tr>
-  ),
+  tr: ({ children }) => <tr className="border-b border-base-300 last:border-b-0">{children}</tr>,
   // GFM alignment rides on node.properties.align; map it so `:-:` / `--:`
   // columns no longer collapse to left.
   th: ({ node, children }) => (
@@ -105,9 +103,7 @@ const components: Components = {
   ),
   // Inline code only — fenced blocks never reach here because `pre` owns them.
   code: ({ children }) => (
-    <code className="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 font-mono text-[0.9em]">
-      {children}
-    </code>
+    <code className="px-1 py-0.5 rounded bg-base-300/70 font-mono text-[0.9em]">{children}</code>
   ),
   // Own the whole fenced block so code components are never nested inside <pre>.
   pre: ({ children }) => (
@@ -122,7 +118,7 @@ type Props = { text: string }
 export const MarkdownView = ({ text }: Props) => (
   <div
     data-testid="markdown-rendered"
-    className="prose prose-slate dark:prose-invert max-w-none text-sm text-slate-800 dark:text-slate-200 px-5 py-4"
+    className="prose prose-slate dark:prose-invert max-w-none text-sm text-base-content px-5 py-4"
   >
     <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={components}>
       {text}

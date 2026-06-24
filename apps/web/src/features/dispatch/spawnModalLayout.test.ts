@@ -31,21 +31,18 @@ describe("spawnModalLayout", () => {
   })
 
   // The modal portals into document.body, outside the themed root div, so it
-  // must set its own readable text color in both light and dark mode.
-  it("sets explicit text colors on the shell for light and dark mode", () => {
-    expect(SPAWN_MODAL_SHELL).toContain("text-slate-900")
-    expect(SPAWN_MODAL_SHELL).toContain("dark:text-slate-100")
+  // must set its own readable text color via semantic token.
+  it("sets semantic text color on the shell", () => {
+    expect(SPAWN_MODAL_SHELL).toContain("text-base-content")
   })
 
-  it("keeps typed intent text readable on the dark textarea background", () => {
-    expect(SPAWN_INTENT_INPUT).toContain("dark:bg-slate-950")
-    expect(SPAWN_INTENT_INPUT).toContain("text-slate-900")
-    expect(SPAWN_INTENT_INPUT).toContain("dark:text-slate-100")
+  it("uses semantic background for the textarea", () => {
+    expect(SPAWN_INTENT_INPUT).toContain("bg-base-100")
+    expect(SPAWN_INTENT_INPUT).toContain("text-base-content")
   })
 
-  it("keeps the placeholder visible but muted in both modes", () => {
-    expect(SPAWN_INTENT_INPUT).toContain("placeholder:text-slate-400")
-    expect(SPAWN_INTENT_INPUT).toContain("dark:placeholder:text-slate-500")
+  it("keeps the placeholder visible but muted", () => {
+    expect(SPAWN_INTENT_INPUT).toContain("placeholder:text-base-content/40")
   })
 
   describe("skillChipClass", () => {

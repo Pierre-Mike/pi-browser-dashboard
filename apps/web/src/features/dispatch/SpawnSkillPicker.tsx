@@ -12,11 +12,11 @@ type Props = {
 export const SpawnSkillPicker = ({ skills, disabled }: Props) => (
   <fieldset
     data-testid="spawn-skill"
-    className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+    className="flex flex-col gap-1.5 text-xs text-base-content/60"
   >
-    <legend className="shrink-0 px-0 font-medium text-slate-600 dark:text-slate-300">
+    <legend className="shrink-0 px-0 font-medium text-base-content/80">
       Skills{" "}
-      <span className="font-normal text-slate-400 dark:text-slate-500">
+      <span className="font-normal text-base-content/60">
         · {skills.selected.length ? `${skills.selected.length} selected` : "select any"}
       </span>
     </legend>
@@ -41,7 +41,7 @@ export const SpawnSkillPicker = ({ skills, disabled }: Props) => (
     </div>
     {skills.canManageDefault ? (
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[11px] text-base-content/60">
           Pre-selected from this project's pid-settings.
         </span>
         <button
@@ -49,7 +49,7 @@ export const SpawnSkillPicker = ({ skills, disabled }: Props) => (
           data-testid="spawn-set-default"
           onClick={skills.saveAsDefault}
           disabled={disabled || skills.savePending || skills.isProjectDefault}
-          className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-medium normal-case text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500"
+          className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 rounded-md border border-base-300 px-2 py-0.5 text-[11px] font-medium normal-case text-base-content/80 hover:border-base-300"
         >
           {skills.savePending
             ? "Saving…"

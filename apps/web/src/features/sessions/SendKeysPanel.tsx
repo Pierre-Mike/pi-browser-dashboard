@@ -58,10 +58,10 @@ export const SendKeysPanel = ({ short }: Props) => {
   return (
     <div
       data-testid="send-panel"
-      className="mt-1 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 p-2 flex flex-col gap-1.5"
+      className="mt-1 rounded border border-base-300 bg-base-200 p-2 flex flex-col gap-1.5"
     >
       <div className="flex items-center gap-1 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mr-1">
+        <span className="text-[10px] uppercase tracking-wide text-base-content/60 mr-1">
           Send keys
         </span>
         {PRESETS.map((p) => (
@@ -72,7 +72,7 @@ export const SendKeysPanel = ({ short }: Props) => {
             onClick={() => void send(p.keys)}
             disabled={sending}
             title={p.title}
-            className="text-xs font-mono rounded border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="text-xs font-mono rounded border border-base-300 px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {p.label}
           </button>
@@ -87,12 +87,12 @@ export const SendKeysPanel = ({ short }: Props) => {
           onChange={(e) => setFreeForm(e.target.value)}
           disabled={sending}
           placeholder="free-form keys (Enter auto-appended)"
-          className="flex-1 min-w-0 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-sky-400"
+          className="flex-1 min-w-0 rounded border border-base-300 bg-base-100 px-2 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
           type="submit"
           disabled={sending || freeForm.length === 0}
-          className="text-xs rounded border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-xs rounded border border-primary bg-primary/15 text-primary px-2 py-0.5 hover:bg-primary/25 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {sending ? "…" : "Send"}
         </button>
@@ -101,9 +101,7 @@ export const SendKeysPanel = ({ short }: Props) => {
         <div
           data-testid="send-status"
           className={`text-[11px] font-mono ${
-            status.startsWith("failed")
-              ? "text-rose-700 dark:text-rose-300"
-              : "text-emerald-700 dark:text-emerald-300"
+            status.startsWith("failed") ? "text-error" : "text-success"
           }`}
         >
           {status}

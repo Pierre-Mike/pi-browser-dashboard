@@ -28,15 +28,17 @@ export const GlobalSearch = ({ bundle, onPick }: Props) => {
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search all categories…"
         data-testid="library-global-search"
-        className="w-full rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs"
+        className="input input-bordered input-sm w-full text-xs"
       />
       {query.trim() !== "" ? (
         <div
           data-testid="library-global-results"
-          className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg"
+          className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-md border border-base-300 bg-base-100 shadow-lg"
         >
           {results.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-slate-500">No matches across the catalog.</div>
+            <div className="px-3 py-2 text-xs text-base-content/60">
+              No matches across the catalog.
+            </div>
           ) : (
             <ul className="flex flex-col">
               {results.map((entry) => {
@@ -50,18 +52,16 @@ export const GlobalSearch = ({ bundle, onPick }: Props) => {
                         onPick(entry.type, entry.name)
                         setQuery("")
                       }}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2"
                     >
-                      <span className="text-[9px] uppercase tracking-wide rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-600 dark:text-slate-300 shrink-0">
+                      <span className="text-[9px] uppercase tracking-wide rounded bg-base-200 px-1.5 py-0.5 text-base-content/80 shrink-0">
                         {entry.type}
                       </span>
                       <span className="font-medium truncate">{entry.name}</span>
                       {status?.global === "installed" || status?.local === "installed" ? (
-                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0">
-                          installed
-                        </span>
+                        <span className="text-[9px] text-success shrink-0">installed</span>
                       ) : null}
-                      <span className="text-[11px] text-slate-500 truncate ml-auto">
+                      <span className="text-[11px] text-base-content/60 truncate ml-auto">
                         {entry.description}
                       </span>
                     </button>
