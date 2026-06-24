@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Per-project .pid/ HTML extensions (pid-apps)</title>
+<style>
+  :root {
+    /* Synced visual identity — "drop-zone extension": calm slate canvas, indigo primary, teal accent */
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef1f7;
+    --border: #d9dee8;
+    --text: #1b2230;
+    --muted: #5b6577;
+    --primary: #4f46e5;
+    --primary-soft: #eae9fd;
+    --accent: #0d9488;
+    --danger: #dc2626;
+    --ok: #16a34a;
+    --warn: #b45309;
+    --code-bg: #f1f3f9;
+    --code-text: #243049;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius: 12px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1117; --surface: #161b24; --surface-2: #1c222e; --border: #2a313d;
+      --text: #e6e9ef; --muted: #97a1b3; --primary: #8b85f7; --primary-soft: #1e1d3a;
+      --accent: #2dd4bf; --code-bg: #11161f; --code-text: #c9d3e6;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; font-size: 16px; }
+  main { max-width: 920px; margin: 0 auto; padding: 40px 24px 96px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 1.45rem; margin: 2.4em 0 .6em; letter-spacing: -.01em; padding-bottom: .3em; border-bottom: 2px solid var(--border); }
+  h3 { font-size: 1.18rem; margin: 1.6em 0 .5em; }
+  h4 { font-size: 1.02rem; margin: 1.3em 0 .4em; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  p { margin: .6em 0; }
+  a { color: var(--primary); }
+  code { font-family: var(--mono); font-size: .87em; background: var(--code-bg); color: var(--code-text); padding: .12em .4em; border-radius: 5px; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: var(--radius); overflow-x: auto; border: 1px solid var(--border); font-size: .82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  ul, ol { padding-left: 1.4em; }
+  li { margin: .25em 0; }
+  header { border-bottom: 3px solid var(--primary); padding-bottom: 18px; }
+  .sub { color: var(--muted); font-size: 1.02rem; margin-top: 2px; }
+  details.meta { margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px; box-shadow: var(--shadow); }
+  details.meta summary { cursor: pointer; font-weight: 600; padding: 8px 0; color: var(--muted); }
+  dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 16px; margin: 8px 0 12px; font-size: .9rem; }
+  dt { color: var(--muted); font-weight: 600; }
+  dd { margin: 0; font-family: var(--mono); font-size: .82rem; word-break: break-word; }
+  section { scroll-margin-top: 20px; }
+  figure { margin: 18px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+  figcaption { color: var(--muted); font-size: .85rem; margin-top: 8px; font-style: italic; }
+  .files ul { list-style: none; padding-left: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--border); }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; vertical-align: middle; margin-right: 6px; }
+  .tag.existing { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+  .tag.new { background: var(--primary-soft); color: var(--primary); border: 1px solid var(--primary); }
+  .phase { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); padding: 4px 24px 20px; margin: 20px 0; box-shadow: var(--shadow); }
+  .phase h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding: 4px 0 4px 2px; display: flex; gap: 9px; align-items: flex-start; }
+  .status { flex: none; font-family: var(--mono); font-size: .72rem; font-weight: 700; padding: 2px 6px; border-radius: 5px; margin-top: 2px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); white-space: nowrap; }
+  .status.wip { background: #fff7e6; color: var(--warn); border-color: var(--warn); }
+  .status.x { background: #e7f7ed; color: var(--ok); border-color: var(--ok); }
+  .status.f { background: #fdeaea; color: var(--danger); border-color: var(--danger); }
+  .loop { margin-top: 14px; background: var(--primary-soft); border: 1px solid var(--primary); border-radius: 10px; padding: 10px 14px; font-size: .9rem; }
+  .mustfix { border-left: 4px solid var(--danger); background: linear-gradient(0deg, var(--surface), var(--surface)); padding: 2px 16px; border-radius: 8px; margin: 12px 0; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .mustfix h4 { color: var(--danger); }
+  .pill { display:inline-block; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--accent); color:#fff; letter-spacing:.03em; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; margin: 12px 0; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 700; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 18px; margin: 14px 0; box-shadow: var(--shadow); }
+  .callout.warn { border-left: 4px solid var(--warn); }
+  .callout.ok { border-left: 4px solid var(--ok); }
+  details#q-block details { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; padding: 2px 16px; }
+  #questionables > details, #amendments > details { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; padding: 2px 16px; box-shadow: var(--shadow); }
+  #questionables summary, #amendments summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+  .qa-answer { color: var(--text); }
+  .legend { font-size: .85rem; color: var(--muted); }
+  .legend code { font-size: .8em; }
+  /* SVG diagram helpers */
+  svg .box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  svg .box-primary { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 1.5; }
+  svg .box-accent { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  svg .box-danger { fill: none; stroke: var(--danger); stroke-width: 1.5; }
+  svg text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  svg .t-muted { fill: var(--muted); font-size: 11px; }
+  svg .t-mono { font-family: var(--mono); font-size: 11px; fill: var(--code-text); }
+  svg .t-title { font-weight: 700; font-size: 13px; }
+  svg .arrow { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#ah); }
+  svg .arrow-p { stroke: var(--primary); stroke-width: 2; fill: none; marker-end: url(#ahp); }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: Per-project <code>.pid/</code> HTML extensions <span class="pill">pid-apps</span></h1>
+    <p class="sub">Drop any HTML website into a project's <code>.pid/</code> folder → the dashboard auto-discovers it and renders it as a sandboxed, project-scoped extension. Zero config. Ship specs/plans as HTML, or run small interactive tools.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-06-24</dd>
+        <dt>modified</dt>     <dd>2026-06-24</dd>
+        <dt>commits</dt>      <dd>96cb23a (base); feature commits appended per phase PR</dd>
+        <dt>agent name</dt>   <dd>Claude Opus 4.8 (1M context)</dd>
+        <dt>session id</dt>   <dd>6a99f1d7-e252-4d15-b6ce-a03e119f26fd</dd>
+        <dt>back refs</dt>    <dd>PR #116 (extension daemon host, iframe roadmap); apps/daemon/src/platform/extensions/*; apps/web/src/features/extensions/ExtensionHost.tsx; examples/extensions/*</dd>
+        <dt>forward refs</dt> <dd>PRs: pid-apps Phase 1–6 (one PR per phase, auto-merge)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <!-- Hero diagram — synced to :root identity (inline SVG, self-contained) -->
+  <figure>
+    <svg viewBox="0 0 760 200" role="img" aria-label="HTML files in a project .pid folder become a sandboxed extension tab">
+      <defs>
+        <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--muted)"/></marker>
+        <marker id="ahp" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--primary)"/></marker>
+      </defs>
+      <rect class="box" x="20" y="48" width="190" height="110" rx="10"/>
+      <text class="t-title" x="36" y="72">project/</text>
+      <text class="t-mono" x="44" y="94">.pid/</text>
+      <text class="t-mono" x="60" y="113">index.html</text>
+      <text class="t-mono" x="60" y="131">spec/index.html</text>
+      <text class="t-muted" x="36" y="151">drop zone — anyone adds HTML</text>
+      <path class="arrow-p" d="M214,103 L300,103"/>
+      <rect class="box-primary" x="304" y="58" width="170" height="90" rx="10"/>
+      <text class="t-title" x="324" y="88">daemon</text>
+      <text class="t-mono" x="324" y="108">/projects/:id/</text>
+      <text class="t-mono" x="324" y="124">pid-apps/:appId/*</text>
+      <text class="t-muted" x="324" y="142">discover · guard · stream</text>
+      <path class="arrow-p" d="M478,103 L548,103"/>
+      <rect class="box" x="552" y="48" width="188" height="110" rx="10"/>
+      <rect class="box-primary" x="552" y="48" width="188" height="24" rx="10"/>
+      <text class="t-mono" x="566" y="65">▦ spec  ▦ default</text>
+      <rect class="box-danger" x="566" y="84" width="160" height="58" rx="6"/>
+      <text class="t-muted" x="576" y="106">&lt;iframe sandbox=</text>
+      <text class="t-mono" x="576" y="124">"allow-scripts"&gt;</text>
+      <text class="t-muted" x="566" y="156">project-scoped tab</text>
+    </svg>
+    <figcaption>The whole feature at a glance: a <code>.pid/</code> drop zone → daemon discovery + security gates → a sandboxed, project-scoped extension tab.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Give every project a frictionless, <strong>zero-config</strong> way to surface custom HTML inside the dashboard. A user (or an agent) drops an HTML website into the project's <code>.pid/</code> directory; the dashboard discovers it on demand and renders it as a <strong>project-scoped extension tab</strong> in a sandboxed iframe. Two concrete use cases drive the design:</p>
+    <ul>
+      <li><strong>Specs / plans as HTML</strong> — render self-contained HTML documents in-app (this very plan is one such file: see <a href="#dogfood">Dogfooding</a>).</li>
+      <li><strong>Run small interactive tools</strong> — a static HTML/CSS/JS mini-app (a dashboard, a calculator, a viewer) scoped to one project.</li>
+    </ul>
+    <p>The feature must be <strong>secure by default</strong> (the dropped HTML is untrusted), <strong>per-project isolated</strong> (an app in project A never appears for project B), and <strong>test-first</strong> (TDD red→green→refactor), reusing the proven security and rendering primitives the existing extension platform already ships.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The repo already has a capable extension platform — but it is the wrong shape for "drop an HTML file and see it." Recon of the existing code shows the loader (<code>apps/daemon/src/platform/extensions/loader.ts</code>) is <strong>boot-time</strong>, scans a <strong>single</strong> cwd root (<code>defaultLocalRoot = cwd/.pid/extensions</code>), and <strong>requires a <code>manifest.json</code></strong> (<code>scanRoot</code> stats the manifest). That is great for declared, capability-bearing extensions and wrong for an every-project, on-demand, manifest-less drop zone. We need a new thin path — not a fork of the platform, and not an overload of it.</p>
+    <figure>
+      <svg viewBox="0 0 760 230" role="img" aria-label="Existing manifest-required boot-scan platform versus the zero-config per-project gap">
+        <rect class="box" x="18" y="40" width="350" height="170" rx="10"/>
+        <text class="t-title" x="38" y="66">Existing extension platform</text>
+        <text class="t-muted" x="38" y="92">• boot-time global/local scan</text>
+        <text class="t-muted" x="38" y="114">• single cwd root (.pid/extensions)</text>
+        <text class="t-muted" x="38" y="136">• manifest.json REQUIRED</text>
+        <text class="t-muted" x="38" y="158">• registry + permissions + RPC</text>
+        <text class="t-mono" x="38" y="186">→ keep for declared extensions</text>
+        <rect class="box-danger" x="392" y="40" width="350" height="170" rx="10"/>
+        <text class="t-title" x="412" y="66">The gap (what users want)</text>
+        <text class="t-muted" x="412" y="92">• per-project, every project</text>
+        <text class="t-muted" x="412" y="114">• on-demand discovery (no boot scan)</text>
+        <text class="t-muted" x="412" y="136">• NO manifest — just index.html</text>
+        <text class="t-muted" x="412" y="158">• render specs / run static tools</text>
+        <text class="t-mono" x="412" y="186">→ new thin "pid-apps" path</text>
+      </svg>
+      <figcaption>Why a new feature, not an extension of the loader: the platform is manifest-required and boot-scanned; the ask is manifest-less and per-project.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Add a small, self-contained <code>pid-apps</code> feature that <strong>reuses the platform's security + rendering primitives</strong> and the existing per-project tab UI, while owning only its own discovery logic:</p>
+    <ul>
+      <li><strong>Discovery (zero-config):</strong> any immediate subdirectory of <code>&lt;project&gt;/.pid/</code> that contains an <code>index.html</code> is an app (<code>appId = dirname</code>). A bare <code>&lt;project&gt;/.pid/index.html</code> is the implicit <code>default</code> app (guarded — see <a href="#questionables">Questionables</a>). Reserved names (<code>extensions</code>, <code>extensions-state.json</code>, <code>settings.json</code>) are never apps. Discovery is on-demand per project — no boot scan, no global registry, no manifest.</li>
+      <li><strong>Daemon:</strong> <code>GET /projects/:id/pid-apps</code> (list) and <code>GET /projects/:id/pid-apps/:appId/*</code> (serve), mounted on the existing projects router, streaming <code>Bun.file</code> through the same traversal guards as the extensions static route — plus a <strong>realpath</strong> containment check (symlink escape) and a per-response <strong>CSP</strong>.</li>
+      <li><strong>Web:</strong> a <code>usePidApps(projectId)</code> hook and a thin <code>PidAppHost</code> iframe (<code>sandbox="allow-scripts"</code>, opaque origin, <strong>no RPC bridge</strong>) surfaced as <code>pidapp:&lt;id&gt;</code> tabs in <code>ProjectDashboard</code>, reusing the proven <code>ext:&lt;name&gt;</code> tab machinery.</li>
+    </ul>
+    <figure>
+      <svg viewBox="0 0 760 250" role="img" aria-label="Request flow with layered security gates from sandboxed iframe to the .pid app directory">
+        <rect class="box" x="16" y="96" width="120" height="60" rx="9"/>
+        <text class="t-title" x="34" y="120">iframe</text>
+        <text class="t-muted" x="30" y="138">sandbox</text>
+        <path class="arrow-p" d="M138,126 L172,126"/>
+        <rect class="box-primary" x="176" y="40" width="430" height="172" rx="10"/>
+        <text class="t-title" x="196" y="64">daemon route — defense in depth</text>
+        <rect class="box" x="196" y="78" width="180" height="30" rx="6"/><text class="t-mono" x="206" y="98">1 validateRelPath (pre-fs)</text>
+        <rect class="box" x="196" y="114" width="180" height="30" rx="6"/><text class="t-mono" x="206" y="134">2 appId ∉ RESERVED + NAME_RE</text>
+        <rect class="box" x="196" y="150" width="180" height="30" rx="6"/><text class="t-mono" x="206" y="170">3 resolveProjectPath (lexical)</text>
+        <rect class="box" x="396" y="78" width="190" height="30" rx="6"/><text class="t-mono" x="406" y="98">4 fs.realpath ⊂ appRoot</text>
+        <rect class="box" x="396" y="114" width="190" height="30" rx="6"/><text class="t-mono" x="406" y="134">5 size cap + mime</text>
+        <rect class="box" x="396" y="150" width="190" height="30" rx="6"/><text class="t-mono" x="406" y="170">6 CSP + nosniff + cache</text>
+        <text class="t-muted" x="196" y="200">strict order — reject before any disk touch</text>
+        <path class="arrow-p" d="M606,126 L640,126"/>
+        <rect class="box-accent" x="644" y="86" width="104" height="80" rx="9"/>
+        <text class="t-mono" x="660" y="118">.pid/</text>
+        <text class="t-mono" x="668" y="138">&lt;appId&gt;/</text>
+        <text class="t-muted" x="654" y="158">pinned root</text>
+      </svg>
+      <figcaption>Serve path: six ordered gates pin every byte to <code>&lt;project&gt;/.pid/&lt;appId&gt;/</code>. Layers 1–3 are reused/extracted; layer 4 (realpath) is the new must-add for untrusted drops.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files (reuse / extend — do not fork)</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/api.ts</code> — extension static route <code>GET /extensions/:name/*</code> (~L78–111): the canonical streaming + pre-fs traversal rejection (decode, reject <code>..</code>/<code>\\</code>/leading <code>/</code>) + <code>nosniff</code> to copy/extract from.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/projects/projects.core.ts</code> — <code>resolveProjectPath</code> (lexical containment), <code>mimeFromPath</code>/<code>MIME_BY_EXT</code>, <code>TREE_SKIP_DIRS</code>. Home for the extracted <code>validateRelPath</code>.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/projects/projects.routes.ts</code> — owns <code>/projects/:id/*</code>, <code>ProjectsService</code>, the <code>/:id/raw</code> streaming pattern, and the <code>pidSettingsApp</code> mount to copy.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/projects/pid-settings.repo.ts</code> &amp; <code>pid-settings.routes.ts</code> — the exact <em>Effect Layer + <code>createApp(run)</code> factory + local <code>errorToStatus</code></em> pattern to mirror; source of the shared project-id resolver to extract.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/platform/extensions/manifest.ts</code> — <code>NAME_RE = /^[a-z0-9][a-z0-9._-]*$/</code> (currently module-private): export and reuse, don't redefine.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/extensions/ExtensionHost.tsx</code> — the proven <code>sandbox="allow-scripts"</code> iframe posture. Reference for posture only; <strong>pid-apps must NOT route through it</strong> (it calls <code>mountRpcBridge</code>).</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/extensions/useExtensions.ts</code> — the <code>useQuery</code> + <code>hc</code> client pattern <code>usePidApps</code> mirrors.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/projects/ProjectDashboard.tsx</code> — renders per-project <code>ext:&lt;name&gt;</code> tabs (~L99–105, L324–336); the seam for <code>pidapp:&lt;id&gt;</code> tabs.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/lib/tabDock.tsx</code> — tab icon registry; add <code>PIDAPP_ICON</code>.</li>
+      <li><span class="tag existing">existing</span> <code>apps/e2e/global-setup.ts</code> &amp; <code>apps/e2e/tests/extensions-iframe.spec.ts</code> — seeding + iframe-load assertion patterns to mirror.</li>
+      <li><span class="tag existing">existing</span> <code>AGENTS.md</code> — extension docs section; add the <code>.pid/</code> convention + security posture beside it.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.core.ts</code> — pure discovery + tolerant manifest parser + reserved/CSP constants.</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.core.test.ts</code> — co-located unit tests (RED first).</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.repo.ts</code> — <code>PidAppsService</code> Effect Layer (listApps, resolveAsset) + <code>PidAppsRepoTest</code>.</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.repo.test.ts</code> — tmp-dir + <code>ProjectsRepoTest</code> integration tests.</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.routes.ts</code> — Hono sub-app (list + secure serve), <code>createApp(run)</code> factory.</li>
+      <li><span class="tag new">new</span> <code>apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts</code> — route + header + traversal tests.</li>
+      <li><span class="tag new">new</span> <code>apps/web/src/features/pid-apps/usePidApps.ts</code> + <code>usePidApps.test.ts</code> — list hook.</li>
+      <li><span class="tag new">new</span> <code>apps/web/src/features/pid-apps/PidAppHost.tsx</code> + <code>PidAppHost.test.ts</code> — sandboxed iframe (no RPC).</li>
+      <li><span class="tag new">new</span> <code>apps/e2e/tests/pid-apps.spec.ts</code> — end-to-end seed → tab → iframe → traversal-reject.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom. Each phase is one auto-merge PR; each builds on the last. Every behavior change is <strong>test-first</strong> (write the failing test, watch it go RED, then GREEN, then refactor).</p>
+    <p class="legend">Status markers: <code class="status">[]</code> idle · <code class="status wip">[wip]</code> in progress · <code class="status x">[x]</code> complete · <code class="status f">[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them.</p>
+
+    <!-- PHASE 1 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Pure discovery core <span class="pill">functional core · no I/O</span></h3>
+      <p>Land the manifest-less discovery rules, tolerant manifest parser, shared constants (reserved names, CSP), and the extracted <code>validateRelPath</code> as <strong>pure, total functions</strong>, so every zero-config / scoping rule is pinned by millisecond unit tests before any wiring.</p>
+
+      <h4>1. Discovery + constants</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Export <code>NAME_RE</code> from <code>platform/extensions/manifest.ts</code> and import it into the core — do NOT redefine the regex (Fallow flags the duplicate constant).</li>
+        <li><code class="status">[]</code> Define types: <code>type PidApp = { readonly id: string; readonly label: string; readonly entry: string; readonly root: string }</code> (<code>root</code> is relative to <code>.pid/</code>: <code>'&lt;id&gt;'</code> for dir apps, <code>''</code> for the bare <code>default</code>) and <code>type PidAppDirEntry = { name: string; isDir: boolean; hasIndexHtml: boolean }</code>.</li>
+        <li><code class="status">[]</code> <code>export const RESERVED_PID_ENTRIES = ['extensions', 'extensions-state.json', 'settings.json'] as const</code> — single source of truth, consumed by discovery AND the serve route. Also treat <code>'default'</code> as a reserved <em>dir</em> name so a physical <code>.pid/default/</code> can't shadow the bare-root default.</li>
+        <li><code class="status">[]</code> <code>discoverPidApps(entries, hasRootIndex): readonly PidApp[]</code> — apply zero-config rules, exclude reserved, validate dir names against <code>NAME_RE</code> (skip non-conforming, never throw), sort deterministically (default first, then dir apps alphabetical).</li>
+      </ul>
+
+      <h4>2. Tolerant manifest + path validation</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>parsePidAppManifest(text: string | null): { title?: string; entry?: string; icon?: string }</code> — never throws (mirror <code>parsePidSettings</code> field-by-field tolerance). <strong>Validate <code>entry</code> in the core</strong>: single path segment, no <code>/</code>/<code>..</code>, and <strong><code>*.html</code>/<code>*.htm</code> only</strong> (blocks the SVG-as-entry script vector); drop the field if invalid.</li>
+        <li><code class="status">[]</code> <code>export function validateRelPath(rel: string): boolean</code> in <code>projects.core.ts</code> (pure, zero deps): reject empty, <code>..</code> segments, backslashes, leading <code>/</code>. This is the extraction that de-dups <code>api.ts:93</code> (refactored to call it in Phase 3).</li>
+        <li><code class="status">[]</code> <code>export const PID_APP_CSP</code> in the core (string constant, with an inline comment explaining the <code>'unsafe-inline'</code> tradeoff) so it is unit-tested at the fastest layer: <code>default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self'; font-src data: 'self'; connect-src 'none'</code> (note: <code>blob:</code> removed from <code>img-src</code> per security review).</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Pure <code>bun:test</code> — no filesystem, no mocks. Every rule gets a failing assertion first.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>discoverPidApps([], true)</code> → one app <code>{id:'default', root:''}</code>; subdir w/ index → <code>id = dirname, root = dirname</code>; subdir w/o index → omitted; reserved names → never apps; <code>NAME_RE</code>-failing dir (<code>'Bad Name'</code>, <code>'../x'</code>) → skipped, no throw; deterministic ordering.</li>
+        <li><code class="status">[]</code> RED: <strong>collision</strong> — <code>discoverPidApps([{name:'default',isDir:true,hasIndexHtml:true}], true)</code> → bare-root <code>default</code> wins, the <code>default</code> subdir is skipped (locked behavior, not underdetermined).</li>
+        <li><code class="status">[]</code> RED: <code>parsePidAppManifest(null|''|'{bad')</code> → <code>{}</code>; valid title/icon kept; wrong-typed dropped; <code>entry:'../x'</code>/<code>'a/b'</code>/<code>'x.svg'</code> dropped, <code>entry:'main.html'</code> kept.</li>
+        <li><code class="status">[]</code> RED: <code>validateRelPath</code> truth table (<code>''</code>, <code>'a/../b'</code>, <code>'..'</code>, <code>'a\\b'</code>, <code>'/abs'</code> → false; <code>'a/b.css'</code> → true); <code>PID_APP_CSP</code> exact-value snapshot.</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.core.test.ts</code> — proves the rules.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 1 until every box is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: Daemon repo over the real filesystem <span class="pill">imperative shell · Effect Layer</span></h3>
+      <p>Discover apps and resolve+stat asset paths for a real project dir, reusing <code>ProjectsService</code> for resolution and <code>resolveProjectPath</code> for lexical containment, plus the <strong>realpath</strong> guard. Errors are typed (<code>PidAppError = 'not_found' | 'forbidden' | 'too_large'</code>).</p>
+
+      <h4>1. Shared resolver + service</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Extract the project-id resolver duplicated in <code>pid-settings.repo.ts</code> (isSafeSegment → <code>projects.list()</code> → find → path) into a shared helper (e.g. <code>projects/projects.pid-utils.ts</code> <code>resolveProjectDir(projectId, projects): Effect&lt;string, ...&gt;</code>) and refactor <code>pid-settings.repo.ts</code> to use it (Fallow flags the duplication otherwise).</li>
+        <li><code class="status">[]</code> <code>PidAppsService</code> Context.Tag (Effect Layer, depends on <code>ProjectsService</code>): <code>listApps(projectId)</code> and <code>resolveAsset(projectId, appId, rel)</code> returning <code>RawFile = { absPath, size, mime }</code>.</li>
+        <li><code class="status">[]</code> <code>listApps</code>: resolve path (unknown → <code>not_found</code>, unsafe id → <code>forbidden</code>), <code>readdir</code> <code>&lt;path&gt;/.pid</code> with <code>withFileTypes</code>, probe each subdir for <code>index.html</code> with a <strong>bounded concurrency</strong> (<code>{ concurrency: 8 }</code>, mirror <code>probeProject</code>) and a <strong>max-apps cap (50)</strong>, then <code>discoverPidApps</code>, then apply optional <code>pid-app.json</code> overrides.</li>
+      </ul>
+
+      <h4>2. Secure asset resolution</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>resolveAsset</code>: validate <code>appId</code> against <code>NAME_RE</code> or literal <code>'default'</code> AND assert <code>appId ∉ RESERVED_PID_ENTRIES</code> (independent of discovery). Compute <code>appRoot = join(pidDir, app.root)</code> (branchless via <code>PidApp.root</code>).</li>
+        <li><code class="status">[]</code> Reuse <code>resolveProjectPath(appRoot, rel)</code> for lexical containment; default <code>rel === ''</code> → <code>app.entry</code> (<code>index.html</code> unless overridden).</li>
+        <li><code class="status">[]</code> <strong>MUST-FIX (security):</strong> after lexical resolve, <code>fs.realpath(absPath)</code> and assert it still starts with <code>fs.realpath(appRoot)</code> → else <code>forbidden</code>. Closes symlink escape (the drop zone is untrusted; this is NOT deferrable).</li>
+        <li><code class="status">[]</code> <strong>MUST-FIX (default app):</strong> for <code>appId === 'default'</code> (<code>appRoot = .pid</code> itself), additionally reject any resolved path whose top segment ∈ <code>RESERVED_PID_ENTRIES</code> (no serving <code>.pid/settings.json</code> etc. via <code>default</code>).</li>
+        <li><code class="status">[]</code> Size cap (<code>MAX_RAW_BYTES</code>, 50 MB to match <code>/raw</code>) → <code>too_large</code>; <code>mime</code> from the shared map (extend the single map for <code>woff/woff2/map</code> — do NOT add a third MIME map).</li>
+        <li><code class="status">[]</code> <code>PidAppsRepoTest</code> in-memory factory mirroring <code>PidSettingsRepoTest</code> for fast route tests.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p><code>bun:test</code> + <code>mkdtempSync</code> + a <code>ProjectsRepoTest</code> fixture. The fixture wiring is the first RED step (per TDD review).</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED fixture (write FIRST): <code>const proj = { id: 'p', path: tmpDir, name: 'p', isGitRepo: false, lastModified: 0 }; const layer = Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj]))</code> — confirm the exact <code>Project</code> shape against the real type before asserting.</li>
+        <li><code class="status">[]</code> RED: <code>listApps</code> → <code>['default']</code> for bare <code>.pid/index.html</code>, <code>['myplan']</code> for <code>.pid/myplan/index.html</code>; no <code>.pid</code> → <code>[]</code>; unknown id → <code>not_found</code>; unsafe id → <code>forbidden</code>.</li>
+        <li><code class="status">[]</code> RED: <code>resolveAsset(default,'index.html')</code> → <code>RawFile{mime:'text/html'}</code>; nested <code>assets/app.js</code> → <code>text/javascript</code>; <code>pid-app.json</code> title/entry override applied.</li>
+        <li><code class="status">[]</code> RED (security): traversal <code>'../../secret'</code> → <code>forbidden</code>; <strong>symlink</strong> inside <code>.pid</code> → outside file → <code>forbidden</code>; <code>resolveAsset('default','settings.json')</code> → <code>forbidden</code>.</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> green; re-run <code>pid-settings.repo.test.ts</code> after the resolver extraction.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 2 until every box is checked</strong>, including the symlink and default-reserved tests. Loop until green.</div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Daemon HTTP routes + secure streaming + CSP <span class="pill">HTTP boundary</span></h3>
+      <p>Expose <code>GET /projects/:id/pid-apps</code> and <code>GET /projects/:id/pid-apps/:appId/*</code> with pre-fs traversal rejection (after decode), streaming + <code>nosniff</code> + strict per-response CSP, mounted on the projects router. Refactor <code>api.ts</code> to the shared <code>validateRelPath</code>.</p>
+
+      <h4>1. Routes (mirror pid-settings exactly)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Export <code>createApp(run: RunPromise)</code> factory (injectable runtime → route tests use <code>PidAppsRepoTest</code> without <code>appRuntime</code>) and keep the live <code>const app = createApp(...)</code> export, exactly like <code>pid-settings.routes.ts</code>.</li>
+        <li><code class="status">[]</code> Define a <strong>local</strong> <code>errorToStatus(e: PidAppError): 403 | 404 | 413</code> — do NOT reuse <code>fileBrowser</code>'s (incompatible <code>FileError</code> type).</li>
+        <li><code class="status">[]</code> List route: <code>listApps</code> → JSON; map errors via the local <code>errorToStatus</code>.</li>
+        <li><code class="status">[]</code> Serve route: extract <code>rel</code> from the wildcard (<strong>confirm Hono 4.x</strong> <code>c.req.param('*')</code> vs path slice — else <code>rel</code> is empty and always serves index), <code>decodeURIComponent</code>, then <code>validateRelPath</code> BEFORE any fs touch; stream <code>Bun.file(absPath)</code>.</li>
+      </ul>
+
+      <h4>2. Headers + mount + dedup</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Set on <strong>every</strong> response (entry HTML and every sub-resource): <code>Content-Security-Policy: PID_APP_CSP</code>, <code>X-Content-Type-Options: nosniff</code>. Cache-Control: <code>no-cache, must-revalidate</code> for <code>.html</code> (drop-and-see), <code>private, max-age=30</code> for static assets.</li>
+        <li><code class="status">[]</code> Refactor <code>api.ts</code> extension route to call the shared <code>validateRelPath</code> (removes the copy-pasted guard; Fallow duplication clears).</li>
+        <li><code class="status">[]</code> Mount in <code>projects.routes.ts</code>: <code>.route('/', pidAppsApp)</code> beside <code>pidSettingsApp</code>.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Route tests drive the mounted app. <strong>Serve-path tests use <code>PidAppsRepoLive</code> over a real tmp dir</strong> (real <code>absPath</code>); list/error tests may use the in-memory stub — resolve the real-vs-synthetic ambiguity per TDD review.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>GET /projects/:id/pid-apps</code> → 200 JSON array; unknown id → 404; unsafe id → 403.</li>
+        <li><code class="status">[]</code> RED: <code>GET .../default/index.html</code> → 200, <code>Content-Type: text/html</code>, header asserts <code>nosniff</code> + CSP contains <code>default-src 'none'</code> and <code>connect-src 'none'</code>; a JS sub-resource ALSO carries CSP+nosniff.</li>
+        <li><code class="status">[]</code> RED (traversal): <code>..%2f..%2fsettings.json</code> AND <strong>double-encoded</strong> <code>..%252f..%252f</code> → 400/404, secret never in body.</li>
+        <li><code class="status">[]</code> RED (reserved): <code>GET .../extensions/manifest.json</code> → 404/403 (serve route blocks reserved appId independently of discovery).</li>
+        <li><code class="status">[]</code> RED (regression): existing <code>/:id/files</code>, <code>/:id/raw</code>, <code>/:id/git/*</code> still resolve after the mount (route-order); bare <code>.../default/</code> → index.html.</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts</code> and full <code>bun run test</code> green.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 3</strong> until headers, both traversal encodings, the reserved-appId block, and the route-order regression all pass.</div>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Web list hook + sandboxed iframe host <span class="pill">web · no RPC</span></h3>
+      <p>Fetch the per-project app list and render each app in a sandboxed iframe identical in posture to <code>ExtensionHost</code> — but with <strong>no postMessage/RPC bridge</strong>.</p>
+
+      <h4>1. Hook + host</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>usePidApps(projectId)</code>: <code>useQuery(['pid-apps', projectId])</code> over the <code>hc</code> client, mirroring <code>useExtensions.ts</code>; returns <code>PidApp[]</code>. Lower <code>staleTime</code> (e.g. 5s) so a freshly dropped app appears fast.</li>
+        <li><code class="status">[]</code> <code>PidAppHost</code>: <code>&lt;iframe sandbox="allow-scripts" src={`${apiBase()}/projects/${projectId}/pid-apps/${appId}/`} data-testid={`pid-app-host-${appId}`} className="w-full h-full border-0" /&gt;</code>. <strong>Must NOT import or call <code>mountRpcBridge</code></strong>, and must NOT route through <code>ExtensionHost</code>.</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>Unit tests. <strong>Specify the <code>apiBase()</code> mock first</strong> (wrapper prop or module mock) so the URL assertion is meaningful, not vacuous (TDD review).</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>PidAppHost</code> iframe has <code>sandbox="allow-scripts"</code> and <strong>NOT</strong> <code>allow-same-origin</code>; <code>src</code> derived from mocked <code>apiBase()</code> ends with <code>/projects/p/pid-apps/default/</code>; <code>data-testid='pid-app-host-default'</code>.</li>
+        <li><code class="status">[]</code> RED: assert <code>PidAppHost</code> source does not reference <code>mountRpcBridge</code>/<code>ExtensionHost</code> (no-bridge invariant).</li>
+        <li><code class="status">[]</code> RED: <code>usePidApps</code> uses <code>queryKey ['pid-apps','p']</code> AND hits the <code>/projects/p/pid-apps</code> URL — assert via fetch spy / msw, not queryKey alone.</li>
+        <li><code class="status">[]</code> <code>bun test apps/web/src/features/pid-apps/</code> green.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 4</strong> until the sandbox attr, the <code>apiBase()</code>-derived src, and the no-RPC invariant are all locked.</div>
+    </div>
+
+    <!-- PHASE 5 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Wire pid-app tabs into ProjectDashboard <span class="pill">user-visible payoff</span></h3>
+      <p>Surface discovered apps as per-project <code>pidapp:&lt;id&gt;</code> tabs reusing the existing ext-tab machinery. Independently shippable on top of Phase 4.</p>
+
+      <h4>1. Tabs</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> In <code>ProjectDashboard.tsx</code>: call <code>usePidApps(project.id)</code>; push a <code>pidapp:&lt;id&gt;</code> tab per app (alongside <code>ext:&lt;name&gt;</code>); extend the <code>TabKey</code> union to <code>`pidapp:${string}`</code>.</li>
+        <li><code class="status">[]</code> Add <code>pidapp:</code> to <code>projectTabIcon</code> (new <code>PIDAPP_ICON</code> in <code>tabDock.tsx</code>, a distinct "page" glyph) and to the <code>fillViewport</code> predicate (else the iframe renders at zero height).</li>
+        <li><code class="status">[]</code> Render a tabpanel per app containing <code>&lt;PidAppHost projectId={project.id} appId={app.id} /&gt;</code>, mirroring the <code>extPanels.map</code> block.</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p><strong>Match the repo's established convention</strong>: existing <code>ProjectDashboard.test.ts</code> is src-text (<code>readFileSync</code> grep), not a render harness. Keep that pattern but assert co-occurring, specific patterns so RED is meaningful (jsdom render-testing is NOT established here — do not introduce it mid-phase).</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: source contains <code>usePidApps(</code> called with <code>project.id</code>; a <code>pidapp:</code> tab push; <code>PidAppHost</code> in a panel; <code>fillViewport</code> block matches <code>/pidapp/</code>.</li>
+        <li><code class="status">[]</code> RED: tab/panel testids present (<code>project-tab-pidapp-</code>, <code>project-tab-panel-pidapp-</code>); empty-list path renders no pid-app tab; per-project scoping (hook called with <code>project.id</code>) asserted.</li>
+        <li><code class="status">[]</code> <code>bun test apps/web/src/features/projects/ProjectDashboard.test.ts</code> green; full <code>bun run test</code> green. (True render behavior is proven in Phase 6 e2e.)</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 5</strong> until the tab, panel, fillViewport, and scoping assertions pass and no existing tab-order test breaks.</div>
+    </div>
+
+    <!-- PHASE 6 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 6: End-to-end + docs <span class="pill">real daemon + browser</span></h3>
+      <p>Prove the whole path in a real daemon+browser: seed a project with <code>.pid/index.html</code>, open it, see the tab, load the sandboxed iframe, and confirm the serve route rejects traversal. Document the convention.</p>
+
+      <h4>1. Seed + spec + docs</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>global-setup.ts</code>: seed a workspace project (under <code>PID_PROJECTS_ROOT</code>; dir name a <strong>valid id</strong> — no dot, no uppercase — since <code>probeProject</code> skips dotfiles) containing <code>.pid/index.html</code> and <code>.pid/plan/index.html</code>; mirror the e2e-iframe extension seeding.</li>
+        <li><code class="status">[]</code> <code>pid-apps.spec.ts</code>: navigate to the seeded project (derive id from the dir name — the e2e manifest doesn't carry <code>.pid</code> paths), expect <code>project-tab-pidapp-default</code> visible, click, expect <code>[data-testid=pid-app-host-default]</code> to load the seeded HTML (assert visible body text); request-level: <code>GET /projects/:id/pid-apps</code> lists the app and <code>.../default/..%2f..%2fsettings.json</code> → 400/404.</li>
+        <li><code class="status">[]</code> <code>AGENTS.md</code>: document the <code>.pid/</code> convention (zero-config index.html, optional <code>pid-app.json</code>, sandbox/CSP/traversal posture, and the <strong>no-auth / tunnel-exposure</strong> caveat) beside the extension docs. Markdown only — no committed <code>.ts</code>/<code>.mjs</code> (trips the biome+fallow doc gate).</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>Playwright against the real daemon with the e2e stub. Known gotcha (memory): port conflicts + stub.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED first in <code>pid-apps.spec.ts</code> (mirror <code>extensions-iframe.spec.ts</code>): tab visible → iframe loads → body text asserted; traversal request rejected.</li>
+        <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1</code> + free ports (default 18787/15173 collide); run <code>bunx playwright test pid-apps</code> (or <code>./scripts/check-e2e.sh</code>).</li>
+        <li><code class="status">[]</code> Full pre-push gate green: floor → unit → e2e.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 6</strong> until the e2e spec passes locally and the full gate is green.</div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Run these to validate the entire feature is complete and the repo gates are green. (Confirm exact npm-script names against <code>package.json</code>; commands below reflect the repo's known conventions.)</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — daemon core + repo + routes unit/integration pass.</li>
+      <li><code class="status">[]</code> <code>bun test apps/web/src/features/pid-apps/</code> — web hook + host unit pass.</li>
+      <li><code class="status">[]</code> <code>bun run test</code> — full unit suite green (no regression in projects/extensions/pid-settings).</li>
+      <li><code class="status">[]</code> <code>bunx biome check .</code> — lint/format clean (pre-commit gate).</li>
+      <li><code class="status">[]</code> <code>fallow audit</code> — no new dead code, complexity (CRAP&lt;30 / cyclo&lt;5), or duplication on changed files (esp. that <code>validateRelPath</code>, the resolver, and <code>NAME_RE</code> are de-duplicated).</li>
+      <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1 bunx playwright test pid-apps</code> — end-to-end seed → tab → iframe → traversal-reject.</li>
+      <li><code class="status">[]</code> Manual smoke: drop a self-contained HTML (e.g. this plan) into a project's <code>.pid/myplan/index.html</code>, open the project, confirm the <code>pidapp:myplan</code> tab renders it; confirm project B shows no such tab.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely not possible, mark it <code>[f]</code> and move on.</strong></div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables <span class="pill">open decisions</span></h2>
+    <p class="legend">Surfaced rather than silently decided. Each has a recommended default; confirm before the affected phase.</p>
+
+    <details open>
+      <summary>1. Bare <code>.pid/index.html</code> "default" app — keep the convenience, or require <code>.pid/default/</code>?</summary>
+      <p class="qa-answer"><strong>Recommend: keep the bare-root convenience, guarded.</strong> It is the most literal reading of "drop a HTML website <em>there</em>." But its <code>appRoot</code> is the whole <code>.pid/</code> dir, which is wider than any other app — so it MUST enforce the <code>RESERVED_PID_ENTRIES</code> exclusion at resolve time (Phase 2). The stricter alternative — require a physical <code>.pid/default/</code> and drop the bare-root magic — gives a uniform "app = subdir with index.html" invariant with no wide-root special case. If the team prefers the simpler security invariant over the one-file convenience, switch to subdir-only; the core's <code>PidApp.root</code> field already makes the repo branchless either way.</p>
+    </details>
+    <details>
+      <summary>2. Global <code>~/.pid/</code> apps as top-level dashboard tabs?</summary>
+      <p class="qa-answer">The stated use cases are per-project, so this plan scopes to project tabs only. A homedir <code>~/.pid/</code> surfaced as top-level tabs could reuse the same pure core later. <strong>Deferred</strong> — not required now.</p>
+    </details>
+    <details>
+      <summary>3. Live discovery (fswatch + SSE) vs. React Query polling?</summary>
+      <p class="qa-answer">Current plan: low <code>staleTime</code> (~5s) + tab revisit; optionally a one-line manual refresh. An <code>fswatch.repo</code> exists and could emit an <code>ext:state-changed</code>-style SSE to refetch when a file is dropped while the dashboard is open. <strong>Recommend deferring</strong> live watch to a follow-up; 5s staleTime makes drop-and-see acceptable.</p>
+    </details>
+    <details>
+      <summary>4. CSP <code>'unsafe-inline'</code> for <code>script-src</code>/<code>style-src</code> — acceptable?</summary>
+      <p class="qa-answer"><strong>Yes, it is the pragmatic floor.</strong> Self-contained HTML (planf3 plans inline everything) cannot carry nonces, and untrusted dropped HTML can't be trusted to. The bound is the opaque-origin sandbox (no <code>allow-same-origin</code>) + <code>connect-src 'none'</code> (no exfiltration). Document the tradeoff at the constant so no one weakens it without understanding it.</p>
+    </details>
+    <details>
+      <summary>5. Asset size cap — 50 MB or tighter?</summary>
+      <p class="qa-answer"><strong>Recommend 50 MB</strong> to match the existing <code>/raw</code> <code>MAX_RAW_BYTES</code> (one constant, no surprise). Revisit only if a tighter HTML-specific ceiling is wanted.</p>
+    </details>
+    <details>
+      <summary>6. Should pid-apps ever opt into the iframe RPC bridge (fs/git capabilities)?</summary>
+      <p class="qa-answer"><strong>Ship capability-free.</strong> These are static sites/specs; no bridge = minimal attack surface. A future opt-in manifest could route through the existing <code>dispatchRpc</code> permission gate with <code>granted</code> empty by default — but only if a concrete interactive <code>.pid</code> tool needs daemon data. Out of scope here.</p>
+    </details>
+    <details>
+      <summary>7. <code>entry</code> restricted to <code>*.html</code>/<code>*.htm</code> only?</summary>
+      <p class="qa-answer"><strong>Yes.</strong> Allowing an SVG (or other script-capable type) as the app entry served as its native MIME bypasses the HTML CSP and can run scripts in some browsers. Constrain <code>entry</code> in the pure parser; non-HTML assets are still <em>served</em> as sub-resources, just never as the entry document.</p>
+    </details>
+    <details>
+      <summary>8. No authentication on the daemon — accepted exposure?</summary>
+      <p class="qa-answer">Same posture as the existing <code>/projects/:id/raw</code> and file browser: over a Cloudflare tunnel the routes are reachable by anyone with the URL, and the list endpoint enumerates <code>.pid/</code> contents. This is a <strong>known, pre-existing accepted risk</strong> — document it explicitly in <code>AGENTS.md</code> so the exposure is a conscious decision, and ensure no localhost-only assumption creeps into a test.</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Reused primitives (reuse, don't reinvent)</h3>
+    <table>
+      <thead><tr><th>Need</th><th>Reuse from</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Streaming + pre-fs traversal reject + nosniff</td><td><code>api.ts</code> extensions route (~L78–111)</td><td>Extract <code>validateRelPath</code>; both sites call it</td></tr>
+        <tr><td>Lexical path containment + MIME</td><td><code>projects.core.ts</code> <code>resolveProjectPath</code>, <code>mimeFromPath</code></td><td>Reuse; extend one MIME map for woff/map</td></tr>
+        <tr><td>Effect Layer + <code>createApp(run)</code> + <code>errorToStatus</code></td><td><code>pid-settings.repo.ts</code> / <code>pid-settings.routes.ts</code></td><td>Mirror; extract shared project-id resolver</td></tr>
+        <tr><td>Name validation</td><td><code>manifest.ts</code> <code>NAME_RE</code></td><td>Export &amp; import (no redefine)</td></tr>
+        <tr><td>Sandboxed iframe posture</td><td><code>ExtensionHost.tsx</code></td><td>Copy posture only; NO <code>mountRpcBridge</code></td></tr>
+        <tr><td>Per-project tabs</td><td><code>ProjectDashboard.tsx</code> <code>ext:</code> tabs</td><td>Add parallel <code>pidapp:</code> namespace</td></tr>
+        <tr><td>List hook</td><td><code>useExtensions.ts</code></td><td>Mirror as <code>usePidApps.ts</code></td></tr>
+        <tr><td>e2e seeding + iframe-load</td><td><code>global-setup.ts</code>, <code>extensions-iframe.spec.ts</code></td><td>Mirror for <code>.pid/</code> seed</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Rejected approach — overloading the extension platform</h3>
+    <p>We deliberately do <strong>not</strong> bend <code>loader.ts</code>/<code>registry.ts</code> to do on-demand, per-project, manifest-less discovery. The loader is boot-time, single-root, manifest-required, and carries the permission/RPC machinery — adding a second discovery mode would raise its complexity (Fallow CRAP) and entangle two lifecycles. A thin <code>pid-apps</code> feature that reuses the security/render primitives but owns a tiny pure core is simpler, more testable, and keeps each subsystem cohesive.</p>
+
+    <h3 id="dogfood">Dogfooding</h3>
+    <p>This plan is a single self-contained HTML file. Drop it at <code>&lt;project&gt;/.pid/pid-html-extensions/index.html</code> and, once the feature ships, it renders as a <code>pidapp:pid-html-extensions</code> tab inside the dashboard — the feature displaying its own spec. That round-trip is the acceptance demo.</p>
+
+    <h3>Engineering guardrails (this repo)</h3>
+    <ul>
+      <li><strong>TDD always</strong> — every behavior change ships a failing test first; the pre-commit tdd-gate enforces it. New <code>features/pid-apps</code> code satisfies the feature-test-floor (a test must exist in the new feature folder).</li>
+      <li><strong>ts-axioms</strong> — Functional Core / Imperative Shell (pure core + Effect-Layer shell), typed errors (<code>PidAppError</code>), Biome, Lefthook, bun; Fallow audit must stay green (the dedup must-fixes exist specifically to keep it green).</li>
+      <li><strong>CI gates</strong> — pre-commit: Biome staged-fix + tdd-gate. pre-push: floor → unit → e2e. Fresh worktree needs <code>bun install</code> before the unit gate runs. Keep docs to markdown (committed <code>.ts</code>/<code>.mjs</code> trips biome+fallow).</li>
+      <li><strong>Ship</strong> — one PR per phase, auto-merge on green (fall back to watch-CI + manual squash; GitHub auto-merge has been unreliable in this repo).</li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 760 120" role="img" aria-label="Six-phase pipeline from pure core to end-to-end">
+        <defs></defs>
+        <g>
+          <rect class="box-primary" x="8"  y="40" width="116" height="44" rx="8"/><text class="t-mono" x="22" y="58">1 core</text><text class="t-muted" x="22" y="74">pure rules</text>
+          <rect class="box" x="132" y="40" width="116" height="44" rx="8"/><text class="t-mono" x="146" y="58">2 repo</text><text class="t-muted" x="146" y="74">fs + realpath</text>
+          <rect class="box" x="256" y="40" width="116" height="44" rx="8"/><text class="t-mono" x="270" y="58">3 routes</text><text class="t-muted" x="270" y="74">serve + CSP</text>
+          <rect class="box" x="380" y="40" width="116" height="44" rx="8"/><text class="t-mono" x="394" y="58">4 web host</text><text class="t-muted" x="394" y="74">iframe</text>
+          <rect class="box" x="504" y="40" width="116" height="44" rx="8"/><text class="t-mono" x="518" y="58">5 tabs</text><text class="t-muted" x="518" y="74">dashboard</text>
+          <rect class="box-accent" x="628" y="40" width="124" height="44" rx="8"/><text class="t-mono" x="642" y="58">6 e2e+docs</text><text class="t-muted" x="642" y="74">prove it</text>
+        </g>
+        <path class="arrow" d="M124,62 L130,62"/><path class="arrow" d="M248,62 L254,62"/><path class="arrow" d="M372,62 L378,62"/><path class="arrow" d="M496,62 L502,62"/><path class="arrow" d="M620,62 L626,62"/>
+      </svg>
+      <figcaption>Six independently shippable PRs, ordered so each builds on the last; security must-fixes land in phases 2–3 before the UI surfaces anything.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-06-24 — Plan created</summary>
+      <p>Authored from a multi-agent research workflow (6 recon scouts → architect synthesis on Opus → 3 adversarial critics: security, ts-axioms, TDD). All blocking critic findings were folded into the phase checklists before first save: symlink/realpath guard, CSP-on-every-response, reserved-name check on the serve route, double-encoded traversal test, <code>validateRelPath</code>/<code>NAME_RE</code>/project-resolver de-duplication, local <code>errorToStatus</code>, the <code>default</code>-app wide-root guard, explicit <code>ProjectsRepoTest</code> fixture wiring, real-vs-synthetic <code>absPath</code> in route tests, <code>apiBase()</code> mock strategy, and the src-text test convention for <code>ProjectDashboard</code>.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>
