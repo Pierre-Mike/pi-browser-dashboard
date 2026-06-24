@@ -1,12 +1,20 @@
 import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
-import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "../../lib/tabDock"
+import {
+  EXT_ICON,
+  PIDAPP_ICON,
+  TAB_ICONS,
+  tabButtonClass,
+  tabDockNavClass,
+} from "../../lib/tabDock"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
 import { useExtensions } from "../extensions/useExtensions"
 import { LibraryPanel } from "../library/LibraryPanel"
+import { PidAppHost } from "../pid-apps/PidAppHost"
+import { usePidApps } from "../pid-apps/usePidApps"
 import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { useSessions } from "../sessions/useSessions"
@@ -22,15 +30,23 @@ type Props = { project: Project }
 type Counts = Record<SessionStateValue, number>
 
 type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "library" | "settings"
-// Extension-contributed project panels are namespaced (`ext:<name>`).
-type TabKey = StaticTabKey | `ext:${string}`
+// Extension-contributed project panels are namespaced (`ext:<name>`); per-project
+// pid-apps dropped into <project>/.pid/ are namespaced (`pidapp:<id>`).
+type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
+
+// Namespaced tab prefixes → their shared glyph (extension panels and pid-apps).
+const NAMESPACE_ICONS = [
+  ["ext:", EXT_ICON],
+  ["pidapp:", PIDAPP_ICON],
+] as const
 
 // Each project tab borrows the shared section glyph (see lib/tabDock) so a
 // "Terminal" / "Claude" / "Library" tab looks identical to the root dashboard.
 const projectTabIcon = (key: TabKey) => {
-  if (key.startsWith("ext:")) return EXT_ICON
+  const ns = NAMESPACE_ICONS.find(([prefix]) => key.startsWith(prefix))
+  if (ns) return ns[1]
   if (key === "sessions") return TAB_ICONS.activity
   return TAB_ICONS[key] ?? null
 }
@@ -88,6 +104,7 @@ const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> })
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
   const extensionsQ = useExtensions()
+  const pidAppsQ = usePidApps(project.id)
   const pull = useProjectGitPull(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
@@ -104,19 +121,24 @@ export const ProjectDashboard = ({ project }: Props) => {
       (e.scope !== "local" || e.projectPath === project.path),
   )
 
+  const pidApps = pidAppsQ.data ?? []
+
   const tabs: readonly Tab[] = useMemo(() => {
     const base: Tab[] = [
       { key: "terminal", label: "Terminal" },
       { key: "sessions", label: `Activity${sessions.length ? ` · ${sessions.length}` : ""}` },
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
-    base.push({ key: "files", label: "Files" })
-    base.push({ key: "claude", label: "Claude" })
-    base.push({ key: "library", label: "Library" })
-    base.push({ key: "settings", label: "Settings" })
-    for (const e of extPanels) base.push({ key: `ext:${e.name}`, label: e.name })
+    base.push(
+      { key: "files", label: "Files" },
+      { key: "claude", label: "Claude" },
+      { key: "library", label: "Library" },
+      { key: "settings", label: "Settings" },
+      ...extPanels.map((e): Tab => ({ key: `ext:${e.name}`, label: e.name })),
+      ...pidApps.map((a): Tab => ({ key: `pidapp:${a.id}`, label: a.label })),
+    )
     return base
-  }, [project.githubUrl, sessions.length, extPanels])
+  }, [project.githubUrl, sessions.length, extPanels, pidApps])
 
   const { tab = "sessions" } = route.useSearch()
   const navigate = route.useNavigate()
@@ -126,7 +148,8 @@ export const ProjectDashboard = ({ project }: Props) => {
     tab === "files" ||
     tab === "claude" ||
     tab === "library" ||
-    tab.startsWith("ext:")
+    tab.startsWith("ext:") ||
+    tab.startsWith("pidapp:")
 
   return (
     <div
@@ -331,6 +354,20 @@ export const ProjectDashboard = ({ project }: Props) => {
             className={tab === key ? "flex flex-col flex-1 min-h-0" : "hidden"}
           >
             <ExtensionHost manifest={e} projectId={project.id} cwd={project.path} />
+          </div>
+        )
+      })}
+
+      {pidApps.map((a) => {
+        const key: TabKey = `pidapp:${a.id}`
+        return (
+          <div
+            key={key}
+            role="tabpanel"
+            data-testid={`project-tab-panel-pidapp-${a.id}`}
+            className={tab === key ? "flex flex-col flex-1 min-h-0" : "hidden"}
+          >
+            <PidAppHost projectId={project.id} appId={a.id} />
           </div>
         )
       })}
