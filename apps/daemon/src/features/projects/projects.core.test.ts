@@ -12,6 +12,7 @@ import {
   parseGithubUrl,
   resolveProjectPath,
   sortEntries,
+  validateRelPath,
 } from "./projects.core"
 
 const ROOT = "/repos/demo"
@@ -81,6 +82,22 @@ describe("resolveProjectPath", () => {
 
   it("rejects NUL bytes", () => {
     expect(resolveProjectPath(ROOT, "src/\0bad")).toEqual({ ok: false, reason: "invalid" })
+  })
+})
+
+describe("validateRelPath", () => {
+  it("accepts ordinary relative paths and the empty string", () => {
+    expect(validateRelPath("")).toBe(true)
+    expect(validateRelPath("index.html")).toBe(true)
+    expect(validateRelPath("assets/app.js")).toBe(true)
+  })
+
+  it("rejects traversal, backslashes, and absolute paths", () => {
+    expect(validateRelPath("../secret")).toBe(false)
+    expect(validateRelPath("a/../b")).toBe(false)
+    expect(validateRelPath("..%2f")).toBe(false) // single-decoded traversal still contains ".."
+    expect(validateRelPath("a\\b")).toBe(false)
+    expect(validateRelPath("/etc/passwd")).toBe(false)
   })
 })
 
