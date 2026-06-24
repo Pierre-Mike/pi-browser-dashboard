@@ -76,19 +76,19 @@ const briefingMessage = (canvasPath: string): string =>
 const statusBadge: Record<SyncStatus, { label: string; cls: string }> = {
   connecting: {
     label: "connecting",
-    cls: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300",
+    cls: "bg-base-200 text-base-content/80",
   },
   open: {
     label: "live",
-    cls: "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200",
+    cls: "bg-success/15 text-success",
   },
   closed: {
     label: "reconnecting",
-    cls: "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200",
+    cls: "bg-warning/15 text-warning",
   },
   error: {
     label: "error",
-    cls: "bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200",
+    cls: "bg-error/15 text-error",
   },
 }
 
@@ -755,7 +755,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-add-box"
           onClick={addBox}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
         >
           + Box
         </button>
@@ -763,7 +763,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-add-link"
           onClick={addLink}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Add a link node"
         >
           + Link
@@ -772,7 +772,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-add-file"
           onClick={addFile}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Add a file reference node"
         >
           + File
@@ -782,7 +782,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-group"
           onClick={groupSelection}
           disabled={selectedCount < 2 || aGroupIsSelected}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Wrap the selected boxes under one group (select 2+ first)"
         >
           Group ({selectedCount})
@@ -792,7 +792,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-ungroup"
           onClick={ungroupSelection}
           disabled={!aGroupIsSelected}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Remove the selected group (its children stay)"
         >
           Ungroup
@@ -806,7 +806,7 @@ const CanvasInner = ({ session }: Props) => {
               onClick={() => setSelectionColor(c.key)}
               disabled={!canColor}
               title={`Color: ${c.label}`}
-              className="w-4 h-4 rounded-full border border-slate-400 disabled:opacity-30"
+              className="w-4 h-4 rounded-full border border-base-300 disabled:opacity-30"
               style={{
                 backgroundColor: c.fill === "transparent" ? "transparent" : c.fill,
                 borderColor: c.stroke,
@@ -819,7 +819,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-duplicate"
           onClick={onDuplicate}
           disabled={selectedCount === 0}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Duplicate selection (Cmd/Ctrl+D)"
         >
           Duplicate
@@ -829,7 +829,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-undo"
           onClick={onUndo}
           disabled={!canUndo}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Undo (Cmd/Ctrl+Z)"
         >
           Undo
@@ -839,7 +839,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-redo"
           onClick={onRedo}
           disabled={!canRedo}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Redo (Cmd/Ctrl+Shift+Z)"
         >
           Redo
@@ -848,7 +848,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-fit"
           onClick={onFit}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Fit to selection / content"
         >
           Fit
@@ -857,10 +857,8 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-readonly"
           onClick={() => setReadOnly((v) => !v)}
-          className={`rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 ${
-            readOnly
-              ? "bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200"
-              : "hover:bg-slate-100 dark:hover:bg-slate-800"
+          className={`rounded border border-base-300 px-2 py-0.5 ${
+            readOnly ? "bg-warning/15 text-warning" : "hover:bg-base-200"
           }`}
           title="Toggle read-only mode (no dragging or connecting)"
         >
@@ -870,10 +868,8 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-snap"
           onClick={() => setSnap((v) => !v)}
-          className={`rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 ${
-            snap
-              ? "bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200"
-              : "hover:bg-slate-100 dark:hover:bg-slate-800"
+          className={`rounded border border-base-300 px-2 py-0.5 ${
+            snap ? "bg-primary/15 text-primary" : "hover:bg-base-200"
           }`}
           title="Snap to grid while dragging"
         >
@@ -884,12 +880,12 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-lock"
           onClick={onToggleLock}
           disabled={selectedCount === 0}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Pin / unpin selected nodes"
         >
           Lock
         </button>
-        <span className="inline-flex border border-slate-300 dark:border-slate-700 rounded overflow-hidden">
+        <span className="inline-flex border border-base-300 rounded overflow-hidden">
           {(
             [
               { key: "left", label: "L" },
@@ -906,20 +902,20 @@ const CanvasInner = ({ session }: Props) => {
               data-testid={`canvas-align-${a.key}`}
               onClick={() => onAlign(a.key)}
               disabled={selectedCount < 2}
-              className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 border-r border-slate-300 dark:border-slate-700 last:border-r-0"
+              className="px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40 border-r border-base-300 last:border-r-0"
               title={`Align ${a.key}`}
             >
               {a.label}
             </button>
           ))}
         </span>
-        <span className="inline-flex border border-slate-300 dark:border-slate-700 rounded overflow-hidden">
+        <span className="inline-flex border border-base-300 rounded overflow-hidden">
           <button
             type="button"
             data-testid="canvas-distribute-h"
             onClick={() => onDistribute("horizontal")}
             disabled={selectedCount < 3}
-            className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 border-r border-slate-300 dark:border-slate-700"
+            className="px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40 border-r border-base-300"
             title="Distribute horizontally"
           >
             ↔
@@ -929,7 +925,7 @@ const CanvasInner = ({ session }: Props) => {
             data-testid="canvas-distribute-v"
             onClick={() => onDistribute("vertical")}
             disabled={selectedCount < 3}
-            className="px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+            className="px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40"
             title="Distribute vertically"
           >
             ↕
@@ -947,7 +943,7 @@ const CanvasInner = ({ session }: Props) => {
             e.stopPropagation()
           }}
           placeholder="search…"
-          className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 w-32"
+          className="border border-base-300 rounded px-1.5 py-0.5 bg-base-100 w-32"
         />
         {selectedEdgeId ? (
           <span className="flex items-center gap-1" data-testid="canvas-edge-toolbar">
@@ -964,7 +960,7 @@ const CanvasInner = ({ session }: Props) => {
                 e.stopPropagation()
               }}
               placeholder="arrow label"
-              className="border border-slate-300 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-900 w-32"
+              className="border border-base-300 rounded px-1.5 py-0.5 bg-base-100 w-32"
             />
             <button
               type="button"
@@ -975,12 +971,12 @@ const CanvasInner = ({ session }: Props) => {
                   prev.map((e) => (e.id === selectedEdgeId ? { ...e, label: undefined } : e)),
                 )
               }}
-              className="rounded border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="rounded border border-base-300 px-1.5 py-0.5 hover:bg-base-200"
               title="Clear arrow label"
             >
               clear
             </button>
-            <span className="inline-flex border border-slate-300 dark:border-slate-700 rounded overflow-hidden">
+            <span className="inline-flex border border-base-300 rounded overflow-hidden">
               {(["none", "forward", "both"] as ArrowDirection[]).map((a) => (
                 <button
                   key={a}
@@ -988,9 +984,7 @@ const CanvasInner = ({ session }: Props) => {
                   data-testid={`canvas-arrow-${a}`}
                   onClick={() => setEdgeArrow(a)}
                   className={`px-1.5 py-0.5 ${
-                    selectedEdgeArrow === a
-                      ? "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                    selectedEdgeArrow === a ? "bg-primary/15 text-primary" : "hover:bg-base-200"
                   }`}
                   title={`Arrow: ${a}`}
                 >
@@ -1004,7 +998,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-export"
           onClick={onExport}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Export as Obsidian .canvas"
         >
           Export
@@ -1013,7 +1007,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-import"
           onClick={onImportClick}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Import a .canvas file"
         >
           Import
@@ -1031,7 +1025,7 @@ const CanvasInner = ({ session }: Props) => {
           data-testid="canvas-brief-ai"
           onClick={() => void onBriefAi()}
           disabled={briefing}
-          className="rounded border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40"
+          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
           title="Send the AI a message telling it where to find this canvas so it can read/write live"
         >
           {briefing ? "Briefing…" : "Brief AI"}
@@ -1040,7 +1034,7 @@ const CanvasInner = ({ session }: Props) => {
           type="button"
           data-testid="canvas-reset"
           onClick={resetCanvas}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Clear all nodes and edges"
         >
           Clear
@@ -1052,28 +1046,25 @@ const CanvasInner = ({ session }: Props) => {
           {badge.label}
         </span>
         {lastUpdatedAt ? (
-          <span
-            className="text-[10px] text-slate-500 dark:text-slate-400"
-            title={`Last sync: ${lastUpdatedAt}`}
-          >
+          <span className="text-[10px] text-base-content/60" title={`Last sync: ${lastUpdatedAt}`}>
             synced
           </span>
         ) : null}
         {briefStatus ? (
           <span
             data-testid="canvas-brief-status"
-            className="text-[10px] text-slate-600 dark:text-slate-300 ml-auto"
+            className="text-[10px] text-base-content/80 ml-auto"
           >
             {briefStatus}
           </span>
         ) : null}
-        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">
+        <span className="text-[10px] text-base-content/60 ml-auto">
           dbl-click empty space to add a box · dbl-click box/arrow to edit · Del to remove · drag
           handles to connect
         </span>
       </div>
       <div
-        className="flex-1 min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950"
+        className="flex-1 min-h-0 rounded-lg border border-base-300 bg-base-100"
         onDrop={onDrop}
         onDragOver={onDragOver}
       >

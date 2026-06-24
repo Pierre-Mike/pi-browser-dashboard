@@ -44,15 +44,15 @@ export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
   const borderClass = palette.stroke
     ? "" // applied via inline style below
     : selected
-      ? "border-sky-500 ring-1 ring-sky-400"
-      : "border-slate-300 dark:border-slate-700"
+      ? "border-primary ring-1 ring-primary/60"
+      : "border-base-300"
 
   return (
     <div
       data-testid="canvas-node-box"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[120px] min-h-[36px] text-left ${borderClass}`}
+      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[120px] min-h-[36px] text-left ${borderClass}`}
       style={
         palette.stroke
           ? {
@@ -67,8 +67,8 @@ export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
         isVisible={selected}
         minWidth={120}
         minHeight={40}
-        lineClassName="border-sky-400"
-        handleClassName="bg-sky-500 border-white"
+        lineClassName="border-primary"
+        handleClassName="bg-primary border-base-100"
       />
       <NodeHandles />
       {editing ? (
@@ -86,7 +86,7 @@ export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
       ) : (
         <span
           data-testid="canvas-node-label"
-          className="text-slate-800 dark:text-slate-100 whitespace-pre-wrap break-words block leading-snug"
+          className="text-base-content whitespace-pre-wrap break-words block leading-snug"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: renderInlineMarkdown escapes input first
           dangerouslySetInnerHTML={{
             __html: initial ? renderInlineMarkdown(initial) : "Untitled",

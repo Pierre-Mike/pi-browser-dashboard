@@ -29,9 +29,7 @@ export const EditableGroupNode = ({ id, data, selected }: NodeProps<GroupNode>) 
 
   const colorKey = typeof data?.color === "string" ? data.color : ""
   const palette = colorFor(colorKey)
-  const defaultBorder = selected
-    ? "border-sky-500 bg-sky-50/30 dark:bg-sky-950/20"
-    : "border-slate-400 dark:border-slate-600 bg-slate-100/30 dark:bg-slate-800/20"
+  const defaultBorder = selected ? "border-primary bg-primary/10" : "border-base-300 bg-base-200/30"
 
   return (
     <div
@@ -53,15 +51,15 @@ export const EditableGroupNode = ({ id, data, selected }: NodeProps<GroupNode>) 
         isVisible={selected}
         minWidth={120}
         minHeight={80}
-        lineClassName="border-sky-400"
-        handleClassName="bg-sky-500 border-white"
+        lineClassName="border-primary"
+        handleClassName="bg-primary border-base-100"
       />
       <div
         onDoubleClick={(e) => {
           e.stopPropagation()
           setEditing(true)
         }}
-        className="absolute top-0 left-0 right-0 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-300 cursor-text select-none"
+        className="absolute top-0 left-0 right-0 px-2 py-1 text-[10px] uppercase tracking-wider text-base-content/80 cursor-text select-none"
       >
         {editing ? (
           <input

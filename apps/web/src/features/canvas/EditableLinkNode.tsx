@@ -33,7 +33,7 @@ const projectLocalUrl = (): string =>
 
 const cardClass = (palette: Palette, selected: boolean): string => {
   if (palette.stroke) return ""
-  return selected ? "border-sky-500 ring-1 ring-sky-400" : "border-slate-300 dark:border-slate-700"
+  return selected ? "border-primary/30 ring-1 ring-primary" : "border-base-300"
 }
 
 const cardStyle = (palette: Palette, selected: boolean): CSSProperties | undefined =>
@@ -55,22 +55,17 @@ const LinkBody = ({ url }: { url: string }) => (
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="block text-sky-700 dark:text-sky-300 underline truncate"
+        className="block text-primary underline truncate"
         onClick={(e) => e.stopPropagation()}
       >
         {hostOf(url)}
       </a>
     ) : (
-      <span
-        data-testid="canvas-link-placeholder"
-        className="text-slate-500 dark:text-slate-400 italic"
-      >
+      <span data-testid="canvas-link-placeholder" className="text-base-content/60 italic">
         (link)
       </span>
     )}
-    {url ? (
-      <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">{url}</div>
-    ) : null}
+    {url ? <div className="mt-1 text-[10px] text-base-content/60 truncate">{url}</div> : null}
   </>
 )
 
@@ -104,15 +99,15 @@ export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) =>
       data-testid="canvas-node-link"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${cardClass(palette, selected)}`}
+      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${cardClass(palette, selected)}`}
       style={cardStyle(palette, selected)}
     >
       <NodeResizer
         isVisible={selected}
         minWidth={160}
         minHeight={64}
-        lineClassName="border-sky-400"
-        handleClassName="bg-sky-500 border-white"
+        lineClassName="border-primary/30"
+        handleClassName="bg-primary border-white"
       />
       <NodeHandles />
       {editing ? (

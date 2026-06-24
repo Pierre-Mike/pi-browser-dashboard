@@ -36,13 +36,11 @@ const Inner = ({ raw }: Props) => {
     return (
       <div
         data-testid="file-body-canvas-error"
-        className="flex flex-col items-center justify-center h-full px-6 text-center gap-2 text-slate-500"
+        className="flex flex-col items-center justify-center h-full px-6 text-center gap-2 text-base-content/60"
       >
         <div className="text-4xl">🗺️</div>
-        <div className="text-sm font-medium text-rose-600 dark:text-rose-400">
-          Could not parse .canvas file
-        </div>
-        <div className="text-xs font-mono text-slate-500 dark:text-slate-400 max-w-md break-words">
+        <div className="text-sm font-medium text-error">Could not parse .canvas file</div>
+        <div className="text-xs font-mono text-base-content/60 max-w-md break-words">
           {parsed.error}
         </div>
       </div>
@@ -53,7 +51,7 @@ const Inner = ({ raw }: Props) => {
     return (
       <div
         data-testid="file-body-canvas-empty"
-        className="flex flex-col items-center justify-center h-full text-slate-500 gap-2"
+        className="flex flex-col items-center justify-center h-full text-base-content/60 gap-2"
       >
         <div className="text-4xl">🗺️</div>
         <div className="text-sm">Empty canvas — no nodes or edges to render.</div>
@@ -62,7 +60,7 @@ const Inner = ({ raw }: Props) => {
   }
 
   return (
-    <div data-testid="file-body-canvas" className="w-full h-full bg-slate-50 dark:bg-slate-950">
+    <div data-testid="file-body-canvas" className="w-full h-full bg-base-100">
       <ReactFlow
         nodes={nodes}
         edges={edges}

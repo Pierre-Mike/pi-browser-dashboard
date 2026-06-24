@@ -96,7 +96,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           </h2>
           {project ? (
             <span
-              className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[16rem]"
+              className="text-[11px] text-base-content/60 truncate max-w-[16rem]"
               title={project.path}
             >
               {project.path}
@@ -119,7 +119,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           className={SPAWN_INTENT_INPUT}
         />
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+          <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
             Effort
             <select
               data-testid="spawn-effort"
@@ -137,7 +137,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </select>
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">⌘/Ctrl + ⏎ to spawn</span>
+            <span className="text-[11px] text-base-content/60">⌘/Ctrl + ⏎ to spawn</span>
             <button
               type="button"
               onClick={handleClose}

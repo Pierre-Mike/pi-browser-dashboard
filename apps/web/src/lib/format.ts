@@ -22,54 +22,59 @@ export const cwdTail = (cwd: string, n = 2): string => {
 
 type Tone = { bg: string; text: string; dot: string; ring: string; label: string }
 
+// Status tones ride daisyUI semantic state tokens so they adapt across the
+// pidlight/piddark themes with no hand-written `dark:` pairs:
+//   blocked / needs_input → warning   working → info
+//   done → success                    failed → error
+//   idle / stopped        → base / neutral (muted, non-alarming)
 const PALETTE: Record<SessionStateValue, Tone> = {
   blocked: {
-    bg: "bg-amber-100 dark:bg-amber-900/30",
-    text: "text-amber-900 dark:text-amber-200",
-    dot: "bg-amber-500",
-    ring: "ring-amber-300/40",
+    bg: "bg-warning/15",
+    text: "text-warning",
+    dot: "bg-warning",
+    ring: "ring-warning/40",
     label: "Blocked",
   },
   needs_input: {
-    bg: "bg-amber-100 dark:bg-amber-900/30",
-    text: "text-amber-900 dark:text-amber-200",
-    dot: "bg-amber-500",
-    ring: "ring-amber-300/40",
+    bg: "bg-warning/15",
+    text: "text-warning",
+    dot: "bg-warning",
+    ring: "ring-warning/40",
     label: "Needs input",
   },
   working: {
-    bg: "bg-sky-100 dark:bg-sky-900/30",
-    text: "text-sky-900 dark:text-sky-200",
-    dot: "bg-sky-500 animate-pulse",
-    ring: "ring-sky-300/40",
+    bg: "bg-info/15",
+    text: "text-info",
+    dot: "bg-info animate-pulse",
+    ring: "ring-info/40",
     label: "Working",
   },
   idle: {
-    bg: "bg-slate-200 dark:bg-slate-800",
-    text: "text-slate-700 dark:text-slate-300",
-    dot: "bg-slate-400",
-    ring: "ring-slate-300/40",
+    bg: "bg-base-300",
+    text: "text-base-content/70",
+    dot: "bg-base-content/40",
+    ring: "ring-base-content/20",
     label: "Idle",
   },
   done: {
-    bg: "bg-emerald-100 dark:bg-emerald-900/30",
-    text: "text-emerald-900 dark:text-emerald-200",
-    dot: "bg-emerald-500",
-    ring: "ring-emerald-300/40",
+    bg: "bg-success/15",
+    text: "text-success",
+    dot: "bg-success",
+    ring: "ring-success/40",
     label: "Done",
   },
   failed: {
-    bg: "bg-rose-100 dark:bg-rose-900/30",
-    text: "text-rose-900 dark:text-rose-200",
-    dot: "bg-rose-500",
-    ring: "ring-rose-300/40",
+    bg: "bg-error/15",
+    text: "text-error",
+    dot: "bg-error",
+    ring: "ring-error/40",
     label: "Failed",
   },
   stopped: {
-    bg: "bg-slate-300 dark:bg-slate-700",
-    text: "text-slate-800 dark:text-slate-200",
-    dot: "bg-slate-500",
-    ring: "ring-slate-400/40",
+    bg: "bg-neutral/20",
+    text: "text-base-content",
+    dot: "bg-base-content/60",
+    ring: "ring-base-content/30",
     label: "Stopped",
   },
 }

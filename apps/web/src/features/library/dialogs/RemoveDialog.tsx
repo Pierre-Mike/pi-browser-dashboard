@@ -26,7 +26,7 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
       onClose={onClose}
       testId="library-remove-dialog"
     >
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-base-content/60">
         Remove{" "}
         <span className="font-mono">
           {entry.type}:{entry.name}
@@ -44,7 +44,9 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
       </label>
       {deleteLocal ? (
         <fieldset className="flex flex-col gap-1 pl-5">
-          <legend className="text-[11px] font-medium text-slate-500">From which scope?</legend>
+          <legend className="text-[11px] font-medium text-base-content/60">
+            From which scope?
+          </legend>
           <label className="flex items-center gap-2 text-xs">
             <input
               type="radio"
@@ -68,15 +70,15 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
         </fieldset>
       ) : null}
       {m.isError ? (
-        <div className="text-xs text-rose-600">
+        <div className="text-xs text-error">
           {m.error instanceof Error ? m.error.message : "remove failed"}
         </div>
       ) : null}
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-base-300">
         <button
           type="button"
           onClick={onClose}
-          className="text-xs rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="text-xs rounded px-2 py-1 hover:bg-base-200"
         >
           Cancel
         </button>
@@ -96,7 +98,7 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
               { onSuccess: () => onClose() },
             )
           }}
-          className="text-xs rounded px-3 py-1 bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-60"
+          className="text-xs rounded px-3 py-1 bg-error text-white hover:bg-error disabled:opacity-60"
         >
           {m.isPending ? "Removing…" : "Remove"}
         </button>

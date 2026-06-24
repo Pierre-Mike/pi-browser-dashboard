@@ -42,18 +42,18 @@ export const FilesTab = ({ short }: Props) => {
   const summary = useMemo(() => summarizeDiff(parsed), [parsed])
 
   if (q.isLoading) {
-    return <div className="px-1 py-4 text-sm text-slate-500">Loading files…</div>
+    return <div className="px-1 py-4 text-sm text-base-content/60">Loading files…</div>
   }
   if (q.isError) {
     return (
-      <div className="px-1 py-4 text-sm text-rose-600">
+      <div className="px-1 py-4 text-sm text-error">
         Failed to load files: {q.error instanceof Error ? q.error.message : "unknown error"}
       </div>
     )
   }
   if (!q.data?.changed) {
     return (
-      <div data-testid="files-empty" className="px-1 py-4 text-sm text-slate-500">
+      <div data-testid="files-empty" className="px-1 py-4 text-sm text-base-content/60">
         No file changes in this session's worktree.
       </div>
     )
@@ -61,19 +61,17 @@ export const FilesTab = ({ short }: Props) => {
 
   return (
     <div data-testid="files-tab" className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center gap-3 px-1 py-2 text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex items-center gap-3 px-1 py-2 text-[11px] text-base-content/60 border-b border-base-300">
         <span>
           {q.data.files.length} file{q.data.files.length === 1 ? "" : "s"}
         </span>
-        <span className="text-emerald-700 dark:text-emerald-300 font-mono">
-          +{summary.additions}
-        </span>
-        <span className="text-rose-700 dark:text-rose-300 font-mono">-{summary.deletions}</span>
+        <span className="text-success font-mono">+{summary.additions}</span>
+        <span className="text-error font-mono">-{summary.deletions}</span>
         {q.data.base ? (
-          <span className="font-mono text-slate-400 dark:text-slate-500">vs {q.data.base}</span>
+          <span className="font-mono text-base-content/60">vs {q.data.base}</span>
         ) : null}
         {q.data.truncated ? (
-          <span className="ml-auto text-amber-700 dark:text-amber-300">
+          <span className="ml-auto text-warning">
             diff truncated — open the worktree to see the full output
           </span>
         ) : null}
@@ -86,7 +84,7 @@ export const FilesTab = ({ short }: Props) => {
             ))}
           </div>
         ) : (
-          <div className="text-slate-500 text-xs px-2 py-2">No diff content.</div>
+          <div className="text-base-content/60 text-xs px-2 py-2">No diff content.</div>
         )}
       </div>
     </div>

@@ -70,11 +70,11 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
 
   return (
     <aside data-testid="sidebar" className={sidebarAsideClass(variant)}>
-      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5 border-b border-base-300 bg-base-100/90 backdrop-blur">
         <Link
           to="/"
           data-testid="sidebar-projects-link"
-          className="group inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300"
+          className="group inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-base-content/80 hover:text-primary"
         >
           <span
             aria-hidden="true"
@@ -85,13 +85,13 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
           <span className="group-hover:underline">Projects</span>
         </Link>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] tabular-nums text-slate-400 dark:text-slate-500">
+          <span className="text-[10px] tabular-nums text-base-content/60">
             {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
           </span>
           <NotifyToggle />
         </div>
       </div>
-      <div className="px-2 py-2 border-b border-slate-200 dark:border-slate-800">
+      <div className="px-2 py-2 border-b border-base-300">
         <button
           type="button"
           data-testid="sidebar-new-session"
@@ -102,9 +102,9 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
           <span className="text-base leading-none">+</span> New session
         </button>
       </div>
-      <nav className="flex-1 py-1 divide-y divide-slate-100 dark:divide-slate-900/70">
+      <nav className="flex-1 py-1 divide-y divide-base-300">
         {buckets.length === 0 ? (
-          <div className="px-3 py-4 text-xs text-slate-500">No projects yet.</div>
+          <div className="px-3 py-4 text-xs text-base-content/60">No projects yet.</div>
         ) : (
           buckets.map((b) => {
             const { visible, hiddenCount } = sessionWindow({
@@ -133,7 +133,7 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
       </nav>
       <Link
         to="/"
-        className="border-t border-slate-200 dark:border-slate-800 px-3 py-2 text-[11px] text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+        className="border-t border-base-300 px-3 py-2 text-[11px] text-base-content/60 hover:bg-base-200"
       >
         ← Back to project grid
       </Link>

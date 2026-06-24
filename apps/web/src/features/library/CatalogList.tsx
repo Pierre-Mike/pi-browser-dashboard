@@ -51,7 +51,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
 
   if (bundle.catalog.entries.filter((e) => e.type === category).length === 0) {
     return (
-      <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-800 rounded-lg">
+      <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg">
         No {category} registered in the catalog.
       </div>
     )
@@ -65,12 +65,12 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
         onChange={(e) => setQuery(e.target.value)}
         placeholder={`Search ${category}…`}
         data-testid={`library-search-${category}`}
-        className="rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs"
+        className="input input-bordered input-sm text-xs"
       />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
         <ul className="md:col-span-1 flex flex-col gap-1 min-h-0 overflow-auto pr-1">
           {entries.length === 0 ? (
-            <li className="text-xs text-slate-500 py-2">No matches.</li>
+            <li className="text-xs text-base-content/60 py-2">No matches.</li>
           ) : null}
           {entries.map((entry) => {
             const status = bundle.statusByName[`${entry.type}:${entry.name}`]
@@ -82,9 +82,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
                   data-testid={`library-entry-${entry.type}-${entry.name}`}
                   onClick={() => setSelected(entry.name)}
                   className={`w-full text-left text-xs rounded px-2 py-1.5 border ${
-                    active
-                      ? "border-sky-400 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700"
-                      : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                    active ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -92,7 +90,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
                     <StatusChips status={status} />
                   </div>
                   {entry.description ? (
-                    <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                    <div className="text-[11px] text-base-content/60 line-clamp-2 mt-0.5">
                       {entry.description}
                     </div>
                   ) : null}
@@ -103,7 +101,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
         </ul>
         <div className="md:col-span-2 min-h-0 overflow-auto">
           {selectedEntry === null ? (
-            <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-800 rounded-lg py-8 text-center">
+            <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-lg py-8 text-center">
               Select an entry to view details.
             </div>
           ) : (
@@ -161,9 +159,7 @@ const StatusChips = ({ status }: { status: StatusByScope | undefined }) => (
 const ScopeChip = ({ label, installed }: { label: string; installed: boolean }) => (
   <span
     className={`rounded px-1 py-0.5 ${
-      installed
-        ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200"
-        : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+      installed ? "bg-success/15 text-success" : "bg-base-200 text-base-content/60"
     }`}
   >
     {label}
@@ -175,18 +171,18 @@ const sourceBadge = (source: string): { label: string; tone: string } => {
   if (source.startsWith("/") || source.startsWith("~")) {
     return {
       label: "local",
-      tone: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300",
+      tone: "bg-base-200 text-base-content/80",
     }
   }
   if (source.includes("github.com") || source.includes("raw.githubusercontent.com")) {
     return {
       label: "GitHub",
-      tone: "bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200",
+      tone: "bg-secondary/15 text-secondary",
     }
   }
   return {
     label: "other",
-    tone: "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200",
+    tone: "bg-warning/15 text-warning",
   }
 }
 
@@ -218,9 +214,9 @@ const EntryDetail = ({
   return (
     <article
       data-testid={`library-detail-${entry.type}-${entry.name}`}
-      className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col gap-2"
+      className="rounded-md border border-base-300 bg-base-100 flex flex-col gap-2"
     >
-      <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
+      <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-base-300">
         <h4 className="text-sm font-semibold">{entry.name}</h4>
         <span
           className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${badge.tone}`}
@@ -230,32 +226,27 @@ const EntryDetail = ({
         <StatusChips status={status} />
       </header>
       <div className="px-3 pb-2 flex flex-col gap-2 text-xs">
-        {entry.description ? (
-          <p className="text-slate-600 dark:text-slate-400">{entry.description}</p>
-        ) : null}
+        {entry.description ? <p className="text-base-content/80">{entry.description}</p> : null}
         <div>
-          <span className="text-slate-500">source:</span>{" "}
+          <span className="text-base-content/60">source:</span>{" "}
           <span className="font-mono break-all">{entry.source}</span>
         </div>
         {entry.requires && entry.requires.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1">
-            <span className="text-slate-500">requires:</span>
+            <span className="text-base-content/60">requires:</span>
             {entry.requires.map((r) => (
-              <span
-                key={r}
-                className="font-mono text-[10px] rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5"
-              >
+              <span key={r} className="font-mono text-[10px] rounded bg-base-200 px-1.5 py-0.5">
                 {r}
               </span>
             ))}
           </div>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-base-300">
           <button
             type="button"
             data-testid={`library-action-install-global-${entry.name}`}
             onClick={() => onInstall("global")}
-            className="text-xs rounded px-2 py-1 bg-sky-600 text-white hover:bg-sky-500"
+            className="btn btn-sm btn-primary"
           >
             {globalInstalled ? "Reinstall global" : "Install global"}
           </button>
@@ -264,7 +255,7 @@ const EntryDetail = ({
             data-testid={`library-action-install-local-${entry.name}`}
             disabled={!canLocal}
             onClick={() => onInstall("local")}
-            className="text-xs rounded px-2 py-1 bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-sm btn-primary"
             title={canLocal ? undefined : "open a project to install locally"}
           >
             {localInstalled ? "Reinstall local" : "Install local"}
@@ -274,7 +265,7 @@ const EntryDetail = ({
             data-testid={`library-action-push-global-${entry.name}`}
             disabled={!globalInstalled || pushPending}
             onClick={() => onPush("global")}
-            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-sm btn-ghost border border-base-300"
             title={globalInstalled ? undefined : "install globally first"}
           >
             {pushPending ? "Pushing…" : "Push from global"}
@@ -284,7 +275,7 @@ const EntryDetail = ({
             data-testid={`library-action-push-local-${entry.name}`}
             disabled={!localInstalled || pushPending}
             onClick={() => onPush("local")}
-            className="text-xs rounded px-2 py-1 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-sm btn-ghost border border-base-300"
             title={
               canLocal
                 ? localInstalled
@@ -299,12 +290,12 @@ const EntryDetail = ({
             type="button"
             data-testid={`library-action-remove-${entry.name}`}
             onClick={onRemove}
-            className="text-xs rounded px-2 py-1 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 ml-auto"
+            className="btn btn-sm btn-ghost border border-error/40 text-error hover:bg-error/10 ml-auto"
           >
             Remove
           </button>
         </div>
-        {pushError ? <div className="text-[11px] text-rose-600">{pushError}</div> : null}
+        {pushError ? <div className="text-[11px] text-error">{pushError}</div> : null}
       </div>
     </article>
   )

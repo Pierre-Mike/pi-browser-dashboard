@@ -68,7 +68,7 @@ export const SessionContextMenu = ({ short, x, y, onClose }: Props) => {
       data-testid="session-context-menu"
       data-short={short}
       style={{ left: x, top: y, width: MENU_WIDTH }}
-      className="fixed z-50 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 text-xs"
+      className="fixed z-50 rounded-md border border-base-300 bg-base-100 shadow-lg py-1 text-xs"
     >
       <button
         type="button"
@@ -78,8 +78,8 @@ export const SessionContextMenu = ({ short, x, y, onClose }: Props) => {
         disabled={deleting}
         className={`w-full text-left px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
           confirm
-            ? "bg-rose-500 text-white hover:bg-rose-600 font-medium"
-            : "text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+            ? "bg-error text-error-content hover:bg-error/90 font-medium"
+            : "text-error hover:bg-error/15"
         }`}
         title="claude rm — remove session entirely; worktree cleaned if no uncommitted changes"
       >

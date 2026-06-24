@@ -89,9 +89,9 @@ export const DropZone = () => {
       {dragActive ? (
         <div
           data-testid="dropzone-overlay"
-          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-sky-500/10 border-4 border-dashed border-sky-400"
+          className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-primary/10 border-4 border-dashed border-primary/30"
         >
-          <div className="rounded-md bg-sky-600/90 px-4 py-2 text-white text-sm font-medium shadow-xl">
+          <div className="rounded-md bg-primary/90 px-4 py-2 text-white text-sm font-medium shadow-xl">
             Drop to upload — path will be copied and inserted
           </div>
         </div>
@@ -104,7 +104,7 @@ export const DropZone = () => {
           <div
             key={t.id}
             className={`rounded-md shadow-lg px-3 py-2 text-xs font-medium text-white ${
-              t.kind === "ok" ? "bg-emerald-600" : "bg-rose-600"
+              t.kind === "ok" ? "bg-success" : "bg-error"
             }`}
           >
             {t.text}

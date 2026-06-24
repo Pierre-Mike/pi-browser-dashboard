@@ -37,7 +37,7 @@ export const LibraryPanel = (props: Props) => {
 
   if (q.isLoading)
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex items-center gap-2 text-sm text-base-content/60">
         <span className="loading loading-spinner loading-sm" />
         Loading catalog…
       </div>
@@ -54,7 +54,7 @@ export const LibraryPanel = (props: Props) => {
 
   return (
     <div data-testid="library-panel" className="flex flex-col flex-1 min-h-0 gap-3">
-      <header className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <header className="flex flex-wrap items-baseline gap-2 text-xs text-base-content/60">
         <span className="font-mono">{bundle.catalogPath}</span>
         <CountChip n={bundle.catalog.entries.length} label="entries" />
         <span className="ml-auto flex items-center gap-2">
@@ -69,7 +69,7 @@ export const LibraryPanel = (props: Props) => {
           >
             + Add entry
           </button>
-          <span className="inline-flex items-center rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden bg-base-100">
+          <span className="inline-flex items-center rounded-lg border border-base-300 overflow-hidden bg-base-100">
             <select
               value={syncScope}
               onChange={(e) => setSyncScope(e.target.value as "all" | InstallScope)}
@@ -97,7 +97,7 @@ export const LibraryPanel = (props: Props) => {
                       },
                 )
               }
-              className="btn btn-sm btn-ghost normal-case border-l border-slate-300 dark:border-slate-700 rounded-none disabled:opacity-50"
+              className="btn btn-sm btn-ghost normal-case border-l border-base-300 rounded-none disabled:opacity-50"
             >
               {syncM.isPending ? (
                 <>
@@ -124,7 +124,7 @@ export const LibraryPanel = (props: Props) => {
         </div>
       ) : null}
       {syncM.data ? (
-        <div className="text-xs text-emerald-700 dark:text-emerald-300">
+        <div className="text-xs text-success">
           Sync: {syncM.data.outcomes.filter((o) => o.ok).length} ok /{" "}
           {syncM.data.outcomes.filter((o) => !o.ok).length} failed (of {syncM.data.outcomes.length})
         </div>
@@ -133,7 +133,7 @@ export const LibraryPanel = (props: Props) => {
         role="tablist"
         aria-label="Library categories"
         data-testid="library-tabs"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 overflow-x-auto"
+        className="flex items-center gap-1 border-b border-base-300 overflow-x-auto"
       >
         {TABS.map((t) => {
           const active = tab === t.key
@@ -148,8 +148,8 @@ export const LibraryPanel = (props: Props) => {
               onClick={() => setTab(t.key)}
               className={`px-3 py-1 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
                 active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-base-content/60 hover:text-base-content"
               }`}
             >
               {t.label}
@@ -175,7 +175,7 @@ export const LibraryPanel = (props: Props) => {
 
       <div className={tab === "agentic" ? "flex flex-col flex-1 min-h-0 gap-2" : "hidden"}>
         <nav className="flex items-center gap-1 text-xs">
-          <span className="text-slate-500 mr-1">Category:</span>
+          <span className="text-base-content/60 mr-1">Category:</span>
           {LIBRARY_CATEGORIES.map((cat) => {
             const active = agenticCategory === cat
             return (
@@ -222,7 +222,7 @@ const CountChip = ({ n, label }: { n: number; label: string }) => (
 )
 
 const HooksPlaceholder = () => (
-  <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-base-200/40">
+  <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg bg-base-200/40">
     Hooks editor lands in a follow-up. Until then, view configured hooks under the{" "}
     <span className="font-mono">Claude</span> tab.
   </div>

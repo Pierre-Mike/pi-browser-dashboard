@@ -27,17 +27,17 @@ const MessageBody = ({ message, loading }: { message: LastMessage | null; loadin
   if (message) {
     return (
       <>
-        <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <span className="text-[10px] uppercase tracking-wide text-base-content/60">
           {roleLabel[message.role]}
         </span>
-        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 p-3 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-72 overflow-y-auto">
+        <div className="rounded-lg border border-base-300 bg-base-200 p-3 text-sm text-base-content/80 whitespace-pre-wrap max-h-72 overflow-y-auto">
           {message.text}
         </div>
       </>
     )
   }
   const note = loading ? "Loading last message…" : "No messages yet."
-  return <div className="text-sm text-slate-400 dark:text-slate-500">{note}</div>
+  return <div className="text-sm text-base-content/60">{note}</div>
 }
 
 // Quick-reply surface for a session: show its most recent message and let the
@@ -63,7 +63,7 @@ export const SessionReplyModal = ({ open, session, onClose }: Props) => {
         >
           {tone.label}
         </span>
-        <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+        <span className="text-[11px] text-base-content/60 truncate">
           <span title={session.cwd}>{cwdTail(session.cwd)}</span>
           <span className="mx-1">·</span>
           <span title={session.updatedAt}>{ageStr(session.updatedAt)}</span>
@@ -81,7 +81,7 @@ export const SessionReplyModal = ({ open, session, onClose }: Props) => {
         params={{ id: short }}
         data-testid="reply-open-full"
         onClick={onClose}
-        className="text-xs text-sky-700 dark:text-sky-300 hover:underline self-start"
+        className="text-xs text-primary hover:underline self-start"
       >
         Open full session →
       </Link>

@@ -82,9 +82,7 @@ const FilePreview = ({ ref }: { ref: string }) => {
             ;(e.currentTarget as HTMLImageElement).style.display = "none"
           }}
         />
-        <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate">
-          {basename(ref)}
-        </span>
+        <span className="block text-[10px] text-base-content/60 truncate">{basename(ref)}</span>
       </div>
     )
   }
@@ -98,9 +96,7 @@ const FilePreview = ({ ref }: { ref: string }) => {
           type="application/pdf"
           className="flex-1 min-h-0 w-full"
         />
-        <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate">
-          {basename(ref)}
-        </span>
+        <span className="block text-[10px] text-base-content/60 truncate">{basename(ref)}</span>
       </div>
     )
   }
@@ -109,23 +105,20 @@ const FilePreview = ({ ref }: { ref: string }) => {
     return (
       <div className="flex flex-col h-full overflow-hidden">
         {mdError ? (
-          <span
-            data-testid="canvas-file-markdown-error"
-            className="text-rose-600 dark:text-rose-300 text-[11px]"
-          >
+          <span data-testid="canvas-file-markdown-error" className="text-error text-[11px]">
             {mdError}
           </span>
         ) : mdText === null ? (
-          <span className="text-slate-500 dark:text-slate-400 italic text-[11px]">loading…</span>
+          <span className="text-base-content/60 italic text-[11px]">loading…</span>
         ) : (
           <span
             data-testid="canvas-file-markdown"
-            className="text-slate-800 dark:text-slate-100 overflow-auto text-[11px] leading-snug"
+            className="text-base-content overflow-auto text-[11px] leading-snug"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: renderInlineMarkdown escapes input first
             dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(mdText.slice(0, 4000)) }}
           />
         )}
-        <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate mt-auto">
+        <span className="block text-[10px] text-base-content/60 truncate mt-auto">
           {basename(ref)}
         </span>
       </div>
@@ -137,19 +130,17 @@ const FilePreview = ({ ref }: { ref: string }) => {
       <div className="flex flex-col h-full">
         <span
           data-testid="canvas-file-name"
-          className="block font-medium text-slate-800 dark:text-slate-100 truncate"
+          className="block font-medium text-base-content truncate"
         >
           {basename(ref)}
         </span>
-        <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate mb-1">
-          {ref}
-        </span>
+        <span className="block text-[10px] text-base-content/60 truncate mb-1">{ref}</span>
         <button
           type="button"
           data-testid="canvas-file-open-canvas"
           onClick={onOpenCanvas}
           disabled={!loadable || openingCanvas}
-          className="rounded border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-[11px] disabled:opacity-40"
+          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-[11px] disabled:opacity-40"
         >
           {openingCanvas ? "Opening…" : "Open canvas"}
         </button>
@@ -159,13 +150,10 @@ const FilePreview = ({ ref }: { ref: string }) => {
 
   return (
     <>
-      <span
-        data-testid="canvas-file-name"
-        className="block font-medium text-slate-800 dark:text-slate-100 truncate"
-      >
+      <span data-testid="canvas-file-name" className="block font-medium text-base-content truncate">
         {basename(ref)}
       </span>
-      <span className="block text-[10px] text-slate-500 dark:text-slate-400 truncate">{ref}</span>
+      <span className="block text-[10px] text-base-content/60 truncate">{ref}</span>
     </>
   )
 }
@@ -210,12 +198,8 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
       data-testid="canvas-node-file"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[160px] min-h-[48px] text-left ${
-        palette.stroke
-          ? ""
-          : selected
-            ? "border-sky-500 ring-1 ring-sky-400"
-            : "border-slate-300 dark:border-slate-700"
+      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[160px] min-h-[48px] text-left ${
+        palette.stroke ? "" : selected ? "border-primary ring-1 ring-primary/60" : "border-base-300"
       }`}
       style={
         palette.stroke
@@ -231,8 +215,8 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
         isVisible={selected}
         minWidth={160}
         minHeight={48}
-        lineClassName="border-sky-400"
-        handleClassName="bg-sky-500 border-white"
+        lineClassName="border-primary"
+        handleClassName="bg-primary border-base-100"
       />
       <NodeHandles />
       {editing ? (
@@ -252,7 +236,7 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
             data-testid="canvas-file-browse"
             onMouseDown={(e) => e.preventDefault()}
             onClick={openPicker}
-            className="self-start rounded border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="self-start rounded border border-base-300 px-1.5 py-0.5 text-[11px] hover:bg-base-200"
           >
             Browse…
           </button>
@@ -267,10 +251,7 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
       ) : initial ? (
         <FilePreview ref={initial} />
       ) : (
-        <span
-          data-testid="canvas-file-placeholder"
-          className="text-slate-500 dark:text-slate-400 italic"
-        >
+        <span data-testid="canvas-file-placeholder" className="text-base-content/60 italic">
           (file)
         </span>
       )}

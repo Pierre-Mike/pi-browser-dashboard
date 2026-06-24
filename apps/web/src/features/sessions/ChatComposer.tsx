@@ -74,7 +74,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
 
   return (
     <div data-testid="chat-composer" className="pt-2 pb-4 px-1">
-      <div className="relative rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm focus-within:ring-2 focus-within:ring-sky-400 focus-within:border-sky-400 transition-shadow">
+      <div className="relative rounded-2xl border border-base-300 bg-base-100 shadow-sm focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-shadow">
         <textarea
           ref={taRef}
           data-testid="chat-textarea"
@@ -88,7 +88,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
           style={{ minHeight: "3.25rem" }}
         />
         <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between gap-2 pointer-events-none">
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 pointer-events-auto select-none">
+          <span className="text-[10px] text-base-content/60 pointer-events-auto select-none">
             Enter to send · Shift+Enter newline
           </span>
           <button
@@ -96,7 +96,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
             data-testid="chat-send"
             onClick={() => void send()}
             disabled={disabled || text.trim().length === 0}
-            className="pointer-events-auto rounded-full bg-sky-500 hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-500 text-white text-xs font-semibold px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex items-center gap-1.5"
+            className="pointer-events-auto rounded-full bg-primary hover:bg-primary/90 text-primary-content text-xs font-semibold px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex items-center gap-1.5"
             title="Send (Enter)"
           >
             <span>Send</span>
@@ -112,9 +112,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
         <div
           data-testid="chat-status"
           className={`mt-1 px-2 text-[11px] font-mono ${
-            status.startsWith("failed")
-              ? "text-rose-700 dark:text-rose-300"
-              : "text-emerald-700 dark:text-emerald-300"
+            status.startsWith("failed") ? "text-error" : "text-success"
           }`}
         >
           {status}

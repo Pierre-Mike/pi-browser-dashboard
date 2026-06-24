@@ -25,7 +25,7 @@ export const ClaudeConfigPanel = (props: Props) => {
 
   if (q.isLoading)
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex items-center gap-2 text-sm text-base-content/60">
         <span className="loading loading-spinner loading-sm" />
         Loading…
       </div>
@@ -40,7 +40,7 @@ export const ClaudeConfigPanel = (props: Props) => {
   const bundle = q.data
   if (!bundle)
     return (
-      <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex items-center gap-2 text-sm text-base-content/60">
         <span className="loading loading-spinner loading-sm" />
         No data
       </div>
@@ -59,14 +59,14 @@ export const ClaudeConfigPanel = (props: Props) => {
       data-testid={`claude-config-panel-${bundle.scope}`}
       className="flex flex-col flex-1 min-h-0 gap-3"
     >
-      <header className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <header className="flex flex-wrap items-baseline gap-2 text-xs text-base-content/60">
         <span className="font-mono">{bundle.root}</span>
         <CountChip n={bundle.hooks.length} label="hooks" />
         <CountChip n={bundle.skills.length} label="skills" />
         <CountChip n={bundle.hookScripts.length} label="scripts" />
       </header>
       {isEmpty ? (
-        <div className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-base-200/40">
+        <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg bg-base-200/40">
           No Claude config found at <span className="font-mono">{bundle.root}</span>.
         </div>
       ) : null}
@@ -74,7 +74,7 @@ export const ClaudeConfigPanel = (props: Props) => {
         role="tablist"
         aria-label="Claude config sections"
         data-testid="claude-config-sub-tabs"
-        className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800"
+        className="flex items-center gap-1 border-b border-base-300"
       >
         {SUB_TABS.map((t) => {
           const active = sub === t.key
@@ -89,8 +89,8 @@ export const ClaudeConfigPanel = (props: Props) => {
               onClick={() => setSub(t.key)}
               className={`px-3 py-1 text-xs font-medium border-b-2 -mb-px transition-colors ${
                 active
-                  ? "border-sky-500 text-sky-700 dark:text-sky-300"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-base-content/60 hover:text-base-content"
               }`}
             >
               {t.label}
@@ -125,46 +125,45 @@ const CountChip = ({ n, label }: { n: number; label: string }) => (
 )
 
 const eventTone: Record<string, string> = {
-  Stop: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200",
-  SubagentStop: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200",
-  PreToolUse: "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200",
-  PostToolUse: "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200",
-  Notification: "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200",
-  UserPromptSubmit: "bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200",
-  PreCompact: "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
-  SessionStart: "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
-  SessionEnd: "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
+  Stop: "bg-success/15 text-success",
+  SubagentStop: "bg-success/15 text-success",
+  PreToolUse: "bg-primary/15 text-primary",
+  PostToolUse: "bg-primary/15 text-primary",
+  Notification: "bg-warning/15 text-warning",
+  UserPromptSubmit: "bg-secondary/15 text-secondary",
+  PreCompact: "bg-base-200 text-base-content",
+  SessionStart: "bg-base-200 text-base-content",
+  SessionEnd: "bg-base-200 text-base-content",
 }
 
 const HookCard = ({ hook }: { hook: HookEntry }) => (
   <div
     data-testid="claude-config-hook"
-    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 p-2 flex flex-col gap-1 shadow-sm"
+    className="rounded-lg border border-base-300 bg-base-100 p-2 flex flex-col gap-1 shadow-sm"
   >
     <div className="flex flex-wrap items-center gap-1.5">
       <span
         className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${
-          eventTone[hook.event] ??
-          "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+          eventTone[hook.event] ?? "bg-base-200 text-base-content/80"
         }`}
       >
         {hook.event}
       </span>
       {hook.matcher ? (
-        <span className="text-[10px] font-mono rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5">
+        <span className="text-[10px] font-mono rounded bg-base-200 text-base-content/80 px-1.5 py-0.5">
           matcher: {hook.matcher}
         </span>
       ) : null}
       {hook.timeout !== undefined ? (
-        <span className="text-[10px] text-slate-500">timeout {hook.timeout}s</span>
+        <span className="text-[10px] text-base-content/60">timeout {hook.timeout}s</span>
       ) : null}
       {hook.async ? (
-        <span className="text-[10px] rounded bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200 px-1.5 py-0.5">
+        <span className="text-[10px] rounded bg-secondary/15 text-secondary px-1.5 py-0.5">
           async
         </span>
       ) : null}
       {hook.statusMessage ? (
-        <span className="text-[10px] italic text-slate-500 truncate max-w-[300px]">
+        <span className="text-[10px] italic text-base-content/60 truncate max-w-[300px]">
           "{hook.statusMessage}"
         </span>
       ) : null}
@@ -177,16 +176,16 @@ const HookCard = ({ hook }: { hook: HookEntry }) => (
 
 const HooksTab = ({ bundle }: { bundle: ScopeBundle }) => {
   if (bundle.hooks.length === 0 && bundle.hookScripts.length === 0) {
-    return <div className="text-sm text-slate-500">No hooks configured.</div>
+    return <div className="text-sm text-base-content/60">No hooks configured.</div>
   }
   return (
     <div className="flex flex-col gap-4">
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/60 mb-2">
           Configured hooks ({bundle.hooks.length})
         </h3>
         {bundle.hooks.length === 0 ? (
-          <div className="text-sm text-slate-500">No hooks declared in settings.json.</div>
+          <div className="text-sm text-base-content/60">No hooks declared in settings.json.</div>
         ) : (
           <div className="flex flex-col gap-2">
             {bundle.hooks.map((h, i) => (
@@ -197,17 +196,17 @@ const HooksTab = ({ bundle }: { bundle: ScopeBundle }) => {
       </section>
       {bundle.hookScripts.length > 0 ? (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-base-content/60 mb-2">
             Hook scripts ({bundle.hookScripts.length})
           </h3>
           <ul className="flex flex-col gap-1">
             {bundle.hookScripts.map((s: HookScript) => (
               <li
                 key={s.path}
-                className="text-xs flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 px-2 py-1"
+                className="text-xs flex items-center justify-between gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1"
               >
                 <span className="font-mono">{s.name}</span>
-                <span className="text-slate-500 tabular-nums">{s.bytes} B</span>
+                <span className="text-base-content/60 tabular-nums">{s.bytes} B</span>
               </li>
             ))}
           </ul>
@@ -225,7 +224,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
   const detailQ = useSkillDetail({ scope, projectId: projectId ?? null, skillId: selected })
 
   if (bundle.skills.length === 0) {
-    return <div className="text-sm text-slate-500">No skills installed.</div>
+    return <div className="text-sm text-base-content/60">No skills installed.</div>
   }
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0">
@@ -240,20 +239,20 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
                 onClick={() => setSelected(s.id)}
                 className={`w-full text-left text-xs rounded-lg px-2 py-1.5 border transition-colors ${
                   active
-                    ? "border-sky-400 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700 shadow-sm shadow-sky-200/50 dark:shadow-sky-900/30"
-                    : "border-slate-200 dark:border-slate-800 hover:bg-base-200/60 hover:border-slate-300 dark:hover:border-slate-700"
+                    ? "border-primary bg-primary/10 shadow-sm"
+                    : "border-base-300 hover:bg-base-200/60 hover:border-base-300"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{s.name}</span>
                   {s.hasEvals ? (
-                    <span className="badge badge-sm bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border-0">
+                    <span className="badge badge-sm bg-success/15 text-success border-0">
                       evals
                     </span>
                   ) : null}
                 </div>
                 {s.description ? (
-                  <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
+                  <div className="text-[11px] text-base-content/60 line-clamp-2 mt-0.5">
                     {s.description}
                   </div>
                 ) : null}
@@ -264,11 +263,11 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
       </ul>
       <div className="md:col-span-2 flex flex-col min-h-0">
         {selected === null ? (
-          <div className="text-sm text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg py-8 text-center bg-base-200/40">
+          <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-lg py-8 text-center bg-base-200/40">
             Select a skill to view its SKILL.md.
           </div>
         ) : detailQ.isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="flex items-center gap-2 text-sm text-base-content/60">
             <span className="loading loading-spinner loading-sm" />
             Loading…
           </div>
@@ -277,17 +276,15 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
             {detailQ.error instanceof Error ? detailQ.error.message : "failed"}
           </div>
         ) : detailQ.data ? (
-          <article className="flex flex-col min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 shadow-sm">
-            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-base-200/40 rounded-t-lg">
+          <article className="flex flex-col min-h-0 rounded-lg border border-base-300 bg-base-100 shadow-sm">
+            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-base-300 bg-base-200/40 rounded-t-lg">
               <h4 className="text-sm font-semibold">{detailQ.data.name}</h4>
-              <span className="text-[10px] text-slate-500 font-mono truncate">
+              <span className="text-[10px] text-base-content/60 font-mono truncate">
                 {detailQ.data.path}
               </span>
             </header>
             {detailQ.data.description ? (
-              <p className="px-3 pt-2 text-xs text-slate-600 dark:text-slate-400">
-                {detailQ.data.description}
-              </p>
+              <p className="px-3 pt-2 text-xs text-base-content/80">{detailQ.data.description}</p>
             ) : null}
             <div data-testid="claude-config-skill-body" className="flex-1 min-h-0 overflow-auto">
               <MarkdownView text={detailQ.data.body} />
@@ -300,8 +297,8 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
 }
 
 const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsSummary }) => (
-  <section className="rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden bg-base-100 shadow-sm">
-    <header className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 bg-base-200/40">
+  <section className="rounded-lg border border-base-300 overflow-hidden bg-base-100 shadow-sm">
+    <header className="flex items-center justify-between px-3 py-1.5 border-b border-base-300 bg-base-200/40">
       <span className="text-xs font-semibold">{title}</span>
       {settings.parseError ? (
         <span className="badge badge-sm badge-error">parse error: {settings.parseError}</span>
@@ -311,13 +308,13 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
       <div className="px-3 py-2 text-xs flex flex-col gap-1">
         {settings.permissions.defaultMode ? (
           <div>
-            <span className="text-slate-500">defaultMode:</span>{" "}
+            <span className="text-base-content/60">defaultMode:</span>{" "}
             <span className="font-mono">{settings.permissions.defaultMode}</span>
           </div>
         ) : null}
         {settings.permissions.allow?.length ? (
           <details>
-            <summary className="cursor-pointer text-slate-600 dark:text-slate-400">
+            <summary className="cursor-pointer text-base-content/80">
               allow ({settings.permissions.allow.length})
             </summary>
             <ul className="font-mono text-[11px] pl-3 pt-1 max-h-40 overflow-auto">
@@ -329,7 +326,7 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
         ) : null}
         {settings.permissions.deny?.length ? (
           <details>
-            <summary className="cursor-pointer text-slate-600 dark:text-slate-400">
+            <summary className="cursor-pointer text-base-content/80">
               deny ({settings.permissions.deny.length})
             </summary>
             <ul className="font-mono text-[11px] pl-3 pt-1 max-h-40 overflow-auto">
@@ -341,10 +338,8 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
         ) : null}
       </div>
     ) : null}
-    <details className="px-3 py-2 border-t border-slate-200 dark:border-slate-800">
-      <summary className="cursor-pointer text-xs text-slate-600 dark:text-slate-400">
-        Raw JSON
-      </summary>
+    <details className="px-3 py-2 border-t border-base-300">
+      <summary className="cursor-pointer text-xs text-base-content/80">Raw JSON</summary>
       <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-base-200/60 rounded p-2 mt-1 max-h-80 overflow-auto">
         {settings.raw}
       </pre>
@@ -354,7 +349,7 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
 
 const SettingsTab = ({ bundle }: { bundle: ScopeBundle }) => {
   if (!bundle.settings && !bundle.settingsLocal) {
-    return <div className="text-sm text-slate-500">No settings.json present.</div>
+    return <div className="text-sm text-base-content/60">No settings.json present.</div>
   }
   return (
     <div className="flex flex-col gap-3">
@@ -368,12 +363,12 @@ const SettingsTab = ({ bundle }: { bundle: ScopeBundle }) => {
 
 const ClaudeMdTab = ({ bundle }: { bundle: ScopeBundle }) => {
   if (!bundle.claudeMd) {
-    return <div className="text-sm text-slate-500">No CLAUDE.md found.</div>
+    return <div className="text-sm text-base-content/60">No CLAUDE.md found.</div>
   }
   return (
     <div
       data-testid="claude-config-claude-md"
-      className="flex-1 min-h-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-base-100 overflow-auto shadow-sm"
+      className="flex-1 min-h-0 rounded-lg border border-base-300 bg-base-100 overflow-auto shadow-sm"
     >
       <MarkdownView text={bundle.claudeMd} />
     </div>

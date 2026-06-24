@@ -235,14 +235,14 @@ export const TerminalView = (props: Props) => {
         className="flex-1 min-h-0 rounded-lg p-2 shadow-inner"
         style={{ backgroundColor: terminalTheme(scheme).background }}
       />
-      <div className="flex items-center gap-2 px-1 pt-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+      <div className="flex items-center gap-2 px-1 pt-1.5 text-[10px] text-base-content/60">
         <span
           className={`px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold ${
             status === "open"
-              ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200"
+              ? "bg-success/15 text-success"
               : status === "connecting"
-                ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                : "bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200"
+                ? "bg-base-200 text-base-content/80"
+                : "bg-error/15 text-error"
           }`}
         >
           {status}
@@ -252,7 +252,7 @@ export const TerminalView = (props: Props) => {
           data-testid="terminal-restart"
           onClick={onRestart}
           disabled={restarting}
-          className="ml-auto rounded border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-200 px-2 py-0.5 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50"
+          className="ml-auto rounded border border-error/30 text-error px-2 py-0.5 hover:bg-error/15 disabled:opacity-50"
           title="Kill the zellij session on the daemon and reconnect"
         >
           {restarting ? "Restarting…" : "Restart"}
@@ -260,7 +260,7 @@ export const TerminalView = (props: Props) => {
         <button
           type="button"
           onClick={() => setReconnectKey((k) => k + 1)}
-          className="rounded border border-slate-300 dark:border-slate-700 px-2 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title={reconnectTitle}
         >
           Reconnect
