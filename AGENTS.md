@@ -141,6 +141,43 @@ session.removed      ← id left roster   (derived from roster.changed)
 - TanStack Query owns server state. SSE patches `queryClient.setQueryData`.
 - POST handlers return the updated entity; SSE remains the truth.
 
+## Per-project pid-apps (`.pid/` HTML)
+
+Drop any static HTML site into a project's `<project>/.pid/` directory and the
+dashboard surfaces it as a sandboxed, project-scoped tab — zero config, no
+manifest. Use it to render specs/plans as HTML in-app or run a small static tool.
+
+Discovery (`features/pid-apps/pid-apps.core.ts`, pure):
+- A subdirectory of `.pid/` containing an `index.html` is an app; `appId` = the
+  dir name (must match `^[a-z0-9][a-z0-9._-]*$`).
+- A bare `.pid/index.html` is the implicit `default` app.
+- Reserved names are never apps: `extensions`, `extensions-state.json`,
+  `settings.json`, and the `default` dir name.
+- Optional `<app>/pid-app.json` (`{ title?, entry?, icon? }`) overrides
+  presentation only; `entry` is constrained to a single `*.html`/`*.htm` file.
+
+Daemon (`features/pid-apps/`, mounted on the projects router):
+- `GET /projects/:id/pid-apps` — list a project's apps.
+- `GET /projects/:id/pid-apps/:appId[/*]` — stream an asset (the entry when bare).
+
+Security (the dropped HTML is UNTRUSTED):
+- Rendered in `<iframe sandbox="allow-scripts">` only — opaque origin, no parent
+  DOM/storage/cookie access — with NO postMessage/RPC bridge.
+- Every served response carries a strict CSP (`default-src 'none'; … connect-src
+  'none'`), `X-Content-Type-Options: nosniff`, and `Cache-Control` (`no-cache`
+  for HTML).
+- Path access is guarded in layers: `validateRelPath` (pre-fs; rejects `..`, `\`,
+  leading `/`, including single-decoded double-encodes), lexical containment, the
+  default-app reserved-internal exclusion, and an `fs.realpath` containment check
+  that refuses symlinks escaping the app root.
+- ⚠ No auth: like `/projects/:id/raw`, these routes are reachable by anyone who
+  can reach the daemon (e.g. over the Cloudflare tunnel) — the list endpoint
+  enumerates `.pid/` and the serve route streams its files. Accepted, pre-existing
+  exposure; do not drop secrets into `.pid/`.
+
+Spec: `specs/pid-html-extensions.html`. A NEW lightweight feature, kept separate
+from the manifest-based extension platform (`platform/extensions/`).
+
 ## Frontend skeleton
 
 ```
