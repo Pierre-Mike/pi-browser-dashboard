@@ -18,8 +18,12 @@ bun.lockb
 apps/e2e/test-results/
 apps/e2e/playwright-report/
 
-# Local extensions scaffolded by `bun run pid-ext --local`
-.pid/
+# Local extensions/state under .pid/ stay local — EXCEPT this project's own
+# committed dogfood pid-app (.pid/index.html), which the dashboard renders as a
+# tab when pi-browser-dashboard is opened as a project (see the pid-apps feature
+# in AGENTS.md). Local `.pid/extensions/` and everything else stays ignored.
+.pid/*
+!.pid/index.html
 .fallow/
 
 # Stale Lefthook stubs — hooks install to .git/hooks (see lefthook.yml, #136)
