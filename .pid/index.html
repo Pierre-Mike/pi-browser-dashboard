@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi-browser-dashboard · .pid app</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --surface: #fff; --border: #d9dee8; --text: #1b2230;
+    --muted: #5b6577; --primary: #4f46e5; --primary-soft: #eae9fd; --accent: #0d9488;
+    --code-bg: #f1f3f9; --code: #243049;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e1117; --surface:#161b24; --border:#2a313d; --text:#e6e9ef;
+      --muted:#97a1b3; --primary:#8b85f7; --primary-soft:#1e1d3a; --accent:#2dd4bf;
+      --code-bg:#11161f; --code:#c9d3e6; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--font); }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 24px 64px; }
+  .tag { display:inline-block; background:var(--primary); color:#fff; font-size:.68rem; font-weight:700;
+    letter-spacing:.07em; text-transform:uppercase; padding:4px 10px; border-radius:999px; }
+  h1 { font-size: 1.9rem; letter-spacing:-.02em; margin: 14px 0 6px; }
+  .sub { color: var(--muted); font-size: 1.05rem; margin: 0 0 28px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 4px 22px; margin: 18px 0; box-shadow: 0 1px 2px rgba(16,24,40,.05), 0 10px 30px rgba(16,24,40,.05); }
+  h2 { font-size: 1.05rem; margin: 18px 0 8px; }
+  code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); color: var(--code);
+    padding: .12em .4em; border-radius: 5px; }
+  ul { padding-left: 1.2em; } li { margin: .3em 0; }
+  .meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+  .pill { font-size:.72rem; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:3px 10px; }
+  .accent { color: var(--accent); font-weight:600; }
+  footer { color: var(--muted); font-size: .82rem; margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <span class="tag">pid-app · default</span>
+  <h1>pi-browser-dashboard</h1>
+  <p class="sub">You're looking at this project's own <code>.pid/index.html</code>, rendered as a sandboxed tab — the <span class="accent">pid-apps</span> feature dogfooding itself.</p>
+
+  <div class="card">
+    <h2>What just happened</h2>
+    <p>This file lives at <code>&lt;repo&gt;/.pid/index.html</code>. When you open pi-browser-dashboard as a project in the dashboard, the daemon discovers it (zero config — presence of an <code>index.html</code> is enough), serves it under a strict Content-Security-Policy, and renders it here inside an <code>&lt;iframe sandbox="allow-scripts"&gt;</code>: an opaque origin with no access to the parent page and no RPC bridge.</p>
+  </div>
+
+  <div class="card">
+    <h2>Drop your own</h2>
+    <p>Anything you put under a project's <code>.pid/</code> becomes a tab:</p>
+    <ul>
+      <li><code>.pid/index.html</code> → a <code>default</code> tab (this one)</li>
+      <li><code>.pid/&lt;name&gt;/index.html</code> → a <code>&lt;name&gt;</code> tab</li>
+      <li>optional <code>.pid/&lt;name&gt;/pid-app.json</code> → <code>{ "title", "entry", "icon" }</code></li>
+    </ul>
+    <p>Ship specs and plans as HTML, or run a small self-contained tool. Untrusted by design, so it's sandboxed and capability-free.</p>
+  </div>
+
+  <p>Full design + as-built record: <code>specs/pid-html-extensions.html</code>. Convention reference: the <em>Per-project pid-apps</em> section of <code>AGENTS.md</code>.</p>
+
+  <div class="meta">
+    <span class="pill">zero-config</span>
+    <span class="pill">sandboxed</span>
+    <span class="pill">project-scoped</span>
+    <span class="pill">no RPC</span>
+  </div>
+
+  <footer>Edit this file and refresh the tab — there's no build step. This page is intentionally self-contained (the CSP blocks external requests).</footer>
+</main>
+</body>
+</html>
