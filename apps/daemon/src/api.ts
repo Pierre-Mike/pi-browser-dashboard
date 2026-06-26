@@ -8,6 +8,7 @@ import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as dropsRoute from "./features/drops/drops.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
+import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
 import { validateRelPath } from "./features/projects/projects.core"
@@ -67,6 +68,7 @@ const app = new Hono()
   .route("/claude-config", claudeConfigRoute.app)
   .route("/library", libraryRoute.app)
   .route("/uploads", uploadsRoute.app)
+  .route("/", globalSettingsRoute.app)
   .get("/extensions", (c) =>
     c.json(extensionRegistry.list().map((e) => extensionsRoute.extensionListEntry(e))),
   )

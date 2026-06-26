@@ -47,6 +47,24 @@ describe("FilesService.diffWorktree", () => {
     })
   })
 
+  test("uses the configured base candidates (global git settings) over the default", async () => {
+    // A repo whose default branch is `develop` on remote `upstream`: only that
+    // ref verifies. The default candidate list (origin/main, …) would never
+    // match, so a green diff proves the configured candidates flow through.
+    const { runner } = makeRunner([
+      (a) => (argsMatch(a, ["rev-parse", "--is-inside-work-tree"]) ? ok("true\n") : null),
+      (a) =>
+        argsMatch(a, ["rev-parse", "--verify", "--quiet", "upstream/develop"]) ? ok("ref\n") : null,
+      (a) => (argsMatch(a, ["diff", "--name-status", "-z", "upstream/develop"]) ? ok("") : null),
+      (a) => (argsMatch(a, ["ls-files", "--others", "--exclude-standard", "-z"]) ? ok("") : null),
+      (a) => (argsMatch(a, ["diff", "upstream/develop"]) ? ok("") : null),
+    ])
+    const svc = makeFilesService(runner, ["upstream/develop", "HEAD"])
+    const out = await Effect.runPromise(svc.diffWorktree("/wt"))
+    expect(out.base).toBe("upstream/develop")
+    expect(out.changed).toBe(false)
+  })
+
   test("collects tracked changes, untracked files, and the unified diff", async () => {
     const { runner } = makeRunner([
       (a) => (argsMatch(a, ["rev-parse", "--is-inside-work-tree"]) ? ok("true\n") : null),

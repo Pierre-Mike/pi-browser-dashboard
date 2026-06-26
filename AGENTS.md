@@ -397,6 +397,10 @@ The local hooks activate automatically via `package.json` `prepare` →
 cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
 `core.hooksPath`; wire new gates as `lefthook.yml` jobs.
 
+## Expertise Index
+
+- [apps/daemon/src/features/global-settings](apps/daemon/src/features/global-settings/CLAUDE.md) — Global settings file + UI: git/library/orchestration/network params formerly hard-coded; field→consumer wiring map.
+
 ## Engineering axioms (inherited)
 
 - **Effect-TS** for error handling, DI, concurrency — no `try/catch`, no mock frameworks.

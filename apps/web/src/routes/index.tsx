@@ -4,6 +4,7 @@ import { ClaudeConfigPanel } from "../features/claude-config/ClaudeConfigPanel"
 import { ExtensionHost } from "../features/extensions/ExtensionHost"
 import { ExtensionsPanel } from "../features/extensions/ExtensionsPanel"
 import { useExtensions } from "../features/extensions/useExtensions"
+import { GlobalSettingsPanel } from "../features/global-settings/GlobalSettingsPanel"
 import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { OrchestrationPanel } from "../features/projects/OrchestrationPanel"
@@ -22,6 +23,7 @@ const STATIC_TAB_KEYS = [
   "library",
   "extensions",
   "tunnel",
+  "settings",
 ] as const
 type StaticTabKey = (typeof STATIC_TAB_KEYS)[number]
 // Extension tabs are namespaced (`ext:<name>`) so they can never collide
@@ -38,6 +40,7 @@ const ICONS: Record<StaticTabKey, ReactNode> = {
   library: TAB_ICONS.library,
   extensions: TAB_ICONS.extensions,
   tunnel: TAB_ICONS.tunnel,
+  settings: TAB_ICONS.settings,
 }
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
@@ -50,6 +53,7 @@ const TABS: readonly { key: StaticTabKey; label: string }[] = [
   { key: "library", label: "Library" },
   { key: "extensions", label: "Extensions" },
   { key: "tunnel", label: "Tunnel" },
+  { key: "settings", label: "Settings" },
 ]
 
 export const Route = createFileRoute("/")({
@@ -229,6 +233,14 @@ function IndexPage() {
         className={tab === "tunnel" ? "flex flex-col gap-3" : "hidden"}
       >
         <TunnelPanel />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="dashboard-tab-panel-settings"
+        className={tab === "settings" ? "flex flex-col gap-3" : "hidden"}
+      >
+        <GlobalSettingsPanel />
       </div>
 
       {extTabs.map((e) => {
