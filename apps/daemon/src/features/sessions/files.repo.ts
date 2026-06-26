@@ -1,4 +1,6 @@
 import { Context, Data, Effect, Layer } from "effect"
+import { DEFAULT_GLOBAL_SETTINGS, gitBaseCandidates } from "../global-settings/global-settings.core"
+import { GlobalSettingsService } from "../global-settings/global-settings.repo"
 import {
   type FileChange,
   MAX_DIFF_BYTES,
@@ -66,10 +68,11 @@ const defaultGitRunner: GitRunner = async (args, cwd) => {
   return { stdout, stderr, code }
 }
 
-// Pick a base ref that exists in the worktree. We mirror the worktree workflow
-// described in AGENTS.md: branches are cut from origin/main, so that's our
-// preferred diff target. Fallbacks let the diff still render for unusual repos.
-const BASE_CANDIDATES = ["origin/main", "origin/master", "main", "master", "HEAD"] as const
+// Pick a base ref that exists in the worktree. The candidate order is derived
+// from the global git settings (gitBaseCandidates): branches are cut from
+// `<remote>/<branch>` (see AGENTS.md), so that's our preferred diff target.
+// Fallbacks let the diff still render for unusual repos.
+const DEFAULT_BASE_CANDIDATES = gitBaseCandidates(DEFAULT_GLOBAL_SETTINGS.git)
 
 const verifyRef = ({
   git,
@@ -88,9 +91,17 @@ const verifyRef = ({
     catch: () => new FilesError({ reason: "spawn_failed" }),
   })
 
-const pickBase = (git: GitRunner, cwd: string): Effect.Effect<string, FilesError> =>
+const pickBase = ({
+  git,
+  cwd,
+  candidates,
+}: {
+  git: GitRunner
+  cwd: string
+  candidates: readonly string[]
+}): Effect.Effect<string, FilesError> =>
   Effect.gen(function* () {
-    for (const ref of BASE_CANDIDATES) {
+    for (const ref of candidates) {
       const ok = yield* verifyRef({ git, cwd, ref })
       if (ok) return ref
     }
@@ -111,10 +122,15 @@ const runGit = ({
     catch: () => new FilesError({ reason: "spawn_failed" }),
   })
 
-const computeDiff = (
-  git: GitRunner,
-  worktreePath: string,
-): Effect.Effect<WorktreeDiff, FilesError> =>
+const computeDiff = ({
+  git,
+  worktreePath,
+  candidates,
+}: {
+  git: GitRunner
+  worktreePath: string
+  candidates: readonly string[]
+}): Effect.Effect<WorktreeDiff, FilesError> =>
   Effect.gen(function* () {
     // Reject paths that aren't actually a git worktree before invoking diff.
     const insideRes = yield* runGit({
@@ -126,7 +142,7 @@ const computeDiff = (
       return yield* Effect.fail(new FilesError({ reason: "not_a_worktree" }))
     }
 
-    const base = yield* pickBase(git, worktreePath)
+    const base = yield* pickBase({ git, cwd: worktreePath, candidates })
     // Use the merge-base so the diff captures committed-to-branch changes
     // PLUS uncommitted/working-tree edits, while ignoring commits the user
     // hasn't authored (e.g. unrelated main movement). `git diff <commit>`
@@ -167,11 +183,22 @@ const computeDiff = (
     }
   })
 
-export const makeFilesService = (gitRunner: GitRunner): FilesServiceApi => ({
-  diffWorktree: (worktreePath) => computeDiff(gitRunner, worktreePath),
+export const makeFilesService = (
+  gitRunner: GitRunner,
+  baseCandidates: readonly string[] = DEFAULT_BASE_CANDIDATES,
+): FilesServiceApi => ({
+  diffWorktree: (worktreePath) =>
+    computeDiff({ git: gitRunner, worktreePath, candidates: baseCandidates }),
 })
 
-export const FilesRepoLive: Layer.Layer<FilesService> = Layer.succeed(
+// Read the configured git settings at layer build so the diff base honors the
+// user's defaultBranch/remoteName. Settings changes are picked up on the next
+// daemon start (consistent with the other env/config-driven repos).
+export const FilesRepoLive: Layer.Layer<FilesService, never, GlobalSettingsService> = Layer.effect(
   FilesService,
-  makeFilesService(defaultGitRunner),
+  Effect.gen(function* () {
+    const settings = yield* GlobalSettingsService
+    const { git } = yield* settings.read()
+    return makeFilesService(defaultGitRunner, gitBaseCandidates(git))
+  }),
 )

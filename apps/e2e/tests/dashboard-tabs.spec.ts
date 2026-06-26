@@ -91,3 +91,21 @@ test("global terminal handshake passes fit-resolved cols/rows, not 80x24", async
   expect(cols).toBeGreaterThan(80)
   expect(rows).toBeGreaterThan(24)
 })
+
+// The Settings tab manages the global settings file
+// (<claudeConfigDir>/pid-dashboard/settings.json). Selecting it shows the
+// global-settings panel with the git default-branch field seeded from the
+// daemon's defaults.
+test("dashboard exposes a global Settings tab managing the settings file", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
+
+  const settingsTab = page.getByTestId("dashboard-tab-settings")
+  await expect(settingsTab).toBeVisible()
+  await expect(page.getByTestId("dashboard-tab-panel-settings")).toBeHidden()
+
+  await settingsTab.click()
+  await expect(settingsTab).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("global-settings-panel")).toBeVisible()
+  await expect(page.getByTestId("gs-git-defaultBranch")).toBeVisible()
+})

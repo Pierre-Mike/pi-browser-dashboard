@@ -1,5 +1,6 @@
 import { Layer, ManagedRuntime } from "effect"
 import { ClaudeConfigRepoLive } from "../features/claude-config/claude-config.repo"
+import { GlobalSettingsRepoLive } from "../features/global-settings/global-settings.repo"
 import { GhIssueClientLive } from "../features/issue-driver/gh-issue.repo"
 import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.repo"
 import { GitClientLive } from "../features/library/installer"
@@ -26,6 +27,8 @@ const LibraryLive = Layer.provide(
   Layer.mergeAll(ConfigRepoLive, ProjectsLive, GitClientLive),
 )
 const TunnelLive = Layer.provide(TunnelRepoLive, ConfigRepoLive)
+const GlobalSettingsLive = Layer.provide(GlobalSettingsRepoLive, ConfigRepoLive)
+const FilesLive = Layer.provide(FilesRepoLive, GlobalSettingsLive)
 const PidSettingsLive = Layer.provide(PidSettingsRepoLive, ProjectsLive)
 const PidAppsLive = Layer.provide(PidAppsRepoLive, ProjectsLive)
 const IssueDriverLive = Layer.provide(
@@ -43,7 +46,7 @@ const IssueDriverLive = Layer.provide(
 const AppLayer = Layer.mergeAll(
   SessionRegistryLive,
   ShellRepoLive,
-  FilesRepoLive,
+  FilesLive,
   ProjectsLive,
   ClaudeConfigLive,
   LibraryLive,
@@ -51,6 +54,7 @@ const AppLayer = Layer.mergeAll(
   TunnelLive,
   PidSettingsLive,
   PidAppsLive,
+  GlobalSettingsLive,
 )
 
 export const appRuntime = ManagedRuntime.make(AppLayer)
