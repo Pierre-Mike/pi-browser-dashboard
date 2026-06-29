@@ -14,13 +14,15 @@ export const parentOf = (path: string): string => {
   return i < 0 ? "" : path.slice(0, i)
 }
 
-// @pierre/trees ships its row label section as `flex: 0 1 auto`, so the name
-// box collapses to its truncated intrinsic width instead of filling the row —
-// MiddleTruncate then middle-truncates even short names (e.g. ".github" →
-// ".git…hub") with most of the row sitting empty. Letting the content section
-// grow makes it claim the free row width, so names only truncate when they
-// genuinely overflow. Injected via the lib's `unsafeCSS` escape hatch, which
-// lands in `@layer unsafe` and wins over the core `@layer base` rule.
+// Row layout: beta.4 ships every row with a trailing decoration lane
+// (`[data-item-section='decoration'] { flex: 1 1 0 }`) that grows to absorb the
+// free row width, leaving the name section at its natural width on the left.
+// We previously also forced `[data-item-section='content'] { flex-grow: 1 }` (a
+// workaround from an older lib version whose name box collapsed and
+// middle-truncated short names). On beta.4 that made content AND decoration both
+// claim the free space, so short names (".pid", "doc") sat in an over-wide box
+// and MiddleTruncate centered them. Dropped — the native decoration lane already
+// fills the row, matching the trees.software demo (same beta.4, no such hack).
 //
 // Safari fix: the lib's MiddleTruncate detects overflow with a size-container
 // query, `@container measure (height > 1lh)` (in @layer base), that drives both
@@ -39,8 +41,6 @@ export const parentOf = (path: string): string => {
 // fancy single marker. Non-WebKit engines skip the block and keep the lib's
 // original behaviour. Lands in `@layer unsafe`, overriding the `base` rules.
 export const TREE_UNSAFE_CSS = `
-[data-item-section='content'] { flex-grow: 1; }
-
 @supports (-webkit-hyphens: none) {
   [data-truncate-marker-cell],
   [data-truncate-content='overflow'] { display: none !important; }
