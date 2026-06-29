@@ -29,11 +29,14 @@ describe("parentOf", () => {
 })
 
 describe("TREE_UNSAFE_CSS", () => {
-  it("lets the row label section grow so short names stop middle-truncating", () => {
-    // Targets the lib's label box and overrides its `flex: 0 1 auto` so the
-    // name fills the free row width. Regression guard for the over-truncation.
-    expect(TREE_UNSAFE_CSS).toContain("[data-item-section='content']")
-    expect(TREE_UNSAFE_CSS).toContain("flex-grow: 1")
+  it("does NOT force the label section to grow (beta.4's decoration lane fills the row)", () => {
+    // An older lib version collapsed the name box, so we used to force
+    // `[data-item-section='content'] { flex-grow: 1 }`. beta.4 ships a growing
+    // decoration lane (`flex: 1 1 0`) that already fills the row; forcing content
+    // to grow too made both split the free space, so short names (".pid", "doc")
+    // sat in an over-wide box and MiddleTruncate centered them. Regression guard:
+    // stay off flex-grow and rely on the native layout (matches trees.software).
+    expect(TREE_UNSAFE_CSS).not.toContain("flex-grow")
   })
 
   it("falls back to native ellipsis under a Safari-only guard (lib's container-query truncation breaks in WebKit)", () => {
