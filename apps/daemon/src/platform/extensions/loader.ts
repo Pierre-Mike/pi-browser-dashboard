@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { sseBus } from "../sse-bus"
 import { createExtensionApi } from "./api"
 import type { ExtensionPermissions } from "./manifest"
@@ -31,8 +31,25 @@ export type LoadExtensionsResult = {
 
 const defaultGlobalRoot = (): string =>
   process.env.PID_EXT_GLOBAL_DIR ?? join(homedir(), ".pid/extensions")
+// Walk up from `start` to the nearest ancestor that looks like a project root
+// (has a `.pid` or `.git` entry). Falls back to `start` when none is found, so
+// launching the daemon from a subdir (e.g. `apps/daemon`) still resolves the
+// repo-root `.pid/extensions` where local extensions actually live.
+const hasProjectMarker = (dir: string): boolean =>
+  existsSync(join(dir, ".pid")) || existsSync(join(dir, ".git"))
+
+export const findProjectRoot = (start: string = process.cwd()): string => {
+  let dir = start
+  while (!hasProjectMarker(dir)) {
+    const parent = dirname(dir)
+    if (parent === dir) return start
+    dir = parent
+  }
+  return dir
+}
+
 const defaultLocalRoot = (): string =>
-  process.env.PID_EXT_LOCAL_DIR ?? join(process.cwd(), ".pid/extensions")
+  process.env.PID_EXT_LOCAL_DIR ?? join(findProjectRoot(), ".pid/extensions")
 
 const defaultImporter: ExtensionImporter = (p) => import(p)
 
