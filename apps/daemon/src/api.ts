@@ -11,6 +11,7 @@ import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
+import * as fileBrowserWriteRoute from "./features/projects/fileBrowserWrite.routes"
 import { validateRelPath } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
@@ -58,6 +59,7 @@ const app = new Hono()
   .get("/health", (c) => c.json({ ok: true }))
   .route("/sessions", sessionsRoute.app)
   .route("/projects", projectsRoute.app)
+  .route("/projects", fileBrowserWriteRoute.app)
   .route("/dispatch", dispatchRoute.app)
   .route("/drops", dropsRoute.app)
   .route("/events", eventsRoute.app)

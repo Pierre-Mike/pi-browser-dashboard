@@ -4,7 +4,14 @@ import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { ShellRepo } from "../../platform/shell.repo"
 import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.repo"
-import { errorToStatus, treeGitStatusAt } from "../projects/fileBrowser.routes"
+import {
+  errorToStatus,
+  type FsResponse,
+  runFsCreate,
+  runFsDelete,
+  runFsMove,
+  treeGitStatusAt,
+} from "../projects/fileBrowser.routes"
 import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.repo"
 import { SessionRegistry } from "./sessions.repo"
@@ -54,6 +61,29 @@ const sessionRoot = async (
   )
   if (!session) return undefined
   return session.worktreePath ?? session.cwd ?? null
+}
+
+// Shared shape for the POST /:id/fs/* session routes: resolve the worktree root
+// (404 not_found / no_worktree), read the JSON body tolerantly, dispatch the
+// guarded write op, and echo its mapped status.
+const sessionFsRoute = async (
+  // biome-ignore lint/suspicious/noExplicitAny: Hono Context generics vary per route
+  c: any,
+  {
+    runtime,
+    run,
+  }: {
+    runtime: SessionsRouteRuntime
+    run: (root: string, body: unknown) => Promise<FsResponse>
+  },
+): Promise<Response> => {
+  const id = c.req.param("id")
+  const root = await sessionRoot(runtime, id)
+  if (root === undefined) return c.json({ error: "not_found", short: id }, 404)
+  if (root === null) return c.json({ error: "no_worktree", short: id }, 404)
+  const body = await c.req.json().catch(() => ({}))
+  const { status, body: out } = await run(root, body)
+  return c.json(out, status)
 }
 
 export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
@@ -185,6 +215,12 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       }
       return new Response(Bun.file(absPath).stream(), { status: 200, headers })
     })
+    // Filesystem mutations for the session worktree, mirroring the projects
+    // /fs/* routes. Resolve the session root (not_found / no_worktree 404s) then
+    // dispatch the same guarded write ops.
+    .post("/:id/fs/create", (c) => sessionFsRoute(c, { runtime, run: runFsCreate }))
+    .post("/:id/fs/move", (c) => sessionFsRoute(c, { runtime, run: runFsMove }))
+    .post("/:id/fs/delete", (c) => sessionFsRoute(c, { runtime, run: runFsDelete }))
     .post("/:id/stop", async (c) => {
       const id = c.req.param("id")
       const result = await runtime.runPromiseExit(

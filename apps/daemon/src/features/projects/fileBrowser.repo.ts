@@ -5,8 +5,8 @@
 // All functions return a plain discriminated result — no Effect — so they can
 // be called from any async context without a runtime.
 
-import { readdir, readFile, stat } from "node:fs/promises"
-import { join } from "node:path"
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import {
   isSkippedTreeDir,
   looksBinary,
@@ -17,6 +17,12 @@ import {
 import type { FileError } from "./projects.repo"
 
 export type BrowserResult<A> = { ok: true; value: A } | { ok: false; error: FileError }
+
+// Write ops add one failure mode the read paths can't hit — a create/move whose
+// destination already exists. Kept local to the write surface so the read-side
+// FileError union stays untouched.
+export type WriteError = FileError | "exists"
+export type WriteResult<A> = { ok: true; value: A } | { ok: false; error: WriteError }
 
 export type FileTreeListing = {
   readonly paths: readonly string[]
@@ -121,6 +127,88 @@ export const readFileAt = async (
       content: isBinary ? "" : new TextDecoder("utf-8", { fatal: false }).decode(bytes),
     },
   }
+}
+
+// ── Write operations ──────────────────────────────────────────────────────
+// Mutating counterparts to the read ops above. Same traversal guard
+// (resolveProjectPath rejects "..", absolute, NUL). create/move return a
+// WriteResult (they can fail "exists"); the root itself ("") is never a valid
+// mutation target.
+
+const pathExists = async (abs: string): Promise<boolean> => {
+  try {
+    await stat(abs)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Create an empty file or a directory at `path`. Parent directories are created
+// as needed. Refuses to overwrite an existing path ("exists") so a create never
+// silently clobbers.
+export const createAt = async (
+  root: string,
+  { path: rel, kind }: { path: string; kind: "file" | "directory" },
+): Promise<WriteResult<{ path: string }>> => {
+  const resolved = resolveProjectPath(root, rel)
+  if (!resolved.ok || resolved.relPath === "") return { ok: false, error: "forbidden" }
+  if (await pathExists(resolved.absPath)) return { ok: false, error: "exists" }
+  try {
+    if (kind === "directory") {
+      await mkdir(resolved.absPath, { recursive: true })
+    } else {
+      await mkdir(dirname(resolved.absPath), { recursive: true })
+      await writeFile(resolved.absPath, "", { flag: "wx" })
+    }
+  } catch {
+    return { ok: false, error: "not_found" }
+  }
+  return { ok: true, value: { path: resolved.relPath } }
+}
+
+// Move/rename `from` → `to`. Both endpoints are traversal-guarded; the
+// destination's parent is created as needed. Refuses a missing source
+// ("not_found"), an occupied destination ("exists"), and moving a directory
+// into its own descendant ("forbidden").
+export const moveAt = async (
+  root: string,
+  { from: fromRel, to: toRel }: { from: string; to: string },
+): Promise<WriteResult<{ from: string; to: string }>> => {
+  const from = resolveProjectPath(root, fromRel)
+  const to = resolveProjectPath(root, toRel)
+  if (!from.ok || from.relPath === "") return { ok: false, error: "forbidden" }
+  if (!to.ok || to.relPath === "") return { ok: false, error: "forbidden" }
+  if (to.relPath === from.relPath || to.relPath.startsWith(`${from.relPath}/`)) {
+    return { ok: false, error: "forbidden" }
+  }
+  if (!(await pathExists(from.absPath))) return { ok: false, error: "not_found" }
+  if (await pathExists(to.absPath)) return { ok: false, error: "exists" }
+  try {
+    await mkdir(dirname(to.absPath), { recursive: true })
+    await rename(from.absPath, to.absPath)
+  } catch {
+    return { ok: false, error: "not_found" }
+  }
+  return { ok: true, value: { from: from.relPath, to: to.relPath } }
+}
+
+// Delete the file or directory at `path`. `recursive` must be true to remove a
+// non-empty directory; a non-recursive remove of a directory fails
+// ("not_a_file"). Never removes the root.
+export const removeAt = async (
+  root: string,
+  { path: rel, recursive }: { path: string; recursive: boolean },
+): Promise<BrowserResult<{ path: string }>> => {
+  const resolved = resolveProjectPath(root, rel)
+  if (!resolved.ok || resolved.relPath === "") return { ok: false, error: "forbidden" }
+  if (!(await pathExists(resolved.absPath))) return { ok: false, error: "not_found" }
+  try {
+    await rm(resolved.absPath, { recursive, force: false })
+  } catch {
+    return { ok: false, error: "not_a_file" }
+  }
+  return { ok: true, value: { path: resolved.relPath } }
 }
 
 export const resolveRawAt = async (root: string, rel: string): Promise<BrowserResult<RawFile>> => {

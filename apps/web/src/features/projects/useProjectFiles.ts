@@ -68,6 +68,54 @@ export const fileDownloadUrl = (resource: FileResource, path: string): string =>
   return url.toString()
 }
 
+// ── Filesystem mutations ────────────────────────────────────────────────────
+// POST to the daemon's /:id/fs/* endpoints behind the file-tree context menu,
+// inline rename, and drag-drop. Each returns a discriminated result so callers
+// can reconcile the @pierre/trees model (commit the optimistic mutation) or
+// surface the daemon's error reason on failure.
+
+export type FsResult = { ok: true } | { ok: false; status: number; error: string }
+
+const postFs = async (
+  resource: FileResource,
+  { op, body }: { op: "create" | "move" | "delete"; body: Record<string, unknown> },
+): Promise<FsResult> => {
+  let res: Response
+  try {
+    res = await fetch(`${resourceBase(resource)}/fs/${op}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    return { ok: false, status: 0, error: "network error" }
+  }
+  if (res.ok) return { ok: true }
+  let error = `HTTP ${res.status}`
+  try {
+    const j = (await res.json()) as { error?: unknown }
+    if (typeof j.error === "string") error = j.error
+  } catch {
+    // non-JSON body — keep the status-based message
+  }
+  return { ok: false, status: res.status, error }
+}
+
+export const fsCreate = (
+  resource: FileResource,
+  { path, kind }: { path: string; kind: "file" | "directory" },
+): Promise<FsResult> => postFs(resource, { op: "create", body: { path, kind } })
+
+export const fsMove = (
+  resource: FileResource,
+  { from, to }: { from: string; to: string },
+): Promise<FsResult> => postFs(resource, { op: "move", body: { from, to } })
+
+export const fsDelete = (
+  resource: FileResource,
+  { path, recursive }: { path: string; recursive: boolean },
+): Promise<FsResult> => postFs(resource, { op: "delete", body: { path, recursive } })
+
 // Legacy project-scoped URL wrappers — kept for existing call sites.
 export const projectRawUrl = (projectId: string, path: string): string =>
   fileRawUrl({ kind: "projects", id: projectId }, path)
