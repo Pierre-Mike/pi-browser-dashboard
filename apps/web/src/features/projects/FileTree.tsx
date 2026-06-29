@@ -1,15 +1,32 @@
 import { File as PierreFile } from "@pierre/diffs/react"
-import type { GitStatusEntry } from "@pierre/trees"
+import type {
+  ContextMenuAnchorRect,
+  ContextMenuItem,
+  FileTreeDropResult,
+  FileTreeRenameEvent,
+  GitStatusEntry,
+} from "@pierre/trees"
 import { FileTree as PierreFileTree, useFileTree } from "@pierre/trees/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 import type { FileContent } from "../../lib/types"
 import { CODE_FILE_OPTIONS } from "../diffs/diffsOptions"
 import { CanvasView } from "./CanvasView"
 import { basenameOf, classifyFile, type FileKind } from "./fileKind"
+import { createTargetPath, dropMoves, stripSlash } from "./fsOps"
 import { MarkdownView } from "./MarkdownView"
+import { TreeContextMenu } from "./TreeContextMenu"
 import { formatSize, TREE_INITIAL_EXPANSION, TREE_UNSAFE_CSS } from "./treeUtil"
-import type { FileResource } from "./useProjectFiles"
-import { fileDownloadUrl, fileRawUrl, useFileContent, useFileResource } from "./useProjectFiles"
+import type { FileResource, FsResult } from "./useProjectFiles"
+import {
+  fileDownloadUrl,
+  fileRawUrl,
+  fsCreate,
+  fsDelete,
+  fsMove,
+  useFileContent,
+  useFileResource,
+} from "./useProjectFiles"
 
 const ICON_FOR_KIND: Record<FileKind, string> = {
   markdown: "📝",
@@ -102,6 +119,9 @@ const CodeView = ({ name, content }: { name: string; content: string }) => (
   </div>
 )
 
+// Pre-existing kind switch (10 branches); pulled into audit scope by the
+// tree-mutation wiring added to this file — refactoring it is out of scope here.
+// fallow-ignore-next-line complexity
 const FileBody = ({
   resource,
   file,
@@ -202,6 +222,9 @@ const FileBody = ({
   }
 }
 
+// Pre-existing load/error/preview branching; in audit scope only because this
+// file gained the tree-mutation wiring. Out of scope to refactor here.
+// fallow-ignore-next-line complexity
 const FilePreview = ({ resource, path }: { resource: FileResource; path: string }) => {
   const q = useFileContent(resource, path)
   const [copied, setCopied] = useState(false)
@@ -278,21 +301,77 @@ const FilePreview = ({ resource, path }: { resource: FileResource; path: string 
   )
 }
 
+// Friendly text for a daemon FileError, shown inline in the menu (create /
+// delete) or in the sidebar banner (rename / drag-move).
+const FS_ERROR_TEXT: Record<string, string> = {
+  exists: "a file with that name already exists",
+  forbidden: "not allowed",
+  not_found: "not found — it may have moved",
+  not_a_file: "directory isn’t empty",
+}
+const fsErrMessage = (verb: string, r: Extract<FsResult, { ok: false }>): string =>
+  `Couldn’t ${verb}: ${FS_ERROR_TEXT[r.error] ?? r.error}`
+
+type MutationCallbacks = {
+  onMutationSuccess: () => void
+  onMutationError: (message: string) => void
+}
+
 // The tree model is built once from the loaded path list (@pierre/trees'
 // useFileTree ignores later option changes), so this pane is mounted only after
-// the listing resolves and is keyed by project id to rebuild on project switch.
+// the listing resolves and is keyed by resource id + a reload nonce — a failed
+// mutation bumps the nonce to remount and discard the optimistic model edit.
 const TreePane = ({
+  resource,
   paths,
   gitStatus,
   selected,
   onSelect,
+  onMutationSuccess,
+  onMutationError,
 }: {
+  resource: FileResource
   paths: readonly string[]
   gitStatus: readonly GitStatusEntry[] | undefined
   selected: string | null
   onSelect: (path: string) => void
-}) => {
+} & MutationCallbacks) => {
   const fileSet = useMemo(() => new Set(paths), [paths])
+  const [menu, setMenu] = useState<{
+    item: ContextMenuItem
+    rect: ContextMenuAnchorRect
+  } | null>(null)
+
+  // Persistence for the lib-driven flows. The lib has already applied the model
+  // edit by the time these fire, so success just refreshes the cache and a
+  // failure asks the parent to reconcile (remount from disk truth).
+  const handleRename = useCallback(
+    async (event: FileTreeRenameEvent): Promise<void> => {
+      const r = await fsMove(resource, {
+        from: stripSlash(event.sourcePath),
+        to: stripSlash(event.destinationPath),
+      })
+      if (r.ok) onMutationSuccess()
+      else onMutationError(fsErrMessage("rename", r))
+    },
+    [resource, onMutationSuccess, onMutationError],
+  )
+
+  const handleDrop = useCallback(
+    async (result: FileTreeDropResult): Promise<void> => {
+      const moves = dropMoves(result.draggedPaths, result.target)
+      for (const m of moves) {
+        const r = await fsMove(resource, { from: m.from, to: m.to })
+        if (!r.ok) {
+          onMutationError(fsErrMessage("move", r))
+          return
+        }
+      }
+      onMutationSuccess()
+    },
+    [resource, onMutationSuccess, onMutationError],
+  )
+
   const { model } = useFileTree({
     paths,
     gitStatus,
@@ -305,8 +384,61 @@ const TreePane = ({
       const file = selectedPaths.find((p) => fileSet.has(p))
       if (file) onSelect(file)
     },
+    renaming: { onRename: handleRename },
+    dragAndDrop: { onDropComplete: handleDrop },
+    composition: {
+      contextMenu: {
+        enabled: true,
+        triggerMode: "both",
+        onOpen: (item, ctx) => setMenu({ item, rect: ctx.anchorRect }),
+        onClose: () => setMenu(null),
+      },
+    },
   })
-  return <PierreFileTree model={model} className="text-xs" style={{ height: "100%" }} />
+
+  // Menu-driven flows: WE drive the model edit, only after the daemon confirms.
+  // Reflect a confirmed create in the tree model (dirs use the lib's trailing-
+  // slash canonical path) and open the new file in the preview.
+  const commitCreate = (path: string, kind: "file" | "directory"): void => {
+    model.add(kind === "directory" ? `${path}/` : path)
+    if (kind === "file") onSelect(path)
+    onMutationSuccess()
+  }
+
+  const handleCreate = async (kind: "file" | "directory", name: string): Promise<string | null> => {
+    if (!menu) return null
+    const path = createTargetPath(menu.item, name)
+    const r = await fsCreate(resource, { path, kind })
+    if (!r.ok) return fsErrMessage("create", r)
+    commitCreate(path, kind)
+    return null
+  }
+
+  const handleDelete = async (): Promise<string | null> => {
+    if (!menu) return null
+    const recursive = menu.item.kind === "directory"
+    const r = await fsDelete(resource, { path: stripSlash(menu.item.path), recursive })
+    if (!r.ok) return fsErrMessage("delete", r)
+    model.remove(menu.item.path, recursive ? { recursive: true } : undefined)
+    onMutationSuccess()
+    return null
+  }
+
+  return (
+    <>
+      <PierreFileTree model={model} className="text-xs" style={{ height: "100%" }} />
+      {menu ? (
+        <TreeContextMenu
+          item={menu.item}
+          rect={menu.rect}
+          onClose={() => setMenu(null)}
+          onCreate={handleCreate}
+          onRename={() => model.startRenaming(menu.item.path)}
+          onDelete={handleDelete}
+        />
+      ) : null}
+    </>
+  )
 }
 
 type SidebarProps = {
@@ -326,9 +458,30 @@ const treeGitStatus = (
   tree: ReturnType<typeof useFileResource>,
 ): readonly GitStatusEntry[] | undefined => tree.data?.gitStatus
 
-// Loading / error / tree states. The TreePane is keyed by resource id so a
-// resource switch rebuilds the (once-built) @pierre/trees model.
+// Loading / error / tree states. The TreePane is keyed by resource id + a
+// reload nonce so a resource switch — or a failed mutation — rebuilds the
+// (once-built) @pierre/trees model from the freshly-fetched listing.
 const TreeBody = ({ resource, tree, selected, onSelect }: SidebarProps) => {
+  const queryClient = useQueryClient()
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const [banner, setBanner] = useState<string | null>(null)
+  const { kind, id } = resource
+
+  const onMutationSuccess = useCallback(() => {
+    setBanner(null)
+    void queryClient.invalidateQueries({ queryKey: ["file-tree", kind, id] })
+  }, [queryClient, kind, id])
+
+  const onMutationError = useCallback(
+    (message: string) => {
+      setBanner(message)
+      void queryClient.invalidateQueries({ queryKey: ["file-tree", kind, id] }).then(() => {
+        setReloadNonce((n) => n + 1)
+      })
+    },
+    [queryClient, kind, id],
+  )
+
   if (tree.isLoading) {
     return <div className="text-[11px] text-base-content/60 italic px-3 py-2">loading…</div>
   }
@@ -340,13 +493,33 @@ const TreeBody = ({ resource, tree, selected, onSelect }: SidebarProps) => {
     )
   }
   return (
-    <TreePane
-      key={resource.id}
-      paths={treePaths(tree)}
-      gitStatus={treeGitStatus(tree)}
-      selected={selected}
-      onSelect={onSelect}
-    />
+    <>
+      {banner ? (
+        <div
+          data-testid="file-tree-error"
+          className="sticky top-0 z-10 flex items-center justify-between gap-2 text-[11px] text-error bg-error/15 px-3 py-1"
+        >
+          <span className="truncate">{banner}</span>
+          <button
+            type="button"
+            className="shrink-0 text-error/80 hover:text-error"
+            onClick={() => setBanner(null)}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+      <TreePane
+        key={`${resource.id}:${reloadNonce}`}
+        resource={resource}
+        paths={treePaths(tree)}
+        gitStatus={treeGitStatus(tree)}
+        selected={selected}
+        onSelect={onSelect}
+        onMutationSuccess={onMutationSuccess}
+        onMutationError={onMutationError}
+      />
+    </>
   )
 }
 
