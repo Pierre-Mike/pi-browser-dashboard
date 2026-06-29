@@ -46,11 +46,21 @@ export type NetworkSettings = {
   readonly tunnelPort: number
 }
 
+// A named, reusable set of skills (slash-commands) the spawn modal can apply in
+// one click. Stored globally so the same preset is offered in every project.
+export type SkillGroup = {
+  /** Display name, also the dedupe key. */
+  readonly name: string
+  /** Skill ids selected when this group is applied, in selection order. */
+  readonly skills: readonly string[]
+}
+
 export type GlobalSettings = {
   readonly git: GitSettings
   readonly library: LibrarySettings
   readonly orchestration: OrchestrationSettings
   readonly network: NetworkSettings
+  readonly skillGroups: readonly SkillGroup[]
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
@@ -71,6 +81,7 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
     appPort: 8787,
     tunnelPort: 5173,
   },
+  skillGroups: [],
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -122,11 +133,44 @@ const readNetwork = (raw: unknown, base: NetworkSettings): NetworkSettings => {
   }
 }
 
+// Validate a group's skill id list: non-empty strings only, trimmed, deduped,
+// order preserved. Anything else (missing, wrong-typed, blank) is dropped.
+const readSkillIds = (raw: unknown): readonly string[] => {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const v of raw) {
+    const id = str(v)?.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+// Validate the skill-groups list: each entry needs a non-empty name (the dedupe
+// key, first occurrence wins) and a skills list (coerced to [] when absent).
+// A non-array input leaves the base list untouched (so a patch can omit it).
+const readSkillGroups = (raw: unknown, base: readonly SkillGroup[]): readonly SkillGroup[] => {
+  if (!Array.isArray(raw)) return base
+  const seenNames = new Set<string>()
+  const out: SkillGroup[] = []
+  for (const entry of raw) {
+    if (!isObject(entry)) continue
+    const name = str(entry.name)
+    if (name === null || seenNames.has(name)) continue
+    seenNames.add(name)
+    out.push({ name, skills: readSkillIds(entry.skills) })
+  }
+  return out
+}
+
 const fromObject = (parsed: Record<string, unknown>, base: GlobalSettings): GlobalSettings => ({
   git: readGit(parsed.git, base.git),
   library: readLibrary(parsed.library, base.library),
   orchestration: readOrchestration(parsed.orchestration, base.orchestration),
   network: readNetwork(parsed.network, base.network),
+  skillGroups: readSkillGroups(parsed.skillGroups, base.skillGroups),
 })
 
 // Parse a settings.json text into fully-populated GlobalSettings. Empty,
@@ -148,6 +192,9 @@ export type GlobalSettingsPatch = {
   readonly library?: Partial<LibrarySettings>
   readonly orchestration?: Partial<OrchestrationSettings>
   readonly network?: Partial<NetworkSettings>
+  // A list, not a partial: providing it replaces the whole set; omitting it
+  // leaves the stored groups untouched.
+  readonly skillGroups?: readonly SkillGroup[]
 }
 
 // Apply a partial patch over current settings. Invalid field values are ignored

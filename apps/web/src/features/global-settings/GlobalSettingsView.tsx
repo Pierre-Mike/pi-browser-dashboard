@@ -58,6 +58,43 @@ export const GlobalSettingsView = ({ form }: Props) => (
           )
         })}
 
+        <fieldset data-testid="gs-section-skillGroups" className="flex flex-col gap-2 text-xs">
+          <legend className="px-0 font-medium text-base-content/80">Skill groups</legend>
+          {form.skillGroups.length === 0 ? (
+            <p data-testid="gs-skill-groups-empty" className="text-[11px] text-base-content/60">
+              No groups yet — save a selection as a group from the spawn modal.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {form.skillGroups.map((g) => (
+                <li
+                  key={g.name}
+                  data-testid="gs-skill-group"
+                  data-group={g.name}
+                  className="flex items-center justify-between gap-2 rounded-md border border-base-300 px-2 py-1"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-medium text-base-content/80">{g.name}</span>
+                    <span className="font-mono text-[11px] text-base-content/60">
+                      {g.skills.map((s) => `/${s}`).join(" ")}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="gs-skill-group-delete"
+                    data-group={g.name}
+                    onClick={() => form.removeSkillGroup(g.name)}
+                    disabled={form.saving}
+                    className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 rounded-md border border-base-300 px-2 py-0.5 text-[11px] normal-case text-base-content/80 hover:border-base-300"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </fieldset>
+
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"

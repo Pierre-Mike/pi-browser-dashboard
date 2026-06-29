@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { type Section, setField, settingsEqual } from "./fields"
-import type { GlobalSettings } from "./types"
+import { removeSkillGroup } from "./skillGroups"
+import type { GlobalSettings, SkillGroup } from "./types"
 import { useGlobalSettings, useUpdateGlobalSettings } from "./useGlobalSettings"
 
 // The on-disk location this form edits, relative to the resolved Claude config
@@ -13,6 +14,9 @@ export type GlobalSettingsForm = {
   // The working draft (local edits, not yet saved). Undefined until first load.
   readonly draft: GlobalSettings
   readonly setField: (args: { section: Section; key: string; raw: string }) => void
+  // Skill-group presets (created from the spawn modal); the panel lists + removes.
+  readonly skillGroups: readonly SkillGroup[]
+  readonly removeSkillGroup: (name: string) => void
   readonly dirty: boolean
   readonly saving: boolean
   readonly save: () => void
@@ -44,6 +48,11 @@ export const useGlobalSettingsForm = (): GlobalSettingsForm => {
     draft: effective as GlobalSettings,
     setField: ({ section, key, raw }) =>
       setDraft((prev) => (prev ? setField({ settings: prev, section, key, raw }) : prev)),
+    skillGroups: effective?.skillGroups ?? [],
+    removeSkillGroup: (name) =>
+      setDraft((prev) =>
+        prev ? { ...prev, skillGroups: removeSkillGroup(prev.skillGroups, name) } : prev,
+      ),
     dirty,
     saving: update.isPending,
     save: () => draft && update.mutate(draft),

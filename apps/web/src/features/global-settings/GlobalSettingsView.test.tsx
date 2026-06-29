@@ -15,6 +15,7 @@ const draft = {
     maxParallel: 10,
   },
   network: { projectsRoot: "/code", appPort: 8787, tunnelPort: 5173 },
+  skillGroups: [],
 }
 
 const form = (over: Partial<GlobalSettingsForm> = {}): GlobalSettingsForm => ({
@@ -22,6 +23,8 @@ const form = (over: Partial<GlobalSettingsForm> = {}): GlobalSettingsForm => ({
   error: false,
   draft,
   setField: () => {},
+  skillGroups: [],
+  removeSkillGroup: () => {},
   dirty: false,
   saving: false,
   save: () => {},
@@ -66,5 +69,19 @@ describe("GlobalSettingsView", () => {
 
   test("save button reflects saving state", () => {
     expect(render({ dirty: true, saving: true })).toContain("Saving…")
+  })
+
+  test("shows an empty hint when there are no skill groups", () => {
+    expect(render({ skillGroups: [] })).toContain('data-testid="gs-skill-groups-empty"')
+  })
+
+  test("lists each skill group with its skills and a delete control", () => {
+    const html = render({
+      skillGroups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms"] }],
+    })
+    expect(html).not.toContain('data-testid="gs-skill-groups-empty"')
+    expect(html).toContain('data-group="TDD flow"')
+    expect(html).toContain("/tdd /ts-axioms")
+    expect(html).toContain('data-testid="gs-skill-group-delete"')
   })
 })
