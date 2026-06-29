@@ -30,6 +30,7 @@ describe("parseGlobalSettings", () => {
         maxParallel: 8,
       },
       network: { projectsRoot: "/code", appPort: 9090, tunnelPort: 4000 },
+      skillGroups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms", "pr-automerge"] }],
     }
     expect(parseGlobalSettings(JSON.stringify(full))).toEqual(full)
   })
@@ -122,5 +123,72 @@ describe("serializeGlobalSettings", () => {
     const text = serializeGlobalSettings(DEFAULT_GLOBAL_SETTINGS)
     expect(text.endsWith("\n")).toBe(true)
     expect(parseGlobalSettings(text)).toEqual(DEFAULT_GLOBAL_SETTINGS)
+  })
+})
+
+describe("skillGroups", () => {
+  it("defaults to an empty list", () => {
+    expect(DEFAULT_GLOBAL_SETTINGS.skillGroups).toEqual([])
+    expect(parseGlobalSettings(null).skillGroups).toEqual([])
+  })
+
+  it("reads valid groups, preserving group and skill order", () => {
+    const parsed = parseGlobalSettings(
+      '{"skillGroups":[{"name":"TDD flow","skills":["tdd","ts-axioms"]},{"name":"Research","skills":["deep-research"]}]}',
+    )
+    expect(parsed.skillGroups).toEqual([
+      { name: "TDD flow", skills: ["tdd", "ts-axioms"] },
+      { name: "Research", skills: ["deep-research"] },
+    ])
+  })
+
+  it("ignores a non-array skillGroups (keeps default)", () => {
+    expect(parseGlobalSettings('{"skillGroups":"nope"}').skillGroups).toEqual([])
+    expect(parseGlobalSettings('{"skillGroups":{"name":"x"}}').skillGroups).toEqual([])
+  })
+
+  it("drops entries with no/blank name and non-object entries", () => {
+    const parsed = parseGlobalSettings(
+      '{"skillGroups":[42,{"skills":["a"]},{"name":"","skills":["a"]},{"name":"keep","skills":["a"]}]}',
+    )
+    expect(parsed.skillGroups).toEqual([{ name: "keep", skills: ["a"] }])
+  })
+
+  it("coerces a missing/invalid skills field to an empty list and drops blank skill ids", () => {
+    const parsed = parseGlobalSettings(
+      '{"skillGroups":[{"name":"empty"},{"name":"mixed","skills":["tdd","",42,"  ","ts-axioms"]}]}',
+    )
+    expect(parsed.skillGroups).toEqual([
+      { name: "empty", skills: [] },
+      { name: "mixed", skills: ["tdd", "ts-axioms"] },
+    ])
+  })
+
+  it("dedupes skills within a group and groups by name (first wins)", () => {
+    const parsed = parseGlobalSettings(
+      '{"skillGroups":[{"name":"dup","skills":["tdd","tdd","ts-axioms"]},{"name":"dup","skills":["other"]}]}',
+    )
+    expect(parsed.skillGroups).toEqual([{ name: "dup", skills: ["tdd", "ts-axioms"] }])
+  })
+
+  it("merge replaces the whole list when the patch provides skillGroups", () => {
+    const seeded = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
+      skillGroups: [{ name: "a", skills: ["x"] }],
+    })
+    expect(seeded.skillGroups).toEqual([{ name: "a", skills: ["x"] }])
+    const replaced = mergeGlobalSettings(seeded, {
+      skillGroups: [{ name: "b", skills: ["y"] }],
+    })
+    expect(replaced.skillGroups).toEqual([{ name: "b", skills: ["y"] }])
+    const cleared = mergeGlobalSettings(replaced, { skillGroups: [] })
+    expect(cleared.skillGroups).toEqual([])
+  })
+
+  it("merge leaves skillGroups untouched when the patch omits them", () => {
+    const seeded = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
+      skillGroups: [{ name: "a", skills: ["x"] }],
+    })
+    const next = mergeGlobalSettings(seeded, { git: { defaultBranch: "dev" } })
+    expect(next.skillGroups).toEqual([{ name: "a", skills: ["x"] }])
   })
 })

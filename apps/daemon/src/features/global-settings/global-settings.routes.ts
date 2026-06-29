@@ -17,6 +17,10 @@ const toPatch = (body: Record<string, unknown>): GlobalSettingsPatch => {
   for (const k of SECTIONS) {
     if (isObject(body[k])) patch[k] = body[k]
   }
+  // skillGroups is a list, not an object section: pass the array through so
+  // mergeGlobalSettings can validate and replace the stored set (entries are
+  // sanitized there; a non-array is ignored, leaving the current groups).
+  if (Array.isArray(body.skillGroups)) patch.skillGroups = body.skillGroups
   return patch as GlobalSettingsPatch
 }
 

@@ -11,6 +11,16 @@ throws and a bad PATCH can't corrupt stored state.
 Four sections, each a single source of truth for values formerly hard-coded
 across the daemon: `git`, `library`, `orchestration`, `network`.
 
+Plus one list, not a section: `skillGroups` — named `{name, skills[]}` presets
+the web spawn modal applies in one click (and saves the current selection into).
+Unlike the object sections, a PATCH that includes `skillGroups` **replaces the
+whole list** (omitting it leaves the stored set untouched); entries are
+sanitized field-by-field in `readSkillGroups` (blank/duplicate name dropped,
+name is the dedupe key, `skills` coerced to `[]` and deduped/trimmed). The
+routes allowlist passes the array through (`toPatch`), since it isn't an object
+section. Consumed only in the web client (`dispatch/useSpawnSkills` +
+`global-settings` panel list/delete) — no daemon-side reader.
+
 ## Consumer wiring (field → where it's read)
 
 A settings field is only meaningful once a consumer reads it. Wiring is being

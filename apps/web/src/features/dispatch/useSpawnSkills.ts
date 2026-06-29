@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { Project } from "../../lib/types"
 import { useGlobalClaudeConfig, useProjectClaudeConfig } from "../claude-config/useClaudeConfig"
+import type { SkillGroup } from "../global-settings/types"
+import { useGlobalSettings, useUpdateGlobalSettings } from "../global-settings/useGlobalSettings"
 import { useProjectPidSettings, useUpdateProjectPidSettings } from "../pid-settings/usePidSettings"
+import { applyGroupToSelection, groupSkills, upsertSkillGroup } from "./skillGroups"
 import { mergeSkillOptions } from "./skillOptions"
 import { DEFAULT_SKILL, resolveDefaultSkills, sameSkills, toggleSkill } from "./spawnSkills"
 
@@ -18,6 +21,13 @@ export type SpawnSkills = {
   readonly savePending: boolean
   // Whether default-management is available (a project is in scope).
   readonly canManageDefault: boolean
+  // Named skill presets from global settings, offered for one-click apply.
+  readonly groups: readonly SkillGroup[]
+  // Add a named group's skills to the current selection (additive union).
+  readonly applyGroup: (name: string) => void
+  // Persist the current selection as a named group in global settings (upsert).
+  readonly saveAsGroup: (name: string) => void
+  readonly savingGroup: boolean
 }
 
 // Owns the spawn modal's skill selection: merges global + project skills into
@@ -33,6 +43,10 @@ export const useSpawnSkills = (open: boolean, project: Project | null): SpawnSki
   const projectConfig = useProjectClaudeConfig(project?.id ?? "")
   const pidSettings = useProjectPidSettings(project?.id ?? "")
   const update = useUpdateProjectPidSettings(project?.id ?? "")
+  const globalSettings = useGlobalSettings()
+  const updateGlobal = useUpdateGlobalSettings()
+
+  const groups = useMemo(() => globalSettings.data?.skillGroups ?? [], [globalSettings.data])
 
   const projectDefaults = useMemo(
     () => resolveDefaultSkills(project !== null, pidSettings.data?.defaultSkills),
@@ -43,11 +57,13 @@ export const useSpawnSkills = (open: boolean, project: Project | null): SpawnSki
     () =>
       mergeSkillOptions({
         defaultSkill: DEFAULT_SKILL,
-        pinned: projectDefaults,
+        // Pin project defaults and every group's skills so their chips render
+        // even before (or without) a skill-dir scan returning them.
+        pinned: [...projectDefaults, ...groups.flatMap((g) => g.skills)],
         globalSkills: claudeConfig.data?.skills,
         projectSkills: project ? projectConfig.data?.skills : [],
       }),
-    [claudeConfig.data, projectConfig.data, project, projectDefaults],
+    [claudeConfig.data, projectConfig.data, project, projectDefaults, groups],
   )
 
   // Re-seed only on open; later default changes are handled by the sync effect
@@ -77,5 +93,13 @@ export const useSpawnSkills = (open: boolean, project: Project | null): SpawnSki
     saveAsDefault: () => update.mutate({ defaultSkills: selected }),
     savePending: update.isPending,
     canManageDefault: project !== null,
+    groups,
+    applyGroup: (name) => {
+      touchedRef.current = true
+      setSelected((prev) => applyGroupToSelection(prev, groupSkills(groups, name)))
+    },
+    saveAsGroup: (name) =>
+      updateGlobal.mutate({ skillGroups: upsertSkillGroup(groups, { name, skills: selected }) }),
+    savingGroup: updateGlobal.isPending,
   }
 }

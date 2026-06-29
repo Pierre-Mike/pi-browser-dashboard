@@ -12,6 +12,10 @@ const skills = (over: Partial<SpawnSkills> = {}): SpawnSkills => ({
   saveAsDefault: () => {},
   savePending: false,
   canManageDefault: true,
+  groups: [],
+  applyGroup: () => {},
+  saveAsGroup: () => {},
+  savingGroup: false,
   ...over,
 })
 
@@ -42,5 +46,27 @@ describe("SpawnSkillPicker", () => {
   test("the save button is disabled while the selection already is the default", () => {
     // isProjectDefault → disabled; not-default → enabled.
     expect(render({ isProjectDefault: false })).toContain('data-testid="spawn-set-default"')
+  })
+
+  test("renders the apply-group selector only when groups exist", () => {
+    expect(render({ groups: [] })).not.toContain('data-testid="spawn-apply-group"')
+    const html = render({ groups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms"] }] })
+    expect(html).toContain('data-testid="spawn-apply-group"')
+    expect(html).toContain("TDD flow (2)")
+  })
+
+  test("always offers a save-as-group control", () => {
+    const html = render()
+    expect(html).toContain('data-testid="spawn-group-name"')
+    expect(html).toContain('data-testid="spawn-save-group"')
+  })
+
+  test("save-as-group is disabled until a name is typed", () => {
+    // No name typed (initial empty input) → disabled regardless of selection.
+    expect(render({ selected: ["goal"] })).toMatch(/data-testid="spawn-save-group"[^>]*disabled/)
+  })
+
+  test("save-as-group reflects the saving state", () => {
+    expect(render({ savingGroup: true })).toContain("Saving…")
   })
 })

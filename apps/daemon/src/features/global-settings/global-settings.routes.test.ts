@@ -46,6 +46,38 @@ describe("global-settings routes", () => {
     expect(res.status).toBe(400)
   })
 
+  it("POST /settings persists a skillGroups list (replacing the whole set)", async () => {
+    const app = buildApp()
+    const res = await app.request("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        skillGroups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms", "pr-automerge"] }],
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.skillGroups).toEqual([
+      { name: "TDD flow", skills: ["tdd", "ts-axioms", "pr-automerge"] },
+    ])
+
+    const reread = await (await app.request("/settings")).json()
+    expect(reread.skillGroups).toEqual([
+      { name: "TDD flow", skills: ["tdd", "ts-axioms", "pr-automerge"] },
+    ])
+  })
+
+  it("POST /settings ignores a non-array skillGroups", async () => {
+    const app = buildApp()
+    const res = await app.request("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillGroups: "nope" }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).skillGroups).toEqual([])
+  })
+
   it("POST /settings ignores unknown keys and bad values without corrupting state", async () => {
     const app = buildApp()
     const res = await app.request("/settings", {

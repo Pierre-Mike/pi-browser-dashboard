@@ -13,6 +13,7 @@ const base: GlobalSettings = {
     maxParallel: 10,
   },
   network: { projectsRoot: "/code", appPort: 8787, tunnelPort: 5173 },
+  skillGroups: [],
 }
 
 describe("FIELD_GROUPS", () => {
