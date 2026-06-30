@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  GROUP_PILL_CLASS,
   SPAWN_INTENT_INPUT,
   SPAWN_MODAL_SHELL,
   SPAWN_SKILLS_CONTAINER,
@@ -63,6 +64,19 @@ describe("spawnModalLayout", () => {
       const cls = skillChipClass(false)
       expect(cls).toContain("btn-ghost")
       expect(cls).not.toContain("btn-primary")
+    })
+  })
+
+  describe("GROUP_PILL_CLASS", () => {
+    it("is a rounded pill button distinct from a primary skill chip", () => {
+      expect(GROUP_PILL_CLASS).toContain("btn")
+      expect(GROUP_PILL_CLASS).toContain("rounded-full")
+      expect(GROUP_PILL_CLASS).not.toContain("btn-primary")
+    })
+
+    it("lets a long group name wrap inside the pill", () => {
+      expect(GROUP_PILL_CLASS).toContain("max-w-full")
+      expect(GROUP_PILL_CLASS).toContain("whitespace-normal")
     })
   })
 })

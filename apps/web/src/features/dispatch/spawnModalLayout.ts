@@ -33,3 +33,11 @@ export const skillChipClass = (selected: boolean) =>
       ? "btn-primary shadow-sm shadow-primary/30"
       : "btn-ghost border border-base-300 text-base-content/80 hover:border-base-300"
   }`
+
+// Group apply pill: a click-to-apply chip for a named skill group (preset). A
+// secondary-tinted pill, visually distinct from the primary skill toggles so it
+// reads as an "add this set" action rather than a single-skill toggle. Same
+// wrap/shrink discipline as skillChipClass so a long group name can't force a
+// horizontal scrollbar.
+export const GROUP_PILL_CLASS =
+  "btn btn-xs h-auto min-h-0 max-w-full shrink whitespace-normal break-words gap-1 rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-1 text-left text-[11px] font-medium normal-case text-secondary transition hover:bg-secondary/20 hover:border-secondary/40"

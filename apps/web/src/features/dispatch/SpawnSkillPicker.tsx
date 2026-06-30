@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { SPAWN_SKILLS_CONTAINER, skillChipClass } from "./spawnModalLayout"
+import { GROUP_PILL_CLASS, SPAWN_SKILLS_CONTAINER, skillChipClass } from "./spawnModalLayout"
 import type { SpawnSkills } from "./useSpawnSkills"
 
 type Props = {
@@ -45,25 +45,26 @@ export const SpawnSkillPicker = ({ skills, disabled }: Props) => {
           )
         })}
       </div>
+      {skills.groups.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="shrink-0 text-[11px] text-base-content/60">Apply group:</span>
+          {skills.groups.map((g) => (
+            <button
+              key={g.name}
+              type="button"
+              data-testid="spawn-apply-group"
+              data-group={g.name}
+              title={g.skills.map((s) => `/${s}`).join(" ")}
+              onClick={() => skills.applyGroup(g.name)}
+              disabled={disabled}
+              className={GROUP_PILL_CLASS}
+            >
+              {g.name} ({g.skills.length})
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        {skills.groups.length > 0 ? (
-          <select
-            data-testid="spawn-apply-group"
-            value=""
-            disabled={disabled}
-            onChange={(e) => {
-              if (e.target.value) skills.applyGroup(e.target.value)
-            }}
-            className="select select-xs select-bordered normal-case"
-          >
-            <option value="">Apply group…</option>
-            {skills.groups.map((g) => (
-              <option key={g.name} value={g.name}>
-                {g.name} ({g.skills.length})
-              </option>
-            ))}
-          </select>
-        ) : null}
         <input
           data-testid="spawn-group-name"
           value={groupName}

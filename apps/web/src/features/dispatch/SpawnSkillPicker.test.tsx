@@ -48,11 +48,21 @@ describe("SpawnSkillPicker", () => {
     expect(render({ isProjectDefault: false })).toContain('data-testid="spawn-set-default"')
   })
 
-  test("renders the apply-group selector only when groups exist", () => {
+  test("renders an apply pill per group, only when groups exist", () => {
     expect(render({ groups: [] })).not.toContain('data-testid="spawn-apply-group"')
-    const html = render({ groups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms"] }] })
-    expect(html).toContain('data-testid="spawn-apply-group"')
+    const html = render({
+      groups: [
+        { name: "TDD flow", skills: ["tdd", "ts-axioms"] },
+        { name: "Research", skills: ["deep-research"] },
+      ],
+    })
+    // One clickable pill per group, labelled with name + skill count.
+    expect(html).toContain('data-group="TDD flow"')
     expect(html).toContain("TDD flow (2)")
+    expect(html).toContain('data-group="Research"')
+    expect(html).toContain("Research (1)")
+    // No <select> dropdown anymore.
+    expect(html).not.toContain("<select")
   })
 
   test("always offers a save-as-group control", () => {
