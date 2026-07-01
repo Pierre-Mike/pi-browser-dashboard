@@ -5,6 +5,7 @@ import type { Project } from "../../lib/types"
 import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
+import { SpawnCommandPreview } from "./SpawnCommandPreview"
 import { SpawnSkillPicker } from "./SpawnSkillPicker"
 import { SpawnToolPicker } from "./SpawnToolPicker"
 import { dispatchSpawn } from "./spawnDispatch"
@@ -126,6 +127,12 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           placeholder="What should this session do?"
           disabled={busy}
           className={SPAWN_INTENT_INPUT}
+        />
+        <SpawnCommandPreview
+          intent={prependSkill(skillState.selected, intent).trim()}
+          effort={effort}
+          tools={toolsForDispatch(tools)}
+          cwd={project?.path}
         />
         <div className="flex items-center justify-between gap-2">
           <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
