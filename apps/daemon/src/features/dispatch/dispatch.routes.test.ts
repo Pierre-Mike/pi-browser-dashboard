@@ -91,6 +91,40 @@ describe("POST /dispatch", () => {
     }
   })
 
+  it("forwards a tools list when provided", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      await post(app, { intent: "go", tools: ["Bash", "Edit"] })
+      expect(spy.calls[0]?.tools).toEqual(["Bash", "Edit"])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("forwards an explicit empty tools list (disable all tools)", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      await post(app, { intent: "go", tools: [] })
+      expect(spy.calls[0]?.tools).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("ignores a malformed tools value rather than crashing", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await post(app, { intent: "go", tools: ["Bash", 42] })
+      expect(res.status).toBe(200)
+      expect(spy.calls[0]?.tools).toBeUndefined()
+    } finally {
+      await dispose()
+    }
+  })
+
   it("rejects an empty body with 400 invalid_json", async () => {
     const { app, dispose } = buildHarness(newSpy())
     try {

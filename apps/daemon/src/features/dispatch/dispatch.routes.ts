@@ -9,9 +9,16 @@ type DispatchBody = {
   readonly agent?: unknown
   readonly permissionMode?: unknown
   readonly effort?: unknown
+  readonly tools?: unknown
 }
 
 const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
+
+// A malformed entry (wrong type, mixed array) is treated as absent rather than
+// partially sanitized, so a bad request can't silently narrow the tool set to
+// something the user never selected.
+const asStringArray = (v: unknown): string[] | undefined =>
+  Array.isArray(v) && v.every((entry) => typeof entry === "string") ? v : undefined
 
 export type DispatchRouteRuntime = Pick<
   ManagedRuntime.ManagedRuntime<ShellRepo, never>,
@@ -34,11 +41,12 @@ export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
     const agent = asString(body.agent)
     const permissionMode = asString(body.permissionMode)
     const effort = asString(body.effort)
+    const tools = asStringArray(body.tools)
 
     const exit = await runtime.runPromiseExit(
       Effect.gen(function* () {
         const shell = yield* ShellRepo
-        return yield* shell.dispatch({ intent, cwd, agent, permissionMode, effort })
+        return yield* shell.dispatch({ intent, cwd, agent, permissionMode, effort, tools })
       }),
     )
 

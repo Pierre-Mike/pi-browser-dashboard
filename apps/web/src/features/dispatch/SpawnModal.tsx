@@ -6,9 +6,11 @@ import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
 import { SpawnSkillPicker } from "./SpawnSkillPicker"
+import { SpawnToolPicker } from "./SpawnToolPicker"
 import { dispatchSpawn } from "./spawnDispatch"
 import { DEFAULT_SPAWN_EFFORT, SPAWN_EFFORT_LEVELS } from "./spawnEffort"
 import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL } from "./spawnModalLayout"
+import { ALL_SPAWN_TOOLS, toggleTool, toolsForDispatch } from "./spawnTools"
 import { useSpawnSkills } from "./useSpawnSkills"
 
 type Props = {
@@ -21,6 +23,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   const qc = useQueryClient()
   const [intent, setIntent] = useState("")
   const [effort, setEffort] = useState<string>(DEFAULT_SPAWN_EFFORT)
+  const [tools, setTools] = useState<readonly string[]>(ALL_SPAWN_TOOLS)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const skillState = useSpawnSkills(open, project)
@@ -34,6 +37,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     if (!open) return
     setIntent("")
     setEffort(DEFAULT_SPAWN_EFFORT)
+    setTools(ALL_SPAWN_TOOLS)
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
   }, [open])
@@ -60,7 +64,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     if (!text || busy) return
     setBusy(true)
     try {
-      await dispatchSpawn({ intent: text, project, effort })
+      await dispatchSpawn({ intent: text, project, effort, tools: toolsForDispatch(tools) })
       qc.invalidateQueries({ queryKey: ["sessions"] })
       handleClose()
     } catch (err) {
@@ -104,6 +108,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           ) : null}
         </div>
         <SpawnSkillPicker skills={skillState} disabled={busy} />
+        <SpawnToolPicker
+          selected={tools}
+          onToggle={(id) => setTools((prev) => toggleTool(prev, id))}
+          disabled={busy}
+        />
         <textarea
           ref={inputRef}
           value={intent}
