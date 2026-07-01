@@ -56,7 +56,10 @@ const heading =
     return <Tag className={HEADING_CLASS[level]}>{children}</Tag>
   }
 
-const components: Components = {
+// Exported so other surfaces (e.g. chat transcript bubbles) can render the
+// exact same GFM + sanitize + Shiki/Mermaid pipeline instead of hand-rolling
+// their own <pre> text dump.
+export const components: Components = {
   h1: heading(1),
   h2: heading(2),
   h3: heading(3),

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { TranscriptMessage } from "../../lib/types"
+import { ChatMarkdown } from "./ChatMarkdown"
 import { asString } from "./flattenContent"
 import {
   type PairedBlock,
@@ -285,14 +286,7 @@ const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string
         ) : (
           blocks.map((b, i) => {
             if (b.kind === "text") {
-              return (
-                <pre
-                  key={blockKey(b, i)}
-                  className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed"
-                >
-                  {b.text}
-                </pre>
-              )
+              return <ChatMarkdown key={blockKey(b, i)} text={b.text} />
             }
             if (b.kind === "thinking") {
               return <Thinking key={blockKey(b, i)} text={b.text} />
@@ -317,7 +311,7 @@ const ResultBubble = ({ text, time }: { text: string; time: string }) => (
       <div className="text-[10px] uppercase tracking-wide font-semibold opacity-60 mb-0.5">
         Result {time ? `· ${time}` : ""}
       </div>
-      <pre className="whitespace-pre-wrap break-words font-sans">{text}</pre>
+      <ChatMarkdown text={text} />
     </div>
   </div>
 )
