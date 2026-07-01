@@ -13,6 +13,10 @@ export type DispatchInput = {
   readonly agent?: string
   readonly permissionMode?: string
   readonly effort?: string
+  // Explicit built-in tool allow-list for `--tools`. Undefined means "every
+  // tool" (the CLI's own default, so we omit the flag entirely); an empty
+  // array is a deliberate "disable every tool" request (`--tools ""`).
+  readonly tools?: readonly string[]
 }
 
 export type SendInput = {
@@ -136,11 +140,16 @@ export const buildDispatchArgs = ({
   agent,
   permissionMode,
   effort,
+  tools,
 }: DispatchInput): string[] => {
   const args: string[] = ["claude", "--bg"]
   if (agent) args.push("--agent", agent)
   if (permissionMode) args.push("--permission-mode", permissionMode)
   if (effort) args.push("--effort", effort)
+  // `--tools <tools...>` is variadic and otherwise swallows the trailing
+  // positional intent as more "tool names" — terminate it with `--` so the
+  // prompt always parses as the prompt.
+  if (tools !== undefined) args.push("--tools", tools.join(","), "--")
   args.push(intent)
   return args
 }

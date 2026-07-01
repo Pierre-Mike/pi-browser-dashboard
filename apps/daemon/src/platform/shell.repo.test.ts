@@ -40,6 +40,51 @@ describe("buildDispatchArgs", () => {
       "go",
     ])
   })
+
+  it("omits --tools when no tool list is given", () => {
+    expect(buildDispatchArgs({ intent: "do it" })).not.toContain("--tools")
+  })
+
+  it("joins a tool list into --tools, terminated with -- before the intent", () => {
+    // `--tools <tools...>` is variadic — without a `--` terminator it swallows
+    // a trailing positional intent as more "tool names" instead of the prompt.
+    expect(buildDispatchArgs({ intent: "go", tools: ["Bash", "Edit"] })).toEqual([
+      "claude",
+      "--bg",
+      "--tools",
+      "Bash,Edit",
+      "--",
+      "go",
+    ])
+  })
+
+  it('passes --tools "" (and the -- terminator) for an explicit empty tool list', () => {
+    expect(buildDispatchArgs({ intent: "go", tools: [] })).toEqual([
+      "claude",
+      "--bg",
+      "--tools",
+      "",
+      "--",
+      "go",
+    ])
+  })
+
+  it("places --tools and its -- terminator after the other flags", () => {
+    expect(
+      buildDispatchArgs({ intent: "go", agent: "reviewer", effort: "max", tools: ["Read"] }),
+    ).toEqual([
+      "claude",
+      "--bg",
+      "--agent",
+      "reviewer",
+      "--effort",
+      "max",
+      "--tools",
+      "Read",
+      "--",
+      "go",
+    ])
+  })
 })
 
 describe("resolveSpawnCwd", () => {
