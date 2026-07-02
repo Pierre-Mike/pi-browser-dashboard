@@ -1,6 +1,6 @@
 import type { Server } from "bun"
 import { Effect } from "effect"
-import app, { mountExtensions, websocket } from "./api"
+import app, { buildApp, mountExtensions, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.repo"
 import { SessionRegistry } from "./features/sessions/sessions.repo"
 import { TunnelService } from "./features/tunnel/tunnel.repo"
@@ -20,6 +20,10 @@ export type StartDaemonOptions = {
   corsOrigins?: string[]
   // Allow any `views://` origin (Electrobun webview). Sets PID_ALLOW_VIEWS_ORIGIN.
   allowViewsOrigin?: boolean
+  // Directory of a pre-built apps/web SPA to serve from "/" (moves the API
+  // behind "/__api" — see api.ts's buildApp). Set by the pid-dashboard CLI;
+  // every other caller leaves this unset and keeps the API at the bare root.
+  staticDir?: string
 }
 
 export type DaemonHandle = {
@@ -116,7 +120,9 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
     console.error("[extensions] load failed", err)
   }
 
-  const server: Server = Bun.serve({ port, fetch: app.fetch, websocket, idleTimeout: 0 })
+  const staticDir = opts.staticDir ?? process.env.PID_STATIC_DIR
+  const finalApp = buildApp(staticDir)
+  const server: Server = Bun.serve({ port, fetch: finalApp.fetch, websocket, idleTimeout: 0 })
   console.error(`daemon up: http://localhost:${server.port}`)
   if (tunnel) startTunnel()
 

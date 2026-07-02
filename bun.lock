@@ -12,6 +12,18 @@
         "typescript": "^5.6.3",
       },
     },
+    "apps/cli": {
+      "name": "pid-dashboard",
+      "version": "0.1.0",
+      "bin": {
+        "pid-dashboard": "./dist/main.js",
+      },
+      "devDependencies": {
+        "@pid/daemon": "workspace:*",
+        "@types/bun": "^1.3.14",
+        "bun-types": "^1.1.34",
+      },
+    },
     "apps/daemon": {
       "name": "@pid/daemon",
       "version": "0.0.0",
@@ -940,6 +952,8 @@
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
     "picomatch": ["picomatch@4.0.4", "", {}, "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A=="],
+
+    "pid-dashboard": ["pid-dashboard@workspace:apps/cli"],
 
     "pify": ["pify@2.3.0", "", {}, "sha512-udgsAY+fTnvv7kI7aaxbqwWNb0AHiB0qBO89PZKPkoTmGOgdbrHDKD+0B2X4uTfJ/FT1R09r9gTsjUjNJotuog=="],
 

@@ -28,3 +28,6 @@ apps/e2e/playwright-report/
 
 # Stale Lefthook stubs — hooks install to .git/hooks (see lefthook.yml, #136)
 .githooks/
+
+# apps/cli's bundled apps/web build (bun run build:cli) — generated, not committed.
+apps/cli/dist-web/

@@ -15,6 +15,7 @@ import * as fileBrowserWriteRoute from "./features/projects/fileBrowserWrite.rou
 import { validateRelPath } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
+import { buildStaticApp } from "./features/static-web/static-web.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
@@ -121,6 +122,24 @@ export const mountExtensions = (appInstance: Hono): void => {
 }
 
 export type AppType = typeof app
+
+// Compose the final request handler. With no staticDir this preserves today's
+// shape exactly — the API mounted directly at "/" (dev daemon, Electrobun
+// desktop, e2e). Passing staticDir switches to a same-origin layout for the
+// pid-dashboard CLI's single-port distribution: the SPA owns "/" (with
+// history-API fallback for client routes like "/sessions/:id" that would
+// otherwise collide with the identically-named API routes below), and the API
+// moves behind "/__api" — the same prefix contract apps/web/src/lib/apiBase.ts
+// already falls back to for same-origin callers, previously only exercised by
+// the Cloudflare-tunnel dev proxy. SSE stays unprefixed everywhere (sse.ts
+// always hits "/events" directly), so it's aliased at the bare path too.
+// Call AFTER mountExtensions(app) so extension routes are captured below.
+export const buildApp = (staticDir?: string): Hono => {
+  const wrapper = new Hono().route("/__api", app)
+  if (!staticDir) return wrapper.route("/", app)
+  return wrapper.route("/events", eventsRoute.app).route("/", buildStaticApp(staticDir))
+}
+
 export { websocket } from "./platform/ws"
 export { app }
 export default app

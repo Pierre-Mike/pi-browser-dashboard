@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { app } from "./api"
+import { app, buildApp } from "./api"
 import type { ExtensionManifest } from "./platform/extensions/manifest"
 import { extensionRegistry } from "./platform/extensions/registry"
 
@@ -97,5 +97,54 @@ describe("GET /extensions/:name/* (static assets)", () => {
     extensionRegistry.register({ manifest: mk("trav2"), dir, scope: "global" })
     const res = await app.request("/extensions/trav2/%2e%2e%2fsecret.txt")
     expect([400, 404].includes(res.status)).toBe(true)
+  })
+})
+
+describe("buildApp", () => {
+  it("without a staticDir, mirrors today's shape: API at the bare root AND under /__api", async () => {
+    const wrapped = buildApp()
+    const bare = await wrapped.request("/health")
+    expect(bare.status).toBe(200)
+    expect(await bare.json()).toEqual({ ok: true })
+    const prefixed = await wrapped.request("/__api/health")
+    expect(prefixed.status).toBe(200)
+    expect(await prefixed.json()).toEqual({ ok: true })
+  })
+
+  it("with a staticDir, moves the API behind /__api and serves the SPA at the bare root", async () => {
+    const webDir = mkdtempSync(join(tmpdir(), "pid-buildapp-web-"))
+    writeFileSync(join(webDir, "index.html"), "<h1>spa</h1>")
+    try {
+      const wrapped = buildApp(webDir)
+      const spa = await wrapped.request("/")
+      expect(spa.status).toBe(200)
+      expect(await spa.text()).toBe("<h1>spa</h1>")
+
+      // A path that is ALSO a real API route (GET /health) resolves to the SPA
+      // shell at the bare root — this is the whole point of the prefix switch.
+      const shadowed = await wrapped.request("/health")
+      expect(shadowed.status).toBe(200)
+      expect(await shadowed.text()).toBe("<h1>spa</h1>")
+
+      const api = await wrapped.request("/__api/health")
+      expect(api.status).toBe(200)
+      expect(await api.json()).toEqual({ ok: true })
+    } finally {
+      rmSync(webDir, { recursive: true, force: true })
+    }
+  })
+
+  it("with a staticDir, still serves SSE unprefixed at /events", async () => {
+    const webDir = mkdtempSync(join(tmpdir(), "pid-buildapp-web-"))
+    writeFileSync(join(webDir, "index.html"), "<h1>spa</h1>")
+    try {
+      const wrapped = buildApp(webDir)
+      const res = await wrapped.request("/events")
+      expect(res.status).toBe(200)
+      expect(res.headers.get("content-type") ?? "").toContain("text/event-stream")
+      await res.body?.cancel()
+    } finally {
+      rmSync(webDir, { recursive: true, force: true })
+    }
   })
 })
