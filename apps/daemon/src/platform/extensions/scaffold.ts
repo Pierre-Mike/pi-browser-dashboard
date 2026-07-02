@@ -19,7 +19,7 @@ export type ScaffoldOptions = {
 
 const NAME_RE = /^[a-z0-9][a-z0-9._-]*$/
 
-const validateName = (name: string): string | null => {
+export const validateName = (name: string): string | null => {
   if (!name || name.length === 0) return "name must not be empty"
   if (name.includes("/") || name.includes("\\")) return "name must not contain path separators"
   if (name.includes("..")) return "name must not contain '..'"
@@ -29,7 +29,7 @@ const validateName = (name: string): string | null => {
   return null
 }
 
-const buildManifestJson = (name: string): string => {
+export const buildManifestJson = (name: string): string => {
   const manifest = {
     name,
     version: "0.0.1",

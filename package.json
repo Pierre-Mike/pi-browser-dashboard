@@ -26,6 +26,7 @@
     "dead-code:audit": "fallow audit",
     "check:feature-tests": "./scripts/check-feature-tests.sh",
     "pid-ext": "bun run scripts/pid-ext.ts",
+    "pid-promote": "bun run scripts/pid-promote.ts",
     "prepare": "git config --unset core.hooksPath 2>/dev/null; bunx lefthook install || true"
   },
   "devDependencies": {
