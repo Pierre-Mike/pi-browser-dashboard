@@ -11,6 +11,7 @@ import { PidAppsRepoLive, PidAppsService } from "./pid-apps.repo"
 let root: string
 let projA: Project
 let projB: Project
+let projSpecs: Project
 
 const attempt = <A, E>(proj: Project, eff: Effect.Effect<A, E, PidAppsService>) =>
   Effect.runPromise(
@@ -61,6 +62,24 @@ beforeAll(async () => {
   await symlink(join(root, "secret.txt"), join(pid, "spec", "escape"))
   projA = project("projA", join(root, "projA"))
   projB = project("projB", join(root, "projB")) // dir intentionally absent
+
+  // A dedicated project for specs/-sourced apps, kept separate from projA so
+  // its .pid/-only assertions (exact id lists) never have to account for
+  // specs/ fixtures added here.
+  const specsProjectRoot = join(root, "projSpecs")
+  const specsPid = join(specsProjectRoot, ".pid")
+  const specsDir = join(specsProjectRoot, "specs")
+  await mkdir(join(specsPid, "dup"), { recursive: true })
+  await mkdir(join(specsPid, "foo"), { recursive: true })
+  await mkdir(specsDir, { recursive: true })
+  await writeFile(join(specsPid, "dup", "index.html"), "<h1>pid dup</h1>")
+  await writeFile(join(specsPid, "foo", "index.html"), "<h1>pid foo</h1>")
+  await writeFile(join(specsDir, "bar.html"), "<h1>specs bar</h1>")
+  await writeFile(join(specsDir, "dup.html"), "<h1>specs dup</h1>")
+  // A symlink under specs/ escaping the project root, mirroring the .pid/spec/
+  // escape fixture above.
+  await symlink(join(root, "secret.txt"), join(specsDir, "evil.html"))
+  projSpecs = project("projSpecs", specsProjectRoot)
 })
 
 afterAll(async () => {
@@ -160,7 +179,13 @@ describe("PidAppsRepoLive.createApp", () => {
   it("creates a new app dir + starter index.html, returned via the same discovery shape as listApps", async () => {
     const r = await create(projA, { id: "projA", name: "notes" })
     expect(r).toEqual(
-      Either.right({ id: "notes", label: "notes", entry: "index.html", root: "notes" }),
+      Either.right({
+        id: "notes",
+        label: "notes",
+        entry: "index.html",
+        root: "notes",
+        source: "pid",
+      }),
     )
     const html = await readFile(join(root, "projA", ".pid", "notes", "index.html"), "utf8")
     expect(html).toContain("<title>notes</title>")
@@ -194,5 +219,54 @@ describe("PidAppsRepoLive.createApp", () => {
 
   it("fails forbidden for an unsafe project id", async () => {
     expect(await create(projA, { id: "..", name: "notes3" })).toEqual(Either.left("forbidden"))
+  })
+})
+
+describe("PidAppsRepoLive: specs/-sourced apps", () => {
+  it("listApps merges specs/*.html with .pid/ apps; .pid/ wins an id collision", async () => {
+    const r = await list(projSpecs, "projSpecs")
+    expect(Either.isRight(r)).toBe(true)
+    if (Either.isRight(r)) {
+      // pid subdir apps ("dup", "foo") first in their existing (alphabetical)
+      // order, then the non-colliding spec app ("bar"); the colliding spec
+      // "dup.html" is dropped in favor of the .pid/dup app.
+      expect(r.right.map((a) => a.id)).toEqual(["dup", "foo", "bar"])
+      expect(r.right.find((a) => a.id === "dup")?.source).toBe("pid")
+      expect(r.right.find((a) => a.id === "bar")).toMatchObject({
+        label: "bar",
+        entry: "bar.html",
+        root: "specs",
+        source: "specs",
+      })
+    }
+  })
+
+  it("resolveAsset serves a specs/-sourced app's flat html file for the bare (empty rel) request", async () => {
+    const r = await asset(projSpecs, { id: "projSpecs", appId: "bar", rel: "" })
+    expect(Either.isRight(r)).toBe(true)
+    if (Either.isRight(r)) {
+      expect(r.right.mime).toBe("text/html; charset=utf-8")
+      expect(r.right.absPath.endsWith(join("specs", "bar.html"))).toBe(true)
+    }
+  })
+
+  it("resolveAsset prefers .pid/ over specs/ for a colliding id (.pid/ wins at resolve time too)", async () => {
+    const r = await asset(projSpecs, { id: "projSpecs", appId: "dup", rel: "" })
+    expect(Either.isRight(r)).toBe(true)
+    if (Either.isRight(r)) {
+      expect(r.right.absPath.endsWith(join("dup", "index.html"))).toBe(true)
+    }
+  })
+
+  it("resolveAsset refuses a non-empty rel against a specs/-sourced id (single file, no sub-resources)", async () => {
+    expect(
+      await asset(projSpecs, { id: "projSpecs", appId: "bar", rel: "sub/thing.html" }),
+    ).toEqual(Either.left("not_found"))
+  })
+
+  it("resolveAsset refuses a symlink under specs/ that escapes the project root (realpath guard)", async () => {
+    expect(await asset(projSpecs, { id: "projSpecs", appId: "evil", rel: "" })).toEqual(
+      Either.left("forbidden"),
+    )
   })
 })

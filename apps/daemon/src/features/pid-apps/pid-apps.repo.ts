@@ -16,9 +16,11 @@ import {
   DEFAULT_APP_ID,
   DEFAULT_ENTRY,
   discoverPidApps,
+  discoverSpecApps,
   isCreatableAppName,
   isReservedDefaultAsset,
   isValidAppId,
+  mergeAppSources,
   type PidApp,
   type PidAppDirEntry,
   parsePidAppManifest,
@@ -39,6 +41,7 @@ type AssetResult = { ok: true; value: PidAppAsset } | { ok: false; error: PidApp
 type AssetRef = { readonly appId: string; readonly rel: string }
 
 const PID_DIR = ".pid"
+const SPECS_DIR = "specs"
 const PID_APP_MANIFEST = "pid-app.json"
 const MAX_PID_APP_BYTES = 50_000_000 // 50 MB, matching the project /raw cap
 const MAX_PID_APP_DIRS = 100 // bound discovery work on a pathological .pid/
@@ -115,6 +118,20 @@ const discoverApps = async (pidDir: string): Promise<readonly PidApp[]> => {
   const hasRootIndex = await isFileAt(join(pidDir, DEFAULT_ENTRY))
   const apps = discoverPidApps(entries, hasRootIndex)
   return Promise.all(apps.map((app) => withManifest(pidDir, app)))
+}
+
+// Top-level (non-recursive) *.html/*.htm files under <project>/specs/, mapped to
+// spec-sourced apps. A missing specs/ dir is not an error — same try/catch shape
+// as the .pid/ scan above, returning [] rather than propagating ENOENT.
+const discoverSpecAppsFromDir = async (specsDir: string): Promise<readonly PidApp[]> => {
+  let dirents: { name: string; isFile: () => boolean }[]
+  try {
+    dirents = await readdir(specsDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const filenames = dirents.filter((d) => d.isFile()).map((d) => d.name)
+  return discoverSpecApps(filenames)
 }
 
 // --- app creation (createApp) ---
@@ -210,6 +227,22 @@ const resolveAppFile = async (appRoot: string, ref: AssetRef): Promise<AssetResu
   return { ok: true, value: { absPath: real, size: sized.size, mime: mimeFromPath(safe.relPath) } }
 }
 
+// Fallback asset resolution for a specs/-sourced id: a single flat
+// "<appId>.html" file directly under <project>/specs/, with no sub-resources.
+// A non-empty rel is refused outright (not_found — there is nothing else to
+// serve). Reuses the same lexical-containment, size-cap, realpath, and mime
+// pipeline as resolveAppFile, unforked.
+const resolveSpecFile = async (specsRoot: string, ref: AssetRef): Promise<AssetResult> => {
+  if (ref.rel !== "") return { ok: false, error: "not_found" }
+  const safe = resolveProjectPath(specsRoot, `${ref.appId}.html`)
+  if (!safe.ok) return { ok: false, error: "forbidden" }
+  const sized = await statAsset(safe.absPath)
+  if (!sized.ok) return sized
+  const real = await containedRealPath(specsRoot, safe.absPath)
+  if (real === null) return { ok: false, error: "forbidden" }
+  return { ok: true, value: { absPath: real, size: sized.size, mime: mimeFromPath(safe.relPath) } }
+}
+
 export const PidAppsRepoLive: Layer.Layer<PidAppsService, never, ProjectsService> = Layer.effect(
   PidAppsService,
   Effect.gen(function* () {
@@ -218,7 +251,13 @@ export const PidAppsRepoLive: Layer.Layer<PidAppsService, never, ProjectsService
       listApps: (projectId) =>
         Effect.gen(function* () {
           const projectPath = yield* resolveProjectDir(projects, projectId)
-          return yield* Effect.promise(() => discoverApps(join(projectPath, PID_DIR)))
+          const [pidApps, specApps] = yield* Effect.promise(() =>
+            Promise.all([
+              discoverApps(join(projectPath, PID_DIR)),
+              discoverSpecAppsFromDir(join(projectPath, SPECS_DIR)),
+            ]),
+          )
+          return mergeAppSources(pidApps, specApps)
         }),
 
       resolveAsset: (projectId, ref) =>
@@ -227,8 +266,15 @@ export const PidAppsRepoLive: Layer.Layer<PidAppsService, never, ProjectsService
           const projectPath = yield* resolveProjectDir(projects, projectId)
           const appRoot = join(projectPath, PID_DIR, appRootFor(ref.appId))
           const res = yield* Effect.promise(() => resolveAppFile(appRoot, ref))
-          if (!res.ok) return yield* Effect.fail<PidAppError>(res.error)
-          return res.value
+          if (res.ok) return res.value
+          if (res.error !== "not_found") return yield* Effect.fail<PidAppError>(res.error)
+          // .pid/ has no match for this id — fall back to a specs/*.html file,
+          // preserving ".pid/ wins" at resolve time without threading a
+          // `source` parameter through the route or query string.
+          const specsRoot = join(projectPath, SPECS_DIR)
+          const specRes = yield* Effect.promise(() => resolveSpecFile(specsRoot, ref))
+          if (!specRes.ok) return yield* Effect.fail<PidAppError>(specRes.error)
+          return specRes.value
         }),
 
       createApp: (projectId, name) =>
@@ -245,7 +291,9 @@ export const PidAppsRepoLive: Layer.Layer<PidAppsService, never, ProjectsService
           // would return for this app.
           const apps = yield* Effect.promise(() => discoverApps(pidDir))
           const created = apps.find((a) => a.id === name)
-          return created ?? { id: name, label: name, entry: DEFAULT_ENTRY, root: name }
+          return (
+            created ?? { id: name, label: name, entry: DEFAULT_ENTRY, root: name, source: "pid" }
+          )
         }),
     }
   }),

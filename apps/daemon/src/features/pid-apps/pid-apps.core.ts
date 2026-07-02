@@ -7,14 +7,20 @@
 
 import { NAME_RE } from "../../platform/extensions/manifest"
 
-// One app served from <project>/.pid/. `root` is the app's directory RELATIVE to
-// the .pid dir: "" for the implicit bare-root "default" app, "<id>" for a subdir
-// app. `entry` is the HTML file served for the bare "/<appId>/" request.
+// One app served either from <project>/.pid/ or from a top-level
+// <project>/specs/*.html file. `root` is the app's directory RELATIVE to its
+// source: for a "pid" app, "" for the implicit bare-root "default" app or
+// "<id>" for a subdir app; for a "specs" app, always the literal "specs" (a
+// spec is a single flat file, not a directory). `entry` is the HTML file
+// served for the bare "/<appId>/" request. `source` records which of the two
+// discovery roots produced this app — used only to resolve id collisions
+// (".pid/" always wins); it carries no other behavior difference.
 export type PidApp = {
   readonly id: string
   readonly label: string
   readonly entry: string
   readonly root: string
+  readonly source: "pid" | "specs"
   readonly icon?: string
 }
 
@@ -133,15 +139,57 @@ export const discoverPidApps = (
 ): readonly PidApp[] => {
   const apps: PidApp[] = []
   if (hasRootIndex) {
-    apps.push({ id: DEFAULT_APP_ID, label: DEFAULT_APP_ID, entry: DEFAULT_ENTRY, root: "" })
+    apps.push({
+      id: DEFAULT_APP_ID,
+      label: DEFAULT_APP_ID,
+      entry: DEFAULT_ENTRY,
+      root: "",
+      source: "pid",
+    })
   }
   const dirApps = entries
     .filter(
       (e) => e.isDir && e.hasIndexHtml && !RESERVED_PID_ENTRIES.has(e.name) && NAME_RE.test(e.name),
     )
-    .map((e): PidApp => ({ id: e.name, label: e.name, entry: DEFAULT_ENTRY, root: e.name }))
+    .map(
+      (e): PidApp => ({
+        id: e.name,
+        label: e.name,
+        entry: DEFAULT_ENTRY,
+        root: e.name,
+        source: "pid",
+      }),
+    )
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   return [...apps, ...dirApps]
+}
+
+// Pure discovery of top-level <project>/specs/*.html(.htm) files as spec-sourced
+// pid-apps. A spec is a single flat file: `root` is always the literal "specs"
+// (there is no per-app subdirectory) and `entry` is the filename itself. Same
+// tolerance as discoverPidApps: a basename that fails NAME_RE is silently
+// skipped, never thrown — untrusted/arbitrary filenames must never crash
+// discovery. Deterministic order: alphabetical by id.
+export const discoverSpecApps = (filenames: readonly string[]): readonly PidApp[] =>
+  filenames
+    .filter((f) => /\.html?$/.test(f))
+    .map((f) => ({ id: f.replace(/\.html?$/, ""), entry: f }))
+    .filter((f) => NAME_RE.test(f.id))
+    .map((f): PidApp => ({ id: f.id, label: f.id, entry: f.entry, root: "specs", source: "specs" }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+// Merge .pid/-sourced and specs/-sourced apps into the single list a project
+// exposes. An id collision is resolved in favor of the .pid/ entry (dropping
+// the specs one) — this mirrors the existing precedent that the bare-root
+// "default" app wins over a same-named subdir: locked behavior, not
+// underdetermined. Order: pidApps first (their existing order), then the
+// remaining, non-colliding specApps (already alphabetical).
+export const mergeAppSources = (
+  pidApps: readonly PidApp[],
+  specApps: readonly PidApp[],
+): readonly PidApp[] => {
+  const pidIds = new Set(pidApps.map((a) => a.id))
+  return [...pidApps, ...specApps.filter((a) => !pidIds.has(a.id))]
 }
 
 // Maps an appId to its directory RELATIVE to .pid/: the bare-root "default" app
