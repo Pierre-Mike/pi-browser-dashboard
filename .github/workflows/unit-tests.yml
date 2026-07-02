@@ -38,7 +38,13 @@ jobs:
         run: bun run lint:ci
 
   bun-test:
-    name: bun test (daemon + web + cli)
+    # NOTE: keep this exact name — the repo's branch ruleset pins its
+    # required_status_checks to the literal context string "bun test (daemon
+    # + web)". Renaming it (even to reflect the new cli suite added below)
+    # makes this required check never appear on a PR, which blocks merging
+    # with "the base branch policy prohibits the merge" despite every check
+    # passing. Update the ruleset first if this job's scope changes again.
+    name: bun test (daemon + web)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
