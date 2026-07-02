@@ -11,6 +11,7 @@ import { SpawnToolPicker } from "./SpawnToolPicker"
 import { dispatchSpawn } from "./spawnDispatch"
 import { DEFAULT_SPAWN_EFFORT, SPAWN_EFFORT_LEVELS } from "./spawnEffort"
 import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL } from "./spawnModalLayout"
+import { DEFAULT_SPAWN_MODEL, SPAWN_MODEL_ALIASES } from "./spawnModel"
 import { ALL_SPAWN_TOOLS, toggleTool, toolsForDispatch } from "./spawnTools"
 import { useSpawnSkills } from "./useSpawnSkills"
 
@@ -24,6 +25,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   const qc = useQueryClient()
   const [intent, setIntent] = useState("")
   const [effort, setEffort] = useState<string>(DEFAULT_SPAWN_EFFORT)
+  const [model, setModel] = useState<string>(DEFAULT_SPAWN_MODEL)
   const [tools, setTools] = useState<readonly string[]>(ALL_SPAWN_TOOLS)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -38,6 +40,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     if (!open) return
     setIntent("")
     setEffort(DEFAULT_SPAWN_EFFORT)
+    setModel(DEFAULT_SPAWN_MODEL)
     setTools(ALL_SPAWN_TOOLS)
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
@@ -65,7 +68,13 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     if (!text || busy) return
     setBusy(true)
     try {
-      await dispatchSpawn({ intent: text, project, effort, tools: toolsForDispatch(tools) })
+      await dispatchSpawn({
+        intent: text,
+        project,
+        effort,
+        model,
+        tools: toolsForDispatch(tools),
+      })
       qc.invalidateQueries({ queryKey: ["sessions"] })
       handleClose()
     } catch (err) {
@@ -131,27 +140,47 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
         <SpawnCommandPreview
           intent={prependSkill(skillState.selected, intent).trim()}
           effort={effort}
+          model={model}
           tools={toolsForDispatch(tools)}
           cwd={project?.path}
         />
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
-            Effort
-            <select
-              data-testid="spawn-effort"
-              value={effort}
-              onChange={(e) => setEffort(e.target.value)}
-              disabled={busy}
-              className="select select-xs select-bordered normal-case"
-            >
-              <option value={DEFAULT_SPAWN_EFFORT}>default</option>
-              {SPAWN_EFFORT_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
+              Effort
+              <select
+                data-testid="spawn-effort"
+                value={effort}
+                onChange={(e) => setEffort(e.target.value)}
+                disabled={busy}
+                className="select select-xs select-bordered normal-case"
+              >
+                <option value={DEFAULT_SPAWN_EFFORT}>default</option>
+                {SPAWN_EFFORT_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
+              Model
+              <select
+                data-testid="spawn-model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={busy}
+                className="select select-xs select-bordered normal-case"
+              >
+                <option value={DEFAULT_SPAWN_MODEL}>default</option>
+                {SPAWN_MODEL_ALIASES.map((alias) => (
+                  <option key={alias} value={alias}>
+                    {alias}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-base-content/60">⌘/Ctrl + ⏎ to spawn</span>
             <button

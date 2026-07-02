@@ -41,6 +41,32 @@ describe("buildDispatchArgs", () => {
     ])
   })
 
+  it("passes --model before the intent when a model alias is given", () => {
+    expect(buildDispatchArgs({ intent: "do it", model: "opus" })).toEqual([
+      "claude",
+      "--bg",
+      "--model",
+      "opus",
+      "do it",
+    ])
+  })
+
+  it("omits --model when none is given", () => {
+    expect(buildDispatchArgs({ intent: "do it" })).not.toContain("--model")
+  })
+
+  it("places --model after --effort", () => {
+    expect(buildDispatchArgs({ intent: "go", effort: "max", model: "opus" })).toEqual([
+      "claude",
+      "--bg",
+      "--effort",
+      "max",
+      "--model",
+      "opus",
+      "go",
+    ])
+  })
+
   it("omits --tools when no tool list is given", () => {
     expect(buildDispatchArgs({ intent: "do it" })).not.toContain("--tools")
   })

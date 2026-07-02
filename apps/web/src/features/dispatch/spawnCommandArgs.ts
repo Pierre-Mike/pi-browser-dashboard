@@ -8,16 +8,19 @@
 export type SpawnCommandPreviewInput = {
   readonly intent: string
   readonly effort?: string
+  readonly model?: string
   readonly tools?: readonly string[]
 }
 
 export const buildSpawnCommandArgs = ({
   intent,
   effort,
+  model,
   tools,
 }: SpawnCommandPreviewInput): string[] => {
   const args: string[] = ["claude", "--bg"]
   if (effort) args.push("--effort", effort)
+  if (model) args.push("--model", model)
   if (tools !== undefined) args.push("--tools", tools.join(","), "--")
   args.push(intent)
   return args
