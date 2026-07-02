@@ -89,3 +89,46 @@ describe("GET /:id/pid-apps/:appId/* (serve)", () => {
     expect((await app.request("/projA/pid-apps/ghost/index.html")).status).toBe(404)
   })
 })
+
+describe("POST /:id/pid-apps (create)", () => {
+  const post = (path: string, body: unknown) =>
+    app.request(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    })
+
+  it("creates a new app and returns 201 with the discovered PidApp shape", async () => {
+    const res = await post("/projA/pid-apps", { name: "notes" })
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({
+      id: "notes",
+      label: "notes",
+      entry: "index.html",
+      root: "notes",
+    })
+
+    // and it's now visible through the list route — no drift from discovery.
+    const list = await app.request("/projA/pid-apps")
+    const ids = ((await list.json()) as { id: string }[]).map((a) => a.id)
+    expect(ids).toContain("notes")
+  })
+
+  it("400s a non-JSON body", async () => {
+    expect((await post("/projA/pid-apps", "{not json")).status).toBe(400)
+  })
+
+  it("400s a malformed body (non-object, or missing/wrong-typed name)", async () => {
+    expect((await post("/projA/pid-apps", [1, 2, 3])).status).toBe(400)
+    expect((await post("/projA/pid-apps", { notName: "x" })).status).toBe(400)
+    expect((await post("/projA/pid-apps", { name: 42 })).status).toBe(400)
+  })
+
+  it("400s an invalid name", async () => {
+    expect((await post("/projA/pid-apps", { name: "Bad Name" })).status).toBe(400)
+  })
+
+  it("409s a name whose app dir already exists and is non-empty", async () => {
+    expect((await post("/projA/pid-apps", { name: "spec" })).status).toBe(409)
+  })
+})

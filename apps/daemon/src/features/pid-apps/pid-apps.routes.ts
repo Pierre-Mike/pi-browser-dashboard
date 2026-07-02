@@ -3,10 +3,21 @@ import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { validateRelPath } from "../projects/projects.core"
 import { PID_APP_CSP } from "./pid-apps.core"
-import { type PidAppError, PidAppsService } from "./pid-apps.repo"
+import { PidAppsService, type PidAppWriteError } from "./pid-apps.repo"
 
-const errorToStatus = (e: PidAppError): 403 | 404 | 413 =>
-  e === "forbidden" ? 403 : e === "too_large" ? 413 : 404
+const errorToStatus = (e: PidAppWriteError): 400 | 403 | 404 | 409 | 413 =>
+  e === "forbidden"
+    ? 403
+    : e === "too_large"
+      ? 413
+      : e === "invalid_name"
+        ? 400
+        : e === "already_exists"
+          ? 409
+          : 404
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v)
 
 // Minimal slice of the runtime these routes call — lets a test build the app over
 // a test-layer runtime and exercise the real handlers (mirrors pid-settings).
@@ -64,8 +75,9 @@ const serveAsset =
 
 // Mounted under the projects router: routes are leaf-relative and read the
 // project id from the parent `:id` param.
-//   GET /projects/:id/pid-apps              -> list the project's pid-apps
-//   GET /projects/:id/pid-apps/:appId[/*]   -> stream an app asset (entry if bare)
+//   GET  /projects/:id/pid-apps              -> list the project's pid-apps
+//   POST /projects/:id/pid-apps              -> create a new pid-app { name }
+//   GET  /projects/:id/pid-apps/:appId[/*]   -> stream an app asset (entry if bare)
 export const createApp = (run: RunPromise) =>
   new Hono()
     .get("/:id/pid-apps", async (c) => {
@@ -73,6 +85,27 @@ export const createApp = (run: RunPromise) =>
         Effect.flatMap(PidAppsService, (s) => s.listApps(c.req.param("id"))).pipe(Effect.either),
       )
       return r._tag === "Left" ? c.json({ error: r.left }, errorToStatus(r.left)) : c.json(r.right)
+    })
+    // POST (not PUT): the CORS layer only allows GET/POST/OPTIONS cross-origin
+    .post("/:id/pid-apps", async (c) => {
+      let body: unknown
+      try {
+        body = await c.req.json()
+      } catch {
+        return c.json({ error: "invalid_body" }, 400)
+      }
+      if (!isObject(body) || typeof body.name !== "string") {
+        return c.json({ error: "invalid_body" }, 400)
+      }
+      const name = body.name
+      const r = await run(
+        Effect.flatMap(PidAppsService, (s) => s.createApp(c.req.param("id"), name)).pipe(
+          Effect.either,
+        ),
+      )
+      return r._tag === "Left"
+        ? c.json({ error: r.left }, errorToStatus(r.left))
+        : c.json(r.right, 201)
     })
     .get("/:id/pid-apps/:appId", serveAsset(run))
     .get("/:id/pid-apps/:appId/*", serveAsset(run))
