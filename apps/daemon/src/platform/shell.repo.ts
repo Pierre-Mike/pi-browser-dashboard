@@ -13,6 +13,7 @@ export type DispatchInput = {
   readonly agent?: string
   readonly permissionMode?: string
   readonly effort?: string
+  readonly model?: string
   // Explicit built-in tool allow-list for `--tools`. Undefined means "every
   // tool" (the CLI's own default, so we omit the flag entirely); an empty
   // array is a deliberate "disable every tool" request (`--tools ""`).
@@ -140,12 +141,14 @@ export const buildDispatchArgs = ({
   agent,
   permissionMode,
   effort,
+  model,
   tools,
 }: DispatchInput): string[] => {
   const args: string[] = ["claude", "--bg"]
   if (agent) args.push("--agent", agent)
   if (permissionMode) args.push("--permission-mode", permissionMode)
   if (effort) args.push("--effort", effort)
+  if (model) args.push("--model", model)
   // `--tools <tools...>` is variadic and otherwise swallows the trailing
   // positional intent as more "tool names" — terminate it with `--` so the
   // prompt always parses as the prompt.

@@ -54,6 +54,36 @@ describe("buildSpawnCommandArgs", () => {
     ])
   })
 
+  it("inserts --model before the intent when a model alias is set", () => {
+    expect(buildSpawnCommandArgs({ intent: "fix bug", model: "opus" })).toEqual([
+      "claude",
+      "--bg",
+      "--model",
+      "opus",
+      "fix bug",
+    ])
+  })
+
+  it("omits --model for the empty inherit default", () => {
+    expect(buildSpawnCommandArgs({ intent: "fix bug", model: "" })).toEqual([
+      "claude",
+      "--bg",
+      "fix bug",
+    ])
+  })
+
+  it("orders --model after --effort, matching the daemon's buildDispatchArgs", () => {
+    expect(buildSpawnCommandArgs({ intent: "fix bug", effort: "max", model: "opus" })).toEqual([
+      "claude",
+      "--bg",
+      "--effort",
+      "max",
+      "--model",
+      "opus",
+      "fix bug",
+    ])
+  })
+
   it("orders --effort before --tools, matching the daemon's buildDispatchArgs", () => {
     expect(buildSpawnCommandArgs({ intent: "fix bug", effort: "max", tools: ["Read"] })).toEqual([
       "claude",

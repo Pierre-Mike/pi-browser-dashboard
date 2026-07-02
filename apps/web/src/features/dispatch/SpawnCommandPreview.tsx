@@ -3,6 +3,7 @@ import { buildSpawnCommandArgs, formatSpawnCommand } from "./spawnCommandArgs"
 type Props = {
   intent: string
   effort?: string
+  model?: string
   tools?: readonly string[]
   cwd?: string
 }
@@ -10,8 +11,8 @@ type Props = {
 // Collapsible readout of the literal `claude --bg ...` argv the daemon will
 // spawn on submit, so the user can check flags/tools/intent before firing it
 // off. Collapsed by default, mirroring SpawnToolPicker/SpawnSkillPicker.
-export const SpawnCommandPreview = ({ intent, effort, tools, cwd }: Props) => {
-  const command = formatSpawnCommand(buildSpawnCommandArgs({ intent, effort, tools }))
+export const SpawnCommandPreview = ({ intent, effort, model, tools, cwd }: Props) => {
+  const command = formatSpawnCommand(buildSpawnCommandArgs({ intent, effort, model, tools }))
 
   return (
     <details data-testid="spawn-command-preview" className="text-xs text-base-content/60">

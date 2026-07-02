@@ -91,6 +91,17 @@ describe("POST /dispatch", () => {
     }
   })
 
+  it("forwards model when provided", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      await post(app, { intent: "go", model: "opus" })
+      expect(spy.calls[0]?.model).toBe("opus")
+    } finally {
+      await dispose()
+    }
+  })
+
   it("forwards a tools list when provided", async () => {
     const spy = newSpy()
     const { app, dispose } = buildHarness(spy)
