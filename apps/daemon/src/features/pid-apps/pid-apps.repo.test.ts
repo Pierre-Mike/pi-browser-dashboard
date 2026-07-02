@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Either, Layer } from "effect"
 import { type Project, ProjectsRepoTest } from "../projects/projects.repo"
-import { type PidAppError, PidAppsRepoLive, PidAppsService } from "./pid-apps.repo"
+import { PidAppsRepoLive, PidAppsService } from "./pid-apps.repo"
 
 // A real on-disk project tree, discovered through the live repo layer backed by
 // an in-memory ProjectsRepoTest fixture (so resolveProjectDir finds the path).
@@ -12,7 +12,7 @@ let root: string
 let projA: Project
 let projB: Project
 
-const attempt = <A>(proj: Project, eff: Effect.Effect<A, PidAppError, PidAppsService>) =>
+const attempt = <A, E>(proj: Project, eff: Effect.Effect<A, E, PidAppsService>) =>
   Effect.runPromise(
     Effect.either(Effect.provide(eff, Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj])))),
   )
@@ -26,6 +26,11 @@ const asset = (proj: Project, q: { id: string; appId: string; rel: string }) =>
   attempt(
     proj,
     Effect.flatMap(PidAppsService, (s) => s.resolveAsset(q.id, { appId: q.appId, rel: q.rel })),
+  )
+const create = (proj: Project, q: { id: string; name: string }) =>
+  attempt(
+    proj,
+    Effect.flatMap(PidAppsService, (s) => s.createApp(q.id, q.name)),
   )
 
 const project = (id: string, path: string): Project => ({
@@ -148,5 +153,46 @@ describe("PidAppsRepoLive.resolveAsset", () => {
     expect(await asset(projA, { id: "projA", appId: "ghost", rel: "index.html" })).toEqual(
       Either.left("not_found"),
     )
+  })
+})
+
+describe("PidAppsRepoLive.createApp", () => {
+  it("creates a new app dir + starter index.html, returned via the same discovery shape as listApps", async () => {
+    const r = await create(projA, { id: "projA", name: "notes" })
+    expect(r).toEqual(
+      Either.right({ id: "notes", label: "notes", entry: "index.html", root: "notes" }),
+    )
+    const html = await readFile(join(root, "projA", ".pid", "notes", "index.html"), "utf8")
+    expect(html).toContain("<title>notes</title>")
+
+    // and it's now visible through listApps — no drift between write and read.
+    const listed = await list(projA, "projA")
+    expect(Either.isRight(listed) && listed.right.map((a) => a.id)).toContain("notes")
+  })
+
+  it("fails invalid_name for a NAME_RE-invalid or reserved name, without touching disk", async () => {
+    expect(await create(projA, { id: "projA", name: "Bad Name" })).toEqual(
+      Either.left("invalid_name"),
+    )
+    expect(await create(projA, { id: "projA", name: "extensions" })).toEqual(
+      Either.left("invalid_name"),
+    )
+    expect(await create(projA, { id: "projA", name: "default" })).toEqual(
+      Either.left("invalid_name"),
+    )
+  })
+
+  it("fails already_exists for a name whose app dir already exists and is non-empty", async () => {
+    expect(await create(projA, { id: "projA", name: "spec" })).toEqual(
+      Either.left("already_exists"),
+    )
+  })
+
+  it("fails not_found for an unknown project id", async () => {
+    expect(await create(projA, { id: "ghost", name: "notes2" })).toEqual(Either.left("not_found"))
+  })
+
+  it("fails forbidden for an unsafe project id", async () => {
+    expect(await create(projA, { id: "..", name: "notes3" })).toEqual(Either.left("forbidden"))
   })
 })

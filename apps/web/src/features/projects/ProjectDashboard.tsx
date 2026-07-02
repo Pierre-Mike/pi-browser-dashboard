@@ -13,6 +13,7 @@ import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
 import { useExtensions } from "../extensions/useExtensions"
 import { LibraryPanel } from "../library/LibraryPanel"
+import { NewPidAppButton } from "../pid-apps/NewPidAppButton"
 import { PidAppHost } from "../pid-apps/PidAppHost"
 import { usePidApps } from "../pid-apps/usePidApps"
 import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
@@ -257,6 +258,7 @@ export const ProjectDashboard = ({ project }: Props) => {
             </button>
           )
         })}
+        <NewPidAppButton projectId={project.id} onCreated={(id) => setTab(`pidapp:${id}`)} />
       </nav>
 
       <div

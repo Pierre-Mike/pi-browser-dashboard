@@ -22,3 +22,14 @@ describe("usePidApps", () => {
     expect(src).toContain("staleTime: 5_000")
   })
 })
+
+describe("useCreatePidApp", () => {
+  it("posts the new app name to the project-scoped endpoint", () => {
+    expect(src).toContain("useCreatePidApp")
+    expect(src).toContain('["pid-apps"].$post({ json: { name } })')
+  })
+
+  it("invalidates the project's pid-apps query on success", () => {
+    expect(src).toContain("qc.invalidateQueries({ queryKey: pidAppsQueryKey(projectId) })")
+  })
+})

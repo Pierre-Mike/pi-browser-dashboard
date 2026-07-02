@@ -111,3 +111,15 @@ describe("ProjectDashboard pid-app tabs", () => {
     expect(fillViewportBlock?.[0]).toMatch(/pidapp/)
   })
 })
+
+describe("ProjectDashboard pid-app creation", () => {
+  it("renders the new-pid-app control after the tab list, inside the tab nav", () => {
+    const navBlock = src.match(/<nav[\s\S]+?<\/nav>/)
+    expect(navBlock).not.toBeNull()
+    expect(navBlock?.[0]).toContain("<NewPidAppButton")
+  })
+
+  it("switches to the newly created app's tab via the existing setTab", () => {
+    expect(src).toMatch(/onCreated=\{\(id\) => setTab\(`pidapp:\$\{id\}`\)\}/)
+  })
+})

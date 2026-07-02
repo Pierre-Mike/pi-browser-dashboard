@@ -3,9 +3,11 @@ import { NAME_RE } from "../../platform/extensions/manifest"
 import {
   applyPidAppManifest,
   appRootFor,
+  buildStarterHtml,
   DEFAULT_APP_ID,
   DEFAULT_ENTRY,
   discoverPidApps,
+  isCreatableAppName,
   isReservedDefaultAsset,
   isValidAppId,
   PID_APP_CSP,
@@ -202,5 +204,38 @@ describe("isReservedDefaultAsset", () => {
     expect(isReservedDefaultAsset("index.html")).toBe(false)
     expect(isReservedDefaultAsset("assets/app.js")).toBe(false)
     expect(isReservedDefaultAsset("myplan/index.html")).toBe(false)
+  })
+})
+
+describe("isCreatableAppName", () => {
+  it("accepts valid, non-reserved names", () => {
+    expect(isCreatableAppName("spec")).toBe(true)
+    expect(isCreatableAppName("my-plan.v2")).toBe(true)
+  })
+
+  it("rejects reserved pid internals and the 'default' dir name", () => {
+    expect(isCreatableAppName("extensions")).toBe(false)
+    expect(isCreatableAppName("extensions-state.json")).toBe(false)
+    expect(isCreatableAppName("settings.json")).toBe(false)
+    expect(isCreatableAppName("default")).toBe(false)
+  })
+
+  it("rejects NAME_RE-invalid names (uppercase, spaces, traversal, empty)", () => {
+    expect(isCreatableAppName("UPPER")).toBe(false)
+    expect(isCreatableAppName("bad name")).toBe(false)
+    expect(isCreatableAppName("..")).toBe(false)
+    expect(isCreatableAppName("")).toBe(false)
+  })
+})
+
+describe("buildStarterHtml", () => {
+  it("embeds the app name as the document title", () => {
+    expect(buildStarterHtml("spec")).toContain("<title>spec</title>")
+  })
+
+  it("ships no script or postMessage wiring — pid-apps stay capability-free", () => {
+    const html = buildStarterHtml("spec")
+    expect(html).not.toContain("<script")
+    expect(html).not.toContain("postMessage")
   })
 })

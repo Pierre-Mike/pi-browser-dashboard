@@ -159,3 +159,29 @@ export const isValidAppId = (appId: string): boolean =>
 // .pid/extensions/*, etc. can never be served through the default app.
 export const isReservedDefaultAsset = (relPath: string): boolean =>
   RESERVED_PID_ENTRIES.has(relPath.split(/[/\\]/)[0] ?? "")
+
+// Guard for the CREATE route: a new app's directory name must be a valid,
+// non-reserved identifier — the same rule as isValidAppId minus the literal
+// "default" carve-out (creating a subdir literally named "default" would only
+// ever be shadowed by the bare-root app, so it's not a useful name to create).
+export const isCreatableAppName = (name: string): boolean =>
+  NAME_RE.test(name) && !RESERVED_PID_ENTRIES.has(name)
+
+// Starter HTML written for a newly created pid-app. Deliberately inert: no
+// <script>/postMessage — pid-apps stay capability-free (that RPC pattern
+// belongs exclusively to the separate extension-platform scaffold). `name` is
+// validated by isCreatableAppName (NAME_RE: [a-z0-9][a-z0-9._-]*) before this
+// ever runs, so it can never carry markup and needs no HTML-escaping here.
+export const buildStarterHtml = (name: string): string =>
+  `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${name}</title>
+  </head>
+  <body>
+    <h1>${name}</h1>
+    <p>Edit .pid/${name}/index.html to build this app.</p>
+  </body>
+</html>
+`

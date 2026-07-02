@@ -4,7 +4,7 @@
 // escape) and the default-app reserved-internal exclusion. Mirrors
 // pid-settings.repo.ts (Effect Layer over ProjectsService).
 
-import { readdir, readFile, realpath, stat } from "node:fs/promises"
+import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { mimeFromPath, resolveProjectPath } from "../projects/projects.core"
@@ -12,9 +12,11 @@ import { ProjectsService, resolveProjectDir } from "../projects/projects.repo"
 import {
   applyPidAppManifest,
   appRootFor,
+  buildStarterHtml,
   DEFAULT_APP_ID,
   DEFAULT_ENTRY,
   discoverPidApps,
+  isCreatableAppName,
   isReservedDefaultAsset,
   isValidAppId,
   type PidApp,
@@ -23,6 +25,7 @@ import {
 } from "./pid-apps.core"
 
 export type PidAppError = "not_found" | "forbidden" | "too_large"
+export type PidAppWriteError = PidAppError | "invalid_name" | "already_exists"
 
 type PidAppAsset = {
   readonly absPath: string
@@ -46,6 +49,10 @@ type PidAppsServiceApi = {
     projectId: string,
     ref: AssetRef,
   ) => Effect.Effect<PidAppAsset, PidAppError, never>
+  readonly createApp: (
+    projectId: string,
+    name: string,
+  ) => Effect.Effect<PidApp, PidAppWriteError, never>
 }
 
 export class PidAppsService extends Context.Tag("PidAppsService")<
@@ -108,6 +115,39 @@ const discoverApps = async (pidDir: string): Promise<readonly PidApp[]> => {
   const hasRootIndex = await isFileAt(join(pidDir, DEFAULT_ENTRY))
   const apps = discoverPidApps(entries, hasRootIndex)
   return Promise.all(apps.map((app) => withManifest(pidDir, app)))
+}
+
+// --- app creation (createApp) ---
+
+// tmp+rename so a concurrent reader (e.g. discovery mid-write) never observes a
+// half-written index.html. Mirrors pid-settings.repo.ts's writeAtomic.
+const writeAtomic = async (path: string, body: string): Promise<void> => {
+  await mkdir(join(path, ".."), { recursive: true })
+  const tmp = `${path}.${process.pid}.tmp`
+  await writeFile(tmp, body, "utf8")
+  await rename(tmp, path)
+}
+
+// absent -> ok to create; an existing EMPTY dir -> also ok (fill it in); any
+// other occupant (a non-empty dir, or a file sitting where the dir should go)
+// -> already_exists.
+const dirIsFreeToCreate = async (path: string): Promise<boolean> => {
+  let s: Awaited<ReturnType<typeof stat>>
+  try {
+    s = await stat(path)
+  } catch {
+    return true
+  }
+  if (!s.isDirectory()) return false
+  return (await readdir(path)).length === 0
+}
+
+const createAppFiles = async (pidDir: string, name: string): Promise<"ok" | "already_exists"> => {
+  const appDir = join(pidDir, name)
+  if (!(await dirIsFreeToCreate(appDir))) return "already_exists"
+  await mkdir(appDir, { recursive: true })
+  await writeAtomic(join(appDir, DEFAULT_ENTRY), buildStarterHtml(name))
+  return "ok"
 }
 
 // --- asset resolution (resolveAsset) ---
@@ -189,6 +229,23 @@ export const PidAppsRepoLive: Layer.Layer<PidAppsService, never, ProjectsService
           const res = yield* Effect.promise(() => resolveAppFile(appRoot, ref))
           if (!res.ok) return yield* Effect.fail<PidAppError>(res.error)
           return res.value
+        }),
+
+      createApp: (projectId, name) =>
+        Effect.gen(function* () {
+          if (!isCreatableAppName(name)) return yield* Effect.fail<PidAppWriteError>("invalid_name")
+          const projectPath = yield* resolveProjectDir(projects, projectId)
+          const pidDir = join(projectPath, PID_DIR)
+          const result = yield* Effect.promise(() => createAppFiles(pidDir, name))
+          if (result === "already_exists") {
+            return yield* Effect.fail<PidAppWriteError>("already_exists")
+          }
+          // Route the response through the same discovery logic listApps uses,
+          // so the create response can never drift from what GET /pid-apps
+          // would return for this app.
+          const apps = yield* Effect.promise(() => discoverApps(pidDir))
+          const created = apps.find((a) => a.id === name)
+          return created ?? { id: name, label: name, entry: DEFAULT_ENTRY, root: name }
         }),
     }
   }),
