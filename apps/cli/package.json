@@ -1,0 +1,24 @@
+{
+  "name": "pid-dashboard",
+  "version": "0.1.0",
+  "description": "Browser dashboard for Claude Code background agent sessions. One command, no setup: bunx pid-dashboard.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "pid-dashboard": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "dist-web"
+  ],
+  "scripts": {
+    "dev": "bun run src/main.ts",
+    "build": "bun build ./src/main.ts --outdir dist --target bun --minify"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@pid/daemon": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "bun-types": "^1.1.34"
+  }
+}

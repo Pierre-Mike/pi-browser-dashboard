@@ -178,6 +178,34 @@ Security (the dropped HTML is UNTRUSTED):
 Spec: `specs/pid-html-extensions.html`. A NEW lightweight feature, kept separate
 from the manifest-based extension platform (`platform/extensions/`).
 
+## Single-package CLI distribution (`pid-dashboard`)
+
+`apps/cli` publishes the whole dashboard as one dependency-free package:
+`bunx pid-dashboard` boots the daemon and the SPA on one port and opens the
+browser — no separate `apps/web`/`apps/daemon` setup.
+
+- `apps/daemon/src/api.ts`'s `buildApp(staticDir?)` composes the final request
+  handler. With no `staticDir` (dev daemon, Electrobun desktop, e2e) it's
+  today's shape unchanged: the API at the bare root. With a `staticDir` (the
+  CLI), the SPA owns the bare root instead — `features/static-web/` serves it
+  with an SPA (history-API) fallback for extensionless paths — and the API
+  moves behind `/__api`. This mirrors the same-origin prefix
+  `apps/web/src/lib/apiBase.ts` already falls back to when there's no
+  `VITE_API_URL` override (previously only exercised by the Cloudflare-tunnel
+  dev proxy); the two paths were never composable before because API routes
+  like `/sessions/:id` collide with identically-named SPA routes at the bare
+  root — the prefix switch is what makes single-port serving possible at all.
+  `/events` (SSE) stays unprefixed in both shapes; `mountExtensions(app)` must
+  run BEFORE `buildApp()` — it mutates the pre-wrap `app`, and `.route()`
+  snapshots a sub-app's routes at call time.
+- `apps/cli/src/main.ts` is the `bin` entry (Bun runs `.ts` directly — no
+  transpile step for dev). `bun run build:cli` (root script) builds
+  `apps/web` with no `VITE_API_URL` (same-origin), copies its `dist` into
+  `apps/cli/dist-web/`, then `bun build --target bun` bundles `main.ts` +
+  `@pid/daemon` + every dependency into one `dist/main.js` — the published
+  package's `dependencies` are empty; `@pid/daemon` is a `devDependency` used
+  only for monorepo dev/typecheck.
+
 ## Frontend skeleton
 
 ```
