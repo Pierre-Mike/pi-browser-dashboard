@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { parseManifest } from "./manifest"
-import { buildScaffold } from "./scaffold"
+import { buildManifestJson, buildScaffold, validateName } from "./scaffold"
 
 describe("buildScaffold", () => {
   describe("valid names", () => {
@@ -147,5 +147,95 @@ describe("buildScaffold", () => {
       const result = buildScaffold("my ext")
       expect(result.ok).toBe(false)
     })
+  })
+})
+
+// validateName and buildManifestJson are exported (not just module-private) so that
+// scripts/pid-promote.ts can reuse the exact same name rule and manifest shape instead
+// of redefining a second copy. These tests pin their standalone behavior so the
+// visibility change can't silently drift from what buildScaffold already relies on.
+describe("validateName (exported)", () => {
+  it("returns null for valid names", () => {
+    expect(validateName("my-ext")).toBeNull()
+    expect(validateName("a")).toBeNull()
+    expect(validateName("my.ext_v2")).toBeNull()
+    expect(validateName("ext-1.0")).toBeNull()
+  })
+
+  it("rejects an empty name", () => {
+    expect(validateName("")).toBe("name must not be empty")
+  })
+
+  it("rejects names with path separators", () => {
+    expect(validateName("Bad/Name")).toBe("name must not contain path separators")
+    expect(validateName("back\\slash")).toBe("name must not contain path separators")
+  })
+
+  it("rejects dot-dot traversal", () => {
+    expect(validateName("..")).toBe("name must not contain '..'")
+  })
+
+  it("rejects names that fail the shape pattern", () => {
+    const patternError =
+      "name must match /^[a-z0-9][a-z0-9._-]*$/ (lowercase, start with alphanumeric, no slashes)"
+    expect(validateName("BadName")).toBe(patternError)
+    expect(validateName("UPPER")).toBe(patternError)
+    expect(validateName("-bad")).toBe(patternError)
+    expect(validateName(".hidden")).toBe(patternError)
+    expect(validateName("my ext")).toBe(patternError)
+  })
+
+  it("agrees with buildScaffold's ok/error verdict for the same inputs (no regression)", () => {
+    const names = [
+      "my-ext",
+      "",
+      "BadName",
+      "UPPER",
+      "Bad/Name",
+      "..",
+      "-bad",
+      ".hidden",
+      "back\\slash",
+      "my ext",
+      "a",
+      "ext-1.0",
+    ]
+    for (const name of names) {
+      const err = validateName(name)
+      const scaffoldResult = buildScaffold(name)
+      expect(scaffoldResult.ok).toBe(err === null)
+    }
+  })
+})
+
+describe("buildManifestJson (exported)", () => {
+  it("produces JSON matching the expected manifest shape", () => {
+    const json = buildManifestJson("my-ext")
+    const parsed = JSON.parse(json)
+    expect(parsed).toEqual({
+      name: "my-ext",
+      version: "0.0.1",
+      tier: "iframe",
+      contributes: { tabs: [{ id: "main", label: "my-ext" }] },
+    })
+  })
+
+  it("ends with a trailing newline", () => {
+    expect(buildManifestJson("hello").endsWith("\n")).toBe(true)
+  })
+
+  it("passes parseManifest", () => {
+    const parsed = parseManifest(JSON.parse(buildManifestJson("test-ext")))
+    expect(parsed.ok).toBe(true)
+  })
+
+  it("matches the manifest.json file buildScaffold produces for the same name (no regression)", () => {
+    const name = "consistency-check"
+    const direct = buildManifestJson(name)
+    const scaffoldResult = buildScaffold(name)
+    expect(scaffoldResult.ok).toBe(true)
+    if (!scaffoldResult.ok) return
+    const manifestFile = scaffoldResult.files.find((f) => f.relPath === "manifest.json")
+    expect(manifestFile?.content).toBe(direct)
   })
 })
