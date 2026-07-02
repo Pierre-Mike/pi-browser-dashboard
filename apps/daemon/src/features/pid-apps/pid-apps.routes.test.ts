@@ -11,6 +11,7 @@ import { createApp } from "./pid-apps.routes"
 // ProjectsRepoTest fixture pointing at a real tmp project tree (so the serve
 // route streams real files).
 let root: string
+let specsRoot: string
 
 const appFor = (proj: Project) => {
   const layer = Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj]))
@@ -18,6 +19,7 @@ const appFor = (proj: Project) => {
 }
 
 let app: ReturnType<typeof appFor>
+let specsApp: ReturnType<typeof appFor>
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "pidapps-routes-"))
@@ -30,10 +32,24 @@ beforeAll(async () => {
   await writeFile(join(pid, "spec", "assets", "app.js"), "console.log(1)")
   await writeFile(join(pid, "settings.json"), "{}")
   app = appFor({ id: "projA", name: "projA", path: root, isGitRepo: false, lastModified: 0 })
+
+  // A separate project for the specs/-sourced regression test, so it never
+  // perturbs the exact-id-list assertions asserted against `app` above.
+  specsRoot = await mkdtemp(join(tmpdir(), "pidapps-routes-specs-"))
+  await mkdir(join(specsRoot, "specs"), { recursive: true })
+  await writeFile(join(specsRoot, "specs", "bar.html"), "<h1>bar spec</h1>")
+  specsApp = appFor({
+    id: "projS",
+    name: "projS",
+    path: specsRoot,
+    isGitRepo: false,
+    lastModified: 0,
+  })
 })
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
+  await rm(specsRoot, { recursive: true, force: true })
 })
 
 describe("GET /:id/pid-apps (list)", () => {
@@ -106,6 +122,7 @@ describe("POST /:id/pid-apps (create)", () => {
       label: "notes",
       entry: "index.html",
       root: "notes",
+      source: "pid",
     })
 
     // and it's now visible through the list route — no drift from discovery.
@@ -130,5 +147,19 @@ describe("POST /:id/pid-apps (create)", () => {
 
   it("409s a name whose app dir already exists and is non-empty", async () => {
     expect((await post("/projA/pid-apps", { name: "spec" })).status).toBe(409)
+  })
+})
+
+describe("GET /:id/pid-apps/:appId (serve) — specs/-sourced id", () => {
+  it("serves a specs/-sourced app through the same bare route, with the same CSP/nosniff headers as a .pid/-sourced one", async () => {
+    const res = await specsApp.request("/projS/pid-apps/bar")
+    expect(res.status).toBe(200)
+    expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8")
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(res.headers.get("Cache-Control")).toBe("no-cache")
+    const csp = res.headers.get("Content-Security-Policy") ?? ""
+    expect(csp).toContain("default-src 'none'")
+    expect(csp).toContain("connect-src 'none'")
+    expect(await res.text()).toContain("bar spec")
   })
 })
