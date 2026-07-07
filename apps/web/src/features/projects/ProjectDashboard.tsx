@@ -3,6 +3,8 @@ import { useMemo, useState } from "react"
 import {
   EXT_ICON,
   PIDAPP_ICON,
+  subTabButtonClass,
+  subTabRailClass,
   TAB_ICONS,
   tabButtonClass,
   tabDockNavClass,
@@ -30,17 +32,29 @@ type Props = { project: Project }
 
 type Counts = Record<SessionStateValue, number>
 
-type StaticTabKey = "sessions" | "github" | "terminal" | "files" | "claude" | "library" | "settings"
-// Extension-contributed project panels are namespaced (`ext:<name>`); per-project
-// pid-apps dropped into <project>/.pid/ are namespaced (`pidapp:<id>`).
+type StaticTabKey =
+  | "sessions"
+  | "github"
+  | "terminal"
+  | "files"
+  | "claude"
+  | "library"
+  | "settings"
+  // The single parent "Specs" dock tab; individual apps live in its left rail.
+  | "pidapps"
+// Extension-contributed project panels are namespaced (`ext:<name>`). Every
+// per-project pid-app (dropped into <project>/.pid/ or a top-level specs/*.html)
+// is selected within the Specs tab via a `pidapp:<id>` search param — a
+// selected app implies the parent `pidapps` tab is active.
 type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
 
-// Namespaced tab prefixes → their shared glyph (extension panels and pid-apps).
+// Namespaced tab prefixes → their shared glyph. The bare `pidapp` prefix covers
+// both the parent `pidapps` tab and any selected `pidapp:<id>`.
 const NAMESPACE_ICONS = [
   ["ext:", EXT_ICON],
-  ["pidapp:", PIDAPP_ICON],
+  ["pidapp", PIDAPP_ICON],
 ] as const
 
 // Each project tab borrows the shared section glyph (see lib/tabDock) so a
@@ -135,21 +149,31 @@ export const ProjectDashboard = ({ project }: Props) => {
       { key: "claude", label: "Claude" },
       { key: "library", label: "Library" },
       { key: "settings", label: "Settings" },
+      // One parent tab for every pid-app; the individual apps hang off its left
+      // rail rather than each claiming a top-level dock tab.
+      { key: "pidapps", label: "Specs" },
       ...extPanels.map((e): Tab => ({ key: `ext:${e.name}`, label: e.name })),
-      ...pidApps.map((a): Tab => ({ key: `pidapp:${a.id}`, label: a.label })),
     )
     return base
-  }, [project.githubUrl, sessions.length, extPanels, pidApps])
+  }, [project.githubUrl, sessions.length, extPanels])
 
   const { tab = "sessions" } = route.useSearch()
   const navigate = route.useNavigate()
   const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
+
+  // The Specs tab is active for its own key or any selected app; a bare
+  // `pidapps` (or an id no longer present) falls back to the first app.
+  const pidAppsActive = tab === "pidapps" || tab.startsWith("pidapp:")
+  const selectedFromTab = tab.startsWith("pidapp:") ? tab.slice("pidapp:".length) : undefined
+  const selectedAppId = pidApps.find((a) => a.id === selectedFromTab)?.id ?? pidApps[0]?.id
+
   const fillViewport =
     tab === "terminal" ||
     tab === "files" ||
     tab === "claude" ||
     tab === "library" ||
     tab.startsWith("ext:") ||
+    tab === "pidapps" ||
     tab.startsWith("pidapp:")
 
   return (
@@ -241,7 +265,8 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tabDockNavClass}
       >
         {tabs.map((t) => {
-          const active = tab === t.key
+          // The Specs tab stays lit while any of its apps is selected.
+          const active = t.key === "pidapps" ? pidAppsActive : tab === t.key
           return (
             <button
               key={t.key}
@@ -258,7 +283,6 @@ export const ProjectDashboard = ({ project }: Props) => {
             </button>
           )
         })}
-        <NewPidAppButton projectId={project.id} onCreated={(id) => setTab(`pidapp:${id}`)} />
       </nav>
 
       <div
@@ -347,19 +371,62 @@ export const ProjectDashboard = ({ project }: Props) => {
         )
       })}
 
-      {pidApps.map((a) => {
-        const key: TabKey = `pidapp:${a.id}`
-        return (
-          <div
-            key={key}
-            role="tabpanel"
-            data-testid={`project-tab-panel-pidapp-${a.id}`}
-            className={tab === key ? "flex flex-col flex-1 min-h-0" : "hidden"}
-          >
-            <PidAppHost projectId={project.id} appId={a.id} />
-          </div>
-        )
-      })}
+      {/* One "Specs" section: a left rail of sub-tabs (one per pid-app) beside
+          the sandboxed host of whichever app is selected. */}
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-pidapps"
+        className={pidAppsActive ? "flex flex-1 min-h-0 gap-2" : "hidden"}
+      >
+        <nav
+          role="tablist"
+          aria-label="Specs and apps"
+          data-testid="pidapp-subtabs"
+          className={subTabRailClass}
+        >
+          {pidApps.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedAppId === a.id}
+              data-testid={`pidapp-subtab-${a.id}`}
+              data-active={selectedAppId === a.id}
+              onClick={() => setTab(`pidapp:${a.id}`)}
+              title={a.label}
+              className={subTabButtonClass(selectedAppId === a.id)}
+            >
+              <span className="shrink-0">{a.icon ?? PIDAPP_ICON}</span>
+              <span className="truncate">{a.label}</span>
+            </button>
+          ))}
+          <NewPidAppButton projectId={project.id} onCreated={(id) => setTab(`pidapp:${id}`)} />
+        </nav>
+
+        <div className="flex flex-1 min-h-0 flex-col">
+          {pidApps.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
+              No specs yet — drop an HTML file into{" "}
+              <span className="font-mono text-base-content/80">specs/</span> or click{" "}
+              <span className="font-medium text-base-content/80">+</span> to create one.
+            </div>
+          ) : (
+            pidApps.map((a) => {
+              const key: TabKey = `pidapp:${a.id}`
+              return (
+                <div
+                  key={key}
+                  role="tabpanel"
+                  data-testid={`project-tab-panel-pidapp-${a.id}`}
+                  className={selectedAppId === a.id ? "flex flex-col flex-1 min-h-0" : "hidden"}
+                >
+                  <PidAppHost projectId={project.id} appId={a.id} />
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />
     </div>

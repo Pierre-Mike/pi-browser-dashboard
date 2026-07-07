@@ -76,3 +76,21 @@ export const tabButtonClass = (active: boolean): string =>
       ? "bg-primary text-primary-content shadow-sm shadow-primary/30"
       : "text-base-content/60 hover:bg-base-300/70 hover:text-base-content",
   ].join(" ")
+
+// The vertical sub-tab rail: a fixed-width, scrollable column that sits to the
+// LEFT of a parent tab's content (e.g. the Specs tab lists each dropped
+// spec/app here). Same base-200 tint + rounding as the horizontal dock so the
+// two navs read as one system.
+export const subTabRailClass =
+  "flex w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-xl border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+
+// One left-rail sub-tab. Full-width, left-aligned (a vertical list, not a
+// centred pill) but reusing the dock's active/idle colour language.
+export const subTabButtonClass = (active: boolean): string =>
+  [
+    "group inline-flex w-full items-center gap-1.5 truncate rounded-lg px-2.5 py-1.5 text-left",
+    "text-xs font-medium transition-all duration-150",
+    active
+      ? "bg-primary text-primary-content shadow-sm shadow-primary/30"
+      : "text-base-content/60 hover:bg-base-300/70 hover:text-base-content",
+  ].join(" ")

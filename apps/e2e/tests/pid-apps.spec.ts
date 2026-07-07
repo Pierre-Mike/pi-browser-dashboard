@@ -25,22 +25,35 @@ const seedPidApps = (): string => {
   return path
 }
 
-test("pid-app: dropped HTML appears as a project tab and loads in a sandboxed iframe", async ({
+test("pid-app: dropped HTML lists as a sub-tab under Specs and loads in a sandboxed iframe", async ({
   page,
 }) => {
   seedPidApps()
   await page.goto("/projects/pid-demo")
   await expect(page.getByTestId("project-dashboard")).toBeVisible({ timeout: 15_000 })
 
-  // The default app (bare .pid/index.html) contributes a project tab.
-  const tab = page.getByTestId("project-tab-pidapp:default")
-  await expect(tab).toBeVisible({ timeout: 15_000 })
-  await tab.click()
-  await expect(page.getByTestId("project-tab-panel-pidapp-default")).toBeVisible()
+  // Every pid-app lives under the single parent "Specs" tab, not its own dock
+  // tab. Opening Specs selects the first app (the bare-root default) by default.
+  const specsTab = page.getByTestId("project-tab-pidapps")
+  await expect(specsTab).toBeVisible({ timeout: 15_000 })
+  await specsTab.click()
 
-  // The sandboxed iframe is served from the daemon and renders the dropped HTML.
-  const frame = page.frameLocator('[data-testid="pid-app-host-default"]')
-  await expect(frame.getByTestId("pidapp-default")).toContainText("PID DEFAULT APP", {
+  // Both dropped apps appear as left-rail sub-tabs.
+  await expect(page.getByTestId("pidapp-subtab-default")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("pidapp-subtab-plan")).toBeVisible()
+
+  // The default app's sandboxed iframe renders the dropped HTML.
+  await expect(page.getByTestId("project-tab-panel-pidapp-default")).toBeVisible()
+  const defaultFrame = page.frameLocator('[data-testid="pid-app-host-default"]')
+  await expect(defaultFrame.getByTestId("pidapp-default")).toContainText("PID DEFAULT APP", {
+    timeout: 15_000,
+  })
+
+  // Selecting another sub-tab swaps the hosted app without leaving the Specs tab.
+  await page.getByTestId("pidapp-subtab-plan").click()
+  await expect(page.getByTestId("project-tab-panel-pidapp-plan")).toBeVisible()
+  const planFrame = page.frameLocator('[data-testid="pid-app-host-plan"]')
+  await expect(planFrame.getByTestId("pidapp-plan")).toContainText("PID PLAN APP", {
     timeout: 15_000,
   })
 })
