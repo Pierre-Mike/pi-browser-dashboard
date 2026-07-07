@@ -91,10 +91,24 @@ describe("ProjectDashboard fillViewport", () => {
 })
 
 describe("ProjectDashboard pid-app tabs", () => {
-  it("lists the project's pid-apps as per-project tabs, scoped by project.id", () => {
-    // The hook is called with this project's id, so app A never appears on B.
+  it("scopes the pid-apps list to this project so app A never appears on B", () => {
     expect(src).toContain("usePidApps(project.id)")
-    expect(src).toMatch(/key:\s*`pidapp:\$\{a\.id\}`/)
+  })
+
+  it("collapses every pid-app into a SINGLE parent 'Specs' dock tab, not one tab per app", () => {
+    // Regression: pid-apps used to spread into the top dock as `pidapp:<id>`
+    // tabs, growing it unbounded. They now live under one parent section.
+    expect(src).toMatch(/key:\s*"pidapps"/)
+    expect(src).toMatch(/label:\s*"Specs"/)
+    // The old per-app dock mapping is gone from the tabs array.
+    expect(src).not.toMatch(/key:\s*`pidapp:\$\{a\.id\}`/)
+  })
+
+  it("lists each pid-app as a left-rail sub-tab that selects it via setTab", () => {
+    expect(src).toContain("subTabRailClass")
+    expect(src).toMatch(/data-testid=\{`pidapp-subtab-\$\{a\.id\}`\}/)
+    // Selecting a sub-tab drives the shared tab search param.
+    expect(src).toMatch(/onClick=\{\(\) => setTab\(`pidapp:\$\{a\.id\}`\)\}/)
   })
 
   it("renders each pid-app in a sandboxed PidAppHost panel (not the RPC ExtensionHost)", () => {
@@ -102,24 +116,32 @@ describe("ProjectDashboard pid-app tabs", () => {
     expect(block).not.toBeNull()
     expect(block?.[0]).toContain("PidAppHost")
     expect(block?.[0]).not.toContain("ExtensionHost")
-    expect(block?.[0]).toContain("flex flex-col flex-1 min-h-0")
     expect(src).toContain("data-testid={`project-tab-panel-pidapp-")
   })
 
-  it("fill-viewports pid-app tabs so the iframe stretches to full height", () => {
+  it("hosts the sub-tab rail + panels under one parent tabpanel keyed 'pidapps'", () => {
+    expect(src).toContain('data-testid="project-tab-panel-pidapps"')
+    // The parent tab is active for its own key or any selected app.
+    expect(src).toMatch(/tab\s*===\s*"pidapps"\s*\|\|\s*tab\.startsWith\("pidapp:"\)/)
+  })
+
+  it("fill-viewports the pid-apps section so the iframe stretches to full height", () => {
     const fillViewportBlock = src.match(/const fillViewport[\s\S]+?(?=\n\n)/)
-    expect(fillViewportBlock?.[0]).toMatch(/pidapp/)
+    expect(fillViewportBlock?.[0]).toMatch(/pidapps/)
   })
 })
 
 describe("ProjectDashboard pid-app creation", () => {
-  it("renders the new-pid-app control after the tab list, inside the tab nav", () => {
+  it("renders the new-pid-app control inside the sub-tab rail, not the top dock nav", () => {
+    // The top dock nav no longer carries the create control — it moved into the
+    // Specs section's left rail alongside the apps it creates.
     const navBlock = src.match(/<nav[\s\S]+?<\/nav>/)
     expect(navBlock).not.toBeNull()
-    expect(navBlock?.[0]).toContain("<NewPidAppButton")
+    expect(navBlock?.[0]).not.toContain("<NewPidAppButton")
+    expect(src).toContain("<NewPidAppButton")
   })
 
-  it("switches to the newly created app's tab via the existing setTab", () => {
+  it("switches to the newly created app's sub-tab via the existing setTab", () => {
     expect(src).toMatch(/onCreated=\{\(id\) => setTab\(`pidapp:\$\{id\}`\)\}/)
   })
 })

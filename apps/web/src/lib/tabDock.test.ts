@@ -1,7 +1,14 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "./tabDock"
+import {
+  EXT_ICON,
+  subTabButtonClass,
+  subTabRailClass,
+  TAB_ICONS,
+  tabButtonClass,
+  tabDockNavClass,
+} from "./tabDock"
 
 const src = readFileSync(join(import.meta.dir, "tabDock.tsx"), "utf8")
 
@@ -44,5 +51,22 @@ describe("shared tab dock", () => {
 
   it("reuses the extensions glyph for extension-contributed tabs", () => {
     expect(EXT_ICON).toBe(TAB_ICONS.extensions)
+  })
+
+  it("stacks the sub-tab rail as a fixed-width, scrollable column tinted like the dock", () => {
+    expect(subTabRailClass).toContain("flex-col")
+    expect(subTabRailClass).toContain("w-48")
+    expect(subTabRailClass).toContain("overflow-y-auto")
+    expect(subTabRailClass).toContain("bg-base-200/60")
+  })
+
+  it("fills the active sub-tab with primary and left-aligns full-width rows", () => {
+    const active = subTabButtonClass(true)
+    const idle = subTabButtonClass(false)
+    expect(active).toContain("bg-primary text-primary-content")
+    expect(active).toContain("w-full")
+    expect(active).toContain("text-left")
+    expect(idle).not.toContain("bg-primary")
+    expect(idle).toContain("hover:bg-base-300/70")
   })
 })
