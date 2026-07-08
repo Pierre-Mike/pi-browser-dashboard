@@ -5,8 +5,10 @@ import { SpawnCommandPreview } from "./SpawnCommandPreview"
 
 const render = (
   over: {
+    harness?: "claude" | "pi"
     intent?: string
     effort?: string
+    thinking?: string
     model?: string
     tools?: readonly string[]
     cwd?: string
@@ -14,8 +16,10 @@ const render = (
 ): string =>
   renderToStaticMarkup(
     createElement(SpawnCommandPreview, {
+      harness: over.harness ?? "claude",
       intent: over.intent ?? "go",
       effort: over.effort,
+      thinking: over.thinking,
       model: over.model,
       tools: over.tools,
       cwd: over.cwd,
@@ -56,5 +60,27 @@ describe("SpawnCommandPreview", () => {
     const html = render()
     expect(html).toContain("<details")
     expect(html).not.toContain("open=")
+  })
+
+  describe("pi harness", () => {
+    test("shows the bare pi -p command", () => {
+      expect(render({ harness: "pi" })).toContain("pi -p go")
+    })
+
+    test("reflects thinking level, model, and pi tools", () => {
+      const html = render({
+        harness: "pi",
+        thinking: "high",
+        model: "anthropic/claude-sonnet-5",
+        tools: ["read", "bash"],
+      })
+      expect(html).toContain(
+        "pi --thinking high --model anthropic/claude-sonnet-5 --tools read,bash -p go",
+      )
+    })
+
+    test("ignores the claude-only effort level on the pi preview", () => {
+      expect(render({ harness: "pi", effort: "high" })).toContain("pi -p go")
+    })
   })
 })

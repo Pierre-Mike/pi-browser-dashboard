@@ -87,7 +87,10 @@ type SpawnOpts = {
   readonly timeoutMs?: number
 }
 
-const runClaude = ({
+// Generic short-lived command runner (waits for exit, kills at timeoutMs).
+// Exported for other shell-out repos (pi.repo) so the spawn/timeout/stderr
+// handling stays in one place.
+export const runCommand = ({
   cmd,
   cwd,
   timeoutMs = 30_000,
@@ -281,7 +284,7 @@ export const ShellRepoLive: Layer.Layer<ShellRepo> = Layer.succeed(ShellRepo, {
     Effect.gen(function* () {
       const args = buildDispatchArgs(input)
       const cwd = resolveSpawnCwd(input.cwd, process.env)
-      const { stdout } = yield* runClaude({ cmd: args, cwd })
+      const { stdout } = yield* runCommand({ cmd: args, cwd })
       const short = parseShort(stdout)
       if (!short) {
         return yield* Effect.fail(
@@ -293,10 +296,10 @@ export const ShellRepoLive: Layer.Layer<ShellRepo> = Layer.succeed(ShellRepo, {
       }
       return short
     }),
-  stop: (id) => runClaude({ cmd: ["claude", "stop", id] }).pipe(Effect.asVoid),
-  rm: (id) => runClaude({ cmd: ["claude", "rm", id] }).pipe(Effect.asVoid),
+  stop: (id) => runCommand({ cmd: ["claude", "stop", id] }).pipe(Effect.asVoid),
+  rm: (id) => runCommand({ cmd: ["claude", "rm", id] }).pipe(Effect.asVoid),
   peek: (id) =>
-    runClaude({ cmd: ["claude", "peek", id], timeoutMs: 60_000 }).pipe(
+    runCommand({ cmd: ["claude", "peek", id], timeoutMs: 60_000 }).pipe(
       Effect.map(({ stdout }) => stdout.trim()),
     ),
   send: sendViaPool,

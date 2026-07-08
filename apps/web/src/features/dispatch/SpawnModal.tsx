@@ -10,9 +10,18 @@ import { SpawnSkillPicker } from "./SpawnSkillPicker"
 import { SpawnToolPicker } from "./SpawnToolPicker"
 import { dispatchSpawn } from "./spawnDispatch"
 import { DEFAULT_SPAWN_EFFORT, SPAWN_EFFORT_LEVELS } from "./spawnEffort"
+import {
+  DEFAULT_SPAWN_HARNESS,
+  HARNESS_LABELS,
+  HARNESS_SKILL_PREFIXES,
+  SPAWN_HARNESSES,
+  type SpawnHarness,
+} from "./spawnHarness"
 import { SPAWN_INTENT_INPUT, SPAWN_MODAL_SHELL } from "./spawnModalLayout"
 import { DEFAULT_SPAWN_MODEL, SPAWN_MODEL_ALIASES } from "./spawnModel"
-import { ALL_SPAWN_TOOLS, toggleTool, toolsForDispatch } from "./spawnTools"
+import { DEFAULT_SPAWN_THINKING, PI_THINKING_LEVELS } from "./spawnThinking"
+import { HARNESS_SPAWN_TOOLS, toggleTool, toolsForDispatch } from "./spawnTools"
+import { piModelValue, usePiModels } from "./usePiModels"
 import { useSpawnSkills } from "./useSpawnSkills"
 
 type Props = {
@@ -23,25 +32,45 @@ type Props = {
 
 export const SpawnModal = ({ open, project, onClose }: Props) => {
   const qc = useQueryClient()
+  const [harness, setHarness] = useState<SpawnHarness>(DEFAULT_SPAWN_HARNESS)
   const [intent, setIntent] = useState("")
   const [effort, setEffort] = useState<string>(DEFAULT_SPAWN_EFFORT)
+  const [thinking, setThinking] = useState<string>(DEFAULT_SPAWN_THINKING)
   const [model, setModel] = useState<string>(DEFAULT_SPAWN_MODEL)
-  const [tools, setTools] = useState<readonly string[]>(ALL_SPAWN_TOOLS)
+  const [tools, setTools] = useState<readonly string[]>(HARNESS_SPAWN_TOOLS[DEFAULT_SPAWN_HARNESS])
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const skillState = useSpawnSkills(open, project)
+  const piModels = usePiModels(open && harness === "pi")
+
+  const harnessTools = HARNESS_SPAWN_TOOLS[harness]
+  const skillPrefix = HARNESS_SKILL_PREFIXES[harness]
 
   const handleClose = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["claude-config", "project"] })
     onClose()
   }, [qc, onClose])
 
+  // Switching harness keeps the intent and skill selection (they carry over)
+  // but resets the harness-owned knobs: tool set, model catalog, and the
+  // effort/thinking level, which don't share a vocabulary between CLIs.
+  const switchHarness = (next: SpawnHarness) => {
+    if (next === harness) return
+    setHarness(next)
+    setTools(HARNESS_SPAWN_TOOLS[next])
+    setModel(DEFAULT_SPAWN_MODEL)
+    setEffort(DEFAULT_SPAWN_EFFORT)
+    setThinking(DEFAULT_SPAWN_THINKING)
+  }
+
   useEffect(() => {
     if (!open) return
+    setHarness(DEFAULT_SPAWN_HARNESS)
     setIntent("")
     setEffort(DEFAULT_SPAWN_EFFORT)
+    setThinking(DEFAULT_SPAWN_THINKING)
     setModel(DEFAULT_SPAWN_MODEL)
-    setTools(ALL_SPAWN_TOOLS)
+    setTools(HARNESS_SPAWN_TOOLS[DEFAULT_SPAWN_HARNESS])
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
   }, [open])
@@ -64,16 +93,18 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()
-    const text = prependSkill(skillState.selected, intent).trim()
+    const text = prependSkill({ skills: skillState.selected, intent, skillPrefix }).trim()
     if (!text || busy) return
     setBusy(true)
     try {
       await dispatchSpawn({
         intent: text,
         project,
+        harness,
         effort,
+        thinking,
         model,
-        tools: toolsForDispatch(tools),
+        tools: toolsForDispatch(tools, harnessTools),
       })
       qc.invalidateQueries({ queryKey: ["sessions"] })
       handleClose()
@@ -117,10 +148,34 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </span>
           ) : null}
         </div>
+        <div
+          role="tablist"
+          data-testid="spawn-harness-tabs"
+          className="tabs tabs-boxed tabs-sm w-fit"
+        >
+          {SPAWN_HARNESSES.map((h) => (
+            <button
+              key={h}
+              type="button"
+              role="tab"
+              aria-selected={harness === h}
+              data-testid={`spawn-harness-${h}`}
+              data-active={harness === h}
+              onClick={() => switchHarness(h)}
+              disabled={busy}
+              className={`tab normal-case ${harness === h ? "tab-active" : ""}`}
+            >
+              {HARNESS_LABELS[h]}
+            </button>
+          ))}
+        </div>
         <SpawnSkillPicker skills={skillState} disabled={busy} />
         <SpawnToolPicker
+          all={harnessTools}
           selected={tools}
-          onToggle={(id) => setTools((prev) => toggleTool(prev, id))}
+          onToggle={(id) =>
+            setTools((prev) => toggleTool({ selected: prev, id, all: harnessTools }))
+          }
           disabled={busy}
         />
         <textarea
@@ -138,31 +193,53 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           className={SPAWN_INTENT_INPUT}
         />
         <SpawnCommandPreview
-          intent={prependSkill(skillState.selected, intent).trim()}
+          harness={harness}
+          intent={prependSkill({ skills: skillState.selected, intent, skillPrefix }).trim()}
           effort={effort}
+          thinking={thinking}
           model={model}
-          tools={toolsForDispatch(tools)}
+          tools={toolsForDispatch(tools, harnessTools)}
           cwd={project?.path}
         />
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
-              Effort
-              <select
-                data-testid="spawn-effort"
-                value={effort}
-                onChange={(e) => setEffort(e.target.value)}
-                disabled={busy}
-                className="select select-xs select-bordered normal-case"
-              >
-                <option value={DEFAULT_SPAWN_EFFORT}>default</option>
-                {SPAWN_EFFORT_LEVELS.map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {harness === "pi" ? (
+              <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
+                Thinking
+                <select
+                  data-testid="spawn-thinking"
+                  value={thinking}
+                  onChange={(e) => setThinking(e.target.value)}
+                  disabled={busy}
+                  className="select select-xs select-bordered normal-case"
+                >
+                  <option value={DEFAULT_SPAWN_THINKING}>default</option>
+                  {PI_THINKING_LEVELS.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
+                Effort
+                <select
+                  data-testid="spawn-effort"
+                  value={effort}
+                  onChange={(e) => setEffort(e.target.value)}
+                  disabled={busy}
+                  className="select select-xs select-bordered normal-case"
+                >
+                  <option value={DEFAULT_SPAWN_EFFORT}>default</option>
+                  {SPAWN_EFFORT_LEVELS.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="flex items-center gap-1.5 text-[11px] text-base-content/60">
               Model
               <select
@@ -173,11 +250,20 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
                 className="select select-xs select-bordered normal-case"
               >
                 <option value={DEFAULT_SPAWN_MODEL}>default</option>
-                {SPAWN_MODEL_ALIASES.map((alias) => (
-                  <option key={alias} value={alias}>
-                    {alias}
-                  </option>
-                ))}
+                {harness === "pi"
+                  ? (piModels.data ?? []).map((m) => {
+                      const value = piModelValue(m)
+                      return (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      )
+                    })
+                  : SPAWN_MODEL_ALIASES.map((alias) => (
+                      <option key={alias} value={alias}>
+                        {alias}
+                      </option>
+                    ))}
               </select>
             </label>
           </div>
@@ -193,7 +279,11 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
             </button>
             <button
               type="submit"
-              disabled={busy || prependSkill(skillState.selected, intent).trim().length === 0}
+              disabled={
+                busy ||
+                prependSkill({ skills: skillState.selected, intent, skillPrefix }).trim().length ===
+                  0
+              }
               className="btn btn-sm btn-primary normal-case shadow-sm shadow-primary/30"
             >
               {busy ? "Spawning…" : "Spawn"}

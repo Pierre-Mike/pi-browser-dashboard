@@ -7,14 +7,25 @@ import {
   type ShellRepoApi,
 } from "../../platform/shell.repo"
 import { buildDispatchApp } from "./dispatch.routes"
+import { type PiDispatchInput, PiRepo, type PiRepoApi } from "./pi.repo"
 
 type Spy = {
   readonly calls: DispatchInput[]
   shortReturn: string
   failNext: boolean
+  readonly piCalls: PiDispatchInput[]
+  piReturn: string
+  piModelsFailNext: boolean
 }
 
-const newSpy = (): Spy => ({ calls: [], shortReturn: "abcd1234", failNext: false })
+const newSpy = (): Spy => ({
+  calls: [],
+  shortReturn: "abcd1234",
+  failNext: false,
+  piCalls: [],
+  piReturn: "11111111-2222-3333-4444-555555555555",
+  piModelsFailNext: false,
+})
 
 const buildShellLayer = (spy: Spy): Layer.Layer<ShellRepo> => {
   const api: ShellRepoApi = {
@@ -34,8 +45,28 @@ const buildShellLayer = (spy: Spy): Layer.Layer<ShellRepo> => {
   return Layer.succeed(ShellRepo, api)
 }
 
+const buildPiLayer = (spy: Spy): Layer.Layer<PiRepo> => {
+  const api: PiRepoApi = {
+    dispatch: (input) => {
+      spy.piCalls.push(input)
+      return Effect.succeed(spy.piReturn)
+    },
+    listModels: () => {
+      if (spy.piModelsFailNext) {
+        spy.piModelsFailNext = false
+        return Effect.fail(new ShellError({ message: "pi unavailable" }))
+      }
+      return Effect.succeed([
+        { provider: "anthropic", id: "claude-sonnet-5" },
+        { provider: "github-copilot", id: "gpt-5-mini" },
+      ])
+    },
+  }
+  return Layer.succeed(PiRepo, api)
+}
+
 const buildHarness = (spy: Spy) => {
-  const runtime = ManagedRuntime.make(buildShellLayer(spy))
+  const runtime = ManagedRuntime.make(Layer.mergeAll(buildShellLayer(spy), buildPiLayer(spy)))
   return { app: buildDispatchApp(runtime), dispose: () => runtime.dispose() }
 }
 
@@ -211,6 +242,93 @@ describe("POST /dispatch", () => {
       const res = await post(app, { intent: "go" })
       expect(res.status).toBe(500)
       expect(await res.json()).toEqual({ error: "dispatch_failed" })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("routes harness 'pi' to PiRepo with pi-shaped fields, never ShellRepo", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await post(app, {
+        intent: "go",
+        cwd: "/repo",
+        harness: "pi",
+        thinking: "high",
+        model: "anthropic/claude-sonnet-5",
+        tools: ["read", "bash"],
+      })
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ short: spy.piReturn })
+      expect(spy.calls).toHaveLength(0)
+      expect(spy.piCalls).toEqual([
+        {
+          intent: "go",
+          cwd: "/repo",
+          thinking: "high",
+          model: "anthropic/claude-sonnet-5",
+          tools: ["read", "bash"],
+        },
+      ])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("treats harness 'claude' as the default claude path", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await post(app, { intent: "go", harness: "claude" })
+      expect(res.status).toBe(200)
+      expect(spy.calls).toHaveLength(1)
+      expect(spy.piCalls).toHaveLength(0)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("rejects an unknown harness with 400 rather than silently spawning claude", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await post(app, { intent: "go", harness: "codex" })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: "invalid_harness" })
+      expect(spy.calls).toHaveLength(0)
+      expect(spy.piCalls).toHaveLength(0)
+    } finally {
+      await dispose()
+    }
+  })
+})
+
+describe("GET /dispatch/pi-models", () => {
+  it("returns the parsed pi model catalog", async () => {
+    const { app, dispose } = buildHarness(newSpy())
+    try {
+      const res = await app.request("/pi-models")
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        models: [
+          { provider: "anthropic", id: "claude-sonnet-5" },
+          { provider: "github-copilot", id: "gpt-5-mini" },
+        ],
+      })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("returns 500 pi_models_failed when pi cannot be queried", async () => {
+    const spy = newSpy()
+    spy.piModelsFailNext = true
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await app.request("/pi-models")
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: "pi_models_failed" })
     } finally {
       await dispose()
     }
