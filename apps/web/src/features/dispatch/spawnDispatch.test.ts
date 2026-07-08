@@ -1,7 +1,22 @@
 import { describe, expect, it } from "bun:test"
-import { buildDispatchBody } from "./spawnDispatch"
+import { buildDispatchBody, dispatchErrorMessage } from "./spawnDispatch"
 
 const project = { id: "p1", name: "proj", path: "/repo" }
+
+describe("dispatchErrorMessage", () => {
+  it("prefers the daemon's failure detail — the harness's own words", () => {
+    expect(dispatchErrorMessage(500, { error: "dispatch_failed", detail: "No API key" })).toBe(
+      "No API key",
+    )
+  })
+
+  it("falls back to the HTTP status when the body carries no usable detail", () => {
+    expect(dispatchErrorMessage(500, { error: "dispatch_failed" })).toBe("dispatch: HTTP 500")
+    expect(dispatchErrorMessage(500, { detail: "   " })).toBe("dispatch: HTTP 500")
+    expect(dispatchErrorMessage(502, null)).toBe("dispatch: HTTP 502")
+    expect(dispatchErrorMessage(500, { detail: 42 })).toBe("dispatch: HTTP 500")
+  })
+})
 
 describe("buildDispatchBody (claude)", () => {
   it("sends just the intent for a bare spawn", () => {

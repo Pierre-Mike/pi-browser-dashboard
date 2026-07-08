@@ -6,6 +6,7 @@ import { appendPath } from "../uploads/appendPath"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { prependSkill } from "./prependSkill"
 import { SpawnCommandPreview } from "./SpawnCommandPreview"
+import { SpawnErrorNotice } from "./SpawnErrorNotice"
 import { SpawnSkillPicker } from "./SpawnSkillPicker"
 import { SpawnToolPicker } from "./SpawnToolPicker"
 import { dispatchSpawn } from "./spawnDispatch"
@@ -39,6 +40,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
   const [model, setModel] = useState<string>(DEFAULT_SPAWN_MODEL)
   const [tools, setTools] = useState<readonly string[]>(HARNESS_SPAWN_TOOLS[DEFAULT_SPAWN_HARNESS])
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const skillState = useSpawnSkills(open, project)
   const piModels = usePiModels(open && harness === "pi")
@@ -71,6 +73,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     setThinking(DEFAULT_SPAWN_THINKING)
     setModel(DEFAULT_SPAWN_MODEL)
     setTools(HARNESS_SPAWN_TOOLS[DEFAULT_SPAWN_HARNESS])
+    setError(null)
     const t = setTimeout(() => inputRef.current?.focus(), 0)
     return () => clearTimeout(t)
   }, [open])
@@ -96,6 +99,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
     const text = prependSkill({ skills: skillState.selected, intent, skillPrefix }).trim()
     if (!text || busy) return
     setBusy(true)
+    setError(null)
     try {
       await dispatchSpawn({
         intent: text,
@@ -110,6 +114,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
       handleClose()
     } catch (err) {
       console.error("dispatch failed", err)
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
@@ -201,6 +206,7 @@ export const SpawnModal = ({ open, project, onClose }: Props) => {
           tools={toolsForDispatch(tools, harnessTools)}
           cwd={project?.path}
         />
+        <SpawnErrorNotice message={error} />
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             {harness === "pi" ? (

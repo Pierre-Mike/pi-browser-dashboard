@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { buildPiDispatchArgs, parsePiModels } from "./pi.core"
+import { buildPiDispatchArgs, parsePiModels, piLaunchFailureMessage } from "./pi.core"
 
 const SAMPLE = [
   "provider        model                                context  max-out  thinking  images",
@@ -77,5 +77,18 @@ describe("buildPiDispatchArgs", () => {
 
   it("omits the tools flag entirely when tools is undefined (pi default: all)", () => {
     expect(buildPiDispatchArgs({ intent: "go", tools: undefined })).toEqual(["pi", "-p", "go"])
+  })
+})
+
+describe("piLaunchFailureMessage", () => {
+  it("surfaces pi's own stderr, trimmed, as the failure message", () => {
+    expect(piLaunchFailureMessage(1, "No API key for provider: anthropic\n")).toBe(
+      "No API key for provider: anthropic",
+    )
+  })
+
+  it("falls back to the exit code when pi died without writing stderr", () => {
+    expect(piLaunchFailureMessage(7, "")).toBe("pi exited with code 7 before starting")
+    expect(piLaunchFailureMessage(1, "   \n")).toBe("pi exited with code 1 before starting")
   })
 })
