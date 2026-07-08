@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
-import { buildSpawnCommandArgs, formatSpawnCommand } from "./spawnCommandArgs"
+import {
+  buildPiSpawnCommandArgs,
+  buildSpawnCommandArgs,
+  formatSpawnCommand,
+} from "./spawnCommandArgs"
 
 describe("buildSpawnCommandArgs", () => {
   it("builds the bare `claude --bg <intent>` argv with no effort or tools", () => {
@@ -94,6 +98,50 @@ describe("buildSpawnCommandArgs", () => {
       "Read",
       "--",
       "fix bug",
+    ])
+  })
+})
+
+describe("buildPiSpawnCommandArgs", () => {
+  it("builds the bare `pi -p <intent>` argv with no options", () => {
+    expect(buildPiSpawnCommandArgs({ intent: "fix bug" })).toEqual(["pi", "-p", "fix bug"])
+  })
+
+  it("carries thinking, model, and tools as pi flags, mirroring the daemon", () => {
+    expect(
+      buildPiSpawnCommandArgs({
+        intent: "fix bug",
+        thinking: "high",
+        model: "anthropic/claude-sonnet-5",
+        tools: ["read", "bash"],
+      }),
+    ).toEqual([
+      "pi",
+      "--thinking",
+      "high",
+      "--model",
+      "anthropic/claude-sonnet-5",
+      "--tools",
+      "read,bash",
+      "-p",
+      "fix bug",
+    ])
+  })
+
+  it("omits flags for the empty inherit defaults", () => {
+    expect(buildPiSpawnCommandArgs({ intent: "go", thinking: "", model: "" })).toEqual([
+      "pi",
+      "-p",
+      "go",
+    ])
+  })
+
+  it("maps an explicit empty tools list to --no-tools", () => {
+    expect(buildPiSpawnCommandArgs({ intent: "go", tools: [] })).toEqual([
+      "pi",
+      "--no-tools",
+      "-p",
+      "go",
     ])
   })
 })

@@ -26,6 +26,34 @@ export const buildSpawnCommandArgs = ({
   return args
 }
 
+export type PiSpawnCommandPreviewInput = {
+  readonly intent: string
+  readonly thinking?: string
+  readonly model?: string
+  readonly tools?: readonly string[]
+}
+
+// Mirrors `buildPiDispatchArgs` in apps/daemon/src/features/dispatch/pi.core.ts
+// (same duplication convention as above). The daemon additionally injects a
+// `--session-id <uuid>` it mints at dispatch time — unknowable here, so the
+// preview shows everything but that flag.
+export const buildPiSpawnCommandArgs = ({
+  intent,
+  thinking,
+  model,
+  tools,
+}: PiSpawnCommandPreviewInput): string[] => {
+  const args: string[] = ["pi"]
+  if (thinking) args.push("--thinking", thinking)
+  if (model) args.push("--model", model)
+  if (tools !== undefined) {
+    if (tools.length === 0) args.push("--no-tools")
+    else args.push("--tools", tools.join(","))
+  }
+  args.push("-p", intent)
+  return args
+}
+
 // Only these characters are safe to display unquoted in a shell command line.
 const SAFE_ARG_RE = /^[A-Za-z0-9,._/@%+=:-]+$/
 

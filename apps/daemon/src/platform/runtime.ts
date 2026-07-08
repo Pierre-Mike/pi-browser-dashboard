@@ -1,6 +1,7 @@
 import { Layer, ManagedRuntime } from "effect"
 import { BrainstormsRepoLive } from "../features/brainstorms/brainstorms.repo"
 import { ClaudeConfigRepoLive } from "../features/claude-config/claude-config.repo"
+import { PiRepoLive } from "../features/dispatch/pi.repo"
 import { GlobalSettingsRepoLive } from "../features/global-settings/global-settings.repo"
 import { GhIssueClientLive } from "../features/issue-driver/gh-issue.repo"
 import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.repo"
@@ -48,6 +49,7 @@ const IssueDriverLive = Layer.provide(
 const AppLayer = Layer.mergeAll(
   SessionRegistryLive,
   ShellRepoLive,
+  PiRepoLive,
   FilesLive,
   ProjectsLive,
   ClaudeConfigLive,
