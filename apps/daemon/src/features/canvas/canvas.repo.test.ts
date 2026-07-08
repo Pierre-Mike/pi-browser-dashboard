@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { type CanvasSnapshot, canvasPathFor, parseCanvas } from "./canvas.core"
-import { __resetCanvasRoomsForTests, getCanvasRoom } from "./canvas.repo"
+import { __resetCanvasRoomsForTests, getCanvasRoom, getCanvasRoomAt } from "./canvas.repo"
 
 const makeTempConfigDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "pid-canvas-"))
 
@@ -107,5 +107,49 @@ describe("getCanvasRoom — publish + subscribe", () => {
     // Allow the polling watcher (500ms) one cycle plus jitter.
     await wait(700)
     expect(seen.length).toBe(2)
+  })
+})
+
+describe("getCanvasRoomAt — path-keyed rooms (brainstorm documents)", () => {
+  let cfg: string
+
+  beforeEach(() => {
+    cfg = makeTempConfigDir()
+  })
+
+  afterEach(() => {
+    __resetCanvasRoomsForTests()
+    try {
+      fs.rmSync(cfg, { recursive: true, force: true })
+    } catch {
+      // best effort
+    }
+  })
+
+  it("persists publish() output to the exact file it was opened at", async () => {
+    const file = path.join(cfg, "proj", ".pid", "brainstorms", "auth-flow.canvas.json")
+    const room = await getCanvasRoomAt(file)
+    await room.publish(fixedSnapshot("Idea"), null)
+    const onDisk = parseCanvas(JSON.parse(fs.readFileSync(file, "utf8")))
+    expect(onDisk.nodes[0]?.data).toEqual({ label: "Idea" })
+  })
+
+  it("shares one room per path: a publish reaches a subscriber from a second open", async () => {
+    const file = path.join(cfg, "doc.canvas.json")
+    const a = await getCanvasRoomAt(file)
+    const b = await getCanvasRoomAt(file)
+    const labels: unknown[] = []
+    b.subscribe((snap) => {
+      labels.push(snap.nodes[0]?.data?.label)
+    })
+    await a.publish(fixedSnapshot("shared"), null)
+    expect(labels).toEqual(["shared"])
+  })
+
+  it("keeps the session-canvas API on the same room store (no forked state)", async () => {
+    const viaShort = await getCanvasRoom(cfg, "abc")
+    const viaPath = await getCanvasRoomAt(canvasPathFor(cfg, "abc"))
+    await viaShort.publish(fixedSnapshot("one-store"), null)
+    expect(viaPath.snapshot().nodes[0]?.data).toEqual({ label: "one-store" })
   })
 })

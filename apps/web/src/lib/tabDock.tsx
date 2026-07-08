@@ -55,6 +55,12 @@ export const TAB_ICONS: Record<string, ReactNode> = {
 // Generic icon for extension-contributed tabs / panels (puzzle piece).
 export const EXT_ICON = TAB_ICONS.extensions
 
+// Icon for the per-project Brainstorm tab and its boards (a lightbulb — these
+// are free-form drawing canvases with AI companions).
+export const BRAINSTORM_ICON = (
+  <Icon d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.9.7 1.5 1.7 1.5 2.8V17h4v-.3c0-1.1.6-2.1 1.5-2.8A6 6 0 0012 3z" />
+)
+
 // Icon for per-project pid-app tabs (a document/page — these render dropped
 // HTML such as specs and plans).
 export const PIDAPP_ICON = (

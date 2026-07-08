@@ -51,7 +51,19 @@ import { EditableGroupNode } from "./EditableGroupNode"
 import { EditableLinkNode } from "./EditableLinkNode"
 import { type SyncStatus, useCanvasSync } from "./useCanvasSync"
 
-type Props = { readonly session: SessionState }
+// The document this canvas edits: a per-session scratch canvas (with a
+// "Brief AI" button that messages the session), or a named project brainstorm
+// document (whose AI companions are driven by the Brainstorm tab instead).
+type CanvasDocTarget =
+  | { readonly kind: "session"; readonly session: SessionState }
+  | {
+      readonly kind: "brainstorm"
+      readonly projectId: string
+      readonly slug: string
+      readonly file: string
+    }
+
+type Props = { readonly target: CanvasDocTarget }
 
 const briefingMessage = (canvasPath: string): string =>
   [
@@ -146,11 +158,18 @@ const decoratedEdge = (e: Edge): Edge => {
   }
 }
 
-const CanvasInner = ({ session }: Props) => {
+const CanvasInner = ({ target }: Props) => {
   const qc = useQueryClient()
-  const short = session.short
+  const short = target.kind === "session" ? target.session.short : null
+  const docRef = useMemo(
+    () =>
+      target.kind === "session"
+        ? ({ kind: "session", short: target.session.short } as const)
+        : ({ kind: "brainstorm", projectId: target.projectId, slug: target.slug } as const),
+    [target],
+  )
   const { nodes, edges, status, setNodes, setEdges, resetCanvas, lastUpdatedAt } =
-    useCanvasSync(short)
+    useCanvasSync(docRef)
   const [briefing, setBriefing] = useState(false)
   const [briefStatus, setBriefStatus] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -619,10 +638,10 @@ const CanvasInner = ({ session }: Props) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `session-${short}.canvas`
+    a.download = target.kind === "session" ? `session-${short}.canvas` : `${target.slug}.canvas`
     a.click()
     URL.revokeObjectURL(url)
-  }, [nodes, edges, short])
+  }, [nodes, edges, short, target])
 
   const onImportClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -718,9 +737,13 @@ const CanvasInner = ({ session }: Props) => {
     return normalizeArrow((e?.data as Record<string, unknown> | undefined)?.arrow)
   }, [edges, selectedEdgeId])
 
-  const canvasPath = useMemo(() => `~/.claude/jobs/${short}/canvas.json`, [short])
+  const canvasPath = useMemo(
+    () => (target.kind === "session" ? `~/.claude/jobs/${short}/canvas.json` : target.file),
+    [short, target],
+  )
 
   const onBriefAi = useCallback(async () => {
+    if (short === null) return
     if (briefing) return
     setBriefing(true)
     setBriefStatus("briefing AI…")
@@ -1020,16 +1043,18 @@ const CanvasInner = ({ session }: Props) => {
           className="hidden"
           data-testid="canvas-import-input"
         />
-        <button
-          type="button"
-          data-testid="canvas-brief-ai"
-          onClick={() => void onBriefAi()}
-          disabled={briefing}
-          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
-          title="Send the AI a message telling it where to find this canvas so it can read/write live"
-        >
-          {briefing ? "Briefing…" : "Brief AI"}
-        </button>
+        {target.kind === "session" ? (
+          <button
+            type="button"
+            data-testid="canvas-brief-ai"
+            onClick={() => void onBriefAi()}
+            disabled={briefing}
+            className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
+            title="Send the AI a message telling it where to find this canvas so it can read/write live"
+          >
+            {briefing ? "Briefing…" : "Brief AI"}
+          </button>
+        ) : null}
         <button
           type="button"
           data-testid="canvas-reset"

@@ -10,16 +10,15 @@ import {
   serializeCanvas,
 } from "./canvas.core"
 
-// A per-session room. Subscribers see every external mutation (typically the
-// AI writing canvas.json via its file tools) and every peer mutation (other
-// browser tabs editing the same canvas). The sender of a mutation is excluded
-// from its own broadcast so a freshly-edited tab doesn't echo its own state
-// back over the wire mid-drag.
+// A per-document room. Subscribers see every external mutation (typically the
+// AI writing the canvas file via its file tools) and every peer mutation
+// (other browser tabs editing the same canvas). The sender of a mutation is
+// excluded from its own broadcast so a freshly-edited tab doesn't echo its own
+// state back over the wire mid-drag.
 
 export type CanvasSubscriber = (snap: CanvasSnapshot, fromSelf: boolean) => void
 
 type Room = {
-  readonly short: string
   readonly filePath: string
   cache: CanvasSnapshot
   readonly subscribers: Map<symbol, CanvasSubscriber>
@@ -30,6 +29,9 @@ type Room = {
   lastSelfWrite: string | null
 }
 
+// Keyed by absolute file path — one room per document, whether that document
+// is a session canvas (~/.claude/jobs/<short>/canvas.json) or a project
+// brainstorm (<project>/.pid/brainstorms/<id>.canvas.json).
 const rooms = new Map<string, Room>()
 
 const readSnapshotFromDisk = async (filePath: string): Promise<CanvasSnapshot> => {
@@ -56,20 +58,18 @@ const writeSnapshotAtomic = async (filePath: string, snap: CanvasSnapshot): Prom
   return body
 }
 
-const ensureRoom = async (configDir: string, short: string): Promise<Room> => {
-  const existing = rooms.get(short)
+const ensureRoom = async (filePath: string): Promise<Room> => {
+  const existing = rooms.get(filePath)
   if (existing) return existing
-  const filePath = canvasPathFor(configDir, short)
   const cache = await readSnapshotFromDisk(filePath)
   const room: Room = {
-    short,
     filePath,
     cache,
     subscribers: new Map(),
     unwatch: null,
     lastSelfWrite: null,
   }
-  rooms.set(short, room)
+  rooms.set(filePath, room)
   room.unwatch = watchFile(filePath, () => {
     void handleFileChange(room)
   })
@@ -81,7 +81,7 @@ const handleFileChange = async (room: Room): Promise<void> => {
   try {
     next = await readSnapshotFromDisk(room.filePath)
   } catch (err) {
-    console.error("[canvas.repo] read failed", room.short, err)
+    console.error("[canvas.repo] read failed", room.filePath, err)
     return
   }
   const incomingBody = serializeCanvas(next)
@@ -103,8 +103,14 @@ export type CanvasRoom = {
   readonly publish: (next: CanvasSnapshot, origin: symbol | null) => Promise<CanvasSnapshot>
 }
 
-export const getCanvasRoom = async (configDir: string, short: string): Promise<CanvasRoom> => {
-  const room = await ensureRoom(configDir, short)
+// Session-canvas entry point, kept as the narrow public API the canvas routes
+// use. Brainstorms (and any future document-backed canvas) go through
+// getCanvasRoomAt with an explicit path.
+export const getCanvasRoom = (configDir: string, short: string): Promise<CanvasRoom> =>
+  getCanvasRoomAt(canvasPathFor(configDir, short))
+
+export const getCanvasRoomAt = async (filePath: string): Promise<CanvasRoom> => {
+  const room = await ensureRoom(filePath)
   return {
     snapshot: () => room.cache,
     subscribe: (sub) => {
@@ -123,7 +129,7 @@ export const getCanvasRoom = async (configDir: string, short: string): Promise<C
         const body = await writeSnapshotAtomic(room.filePath, stamped)
         room.lastSelfWrite = body
       } catch (err) {
-        console.error("[canvas.repo] write failed", room.short, err)
+        console.error("[canvas.repo] write failed", room.filePath, err)
         throw err
       }
       room.cache = stamped

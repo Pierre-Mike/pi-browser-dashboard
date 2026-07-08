@@ -15,14 +15,16 @@ export type SpawnRequest = {
 
 // POST a spawn intent to the daemon, scoping it to the project's cwd when one is
 // in context and tagging the requested reasoning effort. Extracted from
-// SpawnModal so the submit handler stays simple.
+// SpawnModal so the submit handler stays simple. Returns the spawned session's
+// short id (null when the daemon response carries none) so callers like the
+// brainstorm companion panel can attach a terminal to the new session.
 export const dispatchSpawn = async ({
   intent,
   project,
   effort = "",
   model = "",
   tools,
-}: SpawnRequest): Promise<void> => {
+}: SpawnRequest): Promise<string | null> => {
   const body: {
     intent: string
     cwd?: string
@@ -40,5 +42,12 @@ export const dispatchSpawn = async ({
   if (tools !== undefined) body.tools = tools
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
-  await client.dispatch.$post({ json: body })
+  const res = await client.dispatch.$post({ json: body })
+  if (!res.ok) throw new Error(`dispatch: HTTP ${res.status}`)
+  try {
+    const data = (await res.json()) as { short?: unknown }
+    return typeof data.short === "string" ? data.short : null
+  } catch {
+    return null
+  }
 }
