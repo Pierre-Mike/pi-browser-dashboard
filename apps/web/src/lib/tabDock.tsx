@@ -90,6 +90,16 @@ export const tabButtonClass = (active: boolean): string =>
 export const subTabRailClass =
   "flex w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-xl border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 
+// The slim vertical bar shown in place of a collapsed left rail (see
+// CollapsibleRail). Reuses the rail's base-200 tint + rounding so expanding it
+// reads as the same surface returning; a single click restores the rail.
+export const railExpandBtnClass =
+  "flex w-8 shrink-0 items-center justify-center rounded-xl border border-base-300 bg-base-200/60 text-base-content/60 transition-colors hover:bg-base-300/70 hover:text-base-content"
+
+// The small "collapse" affordance tucked into the top of an expanded rail.
+export const railCollapseBtnClass =
+  "shrink-0 rounded p-0.5 text-base-content/50 transition-colors hover:bg-base-300/70 hover:text-base-content"
+
 // One left-rail sub-tab. Full-width, left-aligned (a vertical list, not a
 // centred pill) but reusing the dock's active/idle colour language.
 export const subTabButtonClass = (active: boolean): string =>

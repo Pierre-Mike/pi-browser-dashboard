@@ -34,6 +34,8 @@ describe("sidebarAsideClass", () => {
     const cls = sidebarAsideClass("desktop")
     expect(cls).toContain("hidden md:flex")
     expect(cls).toContain("sticky")
+    // Expanded is the wide rail.
+    expect(cls).toContain("w-72")
   })
   test("drawer variant is always visible and fills its container", () => {
     const cls = sidebarAsideClass("drawer")
@@ -41,6 +43,17 @@ describe("sidebarAsideClass", () => {
     expect(cls).not.toContain("md:flex")
     expect(cls).not.toContain("sticky")
     expect(cls).toContain("h-full")
+  })
+  test("collapsed desktop variant shrinks to a slim rail, freeing space for main", () => {
+    const cls = sidebarAsideClass("desktop", true)
+    // Still a sticky desktop-only rail, but narrow instead of w-72.
+    expect(cls).toContain("hidden md:flex")
+    expect(cls).toContain("sticky")
+    expect(cls).not.toContain("w-72")
+    expect(cls).toContain("w-12")
+  })
+  test("the drawer ignores collapse — it is already toggled by MobileNav", () => {
+    expect(sidebarAsideClass("drawer", true)).toBe(sidebarAsideClass("drawer", false))
   })
 })
 

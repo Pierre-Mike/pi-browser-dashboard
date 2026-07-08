@@ -105,7 +105,10 @@ describe("ProjectDashboard pid-app tabs", () => {
   })
 
   it("lists each pid-app as a left-rail sub-tab that selects it via setTab", () => {
-    expect(src).toContain("subTabRailClass")
+    // The rail is the shared CollapsibleRail (so it can be reduced for space);
+    // it still carries the pidapp-subtabs testid via its prop.
+    expect(src).toContain("<CollapsibleRail")
+    expect(src).toMatch(/testid="pidapp-subtabs"/)
     expect(src).toMatch(/data-testid=\{`pidapp-subtab-\$\{a\.id\}`\}/)
     // Selecting a sub-tab drives the shared tab search param.
     expect(src).toMatch(/onClick=\{\(\) => setTab\(`pidapp:\$\{a\.id\}`\)\}/)
@@ -128,6 +131,23 @@ describe("ProjectDashboard pid-app tabs", () => {
   it("fill-viewports the pid-apps section so the iframe stretches to full height", () => {
     const fillViewportBlock = src.match(/const fillViewport[\s\S]+?(?=\n\n)/)
     expect(fillViewportBlock?.[0]).toMatch(/pidapps/)
+  })
+})
+
+describe("ProjectDashboard collapsible rails", () => {
+  it("makes both the Specs and Brainstorm left rails reducible for more space", () => {
+    // Each rail is wrapped so it can shrink to a slim strip, handing its width
+    // to the spec host / canvas.
+    const rails = src.match(/<CollapsibleRail/g) ?? []
+    expect(rails.length).toBe(2)
+    expect(src).toContain('testid="pidapp-subtabs"')
+    expect(src).toContain('testid="brainstorm-subtabs"')
+  })
+
+  it("persists each rail's collapsed state per browser via usePersistedFlag", () => {
+    expect(src).toContain("usePersistedFlag")
+    expect(src).toMatch(/usePersistedFlag\("pid:specs:rail-collapsed"\)/)
+    expect(src).toMatch(/usePersistedFlag\("pid:brainstorm:rail-collapsed"\)/)
   })
 })
 

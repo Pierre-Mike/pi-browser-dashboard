@@ -1,11 +1,11 @@
 import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
+import { usePersistedFlag } from "../../lib/collapse"
 import {
   BRAINSTORM_ICON,
   EXT_ICON,
   PIDAPP_ICON,
   subTabButtonClass,
-  subTabRailClass,
   TAB_ICONS,
   tabButtonClass,
   tabDockNavClass,
@@ -26,6 +26,7 @@ import { usePidApps } from "../pid-apps/usePidApps"
 import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { useSessions } from "../sessions/useSessions"
+import { CollapsibleRail } from "./CollapsibleRail"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
 import { ProjectTerminal } from "./ProjectTerminal"
@@ -133,6 +134,10 @@ export const ProjectDashboard = ({ project }: Props) => {
   const brainstormsQ = useBrainstorms(project.id)
   const pull = useProjectGitPull(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
+  // Per-tab left-rail collapse — reclaims the rail's width for the spec host /
+  // canvas. Persisted per browser (see usePersistedFlag).
+  const specsRail = usePersistedFlag("pid:specs:rail-collapsed")
+  const brainstormRail = usePersistedFlag("pid:brainstorm:rail-collapsed")
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
 
@@ -406,11 +411,11 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tab-panel-pidapps"
         className={pidAppsActive ? "flex flex-1 min-h-0 gap-2" : "hidden"}
       >
-        <nav
-          role="tablist"
-          aria-label="Specs and apps"
-          data-testid="pidapp-subtabs"
-          className={subTabRailClass}
+        <CollapsibleRail
+          collapsed={specsRail.value}
+          onToggle={specsRail.toggle}
+          ariaLabel="Specs and apps"
+          testid="pidapp-subtabs"
         >
           {pidApps.map((a) => (
             <button
@@ -429,7 +434,7 @@ export const ProjectDashboard = ({ project }: Props) => {
             </button>
           ))}
           <NewPidAppButton projectId={project.id} onCreated={(id) => setTab(`pidapp:${id}`)} />
-        </nav>
+        </CollapsibleRail>
 
         <div className="flex flex-1 min-h-0 flex-col">
           {pidApps.length === 0 ? (
@@ -463,11 +468,11 @@ export const ProjectDashboard = ({ project }: Props) => {
         data-testid="project-tab-panel-brainstorm"
         className={brainstormActive ? "flex flex-1 min-h-0 gap-2" : "hidden"}
       >
-        <nav
-          role="tablist"
-          aria-label="Brainstorm boards"
-          data-testid="brainstorm-subtabs"
-          className={subTabRailClass}
+        <CollapsibleRail
+          collapsed={brainstormRail.value}
+          onToggle={brainstormRail.toggle}
+          ariaLabel="Brainstorm boards"
+          testid="brainstorm-subtabs"
         >
           {brainstorms.map((b) => (
             <button
@@ -489,7 +494,7 @@ export const ProjectDashboard = ({ project }: Props) => {
             projectId={project.id}
             onCreated={(id) => setTab(`brainstorm:${id}`)}
           />
-        </nav>
+        </CollapsibleRail>
 
         {selectedBoard === null ? (
           <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
