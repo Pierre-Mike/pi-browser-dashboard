@@ -1,6 +1,7 @@
 import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import {
+  BRAINSTORM_ICON,
   EXT_ICON,
   PIDAPP_ICON,
   subTabButtonClass,
@@ -10,6 +11,10 @@ import {
   tabDockNavClass,
 } from "../../lib/tabDock"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
+import { BrainstormCompanion } from "../brainstorms/BrainstormCompanion"
+import { NewBrainstormButton } from "../brainstorms/NewBrainstormButton"
+import { useBrainstorms } from "../brainstorms/useBrainstorms"
+import { CanvasTab } from "../canvas/CanvasTab"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
@@ -42,11 +47,15 @@ type StaticTabKey =
   | "settings"
   // The single parent "Specs" dock tab; individual apps live in its left rail.
   | "pidapps"
+  // The single parent "Brainstorm" dock tab; individual boards live in its
+  // left rail, same pattern as Specs.
+  | "brainstorm"
 // Extension-contributed project panels are namespaced (`ext:<name>`). Every
 // per-project pid-app (dropped into <project>/.pid/ or a top-level specs/*.html)
 // is selected within the Specs tab via a `pidapp:<id>` search param — a
-// selected app implies the parent `pidapps` tab is active.
-type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}`
+// selected app implies the parent `pidapps` tab is active. Brainstorm boards
+// follow the same scheme with `brainstorm:<id>`.
+type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}` | `brainstorm:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
 
@@ -55,6 +64,7 @@ type Tab = { readonly key: TabKey; readonly label: string }
 const NAMESPACE_ICONS = [
   ["ext:", EXT_ICON],
   ["pidapp", PIDAPP_ICON],
+  ["brainstorm", BRAINSTORM_ICON],
 ] as const
 
 // Each project tab borrows the shared section glyph (see lib/tabDock) so a
@@ -120,6 +130,7 @@ export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
   const extensionsQ = useExtensions()
   const pidAppsQ = usePidApps(project.id)
+  const brainstormsQ = useBrainstorms(project.id)
   const pull = useProjectGitPull(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
@@ -152,6 +163,8 @@ export const ProjectDashboard = ({ project }: Props) => {
       // One parent tab for every pid-app; the individual apps hang off its left
       // rail rather than each claiming a top-level dock tab.
       { key: "pidapps", label: "Specs" },
+      // Same left-rail pattern for the AI drawing boards.
+      { key: "brainstorm", label: "Brainstorm" },
       ...extPanels.map((e): Tab => ({ key: `ext:${e.name}`, label: e.name })),
     )
     return base
@@ -167,6 +180,15 @@ export const ProjectDashboard = ({ project }: Props) => {
   const selectedFromTab = tab.startsWith("pidapp:") ? tab.slice("pidapp:".length) : undefined
   const selectedAppId = pidApps.find((a) => a.id === selectedFromTab)?.id ?? pidApps[0]?.id
 
+  // Same fallback scheme for brainstorm boards.
+  const brainstorms = brainstormsQ.data ?? []
+  const brainstormActive = tab === "brainstorm" || tab.startsWith("brainstorm:")
+  const selectedBoardFromTab = tab.startsWith("brainstorm:")
+    ? tab.slice("brainstorm:".length)
+    : undefined
+  const selectedBoard =
+    brainstorms.find((b) => b.id === selectedBoardFromTab) ?? brainstorms[0] ?? null
+
   const fillViewport =
     tab === "terminal" ||
     tab === "files" ||
@@ -174,7 +196,8 @@ export const ProjectDashboard = ({ project }: Props) => {
     tab === "library" ||
     tab.startsWith("ext:") ||
     tab === "pidapps" ||
-    tab.startsWith("pidapp:")
+    tab.startsWith("pidapp:") ||
+    brainstormActive
 
   return (
     <div
@@ -265,8 +288,13 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tabDockNavClass}
       >
         {tabs.map((t) => {
-          // The Specs tab stays lit while any of its apps is selected.
-          const active = t.key === "pidapps" ? pidAppsActive : tab === t.key
+          // A parent tab stays lit while any of its children is selected.
+          const active =
+            t.key === "pidapps"
+              ? pidAppsActive
+              : t.key === "brainstorm"
+                ? brainstormActive
+                : tab === t.key
           return (
             <button
               key={t.key}
@@ -426,6 +454,68 @@ export const ProjectDashboard = ({ project }: Props) => {
             })
           )}
         </div>
+      </div>
+
+      {/* One "Brainstorm" section: a left rail of boards beside the shared
+          canvas editor and the AI-companion panel for the selected board. */}
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-brainstorm"
+        className={brainstormActive ? "flex flex-1 min-h-0 gap-2" : "hidden"}
+      >
+        <nav
+          role="tablist"
+          aria-label="Brainstorm boards"
+          data-testid="brainstorm-subtabs"
+          className={subTabRailClass}
+        >
+          {brainstorms.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedBoard?.id === b.id}
+              data-testid={`brainstorm-subtab-${b.id}`}
+              data-active={selectedBoard?.id === b.id}
+              onClick={() => setTab(`brainstorm:${b.id}`)}
+              title={b.label}
+              className={subTabButtonClass(selectedBoard?.id === b.id)}
+            >
+              <span className="shrink-0">{BRAINSTORM_ICON}</span>
+              <span className="truncate">{b.label}</span>
+            </button>
+          ))}
+          <NewBrainstormButton
+            projectId={project.id}
+            onCreated={(id) => setTab(`brainstorm:${id}`)}
+          />
+        </nav>
+
+        {selectedBoard === null ? (
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
+            No brainstorms yet — click <span className="font-medium text-base-content/80">+</span>{" "}
+            to open a drawing board with AI companions.
+          </div>
+        ) : (
+          // Keyed by board so the canvas sync + companion selection fully reset
+          // when switching boards.
+          <div key={selectedBoard.id} className="flex flex-1 min-h-0 gap-2">
+            <div
+              className="flex-1 min-h-0"
+              data-testid={`project-tab-panel-brainstorm-${selectedBoard.id}`}
+            >
+              <CanvasTab
+                target={{
+                  kind: "brainstorm",
+                  projectId: project.id,
+                  slug: selectedBoard.id,
+                  file: selectedBoard.file,
+                }}
+              />
+            </div>
+            <BrainstormCompanion project={project} brainstorm={selectedBoard} />
+          </div>
+        )}
       </div>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />

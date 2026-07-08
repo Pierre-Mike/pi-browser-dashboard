@@ -61,8 +61,18 @@ export const buildDispatchBody = ({
 
 // POST a spawn intent to the daemon, scoping it to the project's cwd when one
 // is in context. Extracted from SpawnModal so the submit handler stays simple.
-export const dispatchSpawn = async (request: SpawnRequest): Promise<void> => {
+// Returns the spawned session's short id (null when the daemon response
+// carries none) so callers like the brainstorm companion panel can attach a
+// terminal to the new session.
+export const dispatchSpawn = async (request: SpawnRequest): Promise<string | null> => {
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
-  await client.dispatch.$post({ json: buildDispatchBody(request) })
+  const res = await client.dispatch.$post({ json: buildDispatchBody(request) })
+  if (!res.ok) throw new Error(`dispatch: HTTP ${res.status}`)
+  try {
+    const data = (await res.json()) as { short?: unknown }
+    return typeof data.short === "string" ? data.short : null
+  } catch {
+    return null
+  }
 }

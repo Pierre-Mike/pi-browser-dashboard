@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
 import { type CanvasSnapshot, emptyCanvas, snapshotFromReactFlow } from "./canvas.types"
 import { canvasShouldSend, canvasStableKey } from "./canvasSync"
-import { canvasWsUrl } from "./canvasUrl"
+import { type CanvasDocRef, canvasWsPath, canvasWsUrlFromPath } from "./canvasUrl"
 
 const DEBOUNCE_MS = 200
 const RECONNECT_MS = 1_500
@@ -52,7 +52,7 @@ export type CanvasSyncApi = {
   readonly lastUpdatedAt: string | null
 }
 
-export const useCanvasSync = (short: string): CanvasSyncApi => {
+export const useCanvasSync = (docRef: CanvasDocRef): CanvasSyncApi => {
   const [nodes, setNodesState] = useState<Node[]>([])
   const [edges, setEdgesState] = useState<Edge[]>([])
   const [status, setStatus] = useState<SyncStatus>("connecting")
@@ -131,8 +131,12 @@ export const useCanvasSync = (short: string): CanvasSyncApi => {
     setLastUpdatedAt(snap.updatedAt)
   }, [])
 
+  // Key reconnection on the resolved ws path, not the ref's object identity —
+  // callers may rebuild the ref object every render.
+  const wsPath = canvasWsPath(docRef)
+
   const connect = useCallback(() => {
-    const url = canvasWsUrl({ baseUrl: wsBase(), id: short })
+    const url = canvasWsUrlFromPath({ baseUrl: wsBase(), path: wsPath })
     setStatus("connecting")
     const ws = new WebSocket(url)
     wsRef.current = ws
@@ -160,7 +164,7 @@ export const useCanvasSync = (short: string): CanvasSyncApi => {
         console.error("[canvas] server frame error:", frame.message)
       }
     }
-  }, [short, applySnapshotFromServer])
+  }, [wsPath, applySnapshotFromServer])
 
   useEffect(() => {
     connect()
@@ -171,8 +175,8 @@ export const useCanvasSync = (short: string): CanvasSyncApi => {
       wsRef.current = null
       if (ws && ws.readyState === WebSocket.OPEN) ws.close()
     }
-    // Reconnect only when the session id changes — `connect` carries its own
-    // identity via the short closure.
+    // Reconnect only when the document changes — `connect` carries its own
+    // identity via the wsPath closure.
   }, [connect])
 
   const setNodes = useCallback<CanvasSyncApi["setNodes"]>(

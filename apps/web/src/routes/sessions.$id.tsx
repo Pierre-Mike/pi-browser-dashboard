@@ -316,7 +316,7 @@ function SessionDrillIn() {
       ) : tab === "canvas" ? (
         session ? (
           <div className="flex-1 min-h-0">
-            <CanvasTab session={session} />
+            <CanvasTab target={{ kind: "session", session }} />
           </div>
         ) : (
           <div className="px-1 py-4 flex items-center gap-2 text-sm text-base-content/50">

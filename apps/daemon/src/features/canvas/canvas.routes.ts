@@ -3,7 +3,7 @@ import { Hono } from "hono"
 import { resolveConfigDir } from "../../platform/config-dir"
 import { upgradeWebSocket } from "../../platform/ws"
 import { type CanvasSnapshot, parseCanvas, serializeCanvas } from "./canvas.core"
-import { getCanvasRoom } from "./canvas.repo"
+import { type CanvasRoom, getCanvasRoom } from "./canvas.repo"
 
 const MAX_FRAME_BYTES = 256 * 1024
 
@@ -58,26 +58,25 @@ type SocketCtx = {
 
 const ctxMap = new WeakMap<object, SocketCtx>()
 
-const makeCanvasWsHandler = () =>
+// How a WS route turns its request context into a canvas room. The session
+// canvas resolves ~/.claude/jobs/<:id>/canvas.json; the brainstorm routes
+// resolve a project-local document. A resolver throws to refuse the socket.
+export type CanvasRoomResolver = (c: Context) => Promise<CanvasRoom>
+
+export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
   upgradeWebSocket((c: Context) => {
-    const short = c.req.param("id") ?? ""
     const tokenKey = {}
     return {
       onOpen: async (_evt, ws) => {
-        if (!short) {
-          sendServerFrame(ws, { kind: "error", message: "missing session id" })
-          ws.close(1008, "missing_id")
-          return
-        }
-        let room: Awaited<ReturnType<typeof getCanvasRoom>>
+        let room: CanvasRoom
         try {
-          room = await getCanvasRoom(resolveConfigDir(), short)
+          room = await resolveRoom(c)
         } catch (err) {
           sendServerFrame(ws, { kind: "error", message: (err as Error).message })
           ws.close(1011, "room_init_failed")
           return
         }
-        const origin = Symbol(`canvas-ws-${short}`)
+        const origin = Symbol("canvas-ws")
         const unsubscribe = room.subscribe((snap, fromSelf) => {
           sendServerFrame(ws, {
             kind: "snapshot",
@@ -98,9 +97,9 @@ const makeCanvasWsHandler = () =>
           sendServerFrame(ws, { kind: "error", message: frame.error })
           return
         }
-        let room: Awaited<ReturnType<typeof getCanvasRoom>>
+        let room: CanvasRoom
         try {
-          room = await getCanvasRoom(resolveConfigDir(), short)
+          room = await resolveRoom(c)
         } catch (err) {
           sendServerFrame(ws, { kind: "error", message: (err as Error).message })
           return
@@ -128,13 +127,21 @@ const makeCanvasWsHandler = () =>
     }
   })
 
+// The session-canvas resolver: room is the per-session canvas.json. An empty
+// id (unreachable through normal routing) is refused like any resolver error.
+const sessionRoom: CanvasRoomResolver = (c) => {
+  const short = c.req.param("id") ?? ""
+  if (!short) return Promise.reject(new Error("missing session id"))
+  return getCanvasRoom(resolveConfigDir(), short)
+}
+
 const app = new Hono()
   .get("/:id", async (c) => {
     const short = c.req.param("id")
     const room = await getCanvasRoom(resolveConfigDir(), short)
     return c.json(room.snapshot())
   })
-  .get("/:id/ws", makeCanvasWsHandler())
+  .get("/:id/ws", makeCanvasWsHandler(sessionRoom))
   .put("/:id", async (c) => {
     const short = c.req.param("id")
     const raw = await c.req.text()

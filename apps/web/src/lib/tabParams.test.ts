@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { coerceEnumTab, coerceExtTab } from "./tabParams"
+import { coerceEnumTab, coerceExtTab, coerceNamespacedTab } from "./tabParams"
 
 describe("coerceEnumTab", () => {
   const keys = ["chat", "canvas", "terminal", "files"] as const
@@ -50,5 +50,33 @@ describe("coerceExtTab", () => {
     expect(coerceExtTab(undefined, staticKeys)).toBeUndefined()
     expect(coerceExtTab(7, staticKeys)).toBeUndefined()
     expect(coerceExtTab(null, staticKeys)).toBeUndefined()
+  })
+})
+
+describe("coerceNamespacedTab", () => {
+  const staticKeys = ["sessions", "pidapps", "brainstorm"] as const
+  const prefixes = ["ext:", "pidapp:", "brainstorm:"] as const
+
+  it("returns a known static key unchanged (incl. parent tabs of dynamic families)", () => {
+    expect(coerceNamespacedTab("sessions", { staticKeys, prefixes })).toBe("sessions")
+    expect(coerceNamespacedTab("pidapps", { staticKeys, prefixes })).toBe("pidapps")
+    expect(coerceNamespacedTab("brainstorm", { staticKeys, prefixes })).toBe("brainstorm")
+  })
+
+  it("accepts every allowed namespace so deep links survive validateSearch", () => {
+    expect(coerceNamespacedTab("ext:my-extension", { staticKeys, prefixes })).toBe(
+      "ext:my-extension",
+    )
+    expect(coerceNamespacedTab("pidapp:plan", { staticKeys, prefixes })).toBe("pidapp:plan")
+    expect(coerceNamespacedTab("brainstorm:auth-flow", { staticKeys, prefixes })).toBe(
+      "brainstorm:auth-flow",
+    )
+  })
+
+  it("rejects a bare prefix, unknown namespaces, unknown keys, and non-strings", () => {
+    expect(coerceNamespacedTab("pidapp:", { staticKeys, prefixes })).toBeUndefined()
+    expect(coerceNamespacedTab("weird:x", { staticKeys, prefixes })).toBeUndefined()
+    expect(coerceNamespacedTab("bogus", { staticKeys, prefixes })).toBeUndefined()
+    expect(coerceNamespacedTab(7, { staticKeys, prefixes })).toBeUndefined()
   })
 })

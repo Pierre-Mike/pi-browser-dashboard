@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { ProjectDashboard } from "../features/projects/ProjectDashboard"
 import { useProjects } from "../features/projects/useProjects"
-import { coerceExtTab } from "../lib/tabParams"
+import { coerceNamespacedTab } from "../lib/tabParams"
 
 const PROJECT_STATIC_TAB_KEYS = [
   "sessions",
@@ -11,12 +11,21 @@ const PROJECT_STATIC_TAB_KEYS = [
   "claude",
   "library",
   "settings",
+  "pidapps",
+  "brainstorm",
 ] as const
-type ProjectTabKey = (typeof PROJECT_STATIC_TAB_KEYS)[number] | `ext:${string}`
+// Dynamic tab families: extension panels, Specs sub-tabs, brainstorm boards.
+const PROJECT_TAB_PREFIXES = ["ext:", "pidapp:", "brainstorm:"] as const
+type ProjectTabKey =
+  | (typeof PROJECT_STATIC_TAB_KEYS)[number]
+  | `${(typeof PROJECT_TAB_PREFIXES)[number]}${string}`
 
 export const Route = createFileRoute("/projects/$id")({
   validateSearch: (search: Record<string, unknown>): { tab?: ProjectTabKey } => {
-    const tab = coerceExtTab(search.tab, PROJECT_STATIC_TAB_KEYS)
+    const tab = coerceNamespacedTab(search.tab, {
+      staticKeys: PROJECT_STATIC_TAB_KEYS,
+      prefixes: PROJECT_TAB_PREFIXES,
+    })
     return tab === undefined ? {} : { tab }
   },
   component: ProjectDashboardPage,
