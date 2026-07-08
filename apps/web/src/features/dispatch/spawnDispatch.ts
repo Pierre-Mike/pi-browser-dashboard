@@ -1,44 +1,68 @@
 import { api } from "../../lib/api"
 import type { Project } from "../../lib/types"
 import { normalizeEffort } from "./spawnEffort"
+import { normalizeHarness, type SpawnHarness } from "./spawnHarness"
 import { normalizeModel } from "./spawnModel"
+import { normalizeThinking } from "./spawnThinking"
 
 export type SpawnRequest = {
   readonly intent: string
   readonly project: Project | null
+  // Which CLI to spawn — "claude" (default) or "pi". See spawnHarness.ts.
+  readonly harness?: SpawnHarness
   readonly effort?: string
+  readonly thinking?: string
   readonly model?: string
-  // Explicit built-in tool allow-list, or undefined to inherit the CLI's own
-  // default (every tool) — see spawnTools.ts's toolsForDispatch.
+  // Explicit tool allow-list, or undefined to inherit the CLI's own default
+  // (every tool) — see spawnTools.ts's toolsForDispatch.
   readonly tools?: readonly string[]
 }
 
-// POST a spawn intent to the daemon, scoping it to the project's cwd when one is
-// in context and tagging the requested reasoning effort. Extracted from
-// SpawnModal so the submit handler stays simple.
-export const dispatchSpawn = async ({
+export type DispatchBody = {
+  intent: string
+  cwd?: string
+  harness?: "pi"
+  effort?: string
+  thinking?: string
+  model?: string
+  tools?: readonly string[]
+}
+
+// Pure body construction, split from the POST so the harness branching is
+// unit-testable. Claude keeps its historical shape byte-for-byte (no harness
+// field, alias-narrowed model); pi tags the harness and speaks pi's dialect:
+// `thinking` instead of `effort`, and a free-form "provider/id" model that the
+// picker-fed value already constrains.
+export const buildDispatchBody = ({
   intent,
   project,
+  harness = "claude",
   effort = "",
+  thinking = "",
   model = "",
   tools,
-}: SpawnRequest): Promise<void> => {
-  const body: {
-    intent: string
-    cwd?: string
-    effort?: string
-    model?: string
-    tools?: readonly string[]
-  } = {
-    intent,
-  }
+}: SpawnRequest): DispatchBody => {
+  const body: DispatchBody = { intent }
   if (project) body.cwd = project.path
-  const level = normalizeEffort(effort)
-  if (level) body.effort = level
-  const alias = normalizeModel(model)
-  if (alias) body.model = alias
+  if (normalizeHarness(harness) === "pi") {
+    body.harness = "pi"
+    const level = normalizeThinking(thinking)
+    if (level) body.thinking = level
+    if (model) body.model = model
+  } else {
+    const level = normalizeEffort(effort)
+    if (level) body.effort = level
+    const alias = normalizeModel(model)
+    if (alias) body.model = alias
+  }
   if (tools !== undefined) body.tools = tools
+  return body
+}
+
+// POST a spawn intent to the daemon, scoping it to the project's cwd when one
+// is in context. Extracted from SpawnModal so the submit handler stays simple.
+export const dispatchSpawn = async (request: SpawnRequest): Promise<void> => {
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
-  await client.dispatch.$post({ json: body })
+  await client.dispatch.$post({ json: buildDispatchBody(request) })
 }

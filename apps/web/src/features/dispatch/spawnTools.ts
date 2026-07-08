@@ -52,15 +52,34 @@ export const ALL_SPAWN_TOOLS = [
   "Write",
 ] as const
 
+// pi's built-in tool set, in the order pi's own docs list them. Lower-case is
+// canonical — `pi --tools read,bash`. Source: `pi --help` (v0.80).
+export const PI_SPAWN_TOOLS = ["read", "bash", "edit", "write"] as const
+
+// Canonical tool list per spawn harness — the picker renders and sorts
+// against whichever list the active harness owns.
+export const HARNESS_SPAWN_TOOLS: Record<"claude" | "pi", readonly string[]> = {
+  claude: ALL_SPAWN_TOOLS,
+  pi: PI_SPAWN_TOOLS,
+}
+
 // Toggle a tool id in/out of the current selection. The result is always
 // re-sorted to canonical order (rather than insertion order) so the pill row
 // never reshuffles as tools are clicked — unlike skills, tool order carries no
 // meaning of its own.
-export const toggleTool = (selected: readonly string[], id: string): string[] => {
+export const toggleTool = ({
+  selected,
+  id,
+  all = ALL_SPAWN_TOOLS,
+}: {
+  selected: readonly string[]
+  id: string
+  all?: readonly string[]
+}): string[] => {
   const next = new Set(selected)
   if (next.has(id)) next.delete(id)
   else next.add(id)
-  return ALL_SPAWN_TOOLS.filter((t) => next.has(t))
+  return all.filter((t) => next.has(t))
 }
 
 // The dispatch body only needs an explicit `tools` list once the user has
@@ -68,5 +87,7 @@ export const toggleTool = (selected: readonly string[], id: string): string[] =>
 // (no `--tools` flag = every built-in tool), so sending undefined keeps an
 // all-selected spawn byte-identical to today's command. An empty selection is
 // a deliberate "disable every tool" request and is passed through as `[]`.
-export const toolsForDispatch = (selected: readonly string[]): readonly string[] | undefined =>
-  selected.length === ALL_SPAWN_TOOLS.length ? undefined : selected
+export const toolsForDispatch = (
+  selected: readonly string[],
+  all: readonly string[] = ALL_SPAWN_TOOLS,
+): readonly string[] | undefined => (selected.length === all.length ? undefined : selected)

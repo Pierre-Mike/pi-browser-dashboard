@@ -1,18 +1,38 @@
-import { buildSpawnCommandArgs, formatSpawnCommand } from "./spawnCommandArgs"
+import {
+  buildPiSpawnCommandArgs,
+  buildSpawnCommandArgs,
+  formatSpawnCommand,
+} from "./spawnCommandArgs"
+import type { SpawnHarness } from "./spawnHarness"
 
 type Props = {
+  harness: SpawnHarness
   intent: string
   effort?: string
+  thinking?: string
   model?: string
   tools?: readonly string[]
   cwd?: string
 }
 
-// Collapsible readout of the literal `claude --bg ...` argv the daemon will
-// spawn on submit, so the user can check flags/tools/intent before firing it
-// off. Collapsed by default, mirroring SpawnToolPicker/SpawnSkillPicker.
-export const SpawnCommandPreview = ({ intent, effort, model, tools, cwd }: Props) => {
-  const command = formatSpawnCommand(buildSpawnCommandArgs({ intent, effort, model, tools }))
+// Collapsible readout of the literal argv the daemon will spawn on submit —
+// `claude --bg ...` or `pi -p ...` depending on the active harness tab — so
+// the user can check flags/tools/intent before firing it off. Collapsed by
+// default, mirroring SpawnToolPicker/SpawnSkillPicker.
+export const SpawnCommandPreview = ({
+  harness,
+  intent,
+  effort,
+  thinking,
+  model,
+  tools,
+  cwd,
+}: Props) => {
+  const args =
+    harness === "pi"
+      ? buildPiSpawnCommandArgs({ intent, thinking, model, tools })
+      : buildSpawnCommandArgs({ intent, effort, model, tools })
+  const command = formatSpawnCommand(args)
 
   return (
     <details data-testid="spawn-command-preview" className="text-xs text-base-content/60">

@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { SpawnToolPicker } from "./SpawnToolPicker"
-import { ALL_SPAWN_TOOLS } from "./spawnTools"
+import { ALL_SPAWN_TOOLS, PI_SPAWN_TOOLS } from "./spawnTools"
 
-const render = (over: { selected?: readonly string[]; disabled?: boolean } = {}): string =>
+const render = (
+  over: { selected?: readonly string[]; all?: readonly string[]; disabled?: boolean } = {},
+): string =>
   renderToStaticMarkup(
     createElement(SpawnToolPicker, {
-      selected: over.selected ?? [...ALL_SPAWN_TOOLS],
+      all: over.all ?? ALL_SPAWN_TOOLS,
+      selected: over.selected ?? [...(over.all ?? ALL_SPAWN_TOOLS)],
       onToggle: () => {},
       disabled: over.disabled ?? false,
     }),
@@ -45,5 +48,14 @@ describe("SpawnToolPicker", () => {
     const html = render()
     expect(html).toContain("<details")
     expect(html).not.toContain("open=")
+  })
+
+  test("renders the pi tool set when given the pi list", () => {
+    const html = render({ all: PI_SPAWN_TOOLS })
+    for (const id of PI_SPAWN_TOOLS) {
+      expect(html).toContain(`data-tool="${id}" data-selected="true"`)
+    }
+    expect(html).not.toContain('data-tool="Bash"')
+    expect(html).toContain(`all ${PI_SPAWN_TOOLS.length} selected`)
   })
 })
