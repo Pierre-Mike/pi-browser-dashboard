@@ -1,5 +1,6 @@
 import { Link, useLocation, useParams } from "@tanstack/react-router"
 import { useState } from "react"
+import { usePersistedFlag } from "../../lib/collapse"
 import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { NotifyToggle } from "../notifications/NotifyToggle"
@@ -31,6 +32,9 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin, reorderPin } = usePinnedProjects()
   const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
+  // Whole-rail collapse (distinct from the per-bucket collapse above): shrinks
+  // the desktop sidebar to a slim strip so the main content gets the width.
+  const rail = usePersistedFlag("pid:sidebar:rail-collapsed")
   // Per-bucket visible-session cap; ephemeral on purpose — a fresh load
   // snaps every project back to the latest SESSION_PAGE_SIZE sessions.
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({})
@@ -55,6 +59,30 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
       setDragPinId(null)
       setOverPinId(null)
     },
+  }
+
+  // Collapsed (desktop only): a slim rail whose sole control re-opens it. Sits
+  // ahead of the loading branch so the rail stays narrow even while data loads.
+  if (rail.value && variant === "desktop") {
+    return (
+      <aside
+        data-testid="sidebar"
+        data-rail-collapsed="true"
+        className={sidebarAsideClass("desktop", true)}
+      >
+        <button
+          type="button"
+          data-testid="sidebar-rail-toggle"
+          data-collapsed="true"
+          onClick={rail.toggle}
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+          className="mt-2.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-base-content/60 hover:bg-base-200 hover:text-base-content"
+        >
+          <span aria-hidden>»</span>
+        </button>
+      </aside>
+    )
   }
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
@@ -89,6 +117,19 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
             {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
           </span>
           <NotifyToggle />
+          {variant === "desktop" ? (
+            <button
+              type="button"
+              data-testid="sidebar-rail-toggle"
+              data-collapsed="false"
+              onClick={rail.toggle}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-base-content/60 hover:bg-base-200 hover:text-base-content"
+            >
+              <span aria-hidden>«</span>
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="px-2 py-2 border-b border-base-300">
