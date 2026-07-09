@@ -15,6 +15,7 @@ type Spy = {
   failNext: boolean
   readonly piCalls: PiDispatchInput[]
   piReturn: string
+  piFailNext: ShellError | null
   piModelsFailNext: boolean
 }
 
@@ -24,6 +25,7 @@ const newSpy = (): Spy => ({
   failNext: false,
   piCalls: [],
   piReturn: "11111111-2222-3333-4444-555555555555",
+  piFailNext: null,
   piModelsFailNext: false,
 })
 
@@ -49,6 +51,11 @@ const buildPiLayer = (spy: Spy): Layer.Layer<PiRepo> => {
   const api: PiRepoApi = {
     dispatch: (input) => {
       spy.piCalls.push(input)
+      if (spy.piFailNext) {
+        const err = spy.piFailNext
+        spy.piFailNext = null
+        return Effect.fail(err)
+      }
       return Effect.succeed(spy.piReturn)
     },
     listModels: () => {
@@ -234,14 +241,34 @@ describe("POST /dispatch", () => {
     }
   })
 
-  it("returns 500 dispatch_failed when ShellRepo.dispatch fails", async () => {
+  it("returns 500 dispatch_failed with the failure detail when ShellRepo.dispatch fails", async () => {
     const spy = newSpy()
     spy.failNext = true
     const { app, dispose } = buildHarness(spy)
     try {
       const res = await post(app, { intent: "go" })
       expect(res.status).toBe(500)
-      expect(await res.json()).toEqual({ error: "dispatch_failed" })
+      expect(await res.json()).toEqual({ error: "dispatch_failed", detail: "synthetic failure" })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("surfaces pi's launch error detail when a pi dispatch dies on startup", async () => {
+    const spy = newSpy()
+    spy.piFailNext = new ShellError({
+      message: "No API key for provider: anthropic",
+      exitCode: 1,
+      stderr: "No API key for provider: anthropic\n",
+    })
+    const { app, dispose } = buildHarness(spy)
+    try {
+      const res = await post(app, { intent: "go", harness: "pi" })
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({
+        error: "dispatch_failed",
+        detail: "No API key for provider: anthropic",
+      })
     } finally {
       await dispose()
     }

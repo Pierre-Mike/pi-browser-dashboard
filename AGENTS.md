@@ -428,6 +428,7 @@ cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
 ## Expertise Index
 
 - [apps/daemon/src/features/global-settings](apps/daemon/src/features/global-settings/CLAUDE.md) — Global settings file + UI: git/library/orchestration/network params formerly hard-coded; field→consumer wiring map.
+- [apps/daemon/src/features/dispatch](apps/daemon/src/features/dispatch/CLAUDE.md) — Dual-harness spawn (claude --bg / pi -p): pi launch-failure modes, detached-spawn stderr handling, pi session visibility.
 
 ## Engineering axioms (inherited)
 

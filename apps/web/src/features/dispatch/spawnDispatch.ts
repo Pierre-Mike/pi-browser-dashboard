@@ -59,6 +59,16 @@ export const buildDispatchBody = ({
   return body
 }
 
+// Human-readable failure for a non-2xx dispatch response. The daemon forwards
+// the harness's own stderr as `detail` (e.g. pi's "No API key for provider:
+// …") — prefer that over a bare status code.
+export const dispatchErrorMessage = (status: number, body: unknown): string => {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  return typeof detail === "string" && detail.trim().length > 0
+    ? detail
+    : `dispatch: HTTP ${status}`
+}
+
 // POST a spawn intent to the daemon, scoping it to the project's cwd when one
 // is in context. Extracted from SpawnModal so the submit handler stays simple.
 // Returns the spawned session's short id (null when the daemon response
@@ -68,7 +78,10 @@ export const dispatchSpawn = async (request: SpawnRequest): Promise<string | nul
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
   const res = await client.dispatch.$post({ json: buildDispatchBody(request) })
-  if (!res.ok) throw new Error(`dispatch: HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(dispatchErrorMessage(res.status, body))
+  }
   try {
     const data = (await res.json()) as { short?: unknown }
     return typeof data.short === "string" ? data.short : null

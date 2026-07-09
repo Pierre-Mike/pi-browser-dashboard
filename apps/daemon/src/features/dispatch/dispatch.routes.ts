@@ -1,4 +1,4 @@
-import { Effect, type ManagedRuntime } from "effect"
+import { Cause, Effect, type ManagedRuntime, Option } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { type ShellError, ShellRepo } from "../../platform/shell.repo"
@@ -40,7 +40,10 @@ export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
       }
       const exit = await runtime.runPromiseExit(dispatchEffect(parsed))
       if (exit._tag === "Failure") {
-        return c.json({ error: "dispatch_failed" }, 500)
+        // Forward the harness's own words (e.g. pi's "No API key for
+        // provider: …") so the modal can show why the spawn never started.
+        const detail = Option.map(Cause.failureOption(exit.cause), (e) => e.message)
+        return c.json({ error: "dispatch_failed", detail: Option.getOrUndefined(detail) }, 500)
       }
       return c.json({ short: exit.value })
     })

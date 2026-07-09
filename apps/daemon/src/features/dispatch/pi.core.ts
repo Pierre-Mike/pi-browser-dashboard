@@ -40,6 +40,14 @@ export type PiDispatchArgsInput = {
   readonly tools?: readonly string[]
 }
 
+// Message for a pi process that died during the launch window. pi reports
+// startup problems ("No API key for provider: …", unknown flags) on stderr;
+// when it exits silently the exit code is all we have.
+export const piLaunchFailureMessage = (exitCode: number, stderr: string): string => {
+  const detail = stderr.trim()
+  return detail.length > 0 ? detail : `pi exited with code ${exitCode} before starting`
+}
+
 export const buildPiDispatchArgs = ({
   intent,
   sessionId,
