@@ -92,17 +92,6 @@ export type GithubProjectSummary = {
   warning?: string
 }
 
-export type FileEntry = {
-  name: string
-  type: "dir" | "file" | "symlink" | "other"
-  size: number
-}
-
-export type FileListing = {
-  path: string
-  entries: FileEntry[]
-}
-
 export type FileContent = {
   path: string
   size: number

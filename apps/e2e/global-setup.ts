@@ -211,10 +211,6 @@ export default async function globalSetup(): Promise<void> {
     PID_AGENTIC_REPO_PATH: agenticRepoPath,
     PID_EXT_LOCAL_DIR: extRoot,
     PID_EXT_GLOBAL_DIR: extGlobalRoot,
-    // Keep pi-session visibility off the user's real ~/.pid spawn log —
-    // otherwise their pi runs would leak extra cards into session assertions.
-    PID_PI_SPAWNS_FILE: join(sandbox, "pi-spawns.json"),
-    PID_PI_SESSIONS_ROOT: join(sandbox, "pi-sessions"),
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 

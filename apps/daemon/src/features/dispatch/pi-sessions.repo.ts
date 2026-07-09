@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Context, Layer } from "effect"
+import { resolveConfigDir } from "../../platform/config-dir"
 import type { SessionState } from "../sessions/sessions.core"
 import {
   derivePiState,
@@ -149,12 +150,13 @@ const defaultIsPidAlive = (pid: number): boolean => {
   }
 }
 
-// Env overrides keep sandboxed runs (e2e) off the user's real spawn log and
-// pi session store, mirroring the other PID_* sandbox knobs in global-setup.
+// The spawn log lives under the (config-dir keyed) claude config root, so any
+// sandboxed run — e2e sets CLAUDE_CONFIG_DIR — automatically gets its own
+// empty log instead of the user's. Env overrides cover everything else.
 export const PiSessionsRepoLive: Layer.Layer<PiSessionsRepo> = Layer.succeed(
   PiSessionsRepo,
   makePiSessionsApi({
-    spawnsFile: process.env.PID_PI_SPAWNS_FILE ?? path.join(os.homedir(), ".pid", "pi-spawns.json"),
+    spawnsFile: process.env.PID_PI_SPAWNS_FILE ?? path.join(resolveConfigDir(), "pi-spawns.json"),
     sessionsRoot:
       process.env.PID_PI_SESSIONS_ROOT ?? path.join(os.homedir(), ".pi", "agent", "sessions"),
     isPidAlive: defaultIsPidAlive,
