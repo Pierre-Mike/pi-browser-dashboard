@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { ShellError, ShellRepo, type ShellRepoApi } from "../../platform/shell.repo"
+import { type PiSessionsApi, PiSessionsRepo } from "../dispatch/pi-sessions.repo"
 import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.repo"
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.repo"
 import { buildSessionsApp } from "./sessions.routes"
@@ -104,24 +105,89 @@ const newSpy = (): ShellSpy => ({ calls: [], failNext: null, peekReturn: "" })
 
 const newFilesStub = (): FilesStub => ({ diffByPath: new Map(), failWith: undefined })
 
+// In-memory PiSessionsRepo stub: pi sessions are keyed by short, remove()
+// records what it dropped so tests can assert the pi rm branch fired.
+type PiStub = {
+  readonly sessions: Map<string, SessionState>
+  readonly removed: string[]
+}
+
+const newPiStub = (): PiStub => ({ sessions: new Map(), removed: [] })
+
+const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsRepo> => {
+  const api: PiSessionsApi = {
+    config: { spawnsFile: "", sessionsRoot: "", isPidAlive: () => false },
+    record: () => {},
+    list: () => Array.from(stub.sessions.values()),
+    remove: (short) => {
+      if (!stub.sessions.has(short)) return false
+      stub.sessions.delete(short)
+      stub.removed.push(short)
+      return true
+    },
+    getOne: (short) => stub.sessions.get(short),
+  }
+  return Layer.succeed(PiSessionsRepo, api)
+}
+
 const buildHarness = ({
   sessions,
   spy,
   filesStub = newFilesStub(),
+  piStub = newPiStub(),
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
   filesStub?: FilesStub
+  piStub?: PiStub
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions),
     buildShellLayer(spy),
     buildFilesLayer(filesStub),
+    buildPiSessionsLayer(piStub),
   )
   const runtime = ManagedRuntime.make(layer)
   const app = buildSessionsApp(runtime)
-  return { app, runtime, filesStub, dispose: () => runtime.dispose() }
+  return { app, runtime, filesStub, piStub, dispose: () => runtime.dispose() }
 }
+
+// The shape nearly every route test repeats: build a harness, issue one
+// request, always dispose. The Response is fully materialized by app.request,
+// so callers can read the body after disposal.
+const requestOn = async ({
+  path,
+  init,
+  sessions = new Map<string, SessionState>(),
+  spy,
+  filesStub,
+  piStub,
+}: {
+  path: string
+  init?: RequestInit
+  sessions?: Map<string, SessionState>
+  spy?: ShellSpy
+  filesStub?: FilesStub
+  piStub?: PiStub
+}): Promise<Response> => {
+  const { app, dispose } = buildHarness({ sessions, spy: spy ?? newSpy(), filesStub, piStub })
+  try {
+    return await app.request(path, init)
+  } finally {
+    await dispose()
+  }
+}
+
+const expectJson = async (
+  res: Response,
+  { status, body }: { status: number; body: unknown },
+): Promise<void> => {
+  expect(res.status).toBe(status)
+  expect(await res.json()).toEqual(body)
+}
+
+const oneSession = (overrides: Partial<SessionState>): Map<string, SessionState> =>
+  new Map([["ab12", makeSession({ short: "ab12", ...overrides })]])
 
 describe("GET /sessions", () => {
   it("returns the registry snapshot as JSON", async () => {
@@ -150,6 +216,24 @@ describe("GET /sessions", () => {
       await dispose()
     }
   })
+
+  it("merges daemon-spawned pi sessions into the list", async () => {
+    const sessions = new Map([["ab12", makeSession({ short: "ab12", state: "working" })]])
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy(), piStub })
+    try {
+      const res = await app.request("/")
+      const body = (await res.json()) as Array<{ short: string; harness?: string }>
+      expect(body.map((s) => s.short).sort()).toEqual(["aaaa1111", "ab12"])
+      expect(body.find((s) => s.short === "aaaa1111")?.harness).toBe("pi")
+    } finally {
+      await dispose()
+    }
+  })
 })
 
 describe("GET /sessions/:id", () => {
@@ -168,14 +252,19 @@ describe("GET /sessions/:id", () => {
   })
 
   it("returns 404 + structured error for an unknown id", async () => {
-    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
-    try {
-      const res = await app.request("/missing")
-      expect(res.status).toBe(404)
-      expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
-    } finally {
-      await dispose()
-    }
+    const res = await requestOn({ path: "/missing" })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
+  })
+
+  it("falls back to pi sessions when the registry misses", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const res = await requestOn({ path: "/aaaa1111", piStub })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { harness?: string }).harness).toBe("pi")
   })
 })
 
@@ -188,42 +277,27 @@ describe("GET /sessions/:id/transcript", () => {
     await rm(scratch, { recursive: true, force: true })
   })
 
+  // One transcript request against a session whose linkScanPath points at
+  // `file` — the setup every test in this describe shares.
+  const transcriptRes = (file: string | undefined): Promise<Response> =>
+    requestOn({ path: "/ab12/transcript", sessions: oneSession({ linkScanPath: file }) })
+
   it("returns 404 not_found when the session is unknown", async () => {
-    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
-    try {
-      const res = await app.request("/missing/transcript")
-      expect(res.status).toBe(404)
-      expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
-    } finally {
-      await dispose()
-    }
+    const res = await requestOn({ path: "/missing/transcript" })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
   })
 
   it("returns 404 no_transcript when linkScanPath is absent", async () => {
-    const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: undefined })]])
-    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-    try {
-      const res = await app.request("/ab12/transcript")
-      expect(res.status).toBe(404)
-      expect(await res.json()).toEqual({ error: "no_transcript", short: "ab12" })
-    } finally {
-      await dispose()
-    }
+    const res = await transcriptRes(undefined)
+    await expectJson(res, { status: 404, body: { error: "no_transcript", short: "ab12" } })
   })
 
   it("returns 404 transcript_read_failed (ENOENT) when the file is missing", async () => {
-    const missing = join(scratch, "nope.jsonl")
-    const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: missing })]])
-    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-    try {
-      const res = await app.request("/ab12/transcript")
-      expect(res.status).toBe(404)
-      const body = (await res.json()) as { error: string; code: string }
-      expect(body.error).toBe("transcript_read_failed")
-      expect(body.code).toBe("ENOENT")
-    } finally {
-      await dispose()
-    }
+    const res = await transcriptRes(join(scratch, "nope.jsonl"))
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string; code: string }
+    expect(body.error).toBe("transcript_read_failed")
+    expect(body.code).toBe("ENOENT")
   })
 
   it("parses each JSONL line and reports truncated=false when within the cap", async () => {
@@ -235,42 +309,30 @@ describe("GET /sessions/:id/transcript", () => {
         JSON.stringify({ type: "assistant", text: "hello" }),
       ].join("\n")}\n`,
     )
-    const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: file })]])
-    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-    try {
-      const res = await app.request("/ab12/transcript")
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as {
-        messages: Array<{ type?: string; _parseError?: boolean; raw?: string }>
-        truncated: boolean
-        path: string
-      }
-      expect(body.messages).toHaveLength(2)
-      expect(body.messages[0]?.type).toBe("user")
-      expect(body.messages[1]?.type).toBe("assistant")
-      expect(body.truncated).toBe(false)
-      expect(body.path).toBe(file)
-    } finally {
-      await dispose()
+    const res = await transcriptRes(file)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      messages: Array<{ type?: string; _parseError?: boolean; raw?: string }>
+      truncated: boolean
+      path: string
     }
+    expect(body.messages).toHaveLength(2)
+    expect(body.messages[0]?.type).toBe("user")
+    expect(body.messages[1]?.type).toBe("assistant")
+    expect(body.truncated).toBe(false)
+    expect(body.path).toBe(file)
   })
 
   it("surfaces unparseable lines as { _parseError: true, raw }", async () => {
     const file = join(scratch, "broken.jsonl")
     await writeFile(file, ["{not json", JSON.stringify({ ok: true })].join("\n"))
-    const sessions = new Map([["ab12", makeSession({ short: "ab12", linkScanPath: file })]])
-    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-    try {
-      const res = await app.request("/ab12/transcript")
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as {
-        messages: Array<{ _parseError?: boolean; raw?: string; ok?: boolean }>
-      }
-      expect(body.messages[0]).toEqual({ _parseError: true, raw: "{not json" })
-      expect(body.messages[1]?.ok).toBe(true)
-    } finally {
-      await dispose()
+    const res = await transcriptRes(file)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      messages: Array<{ _parseError?: boolean; raw?: string; ok?: boolean }>
     }
+    expect(body.messages[0]).toEqual({ _parseError: true, raw: "{not json" })
+    expect(body.messages[1]?.ok).toBe(true)
   })
 
   it("caps and tail-slices the transcript at 500 lines, flagging truncated=true", async () => {
@@ -299,23 +361,18 @@ describe("GET /sessions/:id/transcript", () => {
 
 describe("GET /sessions/:id/files", () => {
   it("returns 404 not_found when the session is unknown", async () => {
-    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
-    try {
-      const res = await app.request("/missing/files")
-      expect(res.status).toBe(404)
-      expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
-    } finally {
-      await dispose()
-    }
+    const res = await requestOn({ path: "/missing/files" })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
   })
 
   it("returns an empty diff payload for non-isolated sessions (no worktreePath)", async () => {
-    const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: undefined })]])
-    const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-    try {
-      const res = await app.request("/ab12/files")
-      expect(res.status).toBe(200)
-      expect(await res.json()).toEqual({
+    const res = await requestOn({
+      path: "/ab12/files",
+      sessions: oneSession({ worktreePath: undefined }),
+    })
+    await expectJson(res, {
+      status: 200,
+      body: {
         short: "ab12",
         changed: false,
         files: [],
@@ -323,10 +380,8 @@ describe("GET /sessions/:id/files", () => {
         truncated: false,
         base: null,
         worktreePath: null,
-      })
-    } finally {
-      await dispose()
-    }
+      },
+    })
   })
 
   it("returns the FilesService diff payload when the worktree resolves", async () => {
@@ -473,6 +528,25 @@ describe("POST /sessions/:id/rm", () => {
       await dispose()
     }
   })
+
+  it("removes a pi spawn from the pi log without shelling out to claude rm", async () => {
+    const spy = newSpy()
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy, piStub })
+    try {
+      const res = await app.request("/aaaa1111/rm", { method: "POST" })
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true, short: "aaaa1111" })
+      expect(piStub.removed).toEqual(["aaaa1111"])
+      expect(spy.calls).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
 })
 
 describe("POST /sessions/:id/send", () => {
@@ -597,162 +671,95 @@ describe("session file-browser routes", () => {
     await rm(work, { recursive: true, force: true })
   })
 
+  // One request against a session whose worktree is the scratch dir — the
+  // setup every file-browser test shares.
+  const workRes = (path: string): Promise<Response> =>
+    requestOn({ path, sessions: oneSession({ worktreePath: work }) })
+
   describe("GET /:id/tree", () => {
     it("lists the worktree files, posix-relative and sorted", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/tree")
-        expect(res.status).toBe(200)
-        const body = (await res.json()) as { paths: string[]; truncated: boolean }
-        expect(body.paths).toEqual(["README.md", "src/index.ts"])
-        expect(body.truncated).toBe(false)
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/tree")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { paths: string[]; truncated: boolean }
+      expect(body.paths).toEqual(["README.md", "src/index.ts"])
+      expect(body.truncated).toBe(false)
     })
 
     it("falls back to cwd when worktreePath is absent", async () => {
-      const sessions = new Map([
-        ["ab12", makeSession({ short: "ab12", worktreePath: undefined, cwd: work })],
-      ])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/tree")
-        expect(res.status).toBe(200)
-        const body = (await res.json()) as { paths: string[] }
-        expect(body.paths).toContain("README.md")
-      } finally {
-        await dispose()
-      }
+      const res = await requestOn({
+        path: "/ab12/tree",
+        sessions: oneSession({ worktreePath: undefined, cwd: work }),
+      })
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { paths: string[] }
+      expect(body.paths).toContain("README.md")
     })
 
     it("adds gitStatus badges when ?gitStatus=1", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/tree?gitStatus=1")
-        expect(res.status).toBe(200)
-        const body = (await res.json()) as { paths: string[]; gitStatus: unknown[] }
-        // Non-git tmp dir → empty badge list, but the field must be present.
-        expect(Array.isArray(body.gitStatus)).toBe(true)
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/tree?gitStatus=1")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { paths: string[]; gitStatus: unknown[] }
+      // Non-git tmp dir → empty badge list, but the field must be present.
+      expect(Array.isArray(body.gitStatus)).toBe(true)
     })
 
     it("omits gitStatus without the query flag", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/tree")
-        const body = (await res.json()) as Record<string, unknown>
-        expect("gitStatus" in body).toBe(false)
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/tree")
+      const body = (await res.json()) as Record<string, unknown>
+      expect("gitStatus" in body).toBe(false)
     })
 
     it("returns 404 not_found for an unknown session", async () => {
-      const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
-      try {
-        const res = await app.request("/missing/tree")
-        expect(res.status).toBe(404)
-        expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
-      } finally {
-        await dispose()
-      }
+      const res = await requestOn({ path: "/missing/tree" })
+      await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
     })
 
     it("returns 404 no_worktree when the session has neither worktreePath nor cwd", async () => {
-      const sessions = new Map([
-        ["ab12", makeSession({ short: "ab12", worktreePath: undefined, cwd: undefined })],
-      ])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/tree")
-        expect(res.status).toBe(404)
-        expect(await res.json()).toEqual({ error: "no_worktree", short: "ab12" })
-      } finally {
-        await dispose()
-      }
+      const res = await requestOn({
+        path: "/ab12/tree",
+        sessions: oneSession({ worktreePath: undefined, cwd: undefined }),
+      })
+      await expectJson(res, { status: 404, body: { error: "no_worktree", short: "ab12" } })
     })
   })
 
   describe("GET /:id/file", () => {
     it("reads a text file under the worktree", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/file?path=README.md")
-        expect(res.status).toBe(200)
-        const body = (await res.json()) as { content: string; isBinary: boolean }
-        expect(body.content).toBe("# hello\n")
-        expect(body.isBinary).toBe(false)
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/file?path=README.md")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { content: string; isBinary: boolean }
+      expect(body.content).toBe("# hello\n")
+      expect(body.isBinary).toBe(false)
     })
 
     it("returns 400 missing_path when no path is given", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/file")
-        expect(res.status).toBe(400)
-        expect(await res.json()).toEqual({ error: "missing_path" })
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/file")
+      await expectJson(res, { status: 400, body: { error: "missing_path" } })
     })
 
     it("returns 403 forbidden on a parent-directory escape", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/file?path=../etc/passwd")
-        expect(res.status).toBe(403)
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/file?path=../etc/passwd")
+      expect(res.status).toBe(403)
     })
 
     it("returns 404 not_found for an unknown session", async () => {
-      const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
-      try {
-        const res = await app.request("/missing/file?path=README.md")
-        expect(res.status).toBe(404)
-        expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
-      } finally {
-        await dispose()
-      }
+      const res = await requestOn({ path: "/missing/file?path=README.md" })
+      await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
     })
   })
 
   describe("GET /:id/raw", () => {
     it("streams the file bytes with the right content-type", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/raw?path=README.md")
-        expect(res.status).toBe(200)
-        expect(res.headers.get("Content-Type")).toContain("text/markdown")
-        expect(await res.text()).toBe("# hello\n")
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/raw?path=README.md")
+      expect(res.status).toBe(200)
+      expect(res.headers.get("Content-Type")).toContain("text/markdown")
+      expect(await res.text()).toBe("# hello\n")
     })
 
     it("forces a download with Content-Disposition when ?download=1", async () => {
-      const sessions = new Map([["ab12", makeSession({ short: "ab12", worktreePath: work })]])
-      const { app, dispose } = buildHarness({ sessions, spy: newSpy() })
-      try {
-        const res = await app.request("/ab12/raw?path=README.md&download=1")
-        expect(res.status).toBe(200)
-        expect(res.headers.get("Content-Disposition")).toContain("attachment")
-      } finally {
-        await dispose()
-      }
+      const res = await workRes("/ab12/raw?path=README.md&download=1")
+      expect(res.status).toBe(200)
+      expect(res.headers.get("Content-Disposition")).toContain("attachment")
     })
 
     it("returns 400 missing_path when no path is given", async () => {

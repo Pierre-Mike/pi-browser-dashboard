@@ -12,6 +12,9 @@ const SURFACE_CLS =
 export const SessionCard = ({ session }: Props) => {
   const tone = stateColor(session.state)
   const [replyOpen, setReplyOpen] = useState(false)
+  // The reply modal drives claude's pty (attach → write keys) — a pi run has
+  // no supervisor pty to reply into, so its surface stays inert.
+  const canReply = session.harness !== "pi"
   const resultPreview =
     session.state === "done" && session.result ? session.result.split("\n")[0]?.slice(0, 140) : null
 
@@ -29,7 +32,11 @@ export const SessionCard = ({ session }: Props) => {
         data-state={session.state}
         className={`rounded-lg border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
       >
-        <button type="button" onClick={() => setReplyOpen(true)} className={SURFACE_CLS}>
+        <button
+          type="button"
+          onClick={canReply ? () => setReplyOpen(true) : undefined}
+          className={canReply ? SURFACE_CLS : `${SURFACE_CLS} cursor-default`}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2 min-w-0" data-testid="session-card-name">
               <span className={`inline-block w-2 h-2 rounded-full ${tone.dot}`} aria-hidden />
@@ -37,10 +44,20 @@ export const SessionCard = ({ session }: Props) => {
                 {session.name || session.short}
               </span>
             </span>
-            <span
-              className={`badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
-            >
-              {tone.label}
+            <span className="flex items-center gap-1">
+              {session.harness === "pi" ? (
+                <span
+                  data-testid="harness-badge"
+                  className="badge badge-sm badge-outline badge-secondary font-mono normal-case"
+                >
+                  pi
+                </span>
+              ) : null}
+              <span
+                className={`badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
+              >
+                {tone.label}
+              </span>
             </span>
           </div>
 
@@ -63,7 +80,7 @@ export const SessionCard = ({ session }: Props) => {
 
         <SessionCardActions session={session} />
       </div>
-      {replyOpen ? (
+      {replyOpen && canReply ? (
         <SessionReplyModal open session={session} onClose={() => setReplyOpen(false)} />
       ) : null}
     </>

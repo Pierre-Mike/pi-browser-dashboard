@@ -20,6 +20,13 @@ const post = (path: "stop" | "rm" | "peek", id: string): Promise<Response> =>
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   (api as any).sessions[":id"][path].$post({ param: { id } })
 
+// What "open this session in a terminal" means per harness: claude sessions
+// pty-attach through the supervisor; pi sessions resume by transcript id.
+const attachCommand = (session: SessionState): string =>
+  session.harness === "pi"
+    ? `pi --session ${session.sessionId || session.short}`
+    : `claude attach ${session.short}`
+
 // Owns the per-card action state and the daemon calls behind each button. Kept
 // out of SessionCard so the card stays a thin presentational shell.
 const useSessionCardActions = (session: SessionState) => {
@@ -36,7 +43,7 @@ const useSessionCardActions = (session: SessionState) => {
   useEffect(() => () => clearTimeout(confirmTimerRef.current ?? undefined), [])
 
   const onCopy = async () => {
-    if (await copy(`claude attach ${session.short}`)) {
+    if (await copy(attachCommand(session))) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1_000)
     }
@@ -117,10 +124,88 @@ const useSessionCardActions = (session: SessionState) => {
   }
 }
 
+type Actions = ReturnType<typeof useSessionCardActions>
+
+// Peek + Send drive the claude supervisor (Haiku peek, pty-attach) — pi cards
+// never render this cluster.
+const ClaudeControls = ({ a }: { a: Actions }) => (
+  <>
+    <button
+      type="button"
+      data-testid="peek"
+      onClick={a.onPeek}
+      disabled={a.peeking}
+      className="btn btn-xs btn-ghost normal-case disabled:opacity-40"
+      title="Trigger a fresh Haiku peek (costs one call against your quota)"
+    >
+      {a.peeking ? (
+        <>
+          <span className="loading loading-spinner loading-xs" />
+          Peeking…
+        </>
+      ) : (
+        "Peek"
+      )}
+    </button>
+    <button
+      type="button"
+      data-testid="send-toggle"
+      onClick={() => a.setSendOpen((v) => !v)}
+      className={
+        a.sendOpen
+          ? "btn btn-xs btn-primary normal-case shadow-sm shadow-primary/30"
+          : "btn btn-xs btn-ghost normal-case"
+      }
+      title="Pty-attach and inject keys (claude attach → write → detach)"
+    >
+      {a.sendOpen ? "Send ▾" : "Send ▸"}
+    </button>
+  </>
+)
+
+const KillButton = ({ a }: { a: Actions }) => (
+  <button
+    type="button"
+    data-testid="stop"
+    onClick={a.onStop}
+    disabled={!a.canStop}
+    className="btn btn-xs btn-warning normal-case disabled:opacity-30"
+    title="claude stop — process exits, registry keeps the entry (claude respawn to recover)"
+  >
+    {a.stopping ? "Stopping…" : "Kill"}
+  </button>
+)
+
+const DeleteButton = ({ a, isPi }: { a: Actions; isPi: boolean }) => (
+  <button
+    type="button"
+    data-testid="delete"
+    onClick={a.onDelete}
+    onBlur={a.cancelConfirm}
+    disabled={a.deleting}
+    className={
+      a.confirmDelete
+        ? "btn btn-xs btn-error normal-case disabled:opacity-30"
+        : "btn btn-xs btn-outline btn-error normal-case disabled:opacity-30"
+    }
+    title={
+      isPi
+        ? "Remove from the dashboard — the pi transcript stays resumable on disk"
+        : "claude rm — remove session entirely; worktree cleaned if no uncommitted changes"
+    }
+  >
+    {a.deleting ? "Deleting…" : a.confirmDelete ? "Confirm?" : "Delete"}
+  </button>
+)
+
 // Sibling of the card's open-reply surface (not a descendant of it) so these
 // real <button>/<textarea> controls never nest inside a <button>.
 export const SessionCardActions = ({ session }: { session: SessionState }) => {
   const a = useSessionCardActions(session)
+  // Peek / Send / Kill all drive the claude supervisor — a pi run has none of
+  // that machinery. Its card keeps copy-resume-command and Delete (drops the
+  // spawn-log entry) only.
+  const isPi = session.harness === "pi"
   return (
     <>
       <div className="flex items-center gap-1.5 pt-1">
@@ -128,66 +213,14 @@ export const SessionCardActions = ({ session }: { session: SessionState }) => {
           type="button"
           onClick={a.onCopy}
           className="btn btn-xs btn-ghost normal-case"
-          title={`Copy: claude attach ${session.short}`}
+          title={`Copy: ${attachCommand(session)}`}
         >
           {a.copied ? "Copied" : "Open ↗"}
         </button>
-        <button
-          type="button"
-          data-testid="peek"
-          onClick={a.onPeek}
-          disabled={a.peeking}
-          className="btn btn-xs btn-ghost normal-case disabled:opacity-40"
-          title="Trigger a fresh Haiku peek (costs one call against your quota)"
-        >
-          {a.peeking ? (
-            <>
-              <span className="loading loading-spinner loading-xs" />
-              Peeking…
-            </>
-          ) : (
-            "Peek"
-          )}
-        </button>
-        <button
-          type="button"
-          data-testid="send-toggle"
-          onClick={() => a.setSendOpen((v) => !v)}
-          className={
-            a.sendOpen
-              ? "btn btn-xs btn-primary normal-case shadow-sm shadow-primary/30"
-              : "btn btn-xs btn-ghost normal-case"
-          }
-          title="Pty-attach and inject keys (claude attach → write → detach)"
-        >
-          {a.sendOpen ? "Send ▾" : "Send ▸"}
-        </button>
+        {isPi ? null : <ClaudeControls a={a} />}
         <span className="ml-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            data-testid="stop"
-            onClick={a.onStop}
-            disabled={!a.canStop}
-            className="btn btn-xs btn-warning normal-case disabled:opacity-30"
-            title="claude stop — process exits, registry keeps the entry (claude respawn to recover)"
-          >
-            {a.stopping ? "Stopping…" : "Kill"}
-          </button>
-          <button
-            type="button"
-            data-testid="delete"
-            onClick={a.onDelete}
-            onBlur={a.cancelConfirm}
-            disabled={a.deleting}
-            className={
-              a.confirmDelete
-                ? "btn btn-xs btn-error normal-case disabled:opacity-30"
-                : "btn btn-xs btn-outline btn-error normal-case disabled:opacity-30"
-            }
-            title="claude rm — remove session entirely; worktree cleaned if no uncommitted changes"
-          >
-            {a.deleting ? "Deleting…" : a.confirmDelete ? "Confirm?" : "Delete"}
-          </button>
+          {isPi ? null : <KillButton a={a} />}
+          <DeleteButton a={a} isPi={isPi} />
         </span>
         <span className="text-[10px] font-mono text-base-content/40 pl-1">{session.short}</span>
       </div>

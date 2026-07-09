@@ -3,6 +3,7 @@ import { Effect, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { ShellRepo } from "../../platform/shell.repo"
+import { PiSessionsRepo } from "../dispatch/pi-sessions.repo"
 import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.repo"
 import {
   errorToStatus,
@@ -23,7 +24,7 @@ const MAX_TRANSCRIPT_LINES = 500
 // SessionRegistry / ShellRepo / FilesService layers
 // (see sessions.routes.test.ts).
 export type SessionsRouteRuntime = Pick<
-  ManagedRuntime.ManagedRuntime<SessionRegistry | ShellRepo | FilesService, never>,
+  ManagedRuntime.ManagedRuntime<SessionRegistry | ShellRepo | FilesService | PiSessionsRepo, never>,
   "runPromise" | "runPromiseExit"
 >
 
@@ -92,7 +93,11 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const list = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return yield* Effect.promise(() => reg.snapshot())
+          const pi = yield* PiSessionsRepo
+          const claude = yield* Effect.promise(() => reg.snapshot())
+          // pi runs live outside the supervisor's roster/jobs world — the
+          // dispatch spawn log is their registry (see pi-sessions.repo.ts).
+          return [...claude, ...pi.list()]
         }),
       )
       return c.json(list)
@@ -102,7 +107,9 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const one = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return yield* Effect.promise(() => reg.getOne(id))
+          const pi = yield* PiSessionsRepo
+          const claude = yield* Effect.promise(() => reg.getOne(id))
+          return claude ?? pi.getOne(id)
         }),
       )
       if (!one) return c.json({ error: "not_found", short: id }, 404)
@@ -251,6 +258,10 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const id = c.req.param("id")
       const result = await runtime.runPromiseExit(
         Effect.gen(function* () {
+          // A pi session has no claude job dir — removing it just drops the
+          // spawn-log entry (the pi transcript stays on disk, resumable).
+          const pi = yield* PiSessionsRepo
+          if (pi.remove(id)) return
           const shell = yield* ShellRepo
           yield* shell.rm(id)
         }),

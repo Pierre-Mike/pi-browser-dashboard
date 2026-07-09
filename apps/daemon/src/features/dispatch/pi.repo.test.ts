@@ -42,14 +42,21 @@ describe("spawnLaunchChecked", () => {
     }
   })
 
-  it("succeeds when the child survives the launch window (the normal pi run)", async () => {
+  it("succeeds with the live child's pid when it survives the launch window", async () => {
     const exit = await run(["sh", "-c", "sleep 2"], 200)
     expect(Exit.isSuccess(exit)).toBe(true)
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.pid).toBeGreaterThan(0)
+      await expect(exit.value.exited).resolves.toBe(0)
+    }
   })
 
   it("succeeds when the child completes cleanly inside the window", async () => {
     const exit = await run(["sh", "-c", "exit 0"], 2_000)
     expect(Exit.isSuccess(exit)).toBe(true)
+    if (Exit.isSuccess(exit)) {
+      await expect(exit.value.exited).resolves.toBe(0)
+    }
   })
 
   it("fails with a spawn error for a nonexistent binary", async () => {
