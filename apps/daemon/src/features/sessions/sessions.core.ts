@@ -126,6 +126,10 @@ export type SessionState = {
   readonly worktreePath: string | undefined
   readonly worktreeBranch: string | undefined
   readonly result: unknown
+  // Which CLI runs this session. Absent for claude (the historical shape —
+  // existing consumers are untouched); "pi" for daemon-spawned pi runs
+  // surfaced by features/dispatch/pi-sessions.
+  readonly harness?: "pi"
 }
 
 export type ParseStateInput = { readonly short: string; readonly json: unknown }

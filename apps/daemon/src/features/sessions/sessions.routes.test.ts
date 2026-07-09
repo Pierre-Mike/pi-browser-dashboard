@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { ShellError, ShellRepo, type ShellRepoApi } from "../../platform/shell.repo"
+import { type PiSessionsApi, PiSessionsRepo } from "../dispatch/pi-sessions.repo"
 import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.repo"
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.repo"
 import { buildSessionsApp } from "./sessions.routes"
@@ -104,23 +105,51 @@ const newSpy = (): ShellSpy => ({ calls: [], failNext: null, peekReturn: "" })
 
 const newFilesStub = (): FilesStub => ({ diffByPath: new Map(), failWith: undefined })
 
+// In-memory PiSessionsRepo stub: pi sessions are keyed by short, remove()
+// records what it dropped so tests can assert the pi rm branch fired.
+type PiStub = {
+  readonly sessions: Map<string, SessionState>
+  readonly removed: string[]
+}
+
+const newPiStub = (): PiStub => ({ sessions: new Map(), removed: [] })
+
+const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsRepo> => {
+  const api: PiSessionsApi = {
+    config: { spawnsFile: "", sessionsRoot: "", isPidAlive: () => false },
+    record: () => {},
+    list: () => Array.from(stub.sessions.values()),
+    remove: (short) => {
+      if (!stub.sessions.has(short)) return false
+      stub.sessions.delete(short)
+      stub.removed.push(short)
+      return true
+    },
+    getOne: (short) => stub.sessions.get(short),
+  }
+  return Layer.succeed(PiSessionsRepo, api)
+}
+
 const buildHarness = ({
   sessions,
   spy,
   filesStub = newFilesStub(),
+  piStub = newPiStub(),
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
   filesStub?: FilesStub
+  piStub?: PiStub
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions),
     buildShellLayer(spy),
     buildFilesLayer(filesStub),
+    buildPiSessionsLayer(piStub),
   )
   const runtime = ManagedRuntime.make(layer)
   const app = buildSessionsApp(runtime)
-  return { app, runtime, filesStub, dispose: () => runtime.dispose() }
+  return { app, runtime, filesStub, piStub, dispose: () => runtime.dispose() }
 }
 
 describe("GET /sessions", () => {
@@ -150,6 +179,24 @@ describe("GET /sessions", () => {
       await dispose()
     }
   })
+
+  it("merges daemon-spawned pi sessions into the list", async () => {
+    const sessions = new Map([["ab12", makeSession({ short: "ab12", state: "working" })]])
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const { app, dispose } = buildHarness({ sessions, spy: newSpy(), piStub })
+    try {
+      const res = await app.request("/")
+      const body = (await res.json()) as Array<{ short: string; harness?: string }>
+      expect(body.map((s) => s.short).sort()).toEqual(["aaaa1111", "ab12"])
+      expect(body.find((s) => s.short === "aaaa1111")?.harness).toBe("pi")
+    } finally {
+      await dispose()
+    }
+  })
 })
 
 describe("GET /sessions/:id", () => {
@@ -173,6 +220,22 @@ describe("GET /sessions/:id", () => {
       const res = await app.request("/missing")
       expect(res.status).toBe(404)
       expect(await res.json()).toEqual({ error: "not_found", short: "missing" })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("falls back to pi sessions when the registry misses", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy(), piStub })
+    try {
+      const res = await app.request("/aaaa1111")
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { harness?: string }).harness).toBe("pi")
     } finally {
       await dispose()
     }
@@ -469,6 +532,25 @@ describe("POST /sessions/:id/rm", () => {
       const res = await app.request("/ab12/rm", { method: "POST" })
       expect(res.status).toBe(500)
       expect(await res.json()).toEqual({ error: "rm_failed", short: "ab12" })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("removes a pi spawn from the pi log without shelling out to claude rm", async () => {
+    const spy = newSpy()
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "done", harness: "pi" }),
+    )
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy, piStub })
+    try {
+      const res = await app.request("/aaaa1111/rm", { method: "POST" })
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true, short: "aaaa1111" })
+      expect(piStub.removed).toEqual(["aaaa1111"])
+      expect(spy.calls).toEqual([])
     } finally {
       await dispose()
     }

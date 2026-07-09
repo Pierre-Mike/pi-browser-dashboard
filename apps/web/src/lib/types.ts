@@ -27,6 +27,9 @@ export type SessionState = {
   updatedAt: string
   linkScanPath: string
   result?: string
+  // Absent for claude sessions (the historical shape); "pi" for daemon-spawned
+  // pi runs — cards badge these and drop the claude-only controls.
+  harness?: "pi"
 }
 
 export type Project = {

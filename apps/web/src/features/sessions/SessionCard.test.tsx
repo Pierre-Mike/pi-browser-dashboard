@@ -68,3 +68,34 @@ describe("SessionCard markup", () => {
     expect(maxButtonNestingDepth(blocked)).toBeLessThanOrEqual(1)
   })
 })
+
+describe("SessionCard (pi harness)", () => {
+  const piSession: SessionState = {
+    ...sampleSession,
+    short: "aaaa1111",
+    sessionId: "aaaa1111-2222-3333-4444-555566667777",
+    harness: "pi",
+  }
+
+  test("badges the card as pi", () => {
+    const html = renderCard(piSession)
+    expect(html).toContain('data-testid="harness-badge"')
+    expect(html).toContain(">pi<")
+  })
+
+  test("hides claude-only controls (peek/send/kill) but keeps delete", () => {
+    const html = renderCard(piSession)
+    expect(html).not.toContain('data-testid="peek"')
+    expect(html).not.toContain('data-testid="send-toggle"')
+    expect(html).not.toContain('data-testid="stop"')
+    expect(html).toContain('data-testid="delete"')
+  })
+
+  test("copy control offers the pi resume command instead of claude attach", () => {
+    expect(renderCard(piSession)).toContain("pi --session aaaa1111-2222-3333-4444-555566667777")
+  })
+
+  test("claude cards are unchanged: no harness badge", () => {
+    expect(renderCard(sampleSession)).not.toContain('data-testid="harness-badge"')
+  })
+})
