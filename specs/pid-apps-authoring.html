@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: pid-apps Authoring — create, specs/, promote</title>
+<style>
+  :root {
+    /* Synced visual identity — "drop-zone extension": calm slate canvas, indigo primary, teal accent */
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef1f7;
+    --border: #d9dee8;
+    --text: #1b2230;
+    --muted: #5b6577;
+    --primary: #4f46e5;
+    --primary-soft: #eae9fd;
+    --accent: #0d9488;
+    --danger: #dc2626;
+    --ok: #16a34a;
+    --warn: #b45309;
+    --code-bg: #f1f3f9;
+    --code-text: #243049;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.06);
+    --radius: 12px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1117; --surface: #161b24; --surface-2: #1c222e; --border: #2a313d;
+      --text: #e6e9ef; --muted: #97a1b3; --primary: #8b85f7; --primary-soft: #1e1d3a;
+      --accent: #2dd4bf; --code-bg: #11161f; --code-text: #c9d3e6;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; font-size: 16px; }
+  main { max-width: 920px; margin: 0 auto; padding: 40px 24px 96px; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 1.45rem; margin: 2.4em 0 .6em; letter-spacing: -.01em; padding-bottom: .3em; border-bottom: 2px solid var(--border); }
+  h3 { font-size: 1.18rem; margin: 1.6em 0 .5em; }
+  h4 { font-size: 1.02rem; margin: 1.3em 0 .4em; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  p { margin: .6em 0; }
+  a { color: var(--primary); }
+  code { font-family: var(--mono); font-size: .87em; background: var(--code-bg); color: var(--code-text); padding: .12em .4em; border-radius: 5px; }
+  pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: var(--radius); overflow-x: auto; border: 1px solid var(--border); font-size: .82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  ul, ol { padding-left: 1.4em; }
+  li { margin: .25em 0; }
+  header { border-bottom: 3px solid var(--primary); padding-bottom: 18px; }
+  .sub { color: var(--muted); font-size: 1.02rem; margin-top: 2px; }
+  details.meta { margin-top: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 16px; box-shadow: var(--shadow); }
+  details.meta summary { cursor: pointer; font-weight: 600; padding: 8px 0; color: var(--muted); }
+  dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 16px; margin: 8px 0 12px; font-size: .9rem; }
+  dt { color: var(--muted); font-weight: 600; }
+  dd { margin: 0; font-family: var(--mono); font-size: .82rem; word-break: break-word; }
+  section { scroll-margin-top: 20px; }
+  figure { margin: 18px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+  figcaption { color: var(--muted); font-size: .85rem; margin-top: 8px; font-style: italic; }
+  .files ul { list-style: none; padding-left: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--border); }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; vertical-align: middle; margin-right: 6px; }
+  .tag.existing { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+  .tag.new { background: var(--primary-soft); color: var(--primary); border: 1px solid var(--primary); }
+  .phase { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); padding: 4px 24px 20px; margin: 20px 0; box-shadow: var(--shadow); }
+  .phase h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding: 4px 0 4px 2px; display: flex; gap: 9px; align-items: flex-start; }
+  .status { flex: none; font-family: var(--mono); font-size: .72rem; font-weight: 700; padding: 2px 6px; border-radius: 5px; margin-top: 2px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); white-space: nowrap; }
+  .status.wip { background: #fff7e6; color: var(--warn); border-color: var(--warn); }
+  .status.x { background: #e7f7ed; color: var(--ok); border-color: var(--ok); }
+  .status.f { background: #fdeaea; color: var(--danger); border-color: var(--danger); }
+  .loop { margin-top: 14px; background: var(--primary-soft); border: 1px solid var(--primary); border-radius: 10px; padding: 10px 14px; font-size: .9rem; }
+  .mustfix { border-left: 4px solid var(--danger); background: linear-gradient(0deg, var(--surface), var(--surface)); padding: 2px 16px; border-radius: 8px; margin: 12px 0; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .mustfix h4 { color: var(--danger); }
+  .pill { display:inline-block; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--accent); color:#fff; letter-spacing:.03em; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; margin: 12px 0; }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 700; }
+  .callout { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 18px; margin: 14px 0; box-shadow: var(--shadow); }
+  .callout.warn { border-left: 4px solid var(--warn); }
+  .callout.ok { border-left: 4px solid var(--ok); }
+  details#q-block details { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; padding: 2px 16px; }
+  #questionables > details, #amendments > details { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 8px 0; padding: 2px 16px; box-shadow: var(--shadow); }
+  #questionables summary, #amendments summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+  .qa-answer { color: var(--text); }
+  .legend { font-size: .85rem; color: var(--muted); }
+  .legend code { font-size: .8em; }
+  /* SVG diagram helpers */
+  svg .box { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+  svg .box-primary { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 1.5; }
+  svg .box-accent { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  svg .box-danger { fill: none; stroke: var(--danger); stroke-width: 1.5; }
+  svg text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+  svg .t-muted { fill: var(--muted); font-size: 11px; }
+  svg .t-mono { font-family: var(--mono); font-size: 11px; fill: var(--code-text); }
+  svg .t-title { font-weight: 700; font-size: 13px; }
+  svg .arrow { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#ah); }
+  svg .arrow-p { stroke: var(--primary); stroke-width: 2; fill: none; marker-end: url(#ahp); }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: pid-apps Authoring <span class="pill">create · specs/ · promote</span></h1>
+    <p class="sub">Close the loop pid-apps left open: create a pid-app from the dashboard instead of hand-authoring files, see every <code>specs/*.html</code> plan a project already has with zero copy step, and graduate a pid-app into a real manifest-based extension with one command.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-02</dd>
+        <dt>modified</dt>     <dd>2026-07-02 (created)</dd>
+        <dt>commits</dt>      <dd>— (not yet built)</dd>
+        <dt>agent name</dt>   <dd>Claude Sonnet 5</dd>
+        <dt>session id</dt>   <dd>—</dd>
+        <dt>back refs</dt>    <dd>specs/pid-html-extensions.html (pid-apps viewer, #318, #320-#327); apps/daemon/src/platform/extensions/* (extension platform, PR #116 onward, pid-ext scaffold); apps/daemon/src/features/pid-settings/* (writeAtomic precedent); examples/extensions/*</dd>
+        <dt>forward refs</dt> <dd>PRs: pid-apps-authoring Phase 1–5 (not yet created)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <!-- Hero diagram — synced to :root identity (inline SVG, self-contained) -->
+  <figure>
+    <svg viewBox="0 0 780 200" width="100%" height="auto" role="img" aria-labelledby="heroTitle" preserveAspectRatio="xMidYMid meet">
+      <title id="heroTitle">From static drop-in to a real extension, one ladder</title>
+      <desc>Create a pid-app or drop a spec, view it as a sandboxed tab, then promote it into a full extension.</desc>
+      <defs>
+        <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--muted)"/></marker>
+        <marker id="ahp" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="var(--primary)"/></marker>
+      </defs>
+      <rect class="box-primary" x="20" y="35" width="200" height="130" rx="10"/>
+      <text class="t-title" x="36" y="62">+ New App</text>
+      <text class="t-mono" x="36" y="86">.pid/&lt;name&gt;/</text>
+      <text class="t-muted" x="36" y="108">create, in-app</text>
+      <line x1="20" y1="122" x2="220" y2="122" stroke="var(--border)"/>
+      <text class="t-mono" x="36" y="144">specs/*.html</text>
+      <text class="t-muted" x="36" y="163">auto-visible</text>
+      <path class="arrow-p" d="M226,100 L292,100"/>
+      <rect class="box" x="296" y="60" width="180" height="80" rx="10"/>
+      <text class="t-title" x="316" y="92">pidapp: tab</text>
+      <text class="t-muted" x="316" y="114">sandboxed iframe</text>
+      <path class="arrow-p" d="M482,100 L548,100"/>
+      <text class="t-mono" x="484" y="90">promote</text>
+      <rect class="box-accent" x="552" y="55" width="210" height="90" rx="10"/>
+      <text class="t-title" x="572" y="86">extension</text>
+      <text class="t-mono" x="572" y="108">manifest.json</text>
+      <text class="t-muted" x="572" y="128">+ RPC, restart</text>
+    </svg>
+    <figcaption>Two additive entry points — create or drop a spec — feed the same sandboxed tab; one command graduates it into a real extension.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>pid-apps (<a href="pid-html-extensions.html">specs/pid-html-extensions.html</a>) shipped a way to <strong>view</strong> HTML dropped into a project's <code>.pid/</code> folder. This plan closes the three gaps left between "I have an idea" and "I see it running," and between "I see it running" and "it has a backend": an in-dashboard way to <strong>create</strong> a pid-app instead of hand-authoring files on disk, zero-config visibility for the <code>specs/*.html</code> plans a project already has (this very file included — see <a href="#dogfood">Dogfooding</a>), and a one-command path to <strong>graduate</strong> a pid-app into a full manifest-based extension with RPC capabilities. All three are additive over the existing security and rendering primitives — no new attack-surface class, and the first two need no daemon restart.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Two capable systems already ship in this repo and neither talks to the other. <strong>pid-apps</strong> (PRs #320-#327) discovers <code>.pid/&lt;id&gt;/index.html</code> on demand and renders it in a sandboxed tab — but it is read-only: an app is hand-created on disk, and a project's own <code>specs/*.html</code> plans are invisible until someone manually copies one into <code>.pid/</code>. The <strong>extension platform</strong> (PR #116 onward) is the opposite shape: manifest-based, capability-gated, has a CLI scaffold (<code>pid-ext</code>) — but it is boot-time (a new extension needs a daemon restart) and entirely disconnected from pid-apps, so a user who outgrows a static pid-app has no path forward except hand-writing a <code>manifest.json</code> from scratch.</p>
+    <figure>
+      <svg viewBox="0 0 760 210" width="100%" height="auto" role="img" aria-labelledby="problemTitle" preserveAspectRatio="xMidYMid meet">
+        <title id="problemTitle">Two disconnected systems, three gaps between them</title>
+        <desc>pid-apps is view-only and specs are invisible; the extension platform is CLI-only with no path from one to the other.</desc>
+        <rect class="box" x="18" y="40" width="330" height="150" rx="10"/>
+        <text class="t-title" x="38" y="66">pid-apps (shipped)</text>
+        <text class="t-muted" x="38" y="90">• view-only, no create UI</text>
+        <text class="t-muted" x="38" y="112">• specs/*.html invisible</text>
+        <text class="t-muted" x="38" y="134">• .pid/ only, zero-config</text>
+        <text class="t-mono" x="38" y="164">PRs #320-#327</text>
+        <rect class="box-danger" x="366" y="90" width="28" height="28" rx="6"/>
+        <text class="t-title" x="373" y="110">?</text>
+        <rect class="box" x="412" y="40" width="330" height="150" rx="10"/>
+        <text class="t-title" x="432" y="66">extensions (shipped)</text>
+        <text class="t-muted" x="432" y="90">• manifest + RPC + backend</text>
+        <text class="t-muted" x="432" y="112">• CLI scaffold, no bridge in</text>
+        <text class="t-muted" x="432" y="134">• boot-time, needs restart</text>
+        <text class="t-mono" x="432" y="164">pid-ext, PR #116-#159</text>
+      </svg>
+      <figcaption>Neither system was designed to hand off to the other — the gap in the middle is this plan.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Add three thin, additive lanes over the existing pipeline, none of which touch the security primitives (realpath containment, CSP, sandboxed iframe) already proven in pid-apps: <strong>(1) create</strong> — a <code>POST /projects/:id/pid-apps</code> route plus a dashboard "+ New App" control that scaffolds <code>.pid/&lt;name&gt;/index.html</code> the same way <code>pid-settings</code> already writes project state (tmp+rename); <strong>(2) discover</strong> — a second, read-only zero-config root, <code>&lt;project&gt;/specs/*.html</code>, merged into the same <code>listApps</code>/<code>resolveAsset</code> pipeline, so every plan a project already has shows up as a <code>pidapp:</code> tab with no copy step; <strong>(3) promote</strong> — a <code>pid-promote</code> CLI, mirroring <code>pid-ext</code>'s shape exactly, that moves a <code>.pid/&lt;id&gt;/</code> pid-app into <code>.pid/extensions/&lt;id&gt;/</code> with a generated <code>manifest.json</code>, reusing the exact manifest builder <code>pid-ext</code> already has.</p>
+    <figure>
+      <svg viewBox="0 0 780 300" width="100%" height="auto" role="img" aria-labelledby="solutionTitle" preserveAspectRatio="xMidYMid meet">
+        <title id="solutionTitle">Two sources feed one pipeline; promote is a one-way exit</title>
+        <desc>Create and specs discovery both flow through the existing pid-apps pipeline into the same tab; promote moves an app out into the extension platform.</desc>
+        <rect class="box-primary" x="20" y="20" width="180" height="60" rx="8"/>
+        <text class="t-title" x="36" y="46">1 Create</text>
+        <text class="t-mono" x="36" y="66">POST → writeAtomic</text>
+        <rect class="box-primary" x="20" y="96" width="180" height="60" rx="8"/>
+        <text class="t-title" x="36" y="122">2 Discover</text>
+        <text class="t-mono" x="36" y="142">specs/*.html</text>
+        <path class="arrow-p" d="M204,50 L300,90"/>
+        <path class="arrow-p" d="M204,126 L300,100"/>
+        <rect class="box" x="304" y="58" width="200" height="70" rx="8"/>
+        <text class="t-title" x="320" y="86">same pipeline</text>
+        <text class="t-muted" x="320" y="108">realpath · CSP · mime</text>
+        <path class="arrow-p" d="M508,93 L574,93"/>
+        <rect class="box" x="578" y="58" width="182" height="70" rx="8"/>
+        <text class="t-title" x="594" y="86">pidapp: tab</text>
+        <text class="t-muted" x="594" y="108">unchanged web host</text>
+        <path class="arrow" d="M669,128 L669,194"/>
+        <text class="t-muted" x="546" y="168">3 promote (one-way)</text>
+        <rect class="box-accent" x="474" y="196" width="286" height="76" rx="8"/>
+        <text class="t-title" x="492" y="226">.pid/extensions/&lt;id&gt;/</text>
+        <text class="t-mono" x="492" y="248">manifest.json</text>
+        <text class="t-muted" x="492" y="264">restart daemon to load</text>
+      </svg>
+      <figcaption>Create and discover both flow through the unchanged security pipeline; promote is a deliberate, one-way exit into the extension platform.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files (reuse / extend)</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/pid-apps/pid-apps.core.ts</code> — pure discovery; add the create-name validator, starter-HTML builder, <code>source</code> discriminant, <code>discoverSpecApps</code>, <code>mergeAppSources</code>.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/pid-apps/pid-apps.repo.ts</code> — imperative shell; add <code>createApp</code>, merge the <code>specs/</code> root into <code>listApps</code>, extend <code>resolveAsset</code>'s fallback.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/pid-apps/pid-apps.routes.ts</code> — add the <code>POST /:id/pid-apps</code> route.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/pid-apps/{pid-apps.core,pid-apps.repo,pid-apps.routes}.test.ts</code> — extend, all existing cases stay green.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/pid-settings/pid-settings.repo.ts</code> — <code>writeAtomic</code> (~L44-49, tmp+rename) is the idiom <code>createApp</code>'s write path mirrors; <code>pid-settings.routes.ts</code>'s POST-not-PUT CORS comment (~L42) is the route idiom to mirror.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/features/projects/projects.core.ts</code> — <code>resolveProjectPath</code>, <code>mimeFromPath</code>: reused unchanged for <code>specs/</code> assets, just a different root.</li>
+      <li><span class="tag existing">existing</span> <code>apps/daemon/src/platform/extensions/scaffold.ts</code> — export the currently module-private <code>validateName</code> and <code>buildManifestJson</code> for <code>pid-promote</code> to reuse verbatim.</li>
+      <li><span class="tag existing">existing</span> <code>scripts/pid-ext.ts</code> — the exact CLI shape (arg parsing, refuse-non-empty-dir guard, "restart the daemon" notice) <code>pid-promote.ts</code> mirrors.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/pid-apps/usePidApps.ts</code> — add <code>useCreatePidApp</code> alongside the existing list query.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/pid-apps/pidApps.ts</code> — shared query key / serve-URL helpers; unchanged unless Questionable #6 (visual distinction) is taken.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/projects/ProjectDashboard.tsx</code> — mount the new "+ New App" control in the <code>project-tabs</code> nav (~L236-260); the <code>pidApps</code> render block (~L348-360) and <code>tabs</code> memo (~L126-141) need <strong>no changes</strong> — a created or specs-sourced app is just another discovered <code>PidApp</code>.</li>
+      <li><span class="tag existing">existing</span> <code>apps/web/src/features/extensions/ExtensionsPanel.tsx</code> — reference only, for the <code>invalidate</code>-after-mutation pattern (~L18-20); not touched by this plan.</li>
+      <li><span class="tag existing">existing</span> <code>apps/e2e/tests/pid-apps.spec.ts</code> &amp; <code>apps/e2e/global-setup.ts</code> — extend with create / specs-discovery / traversal-under-specs scenarios.</li>
+      <li><span class="tag existing">existing</span> <code>AGENTS.md</code> (pid-apps section, ~L144-176) — extend with the creation, specs/, and promotion story.</li>
+      <li><span class="tag existing">existing</span> <code>package.json</code> — add the <code>pid-promote</code> script next to <code>pid-ext</code>.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>apps/web/src/features/pid-apps/NewPidAppButton.tsx</code> — the "+ New App" control: inline name input, calls the create mutation, switches tabs on success.</li>
+      <li><span class="tag new">new</span> <code>apps/web/src/features/pid-apps/NewPidAppButton.test.ts</code> — src-text convention (repo has no RTL here; behavior covered by e2e).</li>
+      <li><span class="tag new">new</span> <code>scripts/pid-promote.ts</code> — the promotion CLI.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom. Each phase is one PR; every behavior change is <strong>test-first</strong> (RED → GREEN → refactor).</p>
+    <p class="legend">Status markers: <code class="status">[]</code> idle · <code class="status wip">[wip]</code> in progress · <code class="status x">[x]</code> complete · <code class="status f">[f]</code> failed. Nothing below is built yet.</p>
+
+    <!-- PHASE 1 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Creation — core + repo <span class="pill">imperative shell · Effect Layer</span></h3>
+      <p>Land the write path as pure-validated, atomically-written filesystem state, mirroring <code>pid-settings</code>'s proven idiom. <strong>Ships in the same PR as Phase 2</strong>, not separately: a <code>createApp</code> with no route calling it is exactly the "no production consumer" shape that tripped Fallow's dead-code gate on the original pid-apps plan's Phase 4. Phases 1 and 2 are listed separately here for readability only.</p>
+
+      <h4>1. Core additions</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>export const isCreatableAppName = (name: string): boolean =&gt; NAME_RE.test(name) &amp;&amp; !RESERVED_PID_ENTRIES.has(name)</code> in <code>pid-apps.core.ts</code> — pure, reuses the existing constants, never redefines them.</li>
+        <li><code class="status">[]</code> <code>export const buildStarterHtml = (name: string): string</code> in <code>pid-apps.core.ts</code> — pure, self-contained placeholder (<code>&lt;title&gt;</code> = name). Capability-free like every pid-app: no RPC/<code>postMessage</code> snippet — that stays exclusive to the extension scaffold.</li>
+      </ul>
+
+      <h4>2. Repo — <code>createApp</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>export type PidAppWriteError = PidAppError | "invalid_name" | "already_exists"</code> in <code>pid-apps.repo.ts</code>.</li>
+        <li><code class="status">[]</code> <code>createApp(projectId: string, name: string): Effect.Effect&lt;PidApp, PidAppWriteError&gt;</code> on <code>PidAppsService</code>: reject via <code>isCreatableAppName</code> before touching disk; resolve <code>.pid/&lt;name&gt;/</code> under the project dir (<code>resolveProjectDir</code>); an existing non-empty target → <code>already_exists</code>; otherwise <code>mkdir</code> + tmp-then-<code>rename</code> write of <code>index.html</code> from <code>buildStarterHtml(name)</code> (mirrors <code>pid-settings.repo.ts</code>'s <code>writeAtomic</code>, ~L44-49); return the app via the same discovery path <code>listApps</code> uses, so the shape never drifts.</li>
+        <li><code class="status">[]</code> Extend the tmp-dir fixture in <code>pid-apps.repo.test.ts</code> with <code>createApp</code> cases (no in-memory test layer exists for this feature — it's real-filesystem integration tests, same as today).</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Pure <code>bun:test</code> for the core truth table; tmp-dir integration tests for the write path.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>isCreatableAppName</code> — valid lowercase-kebab → true; <code>'default'</code>, <code>'extensions'</code>, <code>'settings.json'</code>-shaped, empty, uppercase, <code>'../x'</code> → false.</li>
+        <li><code class="status">[]</code> RED: <code>buildStarterHtml('foo')</code> — contains <code>&lt;title&gt;foo&lt;/title&gt;</code>, no <code>&lt;script&gt;</code>/<code>postMessage</code>.</li>
+        <li><code class="status">[]</code> RED: repo <code>createApp</code> — happy path creates <code>.pid/&lt;name&gt;/index.html</code> and a subsequent <code>listApps</code> returns it; existing non-empty dir → <code>already_exists</code>; invalid/reserved name → <code>invalid_name</code>, and asserts <strong>no directory was created</strong>.</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — proves the write path in isolation.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: Creation — route + web <span class="pill">dashboard "+ New App" · same PR as Phase 1</span></h3>
+      <p>Expose <code>createApp</code> over HTTP and give it a visible entry point, reusing the tab machinery unchanged.</p>
+
+      <h4>1. Route</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>POST /:id/pid-apps</code> in <code>pid-apps.routes.ts</code>: parse <code>{ name: string }</code> (mirror <code>pid-settings.routes.ts</code>'s <code>isObject</code> guard and its <code>// POST (not PUT): the CORS layer only allows GET/POST/OPTIONS cross-origin</code> comment verbatim); extend <code>errorToStatus</code> — <code>invalid_name</code> → 400, <code>already_exists</code> → 409; <code>201</code> + the new <code>PidApp</code> on success.</li>
+      </ul>
+
+      <h4>2. Web hook + button</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>useCreatePidApp(projectId)</code> in <code>usePidApps.ts</code> — a <code>useMutation</code> posting <code>{ name }</code>; <code>onSuccess</code> invalidates <code>pidAppsQueryKey(projectId)</code> (mirrors <code>ExtensionsPanel.tsx</code>'s <code>invalidate</code>, ~L18-20).</li>
+        <li><code class="status">[]</code> New <code>NewPidAppButton.tsx</code> — a small <code>+</code> control rendered after the tab list inside <code>&lt;nav data-testid="project-tabs"&gt;</code> (<code>ProjectDashboard.tsx</code> ~L236-260); click toggles an inline name input (no blocking <code>window.prompt</code>); submit calls the mutation and, on success, switches to <code>pidapp:&lt;newId&gt;</code> via the existing <code>setTab</code>.</li>
+        <li><code class="status">[]</code> No changes to <code>TabKey</code>, the <code>tabs</code> memo, or the <code>pidApps.map</code> render block — a created app is just a normal discovered <code>PidApp</code> once <code>pidAppsQ</code> refetches.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>pid-apps.routes.test.ts</code> — valid name → 201 + body shape; duplicate → 409; invalid/reserved name → 400; malformed body → 400.</li>
+        <li><code class="status">[]</code> RED: <code>NewPidAppButton.test.ts</code> — src-text assertions: renders with <code>data-testid="pid-app-new"</code>, wires the mutation hook (component behavior covered end-to-end by Phase 5 e2e, matching this repo's convention).</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/ apps/web/src/features/pid-apps/</code> — daemon + web green.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: <code>specs/*.html</code> discovery <span class="pill">functional core + shell, one phase</span></h3>
+      <p>Kept as a single phase deliberately: splitting core from its repo consumer would leave an unused export and trip the Fallow dead-code gate, the exact lesson the original plan's Amendments recorded for Phases 4+5.</p>
+
+      <h4>1. Core — source discriminant + discovery</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add <code>readonly source: "pid" | "specs"</code> to <code>PidApp</code>; every existing <code>discoverPidApps</code> output gets <code>source: "pid"</code> — behaviorally unchanged, existing tests keep passing unmodified.</li>
+        <li><code class="status">[]</code> <code>export const discoverSpecApps = (filenames: readonly string[]): readonly PidApp[]</code> — pure: keep only <code>*.html</code>/<code>*.htm</code>; the basename (no extension) must match <code>NAME_RE</code> or the file is skipped, never throws (same tolerance as directory-name handling); maps to <code>{ id, label: id, entry: filename, root: "specs", source: "specs" }</code>; sorted alphabetically.</li>
+        <li><code class="status">[]</code> <code>export const mergeAppSources = (pidApps: readonly PidApp[], specApps: readonly PidApp[]): readonly PidApp[]</code> — drop any <code>specApps</code> entry whose <code>id</code> collides with a <code>pidApps</code> entry (<code>.pid/</code> wins — the same precedent as the existing default-vs-subdir collision rule); order: <code>pidApps</code> first (unchanged), then the remaining <code>specApps</code> alphabetically.</li>
+      </ul>
+
+      <h4>2. Repo — second root, no wire-format change</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>listApps</code> also lists <code>&lt;project&gt;/specs/</code> (top level only, missing dir → <code>[]</code>, same try/catch shape as the existing <code>.pid/</code> scan) and merges via <code>mergeAppSources</code>.</li>
+        <li><code class="status">[]</code> <code>resolveAsset</code> tries the existing <code>.pid/&lt;appId&gt;/</code> resolution first, unchanged; only on <code>not_found</code> does it fall back to a flat <code>specs/&lt;appId&gt;.html</code> root. This preserves the "<code>.pid/</code> wins" precedent at resolve time too, without threading a <code>source</code> param through the route or query string.</li>
+        <li><code class="status">[]</code> The realpath containment, size cap, CSP, and mime pipeline (<code>containedRealPath</code>, <code>statAsset</code>, <code>assetHeaders</code>) is reused byte-for-byte for the <code>specs/</code> root — add a symlink-escape test under <code>specs/</code> mirroring the existing <code>.pid/</code> one rather than trusting it by inspection.</li>
+      </ul>
+
+      <h4>3. Route regression + optional polish</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Route test proving a <code>specs/</code>-sourced id serves through the unchanged <code>GET /:id/pid-apps/:appId/*</code> with the same <code>PID_APP_CSP</code>/<code>nosniff</code> headers — no route code changes expected; this test is the proof.</li>
+        <li><code class="status">[]</code> (Optional — Questionable #6) a visual marker distinguishing <code>source: "specs"</code> tabs in <code>tabDock.tsx</code>/<code>ProjectDashboard.tsx</code>. Implement only if trivial; do not let it block the phase.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> RED: <code>discoverSpecApps</code> — non-html skipped; non-<code>NAME_RE</code> basename skipped and never throws; deterministic sort.</li>
+        <li><code class="status">[]</code> RED: <code>mergeAppSources</code> — id collision → <code>.pid/</code> wins, spec entry dropped (locked, not underdetermined); disjoint sets → both present, <code>.pid/</code> order preserved.</li>
+        <li><code class="status">[]</code> RED: repo integration — tmp dir with <code>.pid/foo/index.html</code> + <code>specs/bar.html</code> → <code>listApps</code> returns both; a symlink under <code>specs/</code> escaping the project root → <code>forbidden</code>.</li>
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — full regression, existing <code>.pid/</code>-only cases untouched.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: <code>pid-promote</code> CLI <span class="pill">mirrors pid-ext exactly</span></h3>
+      <p>A one-way, CLI-first graduation path — consistent with <code>pid-ext</code> itself being CLI-only, and honest about the daemon restart neither this plan nor a dashboard button can avoid.</p>
+
+      <h4>1. Export + reuse</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Export the currently module-private <code>validateName</code> and <code>buildManifestJson</code> from <code>platform/extensions/scaffold.ts</code> — no logic changes, just visibility, so <code>pid-promote</code> reuses them instead of redefining a second name/manifest rule.</li>
+      </ul>
+
+      <h4>2. CLI script</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>scripts/pid-promote.ts</code> (mirrors <code>scripts/pid-ext.ts</code>'s shape exactly): <code>bun run pid-promote &lt;id&gt;</code>; validate <code>id</code> via imported <code>validateName</code>; refuse <code>id === "default"</code> (the bare-root app has no dedicated folder to move); require <code>.pid/&lt;id&gt;/index.html</code> to exist; refuse if <code>.pid/extensions/&lt;id&gt;/</code> exists and is non-empty (mirror <code>pid-ext.ts</code>'s guard verbatim).</li>
+        <li><code class="status">[]</code> <code>mkdirSync(.pid/extensions, { recursive: true })</code> then a single <code>renameSync</code> of the whole <code>.pid/&lt;id&gt;/</code> directory into <code>.pid/extensions/&lt;id&gt;/</code> — one atomic move that carries along any sibling assets — then write <code>manifest.json</code> via the imported <code>buildManifestJson(id)</code>; print the same "restart the daemon…" notice as <code>pid-ext.ts</code>.</li>
+      </ul>
+
+      <h4>3. Wire up</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add <code>"pid-promote": "bun run scripts/pid-promote.ts"</code> to <code>package.json</code>'s <code>scripts</code>, next to <code>"pid-ext"</code>.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>bun test apps/daemon/src/platform/extensions/scaffold.test.ts</code> — the exported functions behave identically; no regression on the existing <code>pid-ext</code> path.</li>
+        <li><code class="status">[]</code> Manual smoke: create a pid-app, run <code>bun run pid-promote &lt;id&gt;</code>, confirm <code>.pid/extensions/&lt;id&gt;/manifest.json</code> plus the moved <code>index.html</code>; restart the daemon; confirm the id now appears via <code>GET /extensions</code>.</li>
+        <li><code class="status">[]</code> <code>fallow audit</code> — confirms no duplicate <code>NAME_RE</code>/name-validator/manifest-builder was introduced; the whole point of exporting rather than reimplementing.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- PHASE 5 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: e2e + docs <span class="pill">prove the whole ladder</span></h3>
+      <p>Drive every gap end-to-end and write down the resulting three-tier story in one place.</p>
+
+      <h4>1. e2e</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Extend <code>apps/e2e/tests/pid-apps.spec.ts</code> + <code>global-setup.ts</code> seeding: create via the dashboard button → the tab appears; a <code>specs/*.html</code> fixture appears with zero setup; traversal/symlink-escape rejection under <code>specs/</code> (mirrors the existing <code>.pid/</code> case).</li>
+      </ul>
+
+      <h4>2. Docs</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Extend <code>AGENTS.md</code>'s pid-apps section (~L144-176): document creation, the <code>specs/*.html</code> convention, and the <code>pid-promote</code> graduation path as one coherent progression.</li>
+        <li><code class="status">[]</code> Note that <code>pid-ext</code> (start with a real extension) and <code>pid-promote</code> (graduate from a pid-app) are two entry points into the same manifest format.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>bun run test</code> — full unit suite, no regressions in projects/extensions/pid-settings/pid-apps.</li>
+        <li><code class="status">[]</code> <code>bunx biome check .</code> / <code>fallow audit</code> — clean.</li>
+        <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1 bunx playwright test pid-apps</code> — full green, including the new scenarios.</li>
+        <li><code class="status">[]</code> Manual smoke: open this plan itself as a <code>pidapp:pid-apps-authoring</code> tab with zero copy step (see <a href="#dogfood">Dogfooding</a>).</li>
+      </ul>
+      <div class="loop">🔁 <strong>The plan is not complete until every box above is checked and every command passes.</strong> If a step is genuinely not possible, mark it <code>[f]</code> and move on.</div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these to validate the entire plan is complete and the repo gates are green.</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>bun test apps/daemon/src/features/pid-apps/</code> — create + specs sources + existing behavior, all green.</li>
+      <li><code class="status">[]</code> <code>bun test apps/daemon/src/platform/extensions/</code> — scaffold export regression.</li>
+      <li><code class="status">[]</code> <code>bun test apps/web/src/features/pid-apps/</code> — web hook + button green.</li>
+      <li><code class="status">[]</code> <code>bun run test</code> — full unit suite, no regressions.</li>
+      <li><code class="status">[]</code> <code>bunx biome check .</code> — lint/format clean.</li>
+      <li><code class="status">[]</code> <code>fallow audit</code> — no new dead code, complexity, or duplication (esp. <code>validateName</code>/<code>buildManifestJson</code>/<code>NAME_RE</code> stay de-duplicated).</li>
+      <li><code class="status">[]</code> <code>PID_E2E_USE_STUB=1 bunx playwright test pid-apps</code> — full scenario set green.</li>
+      <li><code class="status">[]</code> Manual smoke, one project, the whole ladder: create → view → drop a spec → view with zero copy → <code>pid-promote</code> → restart → view as a real extension.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely not possible, mark it <code>[f]</code> and move on.</strong></div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables <span class="pill">open decisions</span></h2>
+    <p class="legend">Surfaced rather than silently decided. Each has a recommended default; confirm before the affected phase.</p>
+
+    <details open>
+      <summary>1. Unify <code>specs/*.html</code> into pid-apps (a <code>source</code> discriminant) or ship a separate <code>spec-apps</code> feature?</summary>
+      <p class="qa-answer"><strong>Recommend: unify.</strong> The serving pipeline — realpath containment, CSP, mime, sandboxed iframe, the <code>pidapp:</code> tab namespace — is identical either way; a second feature would duplicate all of it for a genuinely small discovery-rule difference (flat file vs. subdir-with-index.html). The cost is real, though: <code>PidApp.root</code>'s meaning shifts from "always relative to <code>.pid/</code>" to "relative to <code>.pid/</code> <em>or</em> the project root depending on <code>source</code>" — a pure-core invariant that today's tests assume implicitly. Budget real test-update time in Phase 3 for this, not just new cases.</p>
+    </details>
+    <details>
+      <summary>2. Creation v1 — scaffold-only, or in-app file editing?</summary>
+      <p class="qa-answer"><strong>Scaffold-only.</strong> In-app editing means the daemon accepts arbitrary HTML/CSS/JS bytes from the browser and writes them to disk — a write-surface increase beyond "create one starter file," and pid-apps' whole security posture to date has been read-only serving of untrusted content. Worth doing later as its own reviewed phase, not folded in here.</p>
+    </details>
+    <details>
+      <summary>3. <code>specs/*.html</code> scan root — hardcoded convention, or configurable via the global-settings file (PR #339)?</summary>
+      <p class="qa-answer"><strong>Hardcode it</strong>, matching <code>.pid/</code>'s own zero-config ethos — one convention, no settings UI to build or document yet. If a second use case ever wants a different root, the global-settings file is where that list would live; not required for this plan.</p>
+    </details>
+    <details>
+      <summary>4. <code>.pid/&lt;name&gt;/</code> vs. <code>specs/&lt;name&gt;.html</code> id collision — who wins?</summary>
+      <p class="qa-answer"><strong><code>.pid/</code> wins, silently.</strong> Same precedent as the existing bare-root-<code>default</code>-vs-subdir rule: locked behavior, not underdetermined. The dropped <code>specs/</code> entry is simply absent from the list — no error, no warning surfaced to the user in v1.</p>
+    </details>
+    <details>
+      <summary>5. <code>pid-promote</code> — move (rename) the directory, or copy and leave the original in place?</summary>
+      <p class="qa-answer"><strong>Move.</strong> Leaving both would let a stale <code>.pid/&lt;id&gt;/</code> keep serving the old view-only tab right alongside the new extension, which is confusing and doubles the surface for no benefit. This is a one-way, no-undo filesystem operation run from a CLI outside the dashboard's live-discovery loop — document that plainly in the CLI's own output, not just in this plan.</p>
+    </details>
+    <details>
+      <summary>6. Should <code>specs/</code>-sourced tabs carry a visual "read-only" marker?</summary>
+      <p class="qa-answer">Recommend yes if it stays cheap (an icon or small badge) — it prevents a user from expecting a spec doc to be editable the way a hand-authored pid-app might feel. Not worth blocking Phase 3 on if it turns out fiddlier than expected; ship without it and revisit.</p>
+    </details>
+    <details>
+      <summary>7. <code>pid-promote</code> — CLI-only, or a dashboard "Promote" button?</summary>
+      <p class="qa-answer"><strong>CLI-only for v1</strong>, matching <code>pid-ext</code>'s own precedent. A dashboard button would still require the user to go restart the daemon by hand afterward — it can't finish the job it starts, so the extra UI surface buys little. Revisit once/if the loader ever supports live reload (deferred in the original pid-apps plan's Questionable #3, still open).</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Reused primitives (reuse, don't reinvent)</h3>
+    <table>
+      <thead><tr><th>Need</th><th>Reuse from</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>Atomic write (tmp+rename)</td><td><code>pid-settings.repo.ts</code> <code>writeAtomic</code> (~L44-49)</td><td>Mirror the idiom in <code>pid-apps.repo.ts</code>'s new <code>createApp</code></td></tr>
+        <tr><td>Name validity + reserved-name guard</td><td><code>pid-apps.core.ts</code> <code>NAME_RE</code> / <code>RESERVED_PID_ENTRIES</code></td><td>Reuse directly for create <em>and</em> specs discovery, don't redefine</td></tr>
+        <tr><td>Path containment + MIME</td><td><code>projects.core.ts</code> <code>resolveProjectPath</code>, <code>mimeFromPath</code></td><td>Reuse unchanged; <code>specs/</code> just passes a different root</td></tr>
+        <tr><td>Realpath / symlink guard</td><td><code>pid-apps.repo.ts</code> <code>containedRealPath</code> / <code>isWithin</code></td><td>Reuse unchanged for <code>specs/</code> assets too</td></tr>
+        <tr><td>CLI shape (args, refuse-overwrite, restart notice)</td><td><code>scripts/pid-ext.ts</code></td><td>Mirror exactly in <code>scripts/pid-promote.ts</code></td></tr>
+        <tr><td>Manifest generation</td><td><code>platform/extensions/scaffold.ts</code> <code>buildManifestJson</code></td><td>Export (currently private) &amp; reuse, don't reinvent</td></tr>
+        <tr><td>Sandboxed tab rendering</td><td><code>PidAppHost</code> + the <code>pidapp:</code> tab machinery</td><td>Reuse unchanged — zero web changes needed for create or specs/</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Rejected approach — a separate <code>spec-apps</code> feature</h3>
+    <p>The same reasoning the original pid-apps plan used to reject overloading <code>loader.ts</code> applies here in reverse: pid-apps already owns "discover HTML in a project-scoped, zero-config, manifest-less way." <code>specs/*.html</code> is the same discovery <em>mode</em>, just a second root — not a new mode that deserves its own feature, route family, and tab namespace. A separate feature would duplicate the realpath/CSP/mime pipeline for no real gain.</p>
+
+    <h3 id="dogfood">Dogfooding</h3>
+    <p>This plan is a single self-contained HTML file, already committed at <code>specs/pid-apps-authoring.html</code>. Once Phase 3 ships, it needs <strong>no manual step</strong> — unlike the original pid-apps plan, which had to be copied into <code>.pid/</code> to dogfood itself, this one is already exactly where <code>specs/*.html</code> discovery looks. Opening it as a <code>pidapp:pid-apps-authoring</code> tab <em>is</em> the acceptance demo for gap 2.</p>
+
+    <h3>Engineering guardrails (this repo)</h3>
+    <ul>
+      <li><strong>TDD always</strong> — every behavior change ships a failing test first; the pre-commit tdd-gate enforces it.</li>
+      <li><strong>ts-axioms</strong> — Functional Core / Imperative Shell, typed errors, Biome, Lefthook, bun; <code>fallow audit</code> must stay green.</li>
+      <li><strong>Don't split a phase whose shell has no other consumer</strong> — the lesson the original plan's Amendments recorded when Phases 4+5 were merged after tripping Fallow's dead-code gate. Applied here twice: Phases 1+2 ship as one PR (<code>createApp</code> has no caller until the route exists), and Phase 3 keeps <code>specs/</code>'s core and repo together in one phase instead of three.</li>
+      <li><strong>CI gates</strong> — pre-commit: Biome staged-fix + tdd-gate. pre-push: floor → unit → e2e. Fresh worktree needs <code>bun install</code> first.</li>
+      <li><strong>Restart is a real seam, not a bug</strong> — the extension loader is boot-time (<code>platform/extensions/loader.ts</code>, <code>scanRoot</code> at daemon start). <code>pid-promote</code> cannot make a promoted extension appear live; a live-reload loader is out of scope here and was already deferred in the original pid-apps plan's Questionable #3.</li>
+      <li><strong>Ship</strong> — one PR per phase; watch CI to terminal state (GitHub auto-merge has been unreliable in this repo).</li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 780 110" width="100%" height="auto" role="img" aria-labelledby="pipelineTitle" preserveAspectRatio="xMidYMid meet">
+        <title id="pipelineTitle">Five independently shippable phases</title>
+        <desc>Create core and routes, then specs discovery, then promote, then e2e and docs.</desc>
+        <rect class="box-primary" x="8" y="30" width="140" height="44" rx="8"/><text class="t-mono" x="20" y="48">1 create core</text><text class="t-muted" x="20" y="64">write path</text>
+        <rect class="box" x="156" y="30" width="140" height="44" rx="8"/><text class="t-mono" x="168" y="48">2 create UI</text><text class="t-muted" x="168" y="64">route + button</text>
+        <rect class="box" x="304" y="30" width="150" height="44" rx="8"/><text class="t-mono" x="316" y="48">3 specs/</text><text class="t-muted" x="316" y="64">discover + merge</text>
+        <rect class="box" x="462" y="30" width="150" height="44" rx="8"/><text class="t-mono" x="474" y="48">4 promote</text><text class="t-muted" x="474" y="64">CLI, manifest</text>
+        <rect class="box-accent" x="620" y="30" width="150" height="44" rx="8"/><text class="t-mono" x="632" y="48">5 e2e+docs</text><text class="t-muted" x="632" y="64">prove it</text>
+        <path class="arrow" d="M148,52 L154,52"/><path class="arrow" d="M296,52 L302,52"/><path class="arrow" d="M454,52 L460,52"/><path class="arrow" d="M612,52 L618,52"/>
+      </svg>
+      <figcaption>Five phases, four PRs (1+2 ship together); each builds on the last and neither 1+2 nor 3 is split further (see guardrails).</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-07-02 — Plan created</summary>
+      <p>Authored from a <code>/goal</code> directive asking for three concrete things: an in-app way to create a simple HTML page/folder extension, <code>specs/*.html</code> visibility without copying, and a progressive path from a static page to a real extension with backend code. Grounded by reading the shipped pid-apps and extension-platform source end-to-end (<code>pid-apps.{core,repo,routes}.ts</code>, <code>pid-settings.{repo,routes}.ts</code>, <code>platform/extensions/{manifest,loader,scaffold}.ts</code>, <code>scripts/pid-ext.ts</code>, <code>ProjectDashboard.tsx</code>, <code>tabDock.tsx</code>, <code>ExtensionsPanel.tsx</code>) rather than a parallel multi-agent recon pass. User confirmed scope via <code>AskUserQuestion</code>: plan all three gaps, phased, before any implementation.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>
