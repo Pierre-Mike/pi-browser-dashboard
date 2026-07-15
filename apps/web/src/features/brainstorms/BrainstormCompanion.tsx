@@ -9,10 +9,13 @@ import { TerminalView } from "../terminal/TerminalView"
 import {
   COMPANION_ROLES,
   type CompanionRole,
+  type CompanionRoleSpec,
   companionIntent,
-  companionNudge,
   companionRoleFromIntent,
+  companionToggle,
   isCompanionIntent,
+  isLiveCompanion,
+  runningCompanion,
 } from "./brainstormPrompts"
 import type { Brainstorm } from "./brainstorms"
 
@@ -21,30 +24,21 @@ type Props = {
   readonly brainstorm: Brainstorm
 }
 
-// A dead session can't take keystrokes; anything else (working, done, idle,
-// blocked, needs_input) still has a live REPL behind `claude attach`.
-const isNudgeable = (s: SessionState): boolean => s.state !== "stopped" && s.state !== "failed"
-
-const runningFor = (
-  companions: readonly SessionState[],
-  role: CompanionRole,
-): SessionState | undefined =>
-  companions.find((s) => companionRoleFromIntent(s.intent) === role && isNudgeable(s))
-
-const sendKeys = async (short: string, keys: string): Promise<boolean> => {
+const stopSession = async (short: string): Promise<boolean> => {
   // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
   const client = api as any
-  const res = await client.sessions[":id"].send.$post({ param: { id: short }, json: { keys } })
+  const res = await client.sessions[":id"].stop.$post({ param: { id: short } })
   return Boolean(res.ok)
 }
 
 type ActionResult = {
-  readonly kind: "nudged" | "nudge_failed" | "spawned"
+  readonly kind: "spawned" | "stopped" | "stop_failed"
   readonly short: string | null
 }
 
-// Nudge the companion already running this role, or spawn a fresh one. Kept
-// outside the component so the button handler stays a thin state adapter.
+// Role buttons are toggles: clicking a role with a live companion stops it
+// (unselect), otherwise it spawns a fresh one (select). Kept outside the
+// component so the button handler stays a thin state adapter.
 const runCompanionAction = async (input: {
   readonly companions: readonly SessionState[]
   readonly role: CompanionRole
@@ -52,13 +46,10 @@ const runCompanionAction = async (input: {
   readonly brainstorm: Brainstorm
   readonly project: Project
 }): Promise<ActionResult> => {
-  const running = runningFor(input.companions, input.role)
-  if (running) {
-    const ok = await sendKeys(
-      running.short,
-      `${companionNudge(input.brainstorm.file, input.note)}\r`,
-    )
-    return { kind: ok ? "nudged" : "nudge_failed", short: running.short }
+  const action = companionToggle(input.companions, input.role)
+  if (action.kind === "stop") {
+    const ok = await stopSession(action.short)
+    return { kind: ok ? "stopped" : "stop_failed", short: action.short }
   }
   const short = await dispatchSpawn({
     intent: companionIntent({
@@ -74,10 +65,51 @@ const runCompanionAction = async (input: {
 
 const statusLine = (kind: ActionResult["kind"], role: CompanionRole): string =>
   ({
-    nudged: `nudged ${role}`,
-    nudge_failed: `nudge failed (${role})`,
     spawned: `spawned ${role}`,
+    stopped: `stopped ${role}`,
+    stop_failed: `stop failed (${role})`,
   })[kind]
+
+const roleButtonClass = (selected: boolean): string =>
+  `btn btn-xs justify-start gap-1.5 normal-case ${
+    selected ? "btn-primary" : "bg-base-100 border-base-300 hover:border-primary/40"
+  }`
+
+// One toggle button. A live companion for this role makes it "selected"
+// (primary fill + a state dot); clicking it then stops that companion, and
+// clicking an unselected role spawns one.
+const RoleButton = ({
+  spec,
+  running,
+  busy,
+  acting,
+  onAct,
+}: {
+  readonly spec: CompanionRoleSpec
+  readonly running: SessionState | undefined
+  readonly busy: boolean
+  readonly acting: boolean
+  readonly onAct: () => void
+}) => {
+  const selected = running !== undefined
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      data-testid={`brainstorm-role-${spec.role}`}
+      data-selected={selected}
+      onClick={onAct}
+      disabled={busy}
+      title={selected ? `${spec.title} — click to stop this companion` : spec.title}
+      className={roleButtonClass(selected)}
+    >
+      {running ? (
+        <span className={`h-1.5 w-1.5 rounded-full ${stateColor(running.state).dot}`} />
+      ) : null}
+      <span className="truncate">{acting ? "…" : spec.label}</span>
+    </button>
+  )
+}
 
 const RoleButtons = ({
   companions,
@@ -89,25 +121,16 @@ const RoleButtons = ({
   readonly onAct: (role: CompanionRole) => void
 }) => (
   <div className="grid grid-cols-2 gap-1">
-    {COMPANION_ROLES.map((spec) => {
-      const running = runningFor(companions, spec.role)
-      return (
-        <button
-          key={spec.role}
-          type="button"
-          data-testid={`brainstorm-role-${spec.role}`}
-          onClick={() => onAct(spec.role)}
-          disabled={busyRole !== null}
-          title={running ? `${spec.title} — nudge the running companion` : spec.title}
-          className="btn btn-xs justify-start gap-1.5 normal-case bg-base-100 border-base-300 hover:border-primary/40"
-        >
-          {running ? (
-            <span className={`h-1.5 w-1.5 rounded-full ${stateColor(running.state).dot}`} />
-          ) : null}
-          <span className="truncate">{busyRole === spec.role ? "…" : spec.label}</span>
-        </button>
-      )
-    })}
+    {COMPANION_ROLES.map((spec) => (
+      <RoleButton
+        key={spec.role}
+        spec={spec}
+        running={runningCompanion(companions, spec.role)}
+        busy={busyRole !== null}
+        acting={busyRole === spec.role}
+        onAct={() => onAct(spec.role)}
+      />
+    ))}
   </div>
 )
 
@@ -211,17 +234,20 @@ const CompanionTerminal = ({ selected }: { readonly selected: SessionState | nul
   )
 
 /**
- * The "AI by my side" panel for one brainstorm: role buttons spawn a focused
- * companion session (or nudge the one already running that role), a chip per
- * companion selects whose terminal is shown, and the embedded terminal is the
- * chat with the selected companion. Companions are recovered purely from the
- * sessions list via the intent marker — no extra store.
+ * The "AI by my side" panel for one brainstorm: each role button toggles a
+ * focused companion session — click to spawn it, click again to stop it — a
+ * chip per companion selects whose terminal is shown, and the embedded terminal
+ * is the chat with the selected companion. Companions are recovered purely from
+ * the sessions list via the intent marker — no extra store.
  */
 export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   const qc = useQueryClient()
   const sessionsQ = useSessions()
+  // Live companions only: stopping one (button toggle-off or chip ✕) drops it
+  // from the panel, so "remove" actually removes rather than leaving a dead chip.
   const companions = (sessionsQ.data ?? []).filter(
-    (s) => s.cwd === project.path && isCompanionIntent(s.intent, brainstorm.id),
+    (s) =>
+      s.cwd === project.path && isCompanionIntent(s.intent, brainstorm.id) && isLiveCompanion(s),
   )
 
   const [selectedShort, setSelectedShort] = useState<string | null>(null)
@@ -237,8 +263,12 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   }
 
   const afterAction = (result: ActionResult, role: CompanionRole) => {
-    if (result.kind === "spawned") qc.invalidateQueries({ queryKey: ["sessions"] })
-    if (result.short !== null) setSelectedShort(result.short)
+    // Spawning and stopping both change the roster, so always refetch.
+    qc.invalidateQueries({ queryKey: ["sessions"] })
+    // Follow a freshly spawned companion; on a stop, drop the selection so the
+    // terminal falls back to another live companion (or the empty state).
+    if (result.kind === "spawned") setSelectedShort(result.short)
+    else if (result.kind === "stopped") setSelectedShort(null)
     flashStatus(statusLine(result.kind, role))
     setNote("")
   }
@@ -253,11 +283,12 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   }
 
   const stop = (short: string) => {
-    // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
-    const client = api as any
-    client.sessions[":id"].stop
-      .$post({ param: { id: short } })
-      .then(() => qc.invalidateQueries({ queryKey: ["sessions"] }))
+    stopSession(short)
+      .then((ok) => {
+        if (!ok) return flashStatus("stop failed")
+        if (short === selectedShort) setSelectedShort(null)
+        qc.invalidateQueries({ queryKey: ["sessions"] })
+      })
       .catch(() => flashStatus("stop failed"))
   }
 

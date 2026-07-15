@@ -1,3 +1,5 @@
+import type { SessionState } from "../../lib/types"
+
 // Versioned prompts for brainstorm AI companions (pure — unit-tested, repo
 // convention: prompts live in code, not ad-hoc strings). A companion is a
 // normal dispatched session whose intent starts with a machine-readable
@@ -89,6 +91,36 @@ export const companionRoleFromIntent = (intent: string): CompanionRole | null =>
   return COMPANION_ROLES.some((r) => r.role === role) ? (role as CompanionRole) : null
 }
 
+// --- Roster / toggle state --------------------------------------------------
+
+// A companion answers keystrokes and occupies its role until it dies; once it
+// stops or fails it no longer counts, so the role button is free to spawn a
+// fresh one and the panel drops its chip.
+export const isLiveCompanion = (s: SessionState): boolean =>
+  s.state !== "stopped" && s.state !== "failed"
+
+// The live companion currently filling a role, if any.
+export const runningCompanion = (
+  companions: readonly SessionState[],
+  role: CompanionRole,
+): SessionState | undefined =>
+  companions.find((s) => companionRoleFromIntent(s.intent) === role && isLiveCompanion(s))
+
+export type CompanionToggle =
+  | { readonly kind: "spawn"; readonly role: CompanionRole }
+  | { readonly kind: "stop"; readonly role: CompanionRole; readonly short: string }
+
+// Role buttons are toggles: clicking a role that already has a live companion
+// removes it (unselect), otherwise it spawns one (select). Deciding this here
+// keeps the button handler a thin state adapter and makes the rule unit-testable.
+export const companionToggle = (
+  companions: readonly SessionState[],
+  role: CompanionRole,
+): CompanionToggle => {
+  const running = runningCompanion(companions, role)
+  return running ? { kind: "stop", role, short: running.short } : { kind: "spawn", role }
+}
+
 // Shared canvas-format guide (same shape the session-canvas "Brief AI" button
 // teaches, plus the color/group/note conventions the roles rely on).
 const formatGuide = (file: string): string =>
@@ -137,17 +169,7 @@ export const companionIntent = ({ role, slug, file, extra }: CompanionIntentInpu
   lines.push(
     "",
     "Stay available: after finishing a pass, keep the conversation open in",
-    "this terminal — the user will nudge you here when the drawing changes.",
+    "this terminal — the user talks to you here as the drawing changes.",
   )
   return lines.join("\n")
-}
-
-// Follow-up message typed into an already-running companion's terminal when
-// the user hits the same role button again (or sends a custom note).
-export const companionNudge = (file: string, message: string): string => {
-  const note = message.trim()
-  return [
-    `I updated the drawing — re-read ${file} and continue your mission.`,
-    ...(note === "" ? [] : [`Also: ${note}`]),
-  ].join(" ")
 }
