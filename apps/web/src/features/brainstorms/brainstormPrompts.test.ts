@@ -1,15 +1,30 @@
 import { describe, expect, it } from "bun:test"
+import type { SessionState } from "../../lib/types"
 import {
   COMPANION_ROLES,
   companionIntent,
   companionMarker,
-  companionNudge,
   companionRoleFromIntent,
   companionRoleSpec,
+  companionToggle,
   isCompanionIntent,
+  isLiveCompanion,
+  runningCompanion,
 } from "./brainstormPrompts"
 
 const FILE = "/tmp/proj/.pid/brainstorms/auth-flow.canvas.json"
+
+// Minimal SessionState builder for the roster/toggle helpers — only the fields
+// the pure functions read (short, state, intent) matter here.
+const companion = (
+  short: string,
+  opts: { role: string; state?: SessionState["state"] },
+): SessionState =>
+  ({
+    short,
+    state: opts.state ?? "working",
+    intent: `[brainstorm:auth-flow:${opts.role}] mission…`,
+  }) as SessionState
 
 describe("companion marker / roster recovery", () => {
   it("prefixes every intent with the slug+role marker so sessions self-identify", () => {
@@ -78,14 +93,48 @@ describe("companionIntent", () => {
   })
 })
 
-describe("companionNudge", () => {
-  it("points the running companion back at the file", () => {
-    expect(companionNudge(FILE, "")).toBe(
-      `I updated the drawing — re-read ${FILE} and continue your mission.`,
-    )
+describe("isLiveCompanion", () => {
+  it("counts a companion as live until it is stopped or failed", () => {
+    for (const state of ["working", "idle", "done", "blocked", "needs_input"] as const) {
+      expect(isLiveCompanion(companion("a", { role: "review", state }))).toBe(true)
+    }
+    expect(isLiveCompanion(companion("a", { role: "review", state: "stopped" }))).toBe(false)
+    expect(isLiveCompanion(companion("a", { role: "review", state: "failed" }))).toBe(false)
+  })
+})
+
+describe("runningCompanion", () => {
+  it("finds the live companion filling a role, ignoring dead ones", () => {
+    const roster = [
+      companion("dead", { role: "review", state: "stopped" }),
+      companion("live", { role: "review" }),
+      companion("other", { role: "ideate" }),
+    ]
+    expect(runningCompanion(roster, "review")?.short).toBe("live")
+    expect(runningCompanion(roster, "ideate")?.short).toBe("other")
+    expect(runningCompanion(roster, "critique")).toBeUndefined()
   })
 
-  it("carries an optional user note", () => {
-    expect(companionNudge(FILE, " check the DB box ")).toContain("Also: check the DB box")
+  it("treats a role whose only companion is dead as empty", () => {
+    const dead = [companion("x", { role: "beautify", state: "failed" })]
+    expect(runningCompanion(dead, "beautify")).toBeUndefined()
+  })
+})
+
+describe("companionToggle", () => {
+  it("spawns when the role has no live companion (select)", () => {
+    expect(companionToggle([], "review")).toEqual({ kind: "spawn", role: "review" })
+    // A dead companion doesn't block a fresh spawn.
+    const dead = [companion("x", { role: "review", state: "stopped" })]
+    expect(companionToggle(dead, "review")).toEqual({ kind: "spawn", role: "review" })
+  })
+
+  it("stops the live companion when the role is already filled (unselect)", () => {
+    const roster = [companion("live", { role: "critique" })]
+    expect(companionToggle(roster, "critique")).toEqual({
+      kind: "stop",
+      role: "critique",
+      short: "live",
+    })
   })
 })
