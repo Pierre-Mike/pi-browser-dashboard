@@ -62,6 +62,17 @@ export const defaultLinkUrl = (origin: string): string => {
 }
 
 /**
+ * Whether a click on a link node's URL should open it in a new tab. Obsidian
+ * parity (see EditableLinkNode's doc): a plain click / double-click is reserved
+ * for selecting and editing the node, so we only navigate on a modifier click
+ * (⌘ on macOS, Ctrl elsewhere). Without this the anchor followed the href on the
+ * first click of a double-click, so a link could never be re-edited once it had
+ * a URL.
+ */
+export const shouldOpenLink = (e: { metaKey?: boolean; ctrlKey?: boolean }): boolean =>
+  Boolean(e.metaKey || e.ctrlKey)
+
+/**
  * Pull the reference to store from a native file picker's FileList. We keep
  * just the file name (the browser can't expose a full path), matching how
  * Obsidian stores vault-relative file references.

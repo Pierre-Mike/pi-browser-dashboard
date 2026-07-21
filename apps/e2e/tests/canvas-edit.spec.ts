@@ -107,6 +107,40 @@ test("canvas tab — edge label input appears when an edge is selected", async (
   }
 })
 
+test("canvas tab — a link node re-opens for editing on double-click (not navigation)", async ({
+  page,
+}) => {
+  const short = await openCanvasTab(page)
+  try {
+    await expect(page.getByTestId("canvas-status")).toHaveText(/live|connecting/i, {
+      timeout: 10_000,
+    })
+
+    // Add a link node; it opens straight into edit mode with the URL input.
+    await page.getByTestId("canvas-add-link").click()
+    const linkNode = page.getByTestId("canvas-node-link").first()
+    await expect(linkNode).toBeVisible({ timeout: 10_000 })
+    const urlInput = linkNode.getByTestId("canvas-link-input")
+    await expect(urlInput).toBeVisible()
+    await urlInput.fill("https://example.com")
+    await urlInput.press("Enter")
+
+    // Committed: the URL now renders as a clickable host anchor.
+    const href = linkNode.getByTestId("canvas-link-href")
+    await expect(href).toBeVisible()
+
+    // The bug: double-clicking the anchor followed the href (opening a new tab)
+    // so the link could never be re-edited. A plain double-click must instead
+    // re-open the editor and open no new tab.
+    const pagesBefore = page.context().pages().length
+    await href.dblclick()
+    await expect(linkNode.getByTestId("canvas-link-input")).toBeVisible()
+    expect(page.context().pages().length).toBe(pagesBefore)
+  } finally {
+    rmSession(short)
+  }
+})
+
 test("canvas tab — double-click empty space creates an editable box", async ({ page }) => {
   const short = await openCanvasTab(page)
   try {
