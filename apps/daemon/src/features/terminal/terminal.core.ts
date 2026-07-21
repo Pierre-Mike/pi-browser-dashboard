@@ -358,6 +358,80 @@ export const sessionZellijCommand = (args: {
   })
 }
 
+// pi-<short>: the zellij session name a dispatched pi run lives in. Both the
+// dispatcher (which creates the detached background session) and the terminal
+// route (which attaches) derive the name from the same short, so they always
+// agree on which session to talk to. `short` is piShort(id) = 8 hex chars of a
+// uuid — already a safe zellij identifier, and the `pi-` prefix keeps it from
+// ever colliding with a claude drill-in session named after a bare short.
+export const piZellijSessionName = (short: string): string => `pi-${short}`
+
+// Layout for the pi DISPATCH background session (the create side). The pane
+// runs a launcher script the daemon wrote (`bash -l <script>`): the script
+// records pi's pid then `exec pi … <intent>`, so the session's sole process IS
+// pi and the session ends when pi exits. `scriptPath` is a daemon-minted
+// mktemp path (no shell/KDL metacharacters), so it inlines into the KDL arg
+// verbatim. Same tab-bar/status-bar template as the other layouts so the zellij
+// UI is visible the moment the user attaches.
+export const piBackgroundLayoutKdl = (scriptPath: string): string =>
+  `layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tab {
+        pane command="bash" {
+            args "-l" "${scriptPath}"
+        }
+    }
+}
+`
+
+// Layout for the pi drill-in terminal (the ATTACH side), used only on the
+// create branch — i.e. when the dispatch's background session has already died
+// and opening the terminal resurrects it. `pi --session <id>` reopens the saved
+// transcript by its (partial) uuid; `; exec bash -l` keeps the pane alive with
+// any error visible if the resume fails, instead of collapsing it. The uuid is
+// hex + hyphens, so it inlines into the KDL arg without escaping.
+const sessionPiLayoutKdl = (sessionId: string): string =>
+  `layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tab {
+        pane command="bash" {
+            args "-lc" "pi --session ${sessionId}; exec bash -l"
+        }
+    }
+}
+`
+
+// Drill-in terminal for a dispatched pi run: attach the live `pi-<short>`
+// session the dispatcher created, or (fallback) recreate it by resuming the pi
+// session from its transcript. Same attach-or-create lock/poll machinery as the
+// claude drill-in — see zellijAttachOrCreate.
+export const sessionPiZellijCommand = (args: {
+  readonly cwd: string
+  readonly sessionId: string
+  readonly short: string
+}): string =>
+  zellijAttachOrCreate({
+    cwd: args.cwd,
+    sessionName: piZellijSessionName(args.short),
+    layoutKdl: sessionPiLayoutKdl(args.sessionId),
+  })
+
 // Bun.spawn only gives us pipes, never a pty. zellij refuses to enable raw
 // mode without a controlling tty and panics on attach. We need a pty allocator
 // that does NOT require stdin to already be a tty — macOS BSD script(1) does

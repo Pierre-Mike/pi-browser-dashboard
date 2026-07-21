@@ -33,10 +33,12 @@ export type PiSpawnCommandPreviewInput = {
   readonly tools?: readonly string[]
 }
 
-// Mirrors `buildPiDispatchArgs` in apps/daemon/src/features/dispatch/pi.core.ts
-// (same duplication convention as above). The daemon additionally injects a
-// `--session-id <uuid>` it mints at dispatch time — unknowable here, so the
-// preview shows everything but that flag.
+// Mirrors `buildPiRunArgv` in apps/daemon/src/features/dispatch/pi.core.ts
+// (same duplication convention as above). The daemon runs pi INTERACTIVELY
+// (no `-p`) inside a detached `pi-<short>` zellij session so the terminal can
+// attach; the intent is a trailing positional message. The daemon additionally
+// injects a `--session-id <uuid>` it mints at dispatch time — unknowable here,
+// so the preview shows everything but that flag.
 export const buildPiSpawnCommandArgs = ({
   intent,
   thinking,
@@ -50,7 +52,7 @@ export const buildPiSpawnCommandArgs = ({
     if (tools.length === 0) args.push("--no-tools")
     else args.push("--tools", tools.join(","))
   }
-  args.push("-p", intent)
+  args.push(intent)
   return args
 }
 

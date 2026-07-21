@@ -6,7 +6,9 @@ import type { Context } from "hono"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { upgradeWebSocket } from "../../platform/ws"
+import { PiSessionsRepo } from "../dispatch/pi-sessions.repo"
 import { ProjectsService } from "../projects/projects.repo"
+import type { SessionState } from "../sessions/sessions.core"
 import { SessionRegistry } from "../sessions/sessions.repo"
 import {
   buildChildArgv,
@@ -18,8 +20,10 @@ import {
   ORCHESTRATOR_ZELLIJ_SESSION,
   orchestratorZellijCommand,
   parseClientMessage,
+  piZellijSessionName,
   projectZellijCommand,
   resolveOrchestratorCwd,
+  sessionPiZellijCommand,
   sessionZellijCommand,
   shouldAutoKillSession,
   zellijKillSessionArgv,
@@ -326,24 +330,45 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
     }
   })
 
-const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
-  const id = c.req.param("id") ?? ""
-  if (!id) return { ok: false, reason: "missing_id" }
-  const session = await appRuntime.runPromise(
-    Effect.gen(function* () {
-      const reg = yield* SessionRegistry
-      return yield* Effect.promise(() => reg.getOne(id))
-    }),
-  )
-  if (!session) return { ok: false, reason: `session ${id} not found` }
-  // Wrap the drill-in in a per-session zellij so the tab bar is visible and
-  // a second pane (tail logs, run tests) can live next to the claude TUI.
-  // The user runs `claude attach <short>` themselves — SessionCard already
-  // exposes a copy button for the exact command.
+// Claude drill-in: wrap the session in a per-session zellij so the tab bar is
+// visible and a second pane (tail logs, run tests) can live next to the claude
+// TUI. The user runs `claude attach <short>` themselves — SessionCard exposes a
+// copy button for the exact command.
+const resolveClaudeSession = (session: SessionState): Resolved => {
   const cwd = session.cwd || process.env.HOME || "/"
   const cmd = sessionZellijCommand({ cwd, short: session.short })
   if (cmd === null) return { ok: false, reason: "invalid_id" }
   return { ok: true, cwd, cmd, sessionName: zellijSessionName(session.short) }
+}
+
+// pi drill-in: attach the detached `pi-<short>` session the dispatcher created
+// (or resurrect it by resuming the transcript if it has since died).
+const resolvePiSession = (pi: SessionState): Resolved => {
+  const cwd = pi.cwd || process.env.HOME || "/"
+  // sessionId is the full uuid for a pi run; fall back to the short (a partial
+  // uuid pi's `--session` also resolves) to keep the type total.
+  const cmd = sessionPiZellijCommand({ cwd, sessionId: pi.sessionId || pi.short, short: pi.short })
+  return { ok: true, cwd, cmd, sessionName: piZellijSessionName(pi.short) }
+}
+
+const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
+  const id = c.req.param("id") ?? ""
+  if (!id) return { ok: false, reason: "missing_id" }
+  // A pi run lives in a separate registry (pi-spawns.json, not the claude
+  // roster) and inside its own `pi-<short>` zellij session. Look it up only
+  // when the claude registry misses, so a pi terminal attaches to a live run
+  // instead of failing with "session not found".
+  const { session, pi } = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const reg = yield* SessionRegistry
+      const piRepo = yield* PiSessionsRepo
+      const session = yield* Effect.promise(() => reg.getOne(id))
+      return { session, pi: session ? undefined : piRepo.getOne(id) }
+    }),
+  )
+  if (session) return resolveClaudeSession(session)
+  if (pi) return resolvePiSession(pi)
+  return { ok: false, reason: `session ${id} not found` }
 }
 
 // Dashboard global terminal: pinned to zellij session "default". No id in the
@@ -412,14 +437,17 @@ const resolveProjectKillName = async (id: string): Promise<string | null> => {
 }
 
 const resolveSessionKillName = async (id: string): Promise<string | null> => {
-  const session = await appRuntime.runPromise(
+  const { session, pi } = await appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
-      return yield* Effect.promise(() => reg.getOne(id))
+      const piRepo = yield* PiSessionsRepo
+      const session = yield* Effect.promise(() => reg.getOne(id))
+      return { session, pi: session ? undefined : piRepo.getOne(id) }
     }),
   )
-  if (!session) return null
-  return zellijSessionName(session.short)
+  if (session) return zellijSessionName(session.short)
+  if (pi) return piZellijSessionName(pi.short)
+  return null
 }
 
 const app = new Hono()

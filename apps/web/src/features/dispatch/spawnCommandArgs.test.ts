@@ -103,8 +103,10 @@ describe("buildSpawnCommandArgs", () => {
 })
 
 describe("buildPiSpawnCommandArgs", () => {
-  it("builds the bare `pi -p <intent>` argv with no options", () => {
-    expect(buildPiSpawnCommandArgs({ intent: "fix bug" })).toEqual(["pi", "-p", "fix bug"])
+  it("builds the bare INTERACTIVE `pi <intent>` argv with no options (no -p)", () => {
+    // The daemon runs pi interactively inside a zellij session; the preview
+    // mirrors that — intent as a trailing positional, never `-p`.
+    expect(buildPiSpawnCommandArgs({ intent: "fix bug" })).toEqual(["pi", "fix bug"])
   })
 
   it("carries thinking, model, and tools as pi flags, mirroring the daemon", () => {
@@ -123,26 +125,16 @@ describe("buildPiSpawnCommandArgs", () => {
       "anthropic/claude-sonnet-5",
       "--tools",
       "read,bash",
-      "-p",
       "fix bug",
     ])
   })
 
   it("omits flags for the empty inherit defaults", () => {
-    expect(buildPiSpawnCommandArgs({ intent: "go", thinking: "", model: "" })).toEqual([
-      "pi",
-      "-p",
-      "go",
-    ])
+    expect(buildPiSpawnCommandArgs({ intent: "go", thinking: "", model: "" })).toEqual(["pi", "go"])
   })
 
   it("maps an explicit empty tools list to --no-tools", () => {
-    expect(buildPiSpawnCommandArgs({ intent: "go", tools: [] })).toEqual([
-      "pi",
-      "--no-tools",
-      "-p",
-      "go",
-    ])
+    expect(buildPiSpawnCommandArgs({ intent: "go", tools: [] })).toEqual(["pi", "--no-tools", "go"])
   })
 })
 

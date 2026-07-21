@@ -11,8 +11,11 @@ import {
   orchestratorRepoDir,
   orchestratorZellijCommand,
   parseClientMessage,
+  piBackgroundLayoutKdl,
+  piZellijSessionName,
   projectZellijCommand,
   resolveOrchestratorCwd,
+  sessionPiZellijCommand,
   sessionZellijCommand,
   shouldAutoKillSession,
   zellijKillSessionArgv,
@@ -312,6 +315,70 @@ describe("sessionZellijCommand", () => {
     expect(cmd).not.toBeNull()
     if (cmd === null) return
     expect(cmd).toContain(`args "-lc" "claude attach weird-name; exec bash -l"`)
+  })
+})
+
+describe("piZellijSessionName", () => {
+  it("prefixes the short with 'pi-' so it never collides with a claude drill-in", () => {
+    expect(piZellijSessionName("bd83d0a7")).toBe("pi-bd83d0a7")
+  })
+
+  it("survives zellijSessionName unchanged — already a safe zellij identifier", () => {
+    expect(zellijSessionName(piZellijSessionName("bd83d0a7"))).toBe("pi-bd83d0a7")
+  })
+})
+
+describe("piBackgroundLayoutKdl", () => {
+  const kdl = piBackgroundLayoutKdl("/tmp/pid-pi-x/launch.sh")
+
+  it("runs the launcher via `bash -l <script>` (login shell → pi is on PATH)", () => {
+    expect(kdl).toContain(`pane command="bash"`)
+    expect(kdl).toContain(`args "-l" "/tmp/pid-pi-x/launch.sh"`)
+  })
+
+  it("pins the tab-bar / status-bar template so the zellij UI shows once attached", () => {
+    expect(kdl).toContain("default_tab_template")
+    expect(kdl).toContain(`plugin location="zellij:tab-bar"`)
+    expect(kdl).toContain(`plugin location="zellij:status-bar"`)
+  })
+
+  it("wraps the pane in an explicit `tab {}` so the FIRST tab renders the bars", () => {
+    expect(kdl).toMatch(
+      /default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{[\s\S]*pane command="bash"/,
+    )
+  })
+})
+
+describe("sessionPiZellijCommand", () => {
+  const cmd = sessionPiZellijCommand({
+    cwd: "/repo",
+    sessionId: "bd83d0a7-1111-2222-3333-444455556666",
+    short: "bd83d0a7",
+  })
+
+  it("cds into the run's cwd before touching zellij", () => {
+    expect(cmd.split("\n")[0]).toBe("cd '/repo'")
+  })
+
+  it("attaches the live `pi-<short>` session on the reuse branch (dispatch created it)", () => {
+    expect(cmd).toContain("grep -qx 'pi-bd83d0a7'")
+    expect(cmd).toContain("exec zellij attach 'pi-bd83d0a7'")
+  })
+
+  it("recreates by RESUMING the pi session on the create branch (session died)", () => {
+    // `pi --session <id>` reopens the saved transcript; `; exec bash -l` keeps
+    // the pane alive with the error visible if the resume fails.
+    expect(cmd).toContain("exec zellij -s 'pi-bd83d0a7' -n")
+    expect(cmd).toContain(
+      `args "-lc" "pi --session bd83d0a7-1111-2222-3333-444455556666; exec bash -l"`,
+    )
+    // Never claude — this is the pi drill-in.
+    expect(cmd).not.toContain("claude attach")
+  })
+
+  it("locks the check-then-create keyed by the pi session name", () => {
+    expect(cmd).toContain("pid-zellij-pi-bd83d0a7.lock")
+    expect(cmd).toMatch(/rmdir "\$lock"[\s\S]*exec zellij attach 'pi-bd83d0a7'/)
   })
 })
 

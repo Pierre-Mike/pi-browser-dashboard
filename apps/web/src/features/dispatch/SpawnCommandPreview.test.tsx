@@ -63,8 +63,10 @@ describe("SpawnCommandPreview", () => {
   })
 
   describe("pi harness", () => {
-    test("shows the bare pi -p command", () => {
-      expect(render({ harness: "pi" })).toContain("pi -p go")
+    // The daemon runs pi INTERACTIVELY inside a zellij session (no `-p`) so the
+    // terminal can attach; the preview mirrors that — intent as a positional.
+    test("shows the bare interactive pi command (no -p)", () => {
+      expect(render({ harness: "pi" })).toContain("pi go")
     })
 
     test("reflects thinking level, model, and pi tools", () => {
@@ -75,12 +77,12 @@ describe("SpawnCommandPreview", () => {
         tools: ["read", "bash"],
       })
       expect(html).toContain(
-        "pi --thinking high --model anthropic/claude-sonnet-5 --tools read,bash -p go",
+        "pi --thinking high --model anthropic/claude-sonnet-5 --tools read,bash go",
       )
     })
 
     test("ignores the claude-only effort level on the pi preview", () => {
-      expect(render({ harness: "pi", effort: "high" })).toContain("pi -p go")
+      expect(render({ harness: "pi", effort: "high" })).toContain("pi go")
     })
   })
 })
