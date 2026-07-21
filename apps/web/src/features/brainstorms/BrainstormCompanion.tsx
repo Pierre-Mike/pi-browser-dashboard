@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { api } from "../../lib/api"
 import { stateColor, stateTitle } from "../../lib/format"
+import { PANEL_DEFAULT_WIDTH, usePanelDrag, usePersistedWidth } from "../../lib/panelResize"
 import type { Project, SessionState } from "../../lib/types"
 import { dispatchSpawn } from "../dispatch/spawnDispatch"
 import { useSessions } from "../sessions/useSessions"
@@ -254,6 +255,10 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   const [note, setNote] = useState("")
   const [busyRole, setBusyRole] = useState<CompanionRole | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  // User-draggable width, persisted per-browser. The handle on the panel's left
+  // edge widens it as you drag left; double-click the handle resets to default.
+  const { width, setWidth } = usePersistedWidth("pid:brainstorm:companion-width")
+  const { onResizeStart, dragging } = usePanelDrag(width, setWidth)
 
   const selected = selectedCompanion(companions, selectedShort)
 
@@ -295,8 +300,29 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   return (
     <aside
       data-testid="brainstorm-companion"
-      className="flex w-[24rem] shrink-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0"
+      style={{ width }}
+      className={`relative flex shrink-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
+        dragging ? "select-none" : ""
+      }`}
     >
+      <button
+        type="button"
+        data-testid="brainstorm-companion-resize"
+        aria-label="Resize AI companions panel"
+        title="Drag or use ←/→ to resize · double-click to reset"
+        onPointerDown={onResizeStart}
+        onDoubleClick={() => setWidth(PANEL_DEFAULT_WIDTH)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault()
+            setWidth(width + 16)
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault()
+            setWidth(width - 16)
+          }
+        }}
+        className="absolute -left-2 top-0 z-10 h-full w-2 cursor-col-resize touch-none rounded-full p-0 hover:bg-primary/40 focus-visible:bg-primary/40"
+      />
       <CompanionHeader status={status} />
 
       <RoleButtons companions={companions} busyRole={busyRole} onAct={act} />

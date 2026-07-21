@@ -1,6 +1,6 @@
 import { type Node, type NodeProps, NodeResizer } from "@xyflow/react"
 import type { CSSProperties, KeyboardEvent } from "react"
-import { defaultLinkUrl } from "./canvasInteractions"
+import { defaultLinkUrl, shouldOpenLink } from "./canvasInteractions"
 import { colorFor } from "./canvasObsidian"
 import { NodeHandles } from "./NodeHandles"
 import { useInlineEdit } from "./useInlineEdit"
@@ -55,8 +55,16 @@ const LinkBody = ({ url }: { url: string }) => (
         href={url}
         target="_blank"
         rel="noreferrer"
+        title="⌘/Ctrl-click to open · double-click to edit"
         className="block text-primary underline truncate"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation()
+          // A plain click / double-click is reserved for selecting and editing
+          // the node; only a modifier click follows the link. Without the
+          // preventDefault the first click of a double-click would navigate and
+          // the node could never be re-edited once it had a URL.
+          if (!shouldOpenLink(e)) e.preventDefault()
+        }}
       >
         {hostOf(url)}
       </a>

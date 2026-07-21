@@ -63,6 +63,36 @@ test("brainstorm: seeded board lists in the left rail, binds the live canvas, an
   await expect(page.getByTestId("canvas-brief-ai")).toHaveCount(0)
 })
 
+test("brainstorm: the AI companion panel is resizable", async ({ page }) => {
+  seedBrainstorm()
+  await page.goto("/projects/brainstorm-demo?tab=brainstorm")
+  await expect(page.getByTestId("brainstorm-subtabs")).toBeVisible({ timeout: 15_000 })
+
+  const panel = page.getByTestId("brainstorm-companion")
+  await expect(panel).toBeVisible({ timeout: 15_000 })
+  const handle = page.getByTestId("brainstorm-companion-resize")
+  await expect(handle).toBeVisible()
+
+  const widthOf = () => panel.evaluate((el) => el.getBoundingClientRect().width)
+  const before = await widthOf()
+
+  // The handle is a focusable splitter: ←/→ resize deterministically (mouse
+  // drag is flaky headless). ArrowLeft widens the right-docked panel.
+  await handle.focus()
+  await page.keyboard.press("ArrowLeft")
+  await page.keyboard.press("ArrowLeft")
+  await expect.poll(widthOf).toBeGreaterThan(before)
+
+  // ...and ArrowRight narrows it back below the widened width.
+  const widened = await widthOf()
+  await page.keyboard.press("ArrowRight")
+  await expect.poll(widthOf).toBeLessThan(widened)
+
+  // Double-clicking the handle resets to the default width.
+  await handle.dblclick()
+  await expect.poll(widthOf).toBe(384)
+})
+
 test("brainstorm: the + button creates a board and switches to it", async ({ page }) => {
   seedBrainstorm()
   await page.goto("/projects/brainstorm-demo?tab=brainstorm")

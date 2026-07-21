@@ -6,6 +6,7 @@ import {
   isPaneClassName,
   newBoxAt,
   pickedFileRef,
+  shouldOpenLink,
 } from "./canvasInteractions"
 
 describe("newBoxAt", () => {
@@ -62,6 +63,21 @@ describe("defaultLinkUrl", () => {
   it("returns empty for a blank origin", () => {
     expect(defaultLinkUrl("")).toBe("")
     expect(defaultLinkUrl("   ")).toBe("")
+  })
+})
+
+describe("shouldOpenLink", () => {
+  it("opens in a new tab only on a modifier click (⌘ / Ctrl)", () => {
+    expect(shouldOpenLink({ metaKey: true })).toBe(true)
+    expect(shouldOpenLink({ ctrlKey: true })).toBe(true)
+    expect(shouldOpenLink({ metaKey: true, ctrlKey: true })).toBe(true)
+  })
+
+  it("reserves a plain click for selecting/editing the link node", () => {
+    // A plain (double-)click must NOT navigate, otherwise the first click of a
+    // double-click follows the href and the node can never be re-edited.
+    expect(shouldOpenLink({})).toBe(false)
+    expect(shouldOpenLink({ metaKey: false, ctrlKey: false })).toBe(false)
   })
 })
 
