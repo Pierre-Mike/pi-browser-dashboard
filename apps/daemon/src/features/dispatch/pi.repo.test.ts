@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit } from "effect"
@@ -14,6 +14,26 @@ const run = (cmd: readonly string[], windowMs: number) =>
   Effect.runPromiseExit(
     spawnLaunchChecked({ cmd, cwd: scratch, stderrPath: stderrPath(), windowMs }),
   )
+
+const runWithEnv = (args: {
+  cmd: readonly string[]
+  windowMs: number
+  env: Record<string, string>
+}) => {
+  const path = stderrPath()
+  return {
+    path,
+    exit: Effect.runPromiseExit(
+      spawnLaunchChecked({
+        cmd: args.cmd,
+        cwd: scratch,
+        stderrPath: path,
+        windowMs: args.windowMs,
+        env: args.env,
+      }),
+    ),
+  }
+}
 
 describe("spawnLaunchChecked", () => {
   it("fails with the child's stderr when it dies non-zero inside the launch window", async () => {
@@ -62,5 +82,19 @@ describe("spawnLaunchChecked", () => {
   it("fails with a spawn error for a nonexistent binary", async () => {
     const exit = await run(["definitely-not-a-real-binary-9f8e7d"], 2_000)
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it("passes an explicit env to the child (zellij spawn uses cleanZellijEnv)", async () => {
+    // The pi dispatch spawns `zellij attach -b` with cleanZellijEnv so a daemon
+    // running inside a zellij pane doesn't leak ZELLIJ_SESSION_NAME and trip
+    // self-attach detection. Prove the env override actually reaches the child.
+    const { path, exit: exitP } = runWithEnv({
+      cmd: ["sh", "-c", 'echo "$PID_TEST_MARKER" >&2; exit 3'],
+      windowMs: 2_000,
+      env: { PATH: process.env.PATH ?? "/usr/bin", PID_TEST_MARKER: "from-env" },
+    })
+    const exit = await exitP
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(readFileSync(path, "utf8")).toContain("from-env")
   })
 })
