@@ -6,7 +6,7 @@ import { ensureProject } from "./helpers"
 // End-to-end brainstorms: named canvas documents under <project>/.pid/brainstorms/
 // surface as left-rail boards on the project's Brainstorm tab, the shared canvas
 // editor binds to the selected document over the brainstorm ws route, and the
-// AI-companion panel offers its role actions. global-setup runs the real daemon
+// AI-companion panel is the simple plain-session control. global-setup runs the real daemon
 // + web; we seed a document on disk so discovery runs against a real filesystem.
 const DAEMON_PORT = process.env.PID_E2E_DAEMON_PORT ?? 18787
 
@@ -53,10 +53,12 @@ test("brainstorm: seeded board lists in the left rail, binds the live canvas, an
   // The seeded node made it from disk onto the canvas.
   await expect(page.getByText("seeded idea")).toBeVisible({ timeout: 15_000 })
 
-  // The AI companion panel offers the role actions (no live spawn in e2e).
+  // The AI companion panel is the simple V2-style chat: a single "New session"
+  // start control and NO V1 role buttons (no live spawn in e2e).
   await expect(page.getByTestId("brainstorm-companion")).toBeVisible()
+  await expect(page.getByTestId("brainstorm-session-start")).toBeVisible()
   for (const role of ["review", "beautify", "critique", "ideate"]) {
-    await expect(page.getByTestId(`brainstorm-role-${role}`)).toBeVisible()
+    await expect(page.getByTestId(`brainstorm-role-${role}`)).toHaveCount(0)
   }
 
   // The session-canvas-only "Brief AI" button must NOT leak into brainstorm mode.
