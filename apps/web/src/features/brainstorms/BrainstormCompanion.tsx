@@ -9,15 +9,9 @@ import { stopSession } from "../sessions/stopSession"
 import { useSessions } from "../sessions/useSessions"
 import { TerminalView } from "../terminal/TerminalView"
 import {
-  COMPANION_ROLES,
-  type CompanionRole,
-  type CompanionRoleSpec,
-  companionIntent,
-  companionRoleFromIntent,
-  companionToggle,
-  isCompanionIntent,
-  isLiveCompanion,
-  runningCompanion,
+  brainstormCompanionIntent,
+  isBrainstormCompanionIntent,
+  isLiveBrainstormCompanion,
 } from "./brainstormPrompts"
 import type { Brainstorm } from "./brainstorms"
 
@@ -26,110 +20,29 @@ type Props = {
   readonly brainstorm: Brainstorm
 }
 
-type ActionResult = {
-  readonly kind: "spawned" | "stopped" | "stop_failed"
-  readonly short: string | null
-}
-
-// Role buttons are toggles: clicking a role with a live companion stops it
-// (unselect), otherwise it spawns a fresh one (select). Kept outside the
-// component so the button handler stays a thin state adapter.
-const runCompanionAction = async (input: {
-  readonly companions: readonly SessionState[]
-  readonly role: CompanionRole
-  readonly note: string
-  readonly brainstorm: Brainstorm
-  readonly project: Project
-}): Promise<ActionResult> => {
-  const action = companionToggle(input.companions, input.role)
-  if (action.kind === "stop") {
-    const ok = await stopSession(action.short)
-    return { kind: ok ? "stopped" : "stop_failed", short: action.short }
-  }
-  const short = await dispatchSpawn({
-    intent: companionIntent({
-      role: input.role,
-      slug: input.brainstorm.id,
-      file: input.brainstorm.file,
-      extra: input.note,
-    }),
-    project: input.project,
-  })
-  return { kind: "spawned", short }
-}
-
-const statusLine = (kind: ActionResult["kind"], role: CompanionRole): string =>
-  ({
-    spawned: `spawned ${role}`,
-    stopped: `stopped ${role}`,
-    stop_failed: `stop failed (${role})`,
-  })[kind]
-
-const roleButtonClass = (selected: boolean): string =>
-  `btn btn-xs justify-start gap-1.5 normal-case ${
-    selected ? "btn-primary" : "bg-base-100 border-base-300 hover:border-primary/40"
-  }`
-
-// One toggle button. A live companion for this role makes it "selected"
-// (primary fill + a state dot); clicking it then stops that companion, and
-// clicking an unselected role spawns one.
-const RoleButton = ({
-  spec,
-  running,
+const StartButton = ({
   busy,
-  acting,
-  onAct,
+  onStart,
 }: {
-  readonly spec: CompanionRoleSpec
-  readonly running: SessionState | undefined
   readonly busy: boolean
-  readonly acting: boolean
-  readonly onAct: () => void
-}) => {
-  const selected = running !== undefined
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      data-testid={`brainstorm-role-${spec.role}`}
-      data-selected={selected}
-      onClick={onAct}
-      disabled={busy}
-      title={selected ? `${spec.title} — click to stop this companion` : spec.title}
-      className={roleButtonClass(selected)}
-    >
-      {running ? (
-        <span className={`h-1.5 w-1.5 rounded-full ${stateColor(running.state).dot}`} />
-      ) : null}
-      <span className="truncate">{acting ? "…" : spec.label}</span>
-    </button>
-  )
-}
-
-const RoleButtons = ({
-  companions,
-  busyRole,
-  onAct,
-}: {
-  readonly companions: readonly SessionState[]
-  readonly busyRole: CompanionRole | null
-  readonly onAct: (role: CompanionRole) => void
+  readonly onStart: () => void
 }) => (
-  <div className="grid grid-cols-2 gap-1">
-    {COMPANION_ROLES.map((spec) => (
-      <RoleButton
-        key={spec.role}
-        spec={spec}
-        running={runningCompanion(companions, spec.role)}
-        busy={busyRole !== null}
-        acting={busyRole === spec.role}
-        onAct={() => onAct(spec.role)}
-      />
-    ))}
-  </div>
+  <button
+    type="button"
+    data-testid="brainstorm-session-start"
+    onClick={onStart}
+    disabled={busy}
+    title="Start an AI session that knows this board's file — no fixed mission, just talk to it"
+    className="btn btn-xs btn-primary normal-case"
+  >
+    {busy ? "…" : "New session"}
+  </button>
 )
 
-const CompanionChip = ({
+// A chip per live session: the state dot + short id select whose terminal is
+// shown, and the ✕ stops that session. No role label, no per-role colour — the
+// only tint is the shared session-state tone, same as the V2 panel.
+const SessionChip = ({
   session,
   active,
   onSelect,
@@ -141,25 +54,25 @@ const CompanionChip = ({
   readonly onStop: () => void
 }) => {
   const tone = stateColor(session.state)
-  const role = companionRoleFromIntent(session.intent) ?? "companion"
   return (
     <span
+      data-testid="brainstorm-session-chip"
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone.bg} ${tone.text} ${active ? `ring-1 ${tone.ring}` : ""}`}
+      title={stateTitle(session.state, session.detail)}
     >
       <button
         type="button"
-        data-testid={`brainstorm-chip-${session.short}`}
+        data-testid={`brainstorm-session-select-${session.short}`}
         onClick={onSelect}
-        title={stateTitle(session.state, session.detail)}
         className="inline-flex items-center gap-1"
       >
         <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
-        {role}
+        {session.short}
       </button>
       <button
         type="button"
-        aria-label={`Stop ${role} companion`}
-        title="Stop this companion"
+        aria-label="Stop this session"
+        title="Stop this session"
         onClick={onStop}
         className="opacity-60 hover:opacity-100"
       >
@@ -169,39 +82,64 @@ const CompanionChip = ({
   )
 }
 
-// The chip the terminal follows: the explicitly selected companion when it
-// still exists, else the first live one, else nothing.
-const selectedCompanion = (
-  companions: readonly SessionState[],
-  selectedShort: string | null,
-): SessionState | null => companions.find((s) => s.short === selectedShort) ?? companions[0] ?? null
-
-const CompanionHeader = ({ status }: { readonly status: string | null }) => (
-  <div className="flex items-center gap-2">
-    <span className="text-xs font-semibold text-base-content/80">AI companions</span>
-    {status ? (
-      <span data-testid="brainstorm-companion-status" className="text-[10px] text-base-content/60">
-        {status}
-      </span>
-    ) : null}
+const EmptyState = () => (
+  <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-base-300 p-4 text-center text-xs text-base-content/60">
+    Start a session to work on this board together — it knows the canvas file and nothing else; tell
+    it what you want here. Start more than one to keep separate trains of thought.
   </div>
 )
 
-const CompanionChips = ({
-  companions,
+// Every live session attached to this board, recovered purely from the sessions
+// list via the [brainstorm:<slug>] intent marker — no store. Several may match:
+// the panel lists them all and switches between their terminals.
+const findBoardSessions = (input: {
+  readonly sessions: readonly SessionState[]
+  readonly projectPath: string
+  readonly slug: string
+}): readonly SessionState[] =>
+  input.sessions.filter(
+    (s) =>
+      s.cwd === input.projectPath &&
+      isBrainstormCompanionIntent(s.intent, input.slug) &&
+      isLiveBrainstormCompanion(s),
+  )
+
+// The session the terminal follows: the explicitly selected one while it still
+// exists, else the first live one, else nothing.
+const selectedSession = (
+  sessions: readonly SessionState[],
+  selectedShort: string | null,
+): SessionState | null => sessions.find((s) => s.short === selectedShort) ?? sessions[0] ?? null
+
+const HeaderRow = ({ busy, onStart }: { readonly busy: boolean; readonly onStart: () => void }) => (
+  <div className="flex items-center gap-2">
+    <span className="text-xs font-semibold text-base-content/80">AI sessions</span>
+    <StartButton busy={busy} onStart={onStart} />
+  </div>
+)
+
+const ErrorLine = ({ error }: { readonly error: string | null }) =>
+  error === null ? null : (
+    <span data-testid="brainstorm-session-error" className="text-[10px] text-error">
+      {error}
+    </span>
+  )
+
+const SessionChips = ({
+  sessions,
   selected,
   onSelect,
   onStop,
 }: {
-  readonly companions: readonly SessionState[]
+  readonly sessions: readonly SessionState[]
   readonly selected: SessionState | null
   readonly onSelect: (short: string) => void
   readonly onStop: (short: string) => void
 }) =>
-  companions.length === 0 ? null : (
-    <div className="flex flex-wrap items-center gap-1" data-testid="brainstorm-companion-chips">
-      {companions.map((s) => (
-        <CompanionChip
+  sessions.length === 0 ? null : (
+    <div className="flex flex-wrap items-center gap-1" data-testid="brainstorm-session-chips">
+      {sessions.map((s) => (
+        <SessionChip
           key={s.short}
           session={s}
           active={selected?.short === s.short}
@@ -212,83 +150,74 @@ const CompanionChips = ({
     </div>
   )
 
-const CompanionTerminal = ({ selected }: { readonly selected: SessionState | null }) =>
-  selected ? (
+const CompanionBody = ({ session }: { readonly session: SessionState | null }) =>
+  session === null ? (
+    <EmptyState />
+  ) : (
     <TerminalView
-      key={selected.short}
+      key={session.short}
       kind="session"
-      id={selected.short}
-      reconnectTitle="Reconnect to this companion's terminal"
+      id={session.short}
+      reconnectTitle="Reconnect to this session's terminal"
       testId="brainstorm-companion-terminal"
     />
-  ) : (
-    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-base-300 p-4 text-center text-xs text-base-content/60">
-      Pick a role above to summon an AI companion for this board — it reads and draws on the canvas
-      live, and chats with you here.
-    </div>
   )
 
 /**
- * The "AI by my side" panel for one brainstorm: each role button toggles a
- * focused companion session — click to spawn it, click again to stop it — a
- * chip per companion selects whose terminal is shown, and the embedded terminal
- * is the chat with the selected companion. Companions are recovered purely from
- * the sessions list via the intent marker — no extra store.
+ * The "AI by my side" panel for one brainstorm canvas: the simple V2 chat
+ * design — one "New session" button that spawns a plain session knowing only
+ * this board's file, no roles/missions/notes. Unlike V2 it allows several
+ * sessions at once; a chip per session (state dot + short id) picks whose
+ * terminal is shown, and the ✕ stops it. Sessions are recovered purely from the
+ * sessions list via the [brainstorm:<slug>] intent marker — no extra store.
  */
 export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
   const qc = useQueryClient()
   const sessionsQ = useSessions()
-  // Live companions only: stopping one (button toggle-off or chip ✕) drops it
-  // from the panel, so "remove" actually removes rather than leaving a dead chip.
-  const companions = (sessionsQ.data ?? []).filter(
-    (s) =>
-      s.cwd === project.path && isCompanionIntent(s.intent, brainstorm.id) && isLiveCompanion(s),
-  )
+  const sessions = findBoardSessions({
+    sessions: sessionsQ.data ?? [],
+    projectPath: project.path,
+    slug: brainstorm.id,
+  })
 
   const [selectedShort, setSelectedShort] = useState<string | null>(null)
-  const [note, setNote] = useState("")
-  const [busyRole, setBusyRole] = useState<CompanionRole | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   // User-draggable width, persisted per-browser. The handle on the panel's left
   // edge widens it as you drag left; double-click the handle resets to default.
   const { width, setWidth } = usePersistedWidth("pid:brainstorm:companion-width")
   const { onResizeStart, dragging } = usePanelDrag(width, setWidth)
 
-  const selected = selectedCompanion(companions, selectedShort)
+  const selected = selectedSession(sessions, selectedShort)
 
-  const flashStatus = (msg: string) => {
-    setStatus(msg)
-    setTimeout(() => setStatus(null), 4_000)
-  }
+  const refresh = () => qc.invalidateQueries({ queryKey: ["sessions"] })
 
-  const afterAction = (result: ActionResult, role: CompanionRole) => {
-    // Spawning and stopping both change the roster, so always refetch.
-    qc.invalidateQueries({ queryKey: ["sessions"] })
-    // Follow a freshly spawned companion; on a stop, drop the selection so the
-    // terminal falls back to another live companion (or the empty state).
-    if (result.kind === "spawned") setSelectedShort(result.short)
-    else if (result.kind === "stopped") setSelectedShort(null)
-    flashStatus(statusLine(result.kind, role))
-    setNote("")
-  }
-
-  const act = (role: CompanionRole) => {
-    if (busyRole !== null) return
-    setBusyRole(role)
-    runCompanionAction({ companions, role, note, brainstorm, project })
-      .then((result) => afterAction(result, role))
-      .catch((err) => flashStatus(`failed: ${err instanceof Error ? err.message : "unknown"}`))
-      .finally(() => setBusyRole(null))
+  const start = () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    dispatchSpawn({
+      intent: brainstormCompanionIntent({ slug: brainstorm.id, file: brainstorm.file }),
+      project,
+    })
+      .then((short) => {
+        // Follow the freshly spawned session so its terminal is shown at once.
+        if (short) setSelectedShort(short)
+        refresh()
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "spawn failed"))
+      .finally(() => setBusy(false))
   }
 
   const stop = (short: string) => {
     stopSession(short)
       .then((ok) => {
-        if (!ok) return flashStatus("stop failed")
+        if (!ok) return setError("stop failed")
+        // Drop the selection so the terminal falls back to another live session.
         if (short === selectedShort) setSelectedShort(null)
-        qc.invalidateQueries({ queryKey: ["sessions"] })
+        refresh()
       })
-      .catch(() => flashStatus("stop failed"))
+      .catch(() => setError("stop failed"))
   }
 
   return (
@@ -301,32 +230,21 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
     >
       <PanelResizeHandle
         testid="brainstorm-companion-resize"
-        ariaLabel="Resize AI companions panel"
+        ariaLabel="Resize AI sessions panel"
         onResizeStart={onResizeStart}
         onReset={() => setWidth(PANEL_DEFAULT_WIDTH)}
         onNudge={(delta) => setWidth(width + delta)}
       />
-      <CompanionHeader status={status} />
-
-      <RoleButtons companions={companions} busyRole={busyRole} onAct={act} />
-
-      <input
-        data-testid="brainstorm-note"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="optional note for the AI…"
-        className="input input-bordered input-xs w-full"
-      />
-
-      <CompanionChips
-        companions={companions}
+      <HeaderRow busy={busy} onStart={start} />
+      <ErrorLine error={error} />
+      <SessionChips
+        sessions={sessions}
         selected={selected}
         onSelect={setSelectedShort}
         onStop={stop}
       />
-
       <div className="flex-1 min-h-0">
-        <CompanionTerminal selected={selected} />
+        <CompanionBody session={selected} />
       </div>
     </aside>
   )
