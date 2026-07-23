@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import path from "node:path"
 import {
-  brainstormFileName,
-  brainstormIdFromFileName,
+  brainstormDocFromFileName,
+  brainstormFileNameFor,
   brainstormsDirFor,
-  discoverBrainstormIds,
+  discoverBrainstormDocs,
   isCreatableBrainstormName,
 } from "./brainstorms.core"
 
@@ -26,16 +26,26 @@ describe("isCreatableBrainstormName", () => {
 })
 
 describe("brainstorm file naming", () => {
-  it("round-trips id -> filename -> id", () => {
-    expect(brainstormFileName("auth-flow")).toBe("auth-flow.canvas.json")
-    expect(brainstormIdFromFileName("auth-flow.canvas.json")).toBe("auth-flow")
+  it("round-trips id -> filename -> {id, kind} for both kinds", () => {
+    expect(brainstormFileNameFor("auth-flow", "canvas")).toBe("auth-flow.canvas.json")
+    expect(brainstormDocFromFileName("auth-flow.canvas.json")).toEqual({
+      id: "auth-flow",
+      kind: "canvas",
+    })
+    expect(brainstormFileNameFor("sketch", "excalidraw")).toBe("sketch.excalidraw")
+    expect(brainstormDocFromFileName("sketch.excalidraw")).toEqual({
+      id: "sketch",
+      kind: "excalidraw",
+    })
   })
 
   it("returns null for non-brainstorm basenames", () => {
-    expect(brainstormIdFromFileName("notes.txt")).toBe(null)
-    expect(brainstormIdFromFileName("auth-flow.json")).toBe(null)
-    expect(brainstormIdFromFileName(".canvas.json")).toBe(null)
-    expect(brainstormIdFromFileName("Bad Name.canvas.json")).toBe(null)
+    expect(brainstormDocFromFileName("notes.txt")).toBe(null)
+    expect(brainstormDocFromFileName("auth-flow.json")).toBe(null)
+    expect(brainstormDocFromFileName(".canvas.json")).toBe(null)
+    expect(brainstormDocFromFileName(".excalidraw")).toBe(null)
+    expect(brainstormDocFromFileName("Bad Name.canvas.json")).toBe(null)
+    expect(brainstormDocFromFileName("Bad Name.excalidraw")).toBe(null)
   })
 
   it("stores documents under <project>/.pid/brainstorms", () => {
@@ -45,20 +55,31 @@ describe("brainstorm file naming", () => {
   })
 })
 
-describe("discoverBrainstormIds", () => {
-  it("keeps only well-formed documents, sorted alphabetically", () => {
+describe("discoverBrainstormDocs", () => {
+  it("keeps only well-formed documents of either kind, sorted alphabetically", () => {
     expect(
-      discoverBrainstormIds([
+      discoverBrainstormDocs([
         "zeta.canvas.json",
         "alpha.canvas.json",
+        "sketch.excalidraw",
         "junk.txt",
         "Bad Name.canvas.json",
         ".canvas.json",
       ]),
-    ).toEqual(["alpha", "zeta"])
+    ).toEqual([
+      { id: "alpha", kind: "canvas" },
+      { id: "sketch", kind: "excalidraw" },
+      { id: "zeta", kind: "canvas" },
+    ])
+  })
+
+  it("prefers the canvas document when both kinds share an id", () => {
+    expect(discoverBrainstormDocs(["dup.excalidraw", "dup.canvas.json"])).toEqual([
+      { id: "dup", kind: "canvas" },
+    ])
   })
 
   it("returns [] for an empty directory", () => {
-    expect(discoverBrainstormIds([])).toEqual([])
+    expect(discoverBrainstormDocs([])).toEqual([])
   })
 })

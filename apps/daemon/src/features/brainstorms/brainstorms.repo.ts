@@ -1,19 +1,23 @@
-// Imperative shell for brainstorms: named canvas documents stored under
-// <project>/.pid/brainstorms/. The pure naming/discovery rules live in
-// brainstorms.core.ts. Mirrors pid-apps.repo.ts (Effect Layer over
-// ProjectsService); live document sync is NOT here — the canvas feature's
-// path-keyed rooms (getCanvasRoomAt) own watching and broadcasting.
+// Imperative shell for brainstorms: named drawing documents stored under
+// <project>/.pid/brainstorms/ in two kinds — React-Flow canvas documents
+// (<id>.canvas.json) and native Excalidraw boards (<id>.excalidraw). The pure
+// naming/discovery rules live in brainstorms.core.ts. Mirrors pid-apps.repo.ts
+// (Effect Layer over ProjectsService); live document sync is NOT here — the
+// canvas feature's path-keyed rooms (getCanvasRoomAt / getExcalidrawRoomAt)
+// own watching and broadcasting.
 
 import { mkdir, readdir, rename, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { emptyCanvas, serializeCanvas } from "../canvas/canvas.core"
+import { emptyExcalidrawDoc, serializeExcalidrawDoc } from "../canvas/excalidraw.core"
 import { ProjectsService, resolveProjectDir } from "../projects/projects.repo"
 import {
   type Brainstorm,
-  brainstormFileName,
-  brainstormIdFromFileName,
+  type BrainstormKind,
+  brainstormFileNameFor,
   brainstormsDirFor,
+  discoverBrainstormDocs,
   isCreatableBrainstormName,
 } from "./brainstorms.core"
 
@@ -22,17 +26,19 @@ export type BrainstormWriteError = BrainstormError | "invalid_name" | "already_e
 
 type BrainstormsServiceApi = {
   readonly list: (projectId: string) => Effect.Effect<readonly Brainstorm[], BrainstormError, never>
-  readonly create: (
-    projectId: string,
-    name: string,
-  ) => Effect.Effect<Brainstorm, BrainstormWriteError, never>
-  // Absolute path of an EXISTING document — the WS/snapshot routes hang a
-  // canvas room off it. Creation is explicit (POST), so a missing file is
-  // not_found rather than an auto-created empty canvas.
-  readonly resolveFile: (
-    projectId: string,
-    slug: string,
-  ) => Effect.Effect<string, BrainstormError, never>
+  readonly create: (input: {
+    readonly projectId: string
+    readonly name: string
+    readonly kind: BrainstormKind
+  }) => Effect.Effect<Brainstorm, BrainstormWriteError, never>
+  // Absolute path of an EXISTING document of the given kind — the WS/snapshot
+  // routes hang a document room off it. Creation is explicit (POST), so a
+  // missing file is not_found rather than an auto-created empty document.
+  readonly resolveFile: (input: {
+    readonly projectId: string
+    readonly slug: string
+    readonly kind: BrainstormKind
+  }) => Effect.Effect<string, BrainstormError, never>
 }
 
 export class BrainstormsService extends Context.Tag("BrainstormsService")<
@@ -59,20 +65,18 @@ const listDocs = async (dir: string): Promise<readonly Brainstorm[]> => {
     return []
   }
   const metas = await Promise.all(
-    names
-      .map((n) => ({ id: brainstormIdFromFileName(n), file: join(dir, n) }))
-      .filter((e): e is { id: string; file: string } => e.id !== null)
-      .map(async (e) => {
-        const updatedAt = await statMtime(e.file)
-        return updatedAt === null ? null : { id: e.id, label: e.id, file: e.file, updatedAt }
-      }),
+    discoverBrainstormDocs(names).map(async (doc) => {
+      const file = join(dir, brainstormFileNameFor(doc.id, doc.kind))
+      const updatedAt = await statMtime(file)
+      return updatedAt === null
+        ? null
+        : { id: doc.id, label: doc.id, kind: doc.kind, file, updatedAt }
+    }),
   )
-  return metas
-    .filter((m): m is Brainstorm => m !== null)
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return metas.filter((m): m is Brainstorm => m !== null)
 }
 
-// tmp+rename so a concurrent reader (a canvas room priming its cache, or an
+// tmp+rename so a concurrent reader (a document room priming its cache, or an
 // agent's Read) never observes a half-written document.
 const writeAtomic = async (path: string, body: string): Promise<void> => {
   const tmp = `${path}.${process.pid}.tmp`
@@ -80,11 +84,23 @@ const writeAtomic = async (path: string, body: string): Promise<void> => {
   await rename(tmp, path)
 }
 
-const createDoc = async (dir: string, id: string): Promise<"ok" | "already_exists"> => {
-  const file = join(dir, brainstormFileName(id))
-  if ((await statMtime(file)) !== null) return "already_exists"
-  await mkdir(dir, { recursive: true })
-  await writeAtomic(file, serializeCanvas(emptyCanvas()))
+const emptyDocBody = (kind: BrainstormKind): string =>
+  kind === "canvas" ? serializeCanvas(emptyCanvas()) : serializeExcalidrawDoc(emptyExcalidrawDoc())
+
+const createDoc = async (input: {
+  readonly dir: string
+  readonly id: string
+  readonly kind: BrainstormKind
+}): Promise<"ok" | "already_exists"> => {
+  // Ids are one namespace across kinds (they double as tab keys), so a name
+  // taken by either document kind is taken.
+  for (const kind of ["canvas", "excalidraw"] as const) {
+    const taken = await statMtime(join(input.dir, brainstormFileNameFor(input.id, kind)))
+    if (taken !== null) return "already_exists"
+  }
+  await mkdir(input.dir, { recursive: true })
+  const file = join(input.dir, brainstormFileNameFor(input.id, input.kind))
+  await writeAtomic(file, emptyDocBody(input.kind))
   return "ok"
 }
 
@@ -100,14 +116,14 @@ export const BrainstormsRepoLive: Layer.Layer<BrainstormsService, never, Project
             return yield* Effect.promise(() => listDocs(brainstormsDirFor(projectPath)))
           }),
 
-        create: (projectId, name) =>
+        create: ({ projectId, name, kind }) =>
           Effect.gen(function* () {
             if (!isCreatableBrainstormName(name)) {
               return yield* Effect.fail<BrainstormWriteError>("invalid_name")
             }
             const projectPath = yield* resolveProjectDir(projects, projectId)
             const dir = brainstormsDirFor(projectPath)
-            const result = yield* Effect.promise(() => createDoc(dir, name))
+            const result = yield* Effect.promise(() => createDoc({ dir, id: name, kind }))
             if (result === "already_exists") {
               return yield* Effect.fail<BrainstormWriteError>("already_exists")
             }
@@ -119,7 +135,7 @@ export const BrainstormsRepoLive: Layer.Layer<BrainstormsService, never, Project
             return created
           }),
 
-        resolveFile: (projectId, slug) =>
+        resolveFile: ({ projectId, slug, kind }) =>
           Effect.gen(function* () {
             // NAME_RE validation doubles as the traversal guard: a slug can
             // never contain "/", "\" or "..".
@@ -127,7 +143,7 @@ export const BrainstormsRepoLive: Layer.Layer<BrainstormsService, never, Project
               return yield* Effect.fail<BrainstormError>("not_found")
             }
             const projectPath = yield* resolveProjectDir(projects, projectId)
-            const file = join(brainstormsDirFor(projectPath), brainstormFileName(slug))
+            const file = join(brainstormsDirFor(projectPath), brainstormFileNameFor(slug, kind))
             const mtime = yield* Effect.promise(() => statMtime(file))
             if (mtime === null) return yield* Effect.fail<BrainstormError>("not_found")
             return file
