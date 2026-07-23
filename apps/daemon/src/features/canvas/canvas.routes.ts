@@ -4,24 +4,30 @@ import { resolveConfigDir } from "../../platform/config-dir"
 import { upgradeWebSocket } from "../../platform/ws"
 import { type CanvasSnapshot, parseCanvas, serializeCanvas } from "./canvas.core"
 import { type CanvasRoom, getCanvasRoom } from "./canvas.repo"
+import type { DocRoom } from "./docRoom.repo"
 
 const MAX_FRAME_BYTES = 256 * 1024
 
-type ClientFrame =
-  | { readonly kind: "snapshot"; readonly snapshot: CanvasSnapshot }
+type ClientFrame<S> =
+  | { readonly kind: "snapshot"; readonly snapshot: S }
   | { readonly kind: "request" }
 
-type ServerFrame =
+type ServerFrame<S> =
   | {
       readonly kind: "snapshot"
-      readonly snapshot: CanvasSnapshot
+      readonly snapshot: S
       readonly origin: "self" | "remote"
     }
   | { readonly kind: "error"; readonly message: string }
 
-const parseClientFrame = (raw: unknown): ClientFrame | { error: string } => {
+const parseClientFrame = <S>(
+  raw: unknown,
+  opts: { readonly parse: (u: unknown) => S; readonly maxFrameBytes: number },
+): ClientFrame<S> | { error: string } => {
   if (typeof raw !== "string") return { error: "frame must be a JSON string" }
-  if (raw.length > MAX_FRAME_BYTES) return { error: "frame exceeds 256KB cap" }
+  if (raw.length > opts.maxFrameBytes) {
+    return { error: `frame exceeds ${Math.round(opts.maxFrameBytes / 1024)}KB cap` }
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -33,7 +39,7 @@ const parseClientFrame = (raw: unknown): ClientFrame | { error: string } => {
   if (obj.kind === "request") return { kind: "request" }
   if (obj.kind === "snapshot") {
     try {
-      return { kind: "snapshot", snapshot: parseCanvas(obj.snapshot) }
+      return { kind: "snapshot", snapshot: opts.parse(obj.snapshot) }
     } catch (err) {
       return { error: `bad snapshot: ${(err as Error).message}` }
     }
@@ -41,7 +47,7 @@ const parseClientFrame = (raw: unknown): ClientFrame | { error: string } => {
   return { error: `unknown kind: ${String(obj.kind)}` }
 }
 
-const sendServerFrame = (ws: { send: (data: string) => void }, frame: ServerFrame): void => {
+const sendServerFrame = <S>(ws: { send: (data: string) => void }, frame: ServerFrame<S>): void => {
   try {
     ws.send(JSON.stringify(frame))
   } catch {
@@ -58,17 +64,26 @@ type SocketCtx = {
 
 const ctxMap = new WeakMap<object, SocketCtx>()
 
-// How a WS route turns its request context into a canvas room. The session
+// How a WS route turns its request context into a document room. The session
 // canvas resolves ~/.claude/jobs/<:id>/canvas.json; the brainstorm routes
 // resolve a project-local document. A resolver throws to refuse the socket.
-export type CanvasRoomResolver = (c: Context) => Promise<CanvasRoom>
+export type DocRoomResolver<S> = (c: Context) => Promise<DocRoom<S>>
 
-export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
+export type DocWsOptions<S> = {
+  readonly resolveRoom: DocRoomResolver<S>
+  readonly parse: (raw: unknown) => S
+  readonly maxFrameBytes: number
+}
+
+// Codec-generic live-sync socket: snapshot down on open + every room change,
+// snapshot up on client edits. Instantiated per document format (canvas
+// below; the Excalidraw board in brainstorms.routes.ts).
+export const makeDocWsHandler = <S>({ resolveRoom, parse, maxFrameBytes }: DocWsOptions<S>) =>
   upgradeWebSocket((c: Context) => {
     const tokenKey = {}
     return {
       onOpen: async (_evt, ws) => {
-        let room: CanvasRoom
+        let room: DocRoom<S>
         try {
           room = await resolveRoom(c)
         } catch (err) {
@@ -76,7 +91,7 @@ export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
           ws.close(1011, "room_init_failed")
           return
         }
-        const origin = Symbol("canvas-ws")
+        const origin = Symbol("doc-ws")
         const unsubscribe = room.subscribe((snap, fromSelf) => {
           sendServerFrame(ws, {
             kind: "snapshot",
@@ -86,18 +101,18 @@ export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
         })
         ctxMap.set(tokenKey, { origin, unsubscribe })
         // Prime the client with whatever is on disk right now (or the empty
-        // canvas if the session has never been drawn on).
+        // document if nothing has been drawn yet).
         sendServerFrame(ws, { kind: "snapshot", snapshot: room.snapshot(), origin: "remote" })
       },
       onMessage: async (evt, ws) => {
         const ctx = ctxMap.get(tokenKey)
         if (!ctx) return
-        const frame = parseClientFrame(evt.data)
+        const frame = parseClientFrame(evt.data, { parse, maxFrameBytes })
         if ("error" in frame) {
           sendServerFrame(ws, { kind: "error", message: frame.error })
           return
         }
-        let room: CanvasRoom
+        let room: DocRoom<S>
         try {
           room = await resolveRoom(c)
         } catch (err) {
@@ -126,6 +141,11 @@ export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
       },
     }
   })
+
+export type CanvasRoomResolver = DocRoomResolver<CanvasSnapshot>
+
+export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
+  makeDocWsHandler({ resolveRoom, parse: parseCanvas, maxFrameBytes: MAX_FRAME_BYTES })
 
 // The session-canvas resolver: room is the per-session canvas.json. An empty
 // id (unreachable through normal routing) is refused like any resolver error.

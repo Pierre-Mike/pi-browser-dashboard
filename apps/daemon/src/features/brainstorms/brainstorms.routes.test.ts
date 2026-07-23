@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { parseCanvas, serializeCanvas } from "../canvas/canvas.core"
 import { __resetCanvasRoomsForTests } from "../canvas/canvas.repo"
+import { __resetExcalidrawRoomsForTests } from "../canvas/excalidraw.repo"
 import { type Project, ProjectsRepoTest } from "../projects/projects.repo"
 import { BrainstormsRepoLive } from "./brainstorms.repo"
 import { createApp } from "./brainstorms.routes"
@@ -28,6 +29,17 @@ const seededSnapshot = {
   edges: [],
 }
 
+// Native Excalidraw shape with keys the daemon has no schema for — the doc
+// routes must relay them untouched.
+const seededExcalidraw = {
+  type: "excalidraw",
+  version: 2,
+  source: "https://excalidraw.com",
+  elements: [{ id: "el1", type: "rectangle", x: 5, y: 6, customFutureKey: true }],
+  appState: { viewBackgroundColor: "#fffce8" },
+  files: {},
+}
+
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "brainstorms-routes-"))
   const dir = join(root, ".pid", "brainstorms")
@@ -38,11 +50,13 @@ beforeAll(async () => {
     JSON.stringify({ version: 1, nodes: [], edges: [] }),
   )
   await writeFile(join(dir, "junk.txt"), "not a brainstorm")
+  await writeFile(join(dir, "sketch.excalidraw"), JSON.stringify(seededExcalidraw))
   app = appFor({ id: "projA", name: "projA", path: root, isGitRepo: false, lastModified: 0 })
 })
 
 afterAll(async () => {
   __resetCanvasRoomsForTests()
+  __resetExcalidrawRoomsForTests()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -54,17 +68,22 @@ const post = (path: string, body: unknown) =>
   })
 
 describe("GET /:id/brainstorms (list)", () => {
-  it("returns discovered brainstorms sorted by id, with file + updatedAt", async () => {
+  it("returns discovered brainstorms of both kinds sorted by id, with kind + file + updatedAt", async () => {
     const res = await app.request("/projA/brainstorms")
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       id: string
       label: string
+      kind: string
       file: string
       updatedAt: string
     }[]
-    expect(body.map((b) => b.id)).toEqual(["alpha", "zeta"])
-    expect(body[1]?.file).toBe(join(root, ".pid", "brainstorms", "zeta.canvas.json"))
+    expect(body.map((b) => [b.id, b.kind])).toEqual([
+      ["alpha", "canvas"],
+      ["sketch", "excalidraw"],
+      ["zeta", "canvas"],
+    ])
+    expect(body[1]?.file).toBe(join(root, ".pid", "brainstorms", "sketch.excalidraw"))
     expect(Date.parse(body[0]?.updatedAt ?? "")).toBeGreaterThan(0)
   })
 
@@ -118,6 +137,71 @@ describe("POST /:id/brainstorms (create)", () => {
 
   it("409s a name that already exists", async () => {
     expect((await post("/projA/brainstorms", { name: "zeta" })).status).toBe(409)
+  })
+
+  it("creates a native Excalidraw document when kind is excalidraw", async () => {
+    const res = await post("/projA/brainstorms", { name: "fresh-sketch", kind: "excalidraw" })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { id: string; kind: string; file: string }
+    expect(body.kind).toBe("excalidraw")
+    expect(body.file).toBe(join(root, ".pid", "brainstorms", "fresh-sketch.excalidraw"))
+
+    const onDisk = JSON.parse(await readFile(body.file, "utf8")) as {
+      type: string
+      elements: unknown[]
+    }
+    expect(onDisk.type).toBe("excalidraw")
+    expect(onDisk.elements).toEqual([])
+  })
+
+  it("400s an unknown kind", async () => {
+    expect((await post("/projA/brainstorms", { name: "x-kind", kind: "vsdx" })).status).toBe(400)
+  })
+
+  it("409s an excalidraw name already taken by a canvas board (ids are one namespace)", async () => {
+    expect((await post("/projA/brainstorms", { name: "zeta", kind: "excalidraw" })).status).toBe(
+      409,
+    )
+  })
+})
+
+describe("GET /:id/brainstorms/:slug/excalidraw (document)", () => {
+  it("returns the native document untouched, unknown keys included", async () => {
+    const res = await app.request("/projA/brainstorms/sketch/excalidraw")
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(seededExcalidraw)
+  })
+
+  it("404s a canvas-kind slug — the excalidraw doc routes serve only .excalidraw files", async () => {
+    expect((await app.request("/projA/brainstorms/zeta/excalidraw")).status).toBe(404)
+  })
+
+  it("404s unknown slugs and traversal-shaped slugs", async () => {
+    expect((await app.request("/projA/brainstorms/ghost/excalidraw")).status).toBe(404)
+    expect((await app.request("/projA/brainstorms/..%2fsecrets/excalidraw")).status).toBe(404)
+  })
+})
+
+describe("POST /:id/brainstorms/:slug/excalidraw (publish)", () => {
+  it("persists the document byte-preserving (no foreign updatedAt stamping)", async () => {
+    const next = { ...seededExcalidraw, elements: [{ id: "el2", type: "ellipse" }] }
+    const res = await post("/projA/brainstorms/sketch/excalidraw", next)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(next)
+
+    const onDisk = JSON.parse(
+      await readFile(join(root, ".pid", "brainstorms", "sketch.excalidraw"), "utf8"),
+    )
+    expect(onDisk).toEqual(next)
+  })
+
+  it("400s a malformed document", async () => {
+    expect((await post("/projA/brainstorms/sketch/excalidraw", "null")).status).toBe(400)
+    expect((await post("/projA/brainstorms/sketch/excalidraw", { type: "x" })).status).toBe(400)
+  })
+
+  it("404s publishing to a nonexistent document", async () => {
+    expect((await post("/projA/brainstorms/ghost/excalidraw", seededExcalidraw)).status).toBe(404)
   })
 })
 
