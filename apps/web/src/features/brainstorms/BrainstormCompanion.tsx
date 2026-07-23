@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
-import { api } from "../../lib/api"
 import { stateColor, stateTitle } from "../../lib/format"
+import { PanelResizeHandle } from "../../lib/PanelResizeHandle"
 import { PANEL_DEFAULT_WIDTH, usePanelDrag, usePersistedWidth } from "../../lib/panelResize"
 import type { Project, SessionState } from "../../lib/types"
 import { dispatchSpawn } from "../dispatch/spawnDispatch"
+import { stopSession } from "../sessions/stopSession"
 import { useSessions } from "../sessions/useSessions"
 import { TerminalView } from "../terminal/TerminalView"
 import {
@@ -23,13 +24,6 @@ import type { Brainstorm } from "./brainstorms"
 type Props = {
   readonly project: Project
   readonly brainstorm: Brainstorm
-}
-
-const stopSession = async (short: string): Promise<boolean> => {
-  // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
-  const client = api as any
-  const res = await client.sessions[":id"].stop.$post({ param: { id: short } })
-  return Boolean(res.ok)
 }
 
 type ActionResult = {
@@ -305,23 +299,12 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
         dragging ? "select-none" : ""
       }`}
     >
-      <button
-        type="button"
-        data-testid="brainstorm-companion-resize"
-        aria-label="Resize AI companions panel"
-        title="Drag or use ←/→ to resize · double-click to reset"
-        onPointerDown={onResizeStart}
-        onDoubleClick={() => setWidth(PANEL_DEFAULT_WIDTH)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") {
-            e.preventDefault()
-            setWidth(width + 16)
-          } else if (e.key === "ArrowRight") {
-            e.preventDefault()
-            setWidth(width - 16)
-          }
-        }}
-        className="absolute -left-2 top-0 z-10 h-full w-2 cursor-col-resize touch-none rounded-full p-0 hover:bg-primary/40 focus-visible:bg-primary/40"
+      <PanelResizeHandle
+        testid="brainstorm-companion-resize"
+        ariaLabel="Resize AI companions panel"
+        onResizeStart={onResizeStart}
+        onReset={() => setWidth(PANEL_DEFAULT_WIDTH)}
+        onNudge={(delta) => setWidth(width + delta)}
       />
       <CompanionHeader status={status} />
 

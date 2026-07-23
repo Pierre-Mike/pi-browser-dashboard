@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
-import { type Brainstorm, brainstormsQueryKey } from "./brainstorms"
+import { type Brainstorm, type BrainstormKind, brainstormsQueryKey } from "./brainstorms"
 
 // Per-project list of brainstorm canvases discovered under
 // <project>/.pid/brainstorms/. Short staleTime so a document created by an
@@ -21,16 +21,19 @@ export const useBrainstorms = (projectId: string) =>
     staleTime: 5_000,
   })
 
-// Creates a new empty brainstorm canvas under <project>/.pid/brainstorms/.
-// Invalidates this project's list on success so the new board appears without
-// a manual refetch.
+// Creates a new empty brainstorm document (canvas or excalidraw) under
+// <project>/.pid/brainstorms/. Invalidates this project's list on success so
+// the new board appears without a manual refetch.
 export const useCreateBrainstorm = (projectId: string) => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (name: string): Promise<Brainstorm> => {
+    mutationFn: async (input: {
+      readonly name: string
+      readonly kind: BrainstormKind
+    }): Promise<Brainstorm> => {
       // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
       const client = api as any
-      const res = await client.projects[projectId].brainstorms.$post({ json: { name } })
+      const res = await client.projects[projectId].brainstorms.$post({ json: input })
       if (!res.ok) throw new Error(`brainstorms: HTTP ${res.status}`)
       return (await res.json()) as Brainstorm
     },

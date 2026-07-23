@@ -11,10 +11,9 @@ import {
   tabDockNavClass,
 } from "../../lib/tabDock"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
-import { BrainstormCompanion } from "../brainstorms/BrainstormCompanion"
+import { BrainstormBoardPanel } from "../brainstorms/BoardPanel"
 import { NewBrainstormButton } from "../brainstorms/NewBrainstormButton"
 import { useBrainstorms } from "../brainstorms/useBrainstorms"
-import { CanvasTab } from "../canvas/CanvasTab"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
@@ -494,6 +493,11 @@ export const ProjectDashboard = ({ project }: Props) => {
             projectId={project.id}
             onCreated={(id) => setTab(`brainstorm:${id}`)}
           />
+          <NewBrainstormButton
+            projectId={project.id}
+            kind="excalidraw"
+            onCreated={(id) => setTab(`brainstorm:${id}`)}
+          />
         </CollapsibleRail>
 
         {selectedBoard === null ? (
@@ -502,24 +506,9 @@ export const ProjectDashboard = ({ project }: Props) => {
             to open a drawing board with AI companions.
           </div>
         ) : (
-          // Keyed by board so the canvas sync + companion selection fully reset
-          // when switching boards.
-          <div key={selectedBoard.id} className="flex flex-1 min-h-0 gap-2">
-            <div
-              className="flex-1 min-h-0"
-              data-testid={`project-tab-panel-brainstorm-${selectedBoard.id}`}
-            >
-              <CanvasTab
-                target={{
-                  kind: "brainstorm",
-                  projectId: project.id,
-                  slug: selectedBoard.id,
-                  file: selectedBoard.file,
-                }}
-              />
-            </div>
-            <BrainstormCompanion project={project} brainstorm={selectedBoard} />
-          </div>
+          // Keyed by board so the document sync + companion selection fully
+          // reset when switching boards.
+          <BrainstormBoardPanel key={selectedBoard.id} project={project} board={selectedBoard} />
         )}
       </div>
 
