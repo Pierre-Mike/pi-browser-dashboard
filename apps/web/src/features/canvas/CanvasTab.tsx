@@ -20,7 +20,6 @@ import "@xyflow/react/dist/style.css"
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../../lib/api"
 import type { SessionState } from "../../lib/types"
-import { snapshotFromReactFlow } from "./canvas.types"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
 import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
 import {
@@ -28,7 +27,7 @@ import {
   groupSelected as groupSelectedNodes,
   ungroupNode,
 } from "./canvasGrouping"
-import { isPaneClassName, newBoxAt } from "./canvasInteractions"
+import { edgeSelectionCleanup, isPaneClassName, newBoxAt } from "./canvasInteractions"
 import {
   type ArrowDirection,
   colorFor,
@@ -45,6 +44,8 @@ import {
   toJsonCanvas,
   undo as undoHistory,
 } from "./canvasObsidian"
+import { reactFlowToSnapshot } from "./canvasSync"
+import { type EdgeLabelEditApi, EdgeLabelEditContext, LabeledEdge } from "./EdgeLabel"
 import { EditableBoxNode } from "./EditableBoxNode"
 import { EditableFileNode } from "./EditableFileNode"
 import { EditableGroupNode } from "./EditableGroupNode"
@@ -111,6 +112,12 @@ const nodeTypes = {
   file: EditableFileNode,
 }
 
+// Override React Flow's built-in default edge so every plain connection gets
+// the midpoint label chip + inline editor.
+const edgeTypes = {
+  default: LabeledEdge,
+}
+
 const GRID_STEP = 16
 
 const toGroupable = (n: Node): GroupableNode => ({
@@ -154,7 +161,6 @@ const decoratedEdge = (e: Edge): Edge => {
           }
         : undefined,
     style: stroke ? { ...(e.style ?? {}), stroke } : e.style,
-    labelStyle: stroke ? { fill: stroke } : undefined,
   }
 }
 
@@ -174,6 +180,7 @@ const CanvasInner = ({ target }: Props) => {
   const [briefStatus, setBriefStatus] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [edgeLabelDraft, setEdgeLabelDraft] = useState("")
+  const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null)
   const [readOnly, setReadOnly] = useState(false)
   const [snap, setSnap] = useState(false)
   const [search, setSearch] = useState("")
@@ -260,16 +267,11 @@ const CanvasInner = ({ target }: Props) => {
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       setEdges((prev) => applyEdgeChanges(changes, prev))
-      for (const c of changes) {
-        if (c.type === "select" && !c.selected && c.id === selectedEdgeId) {
-          setSelectedEdgeId(null)
-        }
-        if (c.type === "remove" && c.id === selectedEdgeId) {
-          setSelectedEdgeId(null)
-        }
-      }
+      const cleanup = edgeSelectionCleanup({ changes, selectedEdgeId, editingEdgeId })
+      if (cleanup.clearSelected) setSelectedEdgeId(null)
+      if (cleanup.clearEditing) setEditingEdgeId(null)
     },
-    [setEdges, selectedEdgeId],
+    [setEdges, selectedEdgeId, editingEdgeId],
   )
 
   const onConnect = useCallback(
@@ -293,13 +295,42 @@ const CanvasInner = ({ target }: Props) => {
     setEdgeLabelDraft(typeof edge.label === "string" ? edge.label : "")
   }, [])
 
+  // Shared by the toolbar input and the inline midpoint editor: write the
+  // label into edge state, close the inline editor, and keep the toolbar
+  // draft in step when the same edge is selected there.
+  const commitLabelFor = useCallback(
+    (id: string, label: string) => {
+      setEdges((prev) => prev.map((e) => (e.id === id ? { ...e, label: label || undefined } : e)))
+      setEditingEdgeId(null)
+      if (id === selectedEdgeId) setEdgeLabelDraft(label)
+    },
+    [setEdges, selectedEdgeId],
+  )
+
   const commitEdgeLabel = useCallback(() => {
     if (!selectedEdgeId) return
-    const next = edgeLabelDraft
-    setEdges((prev) =>
-      prev.map((e) => (e.id === selectedEdgeId ? { ...e, label: next || undefined } : e)),
-    )
-  }, [selectedEdgeId, edgeLabelDraft, setEdges])
+    commitLabelFor(selectedEdgeId, edgeLabelDraft)
+  }, [selectedEdgeId, edgeLabelDraft, commitLabelFor])
+
+  const selectEdgeById = useCallback(
+    (id: string) => {
+      setSelectedEdgeId(id)
+      const edge = edges.find((e) => e.id === id)
+      setEdgeLabelDraft(edge && typeof edge.label === "string" ? edge.label : "")
+    },
+    [edges],
+  )
+
+  const edgeLabelEditApi = useMemo<EdgeLabelEditApi>(
+    () => ({
+      editingEdgeId,
+      startEditing: setEditingEdgeId,
+      commitLabel: commitLabelFor,
+      cancelEditing: () => setEditingEdgeId(null),
+      selectEdge: selectEdgeById,
+    }),
+    [editingEdgeId, commitLabelFor, selectEdgeById],
+  )
 
   // --- Add primitives --------------------------------------------------------
 
@@ -609,30 +640,7 @@ const CanvasInner = ({ target }: Props) => {
   // --- Export / import .canvas ----------------------------------------------
 
   const onExport = useCallback(() => {
-    const snap = snapshotFromReactFlow({
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        position: n.position,
-        type: n.type,
-        data: n.data as Record<string, unknown> | undefined,
-        width: n.width ?? n.measured?.width ?? null,
-        height: n.height ?? n.measured?.height ?? null,
-        parentId: n.parentId ?? null,
-        extent: n.extent,
-        style: (n.style ?? null) as Record<string, unknown> | null,
-      })),
-      edges: edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type,
-        label: typeof e.label === "string" ? e.label : undefined,
-        animated: e.animated,
-        sourceHandle: e.sourceHandle ?? null,
-        targetHandle: e.targetHandle ?? null,
-        data: (e.data ?? undefined) as Record<string, unknown> | undefined,
-      })),
-    })
+    const snap = reactFlowToSnapshot({ nodes, edges })
     const jc = toJsonCanvas(snap)
     const blob = new Blob([serializeJsonCanvas(jc)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
@@ -1093,36 +1101,40 @@ const CanvasInner = ({ target }: Props) => {
         onDrop={onDrop}
         onDragOver={onDragOver}
       >
-        <ReactFlow
-          nodes={renderableNodes}
-          edges={renderableEdges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={readOnly ? undefined : onConnect}
-          onEdgeClick={onEdgeClick}
-          onPaneClick={() => setSelectedEdgeId(null)}
-          onDoubleClick={onPaneDoubleClick}
-          onEdgeDoubleClick={(_, edge) => {
-            setSelectedEdgeId(edge.id)
-            setEdgeLabelDraft(typeof edge.label === "string" ? edge.label : "")
-          }}
-          deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
-          multiSelectionKeyCode={["Shift", "Meta", "Control"]}
-          zoomOnDoubleClick={false}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          proOptions={{ hideAttribution: true }}
-          snapToGrid={snap}
-          snapGrid={[GRID_STEP, GRID_STEP]}
-          nodesDraggable={!readOnly}
-          nodesConnectable={!readOnly}
-          edgesFocusable={!readOnly}
-        >
-          <Background gap={16} />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable />
-        </ReactFlow>
+        <EdgeLabelEditContext.Provider value={edgeLabelEditApi}>
+          <ReactFlow
+            nodes={renderableNodes}
+            edges={renderableEdges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={readOnly ? undefined : onConnect}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={() => setSelectedEdgeId(null)}
+            onDoubleClick={onPaneDoubleClick}
+            onEdgeDoubleClick={(_, edge) => {
+              setSelectedEdgeId(edge.id)
+              setEdgeLabelDraft(typeof edge.label === "string" ? edge.label : "")
+              if (!readOnly) setEditingEdgeId(edge.id)
+            }}
+            deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+            multiSelectionKeyCode={["Shift", "Meta", "Control"]}
+            zoomOnDoubleClick={false}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            proOptions={{ hideAttribution: true }}
+            snapToGrid={snap}
+            snapGrid={[GRID_STEP, GRID_STEP]}
+            nodesDraggable={!readOnly}
+            nodesConnectable={!readOnly}
+            edgesFocusable={!readOnly}
+          >
+            <Background gap={16} />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable />
+          </ReactFlow>
+        </EdgeLabelEditContext.Provider>
       </div>
     </div>
   )

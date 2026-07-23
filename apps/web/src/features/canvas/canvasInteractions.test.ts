@@ -3,6 +3,7 @@ import {
   BOX_DEFAULT_HEIGHT,
   BOX_DEFAULT_WIDTH,
   defaultLinkUrl,
+  edgeSelectionCleanup,
   isPaneClassName,
   newBoxAt,
   pickedFileRef,
@@ -90,5 +91,48 @@ describe("pickedFileRef", () => {
     expect(pickedFileRef([])).toBeNull()
     expect(pickedFileRef(null)).toBeNull()
     expect(pickedFileRef(undefined)).toBeNull()
+  })
+})
+
+describe("edgeSelectionCleanup", () => {
+  it("clears selection when the selected edge is deselected or removed", () => {
+    expect(
+      edgeSelectionCleanup({
+        changes: [{ type: "select", id: "e1", selected: false }],
+        selectedEdgeId: "e1",
+        editingEdgeId: null,
+      }),
+    ).toEqual({ clearSelected: true, clearEditing: false })
+    expect(
+      edgeSelectionCleanup({
+        changes: [{ type: "remove", id: "e1" }],
+        selectedEdgeId: "e1",
+        editingEdgeId: null,
+      }),
+    ).toEqual({ clearSelected: true, clearEditing: false })
+  })
+
+  it("closes the inline editor when the edited edge is removed", () => {
+    expect(
+      edgeSelectionCleanup({
+        changes: [{ type: "remove", id: "e2" }],
+        selectedEdgeId: null,
+        editingEdgeId: "e2",
+      }),
+    ).toEqual({ clearSelected: false, clearEditing: true })
+  })
+
+  it("leaves unrelated edges alone", () => {
+    expect(
+      edgeSelectionCleanup({
+        changes: [
+          { type: "select", id: "other", selected: false },
+          { type: "remove", id: "another" },
+          { type: "select", id: "e1", selected: true },
+        ],
+        selectedEdgeId: "e1",
+        editingEdgeId: "e1",
+      }),
+    ).toEqual({ clearSelected: false, clearEditing: false })
   })
 })

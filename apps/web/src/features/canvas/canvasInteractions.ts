@@ -72,6 +72,33 @@ export const defaultLinkUrl = (origin: string): string => {
 export const shouldOpenLink = (e: { metaKey?: boolean; ctrlKey?: boolean }): boolean =>
   Boolean(e.metaKey || e.ctrlKey)
 
+// The subset of a React Flow EdgeChange we care about for cleanup decisions.
+export type EdgeChangeLike = {
+  readonly type: string
+  readonly id?: string
+  readonly selected?: boolean
+}
+
+const changeClearsEdge = (c: EdgeChangeLike, id: string | null): boolean =>
+  id !== null && c.id === id && (c.type === "remove" || (c.type === "select" && !c.selected))
+
+/**
+ * After React Flow applies a batch of edge changes, decide which of our two
+ * pieces of edge UI state must be dropped: the toolbar selection follows
+ * deselect + remove; the inline label editor only closes on remove (a
+ * deselect mid-edit would otherwise abandon the user's typing).
+ */
+export const edgeSelectionCleanup = (args: {
+  readonly changes: ReadonlyArray<EdgeChangeLike>
+  readonly selectedEdgeId: string | null
+  readonly editingEdgeId: string | null
+}): { clearSelected: boolean; clearEditing: boolean } => ({
+  clearSelected: args.changes.some((c) => changeClearsEdge(c, args.selectedEdgeId)),
+  clearEditing: args.changes.some(
+    (c) => c.type === "remove" && args.editingEdgeId !== null && c.id === args.editingEdgeId,
+  ),
+})
+
 /**
  * Pull the reference to store from a native file picker's FileList. We keep
  * just the file name (the browser can't expose a full path), matching how
