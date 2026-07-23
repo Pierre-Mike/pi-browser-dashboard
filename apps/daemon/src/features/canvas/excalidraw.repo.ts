@@ -1,4 +1,4 @@
-import { type DocCodec, type DocRoom, makeDocRooms } from "./docRoom.repo"
+import { type DocCodec, makeDocRooms } from "./docRoom.repo"
 import {
   type ExcalidrawDoc,
   emptyExcalidrawDoc,
@@ -21,8 +21,6 @@ const excalidrawCodec: DocCodec<ExcalidrawDoc> = {
 }
 
 const rooms = makeDocRooms(excalidrawCodec)
-
-export type ExcalidrawRoom = DocRoom<ExcalidrawDoc>
 
 export const getExcalidrawRoomAt = rooms.getRoomAt
 

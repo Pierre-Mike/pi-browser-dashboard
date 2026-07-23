@@ -6,7 +6,7 @@ import {
   parseCanvas,
   serializeCanvas,
 } from "./canvas.core"
-import { type DocCodec, type DocRoom, type DocSubscriber, makeDocRooms } from "./docRoom.repo"
+import { type DocCodec, type DocRoom, makeDocRooms } from "./docRoom.repo"
 
 // Per-document rooms for the React-Flow canvas — the room mechanics live in
 // the codec-generic docRoom.repo factory (shared with the Excalidraw board);
@@ -25,8 +25,6 @@ const canvasCodec: DocCodec<CanvasSnapshot> = {
 // is a session canvas (~/.claude/jobs/<short>/canvas.json) or a project
 // brainstorm (<project>/.pid/brainstorms/<id>.canvas.json).
 const rooms = makeDocRooms(canvasCodec)
-
-export type CanvasSubscriber = DocSubscriber<CanvasSnapshot>
 
 export type CanvasRoom = DocRoom<CanvasSnapshot>
 

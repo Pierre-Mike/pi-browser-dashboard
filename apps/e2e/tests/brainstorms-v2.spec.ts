@@ -100,41 +100,30 @@ test("daemon excalidraw routes: kind-aware create/list and byte-preserving docum
   request,
 }) => {
   seedExcalidrawBoard()
-  const daemonUrl = `http://localhost:${DAEMON_PORT}`
+  const base = `http://localhost:${DAEMON_PORT}/projects/excalidraw-demo/brainstorms`
 
-  const list = await request.get(`${daemonUrl}/projects/excalidraw-demo/brainstorms`)
-  expect(list.ok()).toBeTruthy()
-  const body = (await list.json()) as Array<{ id: string; kind: string }>
+  const body = (await (await request.get(base)).json()) as Array<{ id: string; kind: string }>
   expect(body).toContainEqual(expect.objectContaining({ id: "seeded-sketch", kind: "excalidraw" }))
 
-  const created = await request.post(`${daemonUrl}/projects/excalidraw-demo/brainstorms`, {
+  const created = await request.post(base, {
     data: { name: "api-made-sketch", kind: "excalidraw" },
   })
   expect(created.status()).toBe(201)
   expect(((await created.json()) as { kind: string }).kind).toBe("excalidraw")
 
-  const badKind = await request.post(`${daemonUrl}/projects/excalidraw-demo/brainstorms`, {
-    data: { name: "bad-kind", kind: "vsdx" },
-  })
+  const badKind = await request.post(base, { data: { name: "bad-kind", kind: "vsdx" } })
   expect(badKind.status()).toBe(400)
 
   // Document round-trip preserves unknown Excalidraw keys byte-for-byte.
-  const doc = await request.get(
-    `${daemonUrl}/projects/excalidraw-demo/brainstorms/seeded-sketch/excalidraw`,
-  )
+  const doc = await request.get(`${base}/seeded-sketch/excalidraw`)
   expect(doc.ok()).toBeTruthy()
   expect(await doc.json()).toEqual(seededDoc)
 
   const next = { ...seededDoc, elements: [...seededDoc.elements, { id: "el2", type: "ellipse" }] }
-  const published = await request.post(
-    `${daemonUrl}/projects/excalidraw-demo/brainstorms/seeded-sketch/excalidraw`,
-    { data: next },
-  )
+  const published = await request.post(`${base}/seeded-sketch/excalidraw`, { data: next })
   expect(published.ok()).toBeTruthy()
   expect(await published.json()).toEqual(next)
 
-  const traversal = await request.get(
-    `${daemonUrl}/projects/excalidraw-demo/brainstorms/..%2fsecrets/excalidraw`,
-  )
+  const traversal = await request.get(`${base}/..%2fsecrets/excalidraw`)
   expect([400, 404]).toContain(traversal.status())
 })

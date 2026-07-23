@@ -13,6 +13,11 @@ import {
 const DEBOUNCE_MS = 200
 const RECONNECT_MS = 1_500
 
+const clearTimer = (ref: { current: ReturnType<typeof setTimeout> | null }): void => {
+  if (ref.current) clearTimeout(ref.current)
+  ref.current = null
+}
+
 export type ExcalidrawSyncStatus = "connecting" | "open" | "closed" | "error"
 
 export type RemoteExcalidrawDoc = {
@@ -52,26 +57,42 @@ export const useExcalidrawSync = (ref: {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const flushUpstream = useCallback(() => {
+  // The open socket + pending elements pair, or null while there is nothing
+  // to flush (socket down or no local edit since the last flush).
+  const openWire = useCallback((): { ws: WebSocket; pending: readonly unknown[] } | null => {
     const ws = wsRef.current
     const pending = pendingElementsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN || pending === null) return
-    const doc = docFromElements(baseRef.current, pending)
+    return ws !== null && ws.readyState === WebSocket.OPEN && pending !== null
+      ? { ws, pending }
+      : null
+  }, [])
+
+  // Record the document as the wire state; false when its elements already
+  // crossed the wire (nothing to send / nothing to re-apply).
+  const markWireDoc = useCallback((doc: ExcalidrawDocument): boolean => {
     const key = docStableKey(doc)
-    if (key === lastWireKeyRef.current) return
+    if (key === lastWireKeyRef.current) return false
     lastWireKeyRef.current = key
+    return true
+  }, [])
+
+  const flushUpstream = useCallback(() => {
+    const wire = openWire()
+    if (wire === null) return
+    const doc = docFromElements(baseRef.current, wire.pending)
+    if (!markWireDoc(doc)) return
     baseRef.current = doc
     try {
-      ws.send(JSON.stringify({ kind: "snapshot", snapshot: doc }))
+      wire.ws.send(JSON.stringify({ kind: "snapshot", snapshot: doc }))
     } catch {
       // ws closed mid-send; the reconnect cycle will re-prime state.
     }
-  }, [])
+  }, [openWire, markWireDoc])
 
   const sendElements = useCallback(
     (elements: readonly unknown[]) => {
       pendingElementsRef.current = elements
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      clearTimer(debounceTimerRef)
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null
         flushUpstream()
@@ -80,18 +101,34 @@ export const useExcalidrawSync = (ref: {
     [flushUpstream],
   )
 
-  const applyServerDoc = useCallback((doc: ExcalidrawDocument, origin: string) => {
-    baseRef.current = doc
-    const key = docStableKey(doc)
-    if (origin === "self" || key === lastWireKeyRef.current) {
-      // Our own publish echoing back (or a reconnect re-prime of known state):
+  const applyServerDoc = useCallback(
+    (doc: ExcalidrawDocument, origin: string) => {
+      baseRef.current = doc
+      // Our own publish echoing back, or a reconnect re-prime of known state:
       // remember it, don't disturb the scene mid-draw.
-      lastWireKeyRef.current = key
-      return
-    }
-    lastWireKeyRef.current = key
-    setRemote((prev) => ({ doc, seq: (prev?.seq ?? 0) + 1 }))
-  }, [])
+      if (origin === "self") {
+        lastWireKeyRef.current = docStableKey(doc)
+        return
+      }
+      if (!markWireDoc(doc)) return
+      setRemote((prev) => ({ doc, seq: (prev?.seq ?? 0) + 1 }))
+    },
+    [markWireDoc],
+  )
+
+  const onSocketMessage = useCallback(
+    (data: unknown) => {
+      if (typeof data !== "string") return
+      const frame = parseExcalidrawServerFrame(data)
+      if (frame === null) return
+      if (frame.kind === "error") {
+        console.error("[excalidraw] server frame error:", frame.message)
+        return
+      }
+      applyServerDoc(frame.snapshot, frame.origin)
+    },
+    [applyServerDoc],
+  )
 
   // Key reconnection on the resolved ws path, not the ref's object identity —
   // callers may rebuild the ref object every render.
@@ -109,29 +146,20 @@ export const useExcalidrawSync = (ref: {
       wsRef.current = null
       // Polite reconnect — the user might be mid-stroke when the daemon
       // restarts; without this they'd be stuck on a stale board.
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      clearTimer(reconnectTimerRef)
       reconnectTimerRef.current = setTimeout(connect, RECONNECT_MS)
     }
-    ws.onmessage = (evt) => {
-      if (typeof evt.data !== "string") return
-      const frame = parseExcalidrawServerFrame(evt.data)
-      if (frame === null) return
-      if (frame.kind === "error") {
-        console.error("[excalidraw] server frame error:", frame.message)
-        return
-      }
-      applyServerDoc(frame.snapshot, frame.origin)
-    }
-  }, [wsPath, applyServerDoc])
+    ws.onmessage = (evt) => onSocketMessage(evt.data)
+  }, [wsPath, onSocketMessage])
 
   useEffect(() => {
     connect()
     return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      clearTimer(debounceTimerRef)
+      clearTimer(reconnectTimerRef)
       const ws = wsRef.current
       wsRef.current = null
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+      if (ws !== null && ws.readyState === WebSocket.OPEN) ws.close()
     }
     // Reconnect only when the document changes — `connect` carries its own
     // identity via the wsPath closure.

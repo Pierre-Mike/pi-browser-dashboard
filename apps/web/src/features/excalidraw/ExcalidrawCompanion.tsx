@@ -75,6 +75,61 @@ const EmptyState = () => (
   </div>
 )
 
+// The one live session attached to this board, recovered purely from the
+// sessions list via the [excalidraw:<slug>] intent marker.
+const findBoardSession = (input: {
+  readonly sessions: readonly SessionState[]
+  readonly projectPath: string
+  readonly slug: string
+}): SessionState | null =>
+  input.sessions.find(
+    (s) =>
+      s.cwd === input.projectPath &&
+      isExcalidrawCompanionIntent(s.intent, input.slug) &&
+      isLiveExcalidrawCompanion(s),
+  ) ?? null
+
+const HeaderRow = ({
+  session,
+  busy,
+  onStart,
+  onStop,
+}: {
+  readonly session: SessionState | null
+  readonly busy: boolean
+  readonly onStart: () => void
+  readonly onStop: (short: string) => void
+}) => (
+  <div className="flex items-center gap-2">
+    <span className="text-xs font-semibold text-base-content/80">AI session</span>
+    {session === null ? (
+      <StartButton busy={busy} onStart={onStart} />
+    ) : (
+      <SessionChip session={session} onStop={() => onStop(session.short)} />
+    )}
+  </div>
+)
+
+const ErrorLine = ({ error }: { readonly error: string | null }) =>
+  error === null ? null : (
+    <span data-testid="excalidraw-session-error" className="text-[10px] text-error">
+      {error}
+    </span>
+  )
+
+const CompanionBody = ({ session }: { readonly session: SessionState | null }) =>
+  session === null ? (
+    <EmptyState />
+  ) : (
+    <TerminalView
+      key={session.short}
+      kind="session"
+      id={session.short}
+      reconnectTitle="Reconnect to this session's terminal"
+      testId="excalidraw-companion-terminal"
+    />
+  )
+
 /**
  * The V2 companion panel: no role buttons, no missions — one plain session
  * whose entire context is "we are working on this Excalidraw file right now",
@@ -84,13 +139,11 @@ const EmptyState = () => (
 export const ExcalidrawCompanion = ({ project, brainstorm }: Props) => {
   const qc = useQueryClient()
   const sessionsQ = useSessions()
-  const session =
-    (sessionsQ.data ?? []).find(
-      (s) =>
-        s.cwd === project.path &&
-        isExcalidrawCompanionIntent(s.intent, brainstorm.id) &&
-        isLiveExcalidrawCompanion(s),
-    ) ?? null
+  const session = findBoardSession({
+    sessions: sessionsQ.data ?? [],
+    projectPath: project.path,
+    slug: brainstorm.id,
+  })
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -133,31 +186,10 @@ export const ExcalidrawCompanion = ({ project, brainstorm }: Props) => {
         onReset={() => setWidth(PANEL_DEFAULT_WIDTH)}
         onNudge={(delta) => setWidth(width + delta)}
       />
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold text-base-content/80">AI session</span>
-        {session === null ? (
-          <StartButton busy={busy} onStart={start} />
-        ) : (
-          <SessionChip session={session} onStop={() => stop(session.short)} />
-        )}
-      </div>
-      {error === null ? null : (
-        <span data-testid="excalidraw-session-error" className="text-[10px] text-error">
-          {error}
-        </span>
-      )}
+      <HeaderRow session={session} busy={busy} onStart={start} onStop={stop} />
+      <ErrorLine error={error} />
       <div className="flex-1 min-h-0">
-        {session === null ? (
-          <EmptyState />
-        ) : (
-          <TerminalView
-            key={session.short}
-            kind="session"
-            id={session.short}
-            reconnectTitle="Reconnect to this session's terminal"
-            testId="excalidraw-companion-terminal"
-          />
-        )}
+        <CompanionBody session={session} />
       </div>
     </aside>
   )
