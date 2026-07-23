@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import type { CanvasSnapshot } from "./canvas.types"
-import { canvasShouldSend, canvasStableKey } from "./canvasSync"
+import {
+  canvasShouldSend,
+  canvasStableKey,
+  reactFlowToSnapshot,
+  snapshotToReactFlow,
+} from "./canvasSync"
 
 const snap = (overrides: Partial<CanvasSnapshot> = {}): CanvasSnapshot => ({
   version: 1,
@@ -37,6 +42,53 @@ describe("canvasShouldSend", () => {
     const a = snap({ edges: [] })
     const b = snap({ edges: [{ id: "e1", source: "x", target: "y" }] })
     expect(canvasShouldSend(b, a)).toBe(true)
+  })
+})
+
+describe("edge attribute round-trip", () => {
+  // The toolbar writes arrow direction and color into edge `data`; the
+  // inline editor writes `label`. All three must survive both directions of
+  // the wire mapping or the user's choices silently vanish on the next sync.
+  const wireEdge = {
+    id: "e1",
+    source: "a",
+    target: "b",
+    label: "depends on",
+    sourceHandle: "right",
+    targetHandle: "left",
+    data: { arrow: "both", color: "4" },
+  } as const
+
+  it("keeps label and data from wire to react-flow", () => {
+    const { edges } = snapshotToReactFlow(snap({ edges: [wireEdge] }))
+    expect(edges[0]?.label).toBe("depends on")
+    expect(edges[0]?.data).toEqual({ arrow: "both", color: "4" })
+  })
+
+  it("keeps label and data from react-flow back to wire", () => {
+    const { edges } = snapshotToReactFlow(snap({ edges: [wireEdge] }))
+    const back = reactFlowToSnapshot({ nodes: [], edges })
+    expect(back.edges[0]?.label).toBe("depends on")
+    expect(back.edges[0]?.data).toEqual({ arrow: "both", color: "4" })
+  })
+
+  it("keeps node geometry and data through a full round-trip", () => {
+    const wire = snap({
+      nodes: [
+        {
+          id: "n1",
+          position: { x: 10, y: 20 },
+          type: "box",
+          data: { label: "Web app", color: "2" },
+          style: { width: 160, height: 60 },
+        },
+      ],
+    })
+    const rf = snapshotToReactFlow(wire)
+    const back = reactFlowToSnapshot({ nodes: rf.nodes, edges: [] })
+    expect(back.nodes[0]?.position).toEqual({ x: 10, y: 20 })
+    expect(back.nodes[0]?.data).toEqual({ label: "Web app", color: "2" })
+    expect(back.nodes[0]?.style).toEqual({ width: 160, height: 60 })
   })
 })
 

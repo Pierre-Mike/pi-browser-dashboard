@@ -1,8 +1,13 @@
 import type { Edge, Node } from "@xyflow/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
-import { type CanvasSnapshot, emptyCanvas, snapshotFromReactFlow } from "./canvas.types"
-import { canvasShouldSend, canvasStableKey } from "./canvasSync"
+import { type CanvasSnapshot, emptyCanvas } from "./canvas.types"
+import {
+  canvasShouldSend,
+  canvasStableKey,
+  reactFlowToSnapshot,
+  snapshotToReactFlow,
+} from "./canvasSync"
 import { type CanvasDocRef, canvasWsPath, canvasWsUrlFromPath } from "./canvasUrl"
 
 const DEBOUNCE_MS = 200
@@ -17,30 +22,6 @@ type ServerFrame =
       readonly origin: "self" | "remote"
     }
   | { readonly kind: "error"; readonly message: string }
-
-const snapshotToReactFlow = (snap: CanvasSnapshot): { nodes: Node[]; edges: Edge[] } => ({
-  nodes: snap.nodes.map((n) => {
-    const node: Node = {
-      id: n.id,
-      position: { x: n.position.x, y: n.position.y },
-      data: (n.data ?? { label: n.id }) as Record<string, unknown>,
-    }
-    if (n.type !== undefined) node.type = n.type
-    if (n.parentId !== undefined) node.parentId = n.parentId
-    if (n.extent !== undefined) node.extent = n.extent
-    if (n.style !== undefined) node.style = n.style as Record<string, string | number>
-    return node
-  }),
-  edges: snap.edges.map((e) => {
-    const edge: Edge = { id: e.id, source: e.source, target: e.target }
-    if (e.type !== undefined) edge.type = e.type
-    if (e.label !== undefined) edge.label = e.label
-    if (e.animated !== undefined) edge.animated = e.animated
-    if (e.sourceHandle !== undefined) edge.sourceHandle = e.sourceHandle
-    if (e.targetHandle !== undefined) edge.targetHandle = e.targetHandle
-    return edge
-  }),
-})
 
 export type CanvasSyncApi = {
   readonly nodes: Node[]
@@ -75,29 +56,7 @@ export const useCanvasSync = (docRef: CanvasDocRef): CanvasSyncApi => {
   const flushUpstream = useCallback(() => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-    const snap = snapshotFromReactFlow({
-      nodes: nodesRef.current.map((n) => ({
-        id: n.id,
-        position: n.position,
-        type: n.type,
-        data: n.data as Record<string, unknown> | undefined,
-        width: n.width ?? n.measured?.width ?? null,
-        height: n.height ?? n.measured?.height ?? null,
-        parentId: n.parentId ?? null,
-        extent: n.extent,
-        style: (n.style ?? null) as Record<string, unknown> | null,
-      })),
-      edges: edgesRef.current.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.type,
-        label: typeof e.label === "string" ? e.label : undefined,
-        animated: e.animated,
-        sourceHandle: e.sourceHandle ?? null,
-        targetHandle: e.targetHandle ?? null,
-      })),
-    })
+    const snap = reactFlowToSnapshot({ nodes: nodesRef.current, edges: edgesRef.current })
     if (!canvasShouldSend(snap, lastWireRef.current)) return
     lastWireRef.current = snap
     try {
