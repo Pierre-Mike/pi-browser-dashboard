@@ -30,7 +30,7 @@ export const SessionCard = ({ session }: Props) => {
         data-testid="session-card"
         data-short={session.short}
         data-state={session.state}
-        className={`rounded-lg border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
+        className={`group rounded-lg border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
       >
         <button
           type="button"
@@ -61,8 +61,17 @@ export const SessionCard = ({ session }: Props) => {
             </span>
           </div>
 
-          <div className="text-sm text-base-content/80 truncate" title={session.detail}>
-            {session.detail || <span className="text-base-content/60">—</span>}
+          {/* Detail + cwd/age used to be two stacked lines; one row reads just
+              as well and halves the height this cluster costs per card. */}
+          <div data-testid="session-card-meta" className="flex items-center gap-2 text-sm">
+            <span className="truncate flex-1 text-base-content/80" title={session.detail}>
+              {session.detail || <span className="text-base-content/60">—</span>}
+            </span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-base-content/60">
+              <span title={session.cwd}>{cwdTail(session.cwd)}</span>
+              <span className="mx-1">·</span>
+              <span title={session.updatedAt}>{ageStr(session.updatedAt)}</span>
+            </span>
           </div>
 
           {resultPreview ? (
@@ -70,12 +79,6 @@ export const SessionCard = ({ session }: Props) => {
               {resultPreview}
             </div>
           ) : null}
-
-          <div className="text-xs text-base-content/60 truncate">
-            <span title={session.cwd}>{cwdTail(session.cwd)}</span>
-            <span className="mx-1">·</span>
-            <span title={session.updatedAt}>{ageStr(session.updatedAt)}</span>
-          </div>
         </button>
 
         <SessionCardActions session={session} />

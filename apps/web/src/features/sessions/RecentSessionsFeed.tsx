@@ -27,10 +27,12 @@ export const RecentSessionsFeed = ({
   }
 
   return (
-    <div className="flex flex-col gap-3" data-testid="recent-sessions-feed">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-base-content/60">
-        <span className="inline-block w-2 h-2 rounded-full bg-success animate-pulse" aria-hidden />
-        <span>Live · {items.length} most recent</span>
+    <div className="flex flex-col gap-2" data-testid="recent-sessions-feed">
+      {/* A dedicated row here used to pair this caption with its own pulsing
+          dot — redundant with the state colour every SessionCard already
+          carries. A compact inline label keeps the text without the row. */}
+      <div className="text-[10px] uppercase tracking-wide text-base-content/50">
+        Live · {items.length} most recent
       </div>
       <div className="flex flex-col gap-2">
         {items.map(({ session, projectName }) => (

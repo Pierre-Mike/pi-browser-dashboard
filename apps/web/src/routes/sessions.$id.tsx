@@ -182,26 +182,32 @@ function SessionDrillIn() {
     <div className="flex flex-col h-screen -my-4">
       <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-base-100">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold truncate" title={session?.name ?? id}>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1
+              className="min-w-0 shrink truncate text-base font-semibold"
+              title={session?.name ?? id}
+            >
               {session?.name ?? id}
             </h1>
             {session && tone ? (
               <span
-                className={`badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
+                className={`shrink-0 badge badge-sm uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
               >
                 {tone.label}
               </span>
             ) : null}
-          </div>
-          {session ? (
-            <div className="text-[11px] text-base-content/50 flex flex-wrap gap-x-2 mt-0.5">
-              <span className="font-mono">{session.short}</span>
-              <span title={session.cwd} className="truncate">
-                {session.cwd}
+            {/* Short id + cwd used to sit on their own row underneath; folded
+                in here as a muted suffix, they cost no extra height. The full
+                path stays reachable via the same hover title as before. */}
+            {session ? (
+              <span
+                className="min-w-0 shrink truncate text-[11px] font-mono text-base-content/50"
+                title={session.cwd}
+              >
+                {session.short} · {session.cwd}
               </span>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <button type="button" onClick={onCopy} className="btn btn-xs btn-ghost normal-case">

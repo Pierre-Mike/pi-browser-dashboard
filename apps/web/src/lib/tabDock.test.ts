@@ -53,6 +53,15 @@ describe("shared tab dock", () => {
     expect(EXT_ICON).toBe(TAB_ICONS.extensions)
   })
 
+  it("tightens the dock bar and tab button padding for a denser, single-line topbar", () => {
+    // Regression: the project dashboard used to spend two stacked rows on the
+    // header + dock; this shaves vertical padding so both fit one line.
+    expect(tabDockNavClass).toContain("py-1")
+    expect(tabDockNavClass).not.toContain("py-1.5")
+    expect(tabButtonClass(false)).toContain("px-2.5 py-1")
+    expect(tabButtonClass(false)).not.toContain("py-1.5")
+  })
+
   it("stacks the sub-tab rail as a fixed-width, scrollable column tinted like the dock", () => {
     expect(subTabRailClass).toContain("flex-col")
     expect(subTabRailClass).toContain("w-48")

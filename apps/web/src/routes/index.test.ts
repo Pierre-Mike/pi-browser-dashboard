@@ -52,3 +52,10 @@ describe("root dashboard navigation polish (shared daisyUI dock)", () => {
     expect(usages.length).toBe(2)
   })
 })
+
+describe("root dashboard density", () => {
+  it("tightens the vertical rhythm between the tab dock and the active panel", () => {
+    expect(src).toMatch(/flex flex-col gap-2 \$\{fillViewport/)
+    expect(src).not.toMatch(/flex flex-col gap-4 \$\{fillViewport/)
+  })
+})

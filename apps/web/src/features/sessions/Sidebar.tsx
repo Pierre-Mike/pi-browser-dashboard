@@ -1,6 +1,6 @@
 import { Link, useLocation, useParams } from "@tanstack/react-router"
 import { useState } from "react"
-import { usePersistedFlag } from "../../lib/collapse"
+import { type UsePersistedFlag, usePersistedFlag } from "../../lib/collapse"
 import type { Project } from "../../lib/types"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { NotifyToggle } from "../notifications/NotifyToggle"
@@ -19,7 +19,17 @@ import { useCollapsedBuckets } from "./useCollapsedBuckets"
 import { usePinnedProjects } from "./usePinnedProjects"
 import { useSessions } from "./useSessions"
 
-export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = {}) => {
+type SidebarProps = {
+  readonly variant?: SidebarVariant
+  // Whole-rail collapse flag, shared with RootLayout's floating reopen button.
+  // Two separate usePersistedFlag instances in the same tab don't sync with
+  // each other (the hook only listens for cross-tab storage events), so the
+  // desktop call site must pass its own instance down. Optional so the
+  // drawer variant (which never reads it) and standalone renders keep working.
+  readonly rail?: UsePersistedFlag
+}
+
+export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps = {}) => {
   const sessionsQ = useSessions()
   const projectsQ = useProjects()
   const params = useParams({ strict: false }) as { id?: string }
@@ -32,9 +42,12 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
   const [sessionMenu, setSessionMenu] = useState<SessionMenu | null>(null)
   const { pinnedIds, togglePin, reorderPin } = usePinnedProjects()
   const { isCollapsed, toggleCollapsed } = useCollapsedBuckets()
-  // Whole-rail collapse (distinct from the per-bucket collapse above): shrinks
-  // the desktop sidebar to a slim strip so the main content gets the width.
-  const rail = usePersistedFlag("pid:sidebar:rail-collapsed")
+  // Whole-rail collapse (distinct from the per-bucket collapse above): hides
+  // the desktop sidebar entirely so <main> gets the full width. This fallback
+  // instance only ever backs the drawer variant, which never reads
+  // `rail.value` — the desktop call site always passes its own via `railProp`.
+  const ownRail = usePersistedFlag("pid:sidebar:rail-collapsed")
+  const rail = railProp ?? ownRail
   // Per-bucket visible-session cap; ephemeral on purpose — a fresh load
   // snaps every project back to the latest SESSION_PAGE_SIZE sessions.
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({})
@@ -61,28 +74,12 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
     },
   }
 
-  // Collapsed (desktop only): a slim rail whose sole control re-opens it. Sits
-  // ahead of the loading branch so the rail stays narrow even while data loads.
+  // Collapsed (desktop only): render nothing at all — RootLayout shows a
+  // small floating reopen button instead (see sidebarRailOpenBtnClass) and
+  // <main> reclaims the full width. Sits ahead of the loading branch so the
+  // sidebar stays gone even while sessions/projects are still loading.
   if (rail.value && variant === "desktop") {
-    return (
-      <aside
-        data-testid="sidebar"
-        data-rail-collapsed="true"
-        className={sidebarAsideClass("desktop", true)}
-      >
-        <button
-          type="button"
-          data-testid="sidebar-rail-toggle"
-          data-collapsed="true"
-          onClick={rail.toggle}
-          title="Expand sidebar"
-          aria-label="Expand sidebar"
-          className="mt-2.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-base-content/60 hover:bg-base-200 hover:text-base-content"
-        >
-          <span aria-hidden>»</span>
-        </button>
-      </aside>
-    )
+    return null
   }
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
@@ -117,6 +114,18 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
             {buckets.length} · {totalSessions} session{totalSessions === 1 ? "" : "s"}
           </span>
           <NotifyToggle />
+          <button
+            type="button"
+            data-testid="sidebar-new-session"
+            onClick={() => setSpawn({ project: null })}
+            title="Start a session not tied to a project (lands under Default)"
+            aria-label="Start a session not tied to a project (lands under Default)"
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-base-content/60 hover:bg-primary/15 hover:text-primary"
+          >
+            <span className="text-sm leading-none" aria-hidden>
+              +
+            </span>
+          </button>
           {variant === "desktop" ? (
             <button
               type="button"
@@ -131,17 +140,6 @@ export const Sidebar = ({ variant = "desktop" }: { variant?: SidebarVariant } = 
             </button>
           ) : null}
         </div>
-      </div>
-      <div className="px-2 py-2 border-b border-base-300">
-        <button
-          type="button"
-          data-testid="sidebar-new-session"
-          onClick={() => setSpawn({ project: null })}
-          title="Start a session not tied to a project (lands under Default)"
-          className="btn btn-sm btn-primary w-full gap-1.5 text-xs font-medium normal-case shadow-sm shadow-primary/30"
-        >
-          <span className="text-base leading-none">+</span> New session
-        </button>
       </div>
       <nav className="flex-1 py-1 divide-y divide-base-300">
         {buckets.length === 0 ? (

@@ -208,7 +208,10 @@ export const SessionCardActions = ({ session }: { session: SessionState }) => {
   const isPi = session.harness === "pi"
   return (
     <>
-      <div className="flex items-center gap-1.5 pt-1">
+      {/* Always visible on touch (no hover to reveal it) — only md: and up
+          hides it by default and brings it back on the card's hover or a
+          keyboard focus landing on one of its buttons. */}
+      <div className="flex items-center gap-1.5 pt-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
         <button
           type="button"
           onClick={a.onCopy}
