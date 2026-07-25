@@ -224,7 +224,10 @@ export const BrainstormCompanion = ({ project, brainstorm }: Props) => {
     <aside
       data-testid="brainstorm-companion"
       style={{ width }}
-      className={`relative flex shrink-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
+      // Shrinkable (not `shrink-0`) — same guard as the V2 panel: the board
+      // column's flex basis is 0, so a too-wide panel gives width back here
+      // rather than overflowing the row off-screen.
+      className={`relative flex min-w-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
         dragging ? "select-none" : ""
       }`}
     >

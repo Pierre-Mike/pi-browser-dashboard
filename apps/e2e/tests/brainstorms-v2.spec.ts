@@ -75,6 +75,69 @@ test("brainstorm v2: a seeded .excalidraw board lists in the rail, binds the liv
   }
 })
 
+// Regression: the board column was a flex item without `min-w-0`, so its
+// automatic minimum size came from Excalidraw's own content instead of the
+// available row width. The editor grew to its intrinsic size, shoved the AI
+// session panel past the right viewport edge and left the page with a
+// horizontal scrollbar — the panel was only reachable by scrolling sideways.
+test("brainstorm v2: the AI panel stays on screen beside the editor, with no horizontal overflow", async ({
+  page,
+}) => {
+  seedExcalidrawBoard()
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/projects/excalidraw-demo?tab=brainstorm:seeded-sketch")
+  await expect(page.getByTestId("excalidraw-board")).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator(".excalidraw").first()).toBeVisible({ timeout: 15_000 })
+
+  const m = await page.evaluate(() => {
+    const rect = (sel: string) =>
+      document.querySelector(sel)?.getBoundingClientRect() ?? new DOMRect()
+    const board = rect('[data-testid="excalidraw-board"]')
+    const companion = rect('[data-testid="excalidraw-companion"]')
+    const canvas = rect(".excalidraw .excalidraw__canvas")
+    const doc = document.documentElement
+    return {
+      board: { left: board.left, right: board.right, width: board.width, bottom: board.bottom },
+      companion: { left: companion.left, right: companion.right, width: companion.width },
+      canvasWidth: canvas.width,
+      docScrollWidth: doc.scrollWidth,
+      docClientWidth: doc.clientWidth,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    }
+  })
+
+  // The panel is fully inside the viewport at its persisted/default width.
+  expect(m.companion.width).toBeGreaterThan(200)
+  expect(m.companion.right).toBeLessThanOrEqual(m.viewport.width + 1)
+  // …and the page never scrolls sideways to reach it.
+  expect(m.docScrollWidth).toBeLessThanOrEqual(m.docClientWidth)
+  // The editor takes the rest of the row and stops where the panel starts.
+  expect(m.board.width).toBeGreaterThan(300)
+  expect(m.board.right).toBeLessThanOrEqual(m.companion.left + 1)
+  // Excalidraw's own canvas fills the column it was given (no clipped editor).
+  expect(m.canvasWidth).toBeGreaterThan(m.board.width * 0.9)
+  // And the editor reaches the bottom of the viewport rather than overflowing it.
+  expect(m.viewport.height - m.board.bottom).toBeLessThan(24)
+
+  // A window narrow enough that the panel's own width no longer fits gives
+  // width back to the panel instead of overflowing the row off-screen.
+  await page.setViewportSize({ width: 820, height: 700 })
+  const narrow = await page.evaluate(() => {
+    const rect = (sel: string) =>
+      document.querySelector(sel)?.getBoundingClientRect() ?? new DOMRect()
+    return {
+      boardWidth: rect('[data-testid="excalidraw-board"]').width,
+      companionRight: rect('[data-testid="excalidraw-companion"]').right,
+      docScrollWidth: document.documentElement.scrollWidth,
+      docClientWidth: document.documentElement.clientWidth,
+      viewportWidth: window.innerWidth,
+    }
+  })
+  expect(narrow.companionRight).toBeLessThanOrEqual(narrow.viewportWidth + 1)
+  expect(narrow.docScrollWidth).toBeLessThanOrEqual(narrow.docClientWidth)
+  expect(narrow.boardWidth).toBeGreaterThan(0)
+})
+
 test("brainstorm v2: the ✎+ button creates an excalidraw board and switches to it", async ({
   page,
 }) => {

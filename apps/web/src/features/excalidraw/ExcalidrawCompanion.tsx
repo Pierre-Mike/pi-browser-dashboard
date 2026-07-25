@@ -175,7 +175,11 @@ export const ExcalidrawCompanion = ({ project, brainstorm }: Props) => {
     <aside
       data-testid="excalidraw-companion"
       style={{ width }}
-      className={`relative flex shrink-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
+      // Shrinkable (not `shrink-0`) so a width dragged wide on a big screen
+      // can't push the panel off a narrower window: the editor column's flex
+      // basis is 0, so any negative free space is absorbed here instead of
+      // overflowing the row. With room to spare the width is honoured exactly.
+      className={`relative flex min-w-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
         dragging ? "select-none" : ""
       }`}
     >
