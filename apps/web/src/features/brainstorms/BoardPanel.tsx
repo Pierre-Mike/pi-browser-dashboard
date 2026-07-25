@@ -17,10 +17,17 @@ type Props = {
  * session whose only context is the board's file.
  */
 export const BrainstormBoardPanel = ({ project, board }: Props) => (
-  <div className="flex flex-1 min-h-0 gap-2">
-    <div className="flex-1 min-h-0" data-testid={`project-tab-panel-brainstorm-${board.id}`}>
+  // `min-w-0` on both the row and the editor column is load-bearing: without it
+  // the column's automatic minimum size is the editor's intrinsic content width
+  // (Excalidraw's is ~1500px), so the editor grows past the row and shoves the
+  // companion panel off the right edge behind a page-wide horizontal scrollbar.
+  <div className="flex flex-1 min-h-0 min-w-0 gap-2 overflow-hidden">
+    <div
+      className="flex-1 min-h-0 min-w-0"
+      data-testid={`project-tab-panel-brainstorm-${board.id}`}
+    >
       {board.kind === "excalidraw" ? (
-        <ExcalidrawBoard projectId={project.id} slug={board.id} />
+        <ExcalidrawBoard projectId={project.id} slug={board.id} label={board.label} />
       ) : (
         <CanvasTab
           target={{ kind: "brainstorm", projectId: project.id, slug: board.id, file: board.file }}

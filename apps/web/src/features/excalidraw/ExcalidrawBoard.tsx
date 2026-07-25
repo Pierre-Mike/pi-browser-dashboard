@@ -8,6 +8,7 @@ import { useExcalidrawSync } from "./useExcalidrawSync"
 type Props = {
   readonly projectId: string
   readonly slug: string
+  readonly label: string
 }
 
 const STATUS_LABEL: Record<ExcalidrawSyncStatus, string> = {
@@ -23,10 +24,30 @@ const statusTone = (status: ExcalidrawSyncStatus): string =>
 const StatusBadge = ({ status }: { readonly status: ExcalidrawSyncStatus }) => (
   <span
     data-testid="excalidraw-status"
-    className={`absolute right-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusTone(status)}`}
+    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusTone(status)}`}
   >
     {STATUS_LABEL[status]}
   </span>
+)
+
+// A slim strip above the editor rather than a floating overlay: Excalidraw owns
+// all four corners of its canvas (menu, Library, zoom, help), so an absolutely
+// positioned badge covered its Library button.
+const BoardHeader = ({
+  label,
+  status,
+}: {
+  readonly label: string
+  readonly status: ExcalidrawSyncStatus
+}) => (
+  <div className="flex shrink-0 items-center gap-2 border-b border-base-300 bg-base-200/40 px-2 py-1">
+    <span className="truncate text-xs font-semibold text-base-content/80" title={label}>
+      {label}
+    </span>
+    <span className="ml-auto flex items-center">
+      <StatusBadge status={status} />
+    </span>
+  </div>
 )
 
 // Excalidraw's restore utils exist to sanitize untrusted imported scenes —
@@ -41,7 +62,7 @@ const sanitizeElements = (elements: readonly unknown[]) =>
  * pushes every external write (agent, other tab) down the socket, and local
  * strokes flow back up debounced — same live-sync contract as the V1 canvas.
  */
-export const ExcalidrawBoard = ({ projectId, slug }: Props) => {
+export const ExcalidrawBoard = ({ projectId, slug, label }: Props) => {
   const { status, remote, sendElements } = useExcalidrawSync({ projectId, slug })
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null)
 
@@ -50,17 +71,22 @@ export const ExcalidrawBoard = ({ projectId, slug }: Props) => {
     api.updateScene({ elements: sanitizeElements(remote.doc.elements) })
   }, [api, remote])
 
+  // Header strip + editor as a flex column so Excalidraw's host has a definite
+  // height to measure, and `min-w-0` so it tracks the column it was given
+  // instead of its own (much wider) intrinsic size.
   return (
     <div
       data-testid="excalidraw-board"
-      className="relative h-full w-full overflow-hidden rounded-xl border border-base-300"
+      className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-base-300"
     >
-      <StatusBadge status={status} />
-      <Excalidraw
-        excalidrawAPI={setApi}
-        onChange={(elements) => sendElements(elements)}
-        UIOptions={{ canvasActions: { loadScene: false } }}
-      />
+      <BoardHeader label={label} status={status} />
+      <div className="relative min-h-0 min-w-0 flex-1">
+        <Excalidraw
+          excalidrawAPI={setApi}
+          onChange={(elements) => sendElements(elements)}
+          UIOptions={{ canvasActions: { loadScene: false } }}
+        />
+      </div>
     </div>
   )
 }
