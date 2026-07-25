@@ -126,6 +126,70 @@ const GitPullButton = ({ pull }: { pull: ReturnType<typeof useProjectGitPull> })
   </button>
 )
 
+// GitHub link + Pull button, rendered as a pair whenever the project has a
+// remote — split out of ProjectIdentity to keep that function's branching low.
+const GithubActions = ({
+  project,
+  pull,
+}: {
+  project: Project
+  pull: ReturnType<typeof useProjectGitPull>
+}) =>
+  project.githubUrl ? (
+    <>
+      <a
+        data-testid="github-link"
+        href={project.githubUrl}
+        target="_blank"
+        rel="noreferrer"
+        title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
+        className="text-[10px] uppercase tracking-wide rounded bg-neutral text-neutral-content px-1.5 py-0.5 hover:opacity-80 shrink-0"
+      >
+        GitHub ↗
+      </a>
+      <GitPullButton pull={pull} />
+    </>
+  ) : null
+
+// The project identity cluster: name, isolation warning, branch, GitHub link
+// and Pull button. The absolute path is no longer shown inline (it's already
+// one hover away in the sidebar) — it lives only as this element's `title`,
+// discoverable the same way the branch/GitHub titles already are.
+const ProjectIdentity = ({
+  project,
+  pull,
+}: {
+  project: Project
+  pull: ReturnType<typeof useProjectGitPull>
+}) => (
+  <h1
+    className="text-sm font-semibold flex items-center gap-1.5 min-w-0 shrink"
+    title={project.path}
+  >
+    <span className="truncate">{project.name}</span>
+    {project.isGitRepo ? null : (
+      <span
+        className="text-[10px] uppercase tracking-wide rounded bg-warning/15 text-warning px-1.5 py-0.5 shrink-0"
+        title="No git → supervisor cannot isolate worktrees; siblings race on disk"
+      >
+        ⚠ no isolation
+      </span>
+    )}
+    {project.branch ? (
+      <span
+        data-testid="project-dashboard-branch"
+        data-branch={project.branch}
+        title={`current branch: ${project.branch}`}
+        className="inline-flex items-center gap-1 rounded bg-base-200 text-base-content/80 font-mono text-[10px] px-1.5 py-0.5 max-w-[140px] truncate shrink-0"
+      >
+        <span aria-hidden>⎇</span>
+        {project.branch}
+      </span>
+    ) : null}
+    <GithubActions project={project} pull={pull} />
+  </h1>
+)
+
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
   const extensionsQ = useExtensions()
@@ -208,7 +272,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       data-testid="project-dashboard"
       className={`flex flex-col gap-1 ${fillViewport ? "h-screen -my-4 pt-1" : ""}`}
     >
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <div data-testid="project-topbar" className="flex items-center gap-2">
         <Link
           to="/"
           className="text-[11px] text-base-content/60 hover:underline shrink-0"
@@ -216,48 +280,42 @@ export const ProjectDashboard = ({ project }: Props) => {
         >
           ←
         </Link>
-        <h1 className="text-sm font-semibold flex items-center gap-1.5 min-w-0">
-          <span className="truncate">{project.name}</span>
-          {project.isGitRepo ? null : (
-            <span
-              className="text-[10px] uppercase tracking-wide rounded bg-warning/15 text-warning px-1.5 py-0.5"
-              title="No git → supervisor cannot isolate worktrees; siblings race on disk"
-            >
-              ⚠ no isolation
-            </span>
-          )}
-          {project.branch ? (
-            <span
-              data-testid="project-dashboard-branch"
-              data-branch={project.branch}
-              title={`current branch: ${project.branch}`}
-              className="inline-flex items-center gap-1 rounded bg-base-200 text-base-content/80 font-mono text-[10px] px-1.5 py-0.5 max-w-[200px] truncate"
-            >
-              <span aria-hidden>⎇</span>
-              {project.branch}
-            </span>
-          ) : null}
-          {project.githubUrl ? (
-            <a
-              data-testid="github-link"
-              href={project.githubUrl}
-              target="_blank"
-              rel="noreferrer"
-              title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
-              className="text-[10px] uppercase tracking-wide rounded bg-neutral text-neutral-content px-1.5 py-0.5 hover:opacity-80"
-            >
-              GitHub ↗
-            </a>
-          ) : null}
-          {project.githubUrl ? <GitPullButton pull={pull} /> : null}
-        </h1>
-        <span
-          className="text-[11px] font-mono text-base-content/60 truncate min-w-0 flex-1"
-          title={project.path}
+
+        <ProjectIdentity project={project} pull={pull} />
+
+        <nav
+          data-testid="project-tabs"
+          role="tablist"
+          aria-label="Project sections"
+          className={`${tabDockNavClass} flex-1 min-w-0`}
         >
-          {project.path}
-        </span>
-        <div className="flex flex-wrap items-center gap-1">
+          {tabs.map((t) => {
+            // A parent tab stays lit while any of its children is selected.
+            const active =
+              t.key === "pidapps"
+                ? pidAppsActive
+                : t.key === "brainstorm"
+                  ? brainstormActive
+                  : tab === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`project-tab-${t.key}`}
+                data-active={active}
+                onClick={() => setTab(t.key)}
+                className={tabButtonClass(active)}
+              >
+                {projectTabIcon(t.key)}
+                {t.label}
+              </button>
+            )
+          })}
+        </nav>
+
+        <div className="flex items-center gap-1 shrink-0">
           {counts.working > 0 ? (
             <Pill label="working" value={counts.working} tone="bg-primary/15 text-primary" />
           ) : null}
@@ -275,6 +333,7 @@ export const ProjectDashboard = ({ project }: Props) => {
             <Pill label="failed" value={counts.failed} tone="bg-error/15 text-error" />
           ) : null}
         </div>
+
         <button
           type="button"
           data-testid="dashboard-spawn"
@@ -283,39 +342,7 @@ export const ProjectDashboard = ({ project }: Props) => {
         >
           Spawn +
         </button>
-      </header>
-
-      <nav
-        data-testid="project-tabs"
-        role="tablist"
-        aria-label="Project sections"
-        className={tabDockNavClass}
-      >
-        {tabs.map((t) => {
-          // A parent tab stays lit while any of its children is selected.
-          const active =
-            t.key === "pidapps"
-              ? pidAppsActive
-              : t.key === "brainstorm"
-                ? brainstormActive
-                : tab === t.key
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-testid={`project-tab-${t.key}`}
-              data-active={active}
-              onClick={() => setTab(t.key)}
-              className={tabButtonClass(active)}
-            >
-              {projectTabIcon(t.key)}
-              {t.label}
-            </button>
-          )
-        })}
-      </nav>
+      </div>
 
       <div
         role="tabpanel"

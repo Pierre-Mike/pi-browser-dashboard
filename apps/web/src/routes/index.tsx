@@ -129,7 +129,7 @@ function IndexPage() {
   return (
     <div
       data-testid="dashboard"
-      className={`flex flex-col gap-4 ${fillViewport ? "h-screen -my-4 pt-4" : ""}`}
+      className={`flex flex-col gap-2 ${fillViewport ? "h-screen -my-4 pt-4" : ""}`}
     >
       <nav
         data-testid="dashboard-tabs"

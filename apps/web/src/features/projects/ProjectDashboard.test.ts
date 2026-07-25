@@ -58,13 +58,17 @@ describe("ProjectDashboard git pull button", () => {
   })
 
   it("places the pull button alongside the top GitHub link", () => {
-    // The Pull button is rendered in the header h1, right after the GitHub link.
-    const header = src.match(/<h1[\s\S]+?<\/h1>/)
-    expect(header).not.toBeNull()
-    expect(header![0]).toContain('data-testid="github-link"')
-    expect(header![0]).toContain("<GitPullButton")
-    // and it only appears when the project has a GitHub URL
-    expect(header![0]).toMatch(/project\.githubUrl \? <GitPullButton/)
+    // GitHub link + Pull button render together as a pair (GithubActions),
+    // gated on the same project.githubUrl check, and that pair is used inside
+    // the identity h1.
+    const cluster = src.match(/const GithubActions[\s\S]+?\n\)/)
+    expect(cluster).not.toBeNull()
+    expect(cluster?.[0]).toContain('data-testid="github-link"')
+    expect(cluster?.[0]).toContain("<GitPullButton")
+    expect(cluster?.[0]).toMatch(/project\.githubUrl \? \(/)
+    expect(src).toMatch(
+      /<h1[\s\S]+?<GithubActions project=\{project\} pull=\{pull\} \/>[\s\S]+?<\/h1>/,
+    )
   })
 })
 
@@ -148,6 +152,35 @@ describe("ProjectDashboard collapsible rails", () => {
     expect(src).toContain("usePersistedFlag")
     expect(src).toMatch(/usePersistedFlag\("pid:specs:rail-collapsed"\)/)
     expect(src).toMatch(/usePersistedFlag\("pid:brainstorm:rail-collapsed"\)/)
+  })
+})
+
+describe("ProjectDashboard single-line topbar", () => {
+  it("collapses the back link, identity, tab dock, pills, and Spawn into one row", () => {
+    // Regression: this used to be two stacked rows (a <header> then the <nav>
+    // dock). They now share one flex row so the dashboard top is a single line.
+    expect(src).toContain('data-testid="project-topbar"')
+    expect(src).not.toContain("<header")
+    const topbarIdx = src.indexOf('data-testid="project-topbar"')
+    const tabsIdx = src.indexOf('data-testid="project-tabs"')
+    const spawnIdx = src.indexOf('data-testid="dashboard-spawn"')
+    expect(topbarIdx).toBeGreaterThan(-1)
+    expect(tabsIdx).toBeGreaterThan(topbarIdx)
+    expect(spawnIdx).toBeGreaterThan(tabsIdx)
+  })
+
+  it("gives the tab dock the row's remaining width so it scrolls instead of wrapping", () => {
+    const navBlock = src.match(/<nav[\s\S]+?<\/nav>/)
+    expect(navBlock).not.toBeNull()
+    expect(navBlock?.[0]).toMatch(/flex-1/)
+    expect(navBlock?.[0]).toMatch(/min-w-0/)
+  })
+
+  it("drops the standalone absolute-path row — it was already shown by the sidebar", () => {
+    // The path used to render as an always-visible truncated line of its own;
+    // it now lives only as a tooltip on the project name.
+    expect(src).not.toMatch(/>\s*\{project\.path\}\s*</)
+    expect(src).toMatch(/title=\{project\.path\}/)
   })
 })
 

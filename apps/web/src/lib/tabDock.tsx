@@ -70,13 +70,13 @@ export const PIDAPP_ICON = (
 // The dock container: a soft rounded bar that scrolls horizontally without a
 // visible scrollbar. Same on every surface.
 export const tabDockNavClass =
-  "flex items-center gap-1 overflow-x-auto rounded-xl border border-base-300 bg-base-200/60 px-1.5 py-1.5 shadow-sm backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  "flex items-center gap-1 overflow-x-auto rounded-xl border border-base-300 bg-base-200/60 px-1.5 py-1 shadow-sm backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 
 // One tab button. Active = daisyUI primary fill with a lift; idle = muted,
 // warming on hover.
 export const tabButtonClass = (active: boolean): string =>
   [
-    "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5",
+    "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1",
     "text-xs font-medium transition-all duration-150",
     active
       ? "bg-primary text-primary-content shadow-sm shadow-primary/30"

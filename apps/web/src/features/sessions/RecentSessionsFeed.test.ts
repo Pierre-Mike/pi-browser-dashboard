@@ -21,4 +21,12 @@ describe("RecentSessionsFeed", () => {
     // The projectName label must be conditional, not unconditionally rendered.
     expect(src).toMatch(/showProjectName\s*\?[\s\S]*projectName/)
   })
+
+  it("keeps the live-feed caption but as a compact inline label, not its own decorated row", () => {
+    // recent-activity.spec.ts asserts /most recent/i is still present.
+    expect(src).toMatch(/most recent/)
+    // The pulsing dot duplicated the state colour already on every
+    // SessionCard — dropping it shrinks the caption's footprint.
+    expect(src).not.toContain("animate-pulse")
+  })
 })

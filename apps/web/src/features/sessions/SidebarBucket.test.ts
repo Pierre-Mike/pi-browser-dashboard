@@ -11,4 +11,10 @@ describe("SidebarBucket project row", () => {
     expect(src).not.toContain("sidebar-project-branch")
     expect(src).not.toContain("project.branch")
   })
+
+  it("does not double the row's own vertical padding with an outer wrapper", () => {
+    // The header row already carries its own `py-1`; a `py-1.5` wrapper
+    // around it just compounds the padding on every bucket.
+    expect(src).not.toMatch(/<div className="px-1\.5 py-1\.5">/)
+  })
 })

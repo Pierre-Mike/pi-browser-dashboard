@@ -452,7 +452,9 @@ export type SidebarBucketProps = {
 }
 
 export const SidebarBucket = (props: SidebarBucketProps) => (
-  <div className="px-1.5 py-1.5">
+  // The row inside BucketHeader already carries its own px-1.5 py-1 — this
+  // wrapper only needs the horizontal gutter, not a second vertical padding.
+  <div className="px-1.5">
     <BucketHeader
       bucket={props.bucket}
       active={props.active}
