@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import type { Context } from "hono"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { sseBus } from "../../platform/sse-bus"
 import { upgradeWebSocket } from "../../platform/ws"
 import { PiSessionsIo } from "../dispatch/pi-sessions.io"
 import { ProjectsService } from "../projects/projects.io"
@@ -29,6 +30,13 @@ import {
   zellijKillSessionArgv,
   zellijSessionName,
 } from "./terminal.core"
+import {
+  appendTail,
+  classifyTail,
+  decideTransition,
+  type TerminalStateSlug,
+  terminalStateKey,
+} from "./terminal-state.core"
 
 type Bridge = {
   child: Bun.Subprocess<"pipe", "pipe", "pipe">
@@ -36,6 +44,10 @@ type Bridge = {
   sizefile: string
   sizedir: string
   heartbeat: ReturnType<typeof setInterval>
+  // Clears the state-classifier tap's pending throttle timer — released
+  // alongside the rest of this connection's resources so a closed WS can't
+  // leave a dangling setTimeout.
+  classifierDispose: () => void
 }
 
 // Minimal child interface for testing closeChildBridge in isolation.
@@ -73,6 +85,89 @@ export const closeChildBridge = async (args: {
 }
 
 const bridges = new WeakMap<object, Bridge>()
+
+// The four terminal kinds this route mounts. "global" and "orchestrator" have
+// no id segment in the URL (one fixed zellij session each), so their own
+// scope name doubles as the id — see idForScope below.
+type TerminalScope = "global" | "orchestrator" | "project" | "session"
+
+type TerminalStateRecord = {
+  readonly scope: TerminalScope
+  readonly id: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+  readonly evidence: string | undefined
+  readonly at: string
+}
+
+// Last known classification per terminal, keyed by terminalStateKey(scope,
+// id). Populated only while a browser is attached (see the module doc in
+// terminal-state.core.ts) — GET /terminal/states lets a client that connects
+// late render a chip immediately instead of waiting for the next transition.
+const terminalStates = new Map<string, TerminalStateRecord>()
+
+// Trailing throttle for classification, distinct from the byte-forward path:
+// a "thinking" spinner redraws several times a second (verified capture:
+// roughly every 100-150ms), and running stripAnsi + the matcher table on
+// every single chunk would burn CPU for no user-visible benefit — a state
+// chip doesn't need to update faster than a human can read it. 400ms keeps
+// the chip feeling live without turning every keystroke into a regex pass.
+const TERMINAL_STATE_THROTTLE_MS = 400
+
+// Rolling tail cap. Generous enough to outlive one full spinner/response
+// cycle (the verified capture's longest single redraw run was under 2,000
+// chars) without holding more than a fraction of a second's worth of scroll
+// per connection.
+const TERMINAL_STATE_TAIL_MAX_CHARS = 8_000
+
+const idForScope = (args: { readonly scope: TerminalScope; readonly c: Context }): string => {
+  if (args.scope === "global" || args.scope === "orchestrator") return args.scope
+  return args.c.req.param("id") ?? ""
+}
+
+// Per-connection classifier state: a stateful TextDecoder (so a multi-byte
+// UTF-8 character split across two pty reads decodes correctly instead of
+// corrupting the tail with a stray replacement character), the rolling tail
+// itself, the last published state (for decideTransition), and the pending
+// throttle timer. Built once in onOpen and torn down in onClose alongside
+// the rest of the bridge's per-connection resources.
+const makeClassifierTap = (args: { readonly scope: TerminalScope; readonly id: string }) => {
+  const decoder = new TextDecoder()
+  let tail = ""
+  let priorState: TerminalStateSlug | undefined
+  let throttleTimer: ReturnType<typeof setTimeout> | undefined
+
+  const publish = (): void => {
+    throttleTimer = undefined
+    const next = classifyTail({ tail })
+    if (!decideTransition({ prior: priorState, next }).publish) return
+    priorState = next.state
+    const record: TerminalStateRecord = {
+      scope: args.scope,
+      id: args.id,
+      state: next.state,
+      matcher: next.matcher,
+      evidence: next.evidence,
+      at: new Date().toISOString(),
+    }
+    terminalStates.set(terminalStateKey(args), record)
+    sseBus.publish({ type: "terminal.state", data: record })
+  }
+
+  return {
+    // Called AFTER the WS send for the same chunk — classification is a
+    // side-quest off the byte-forward path, never ahead of it.
+    onChunk: (bytes: Uint8Array): void => {
+      const chunk = decoder.decode(bytes, { stream: true })
+      tail = appendTail({ tail, chunk, maxChars: TERMINAL_STATE_TAIL_MAX_CHARS })
+      if (throttleTimer) return
+      throttleTimer = setTimeout(publish, TERMINAL_STATE_THROTTLE_MS)
+    },
+    dispose: (): void => {
+      if (throttleTimer) clearTimeout(throttleTimer)
+    },
+  }
+}
 
 // Idle proxies (Vite dev server, OS NAT) drop WebSockets after 60-120s of
 // silence. zellij output is bursty — a user staring at a TUI sees no traffic
@@ -139,10 +234,15 @@ const spawnChild = (args: {
 const pipeStream = async ({
   stream,
   send,
+  onChunk,
   signal,
 }: {
   stream: ReadableStream<Uint8Array>
   send: (chunk: Uint8Array) => void
+  // Called AFTER send() for the same chunk — a side-quest off the
+  // byte-forward path (state classification today), never ahead of it.
+  // Optional so pipeStream stays usable without a tap.
+  onChunk?: (chunk: Uint8Array) => void
   signal: AbortSignal
 }): Promise<void> => {
   const reader = stream.getReader()
@@ -150,7 +250,10 @@ const pipeStream = async ({
     while (!signal.aborted) {
       const { value, done } = await reader.read()
       if (done) break
-      if (value) send(value)
+      if (value) {
+        send(value)
+        onChunk?.(value)
+      }
     }
   } catch {
     // stream closed
@@ -183,9 +286,12 @@ type BridgeOpts = {
   // real pty. Required for zellij (raw-mode); all three terminal routes use
   // zellij now, so callers always pass true.
   readonly pty?: boolean
+  // Which terminal kind this handler serves — feeds the state-classifier
+  // tap's scope/id (see makeClassifierTap) and GET /terminal/states.
+  readonly scope: TerminalScope
 }
 
-const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
+const makeWsHandler = ({ resolveCommand, pty = false, scope }: BridgeOpts) =>
   upgradeWebSocket((c) => {
     // The browser sends its current xterm dims at connect-time. Without a
     // resize channel from the browser these are the only chance to size the
@@ -229,7 +335,15 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
             // ws closed; onClose will clear the interval
           }
         }, HEARTBEAT_INTERVAL_MS)
-        bridges.set(tokenKey, { child, drainAbort, sizefile, sizedir, heartbeat })
+        const classifierTap = makeClassifierTap({ scope, id: idForScope({ scope, c }) })
+        bridges.set(tokenKey, {
+          child,
+          drainAbort,
+          sizefile,
+          sizedir,
+          heartbeat,
+          classifierDispose: classifierTap.dispose,
+        })
 
         const send = (bytes: Uint8Array) => {
           try {
@@ -242,8 +356,18 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
             // ws closed
           }
         }
-        void pipeStream({ stream: child.stdout, send, signal: drainAbort.signal })
-        void pipeStream({ stream: child.stderr, send, signal: drainAbort.signal })
+        void pipeStream({
+          stream: child.stdout,
+          send,
+          onChunk: classifierTap.onChunk,
+          signal: drainAbort.signal,
+        })
+        void pipeStream({
+          stream: child.stderr,
+          send,
+          onChunk: classifierTap.onChunk,
+          signal: drainAbort.signal,
+        })
 
         void child.exited.then((code) => {
           // Detect the "zellij attach panicked on startup" loop: client panics
@@ -324,6 +448,7 @@ const makeWsHandler = ({ resolveCommand, pty = false }: BridgeOpts) =>
         if (!b) return
         bridges.delete(tokenKey)
         clearInterval(b.heartbeat)
+        b.classifierDispose()
         b.drainAbort.abort()
         void closeChildBridge({ child: b.child, sizedir: b.sizedir })
       },
@@ -451,9 +576,18 @@ const resolveSessionKillName = async (id: string): Promise<string | null> => {
 }
 
 const app = new Hono()
-  .get("/global", makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true }))
-  .get("/orchestrator", makeWsHandler({ resolveCommand: resolveOrchestratorCommand, pty: true }))
-  .get("/project/:id", makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true }))
+  .get(
+    "/global",
+    makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true, scope: "global" }),
+  )
+  .get(
+    "/orchestrator",
+    makeWsHandler({ resolveCommand: resolveOrchestratorCommand, pty: true, scope: "orchestrator" }),
+  )
+  .get(
+    "/project/:id",
+    makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true, scope: "project" }),
+  )
   .delete("/global", async (c) => c.json(await killZellijSession(GLOBAL_ZELLIJ_SESSION)))
   .delete("/orchestrator", async (c) =>
     c.json(await killZellijSession(ORCHESTRATOR_ZELLIJ_SESSION)),
@@ -466,6 +600,14 @@ const app = new Hono()
     const id = c.req.param("id") ?? ""
     return c.json(await killZellijSession(await resolveSessionKillName(id)))
   })
-  .get("/:id", makeWsHandler({ resolveCommand: resolveSessionCommand, pty: true }))
+  // Current classification per known terminal — lets a client that connects
+  // (or reconnects) late render a chip immediately instead of waiting for the
+  // next transition. Registered ahead of the `/:id` catch-all below so a
+  // terminal id can never literally be "states" and shadow this route.
+  .get("/states", (c) => c.json(Object.fromEntries(terminalStates)))
+  .get(
+    "/:id",
+    makeWsHandler({ resolveCommand: resolveSessionCommand, pty: true, scope: "session" }),
+  )
 
 export { app }

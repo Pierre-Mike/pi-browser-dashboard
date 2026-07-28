@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
-import { type ChildBridgeForTest, closeChildBridge } from "./terminal.routes"
+import { app, type ChildBridgeForTest, closeChildBridge } from "./terminal.routes"
 
 const makeChild = (opts?: {
   killThrows?: boolean
@@ -56,5 +56,22 @@ describe("closeChildBridge", () => {
     const child = makeChild()
     await closeChildBridge({ child, sizedir: "/tmp/nonexistent-pid-test-dir", delayMs: 0 })
     expect(child.kill).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("GET /terminal/states", () => {
+  it("responds with an object even before any terminal has been classified", async () => {
+    const res = await app.request("/states")
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(typeof body).toBe("object")
+  })
+
+  it("is matched ahead of the /:id catch-all — a literal 'states' id can't shadow it", async () => {
+    // If registration order regressed and /:id ran first, this request would
+    // hit the WS upgrade handler for session id "states" instead (which
+    // Hono's fetch() would 500 on, not 200 with a plain JSON body).
+    const res = await app.request("/states")
+    expect(res.headers.get("content-type")).toContain("application/json")
   })
 })
