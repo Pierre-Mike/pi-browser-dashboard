@@ -6,21 +6,25 @@
 // browser (via Excalidraw's own restoreElements) owns element-level
 // normalization.
 
+import { Either } from "effect"
+
 export type ExcalidrawDoc = {
   readonly [key: string]: unknown
   readonly elements: readonly unknown[]
 }
 
-export const parseExcalidrawDoc = (raw: unknown): ExcalidrawDoc => {
+// A malformed document is a value, not an exception: the shell turns a `Left`
+// into a 400 on the write path and into a read error on the watcher path.
+export const parseExcalidrawDoc = (raw: unknown): Either.Either<ExcalidrawDoc, string> => {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error("excalidraw document must be a JSON object")
+    return Either.left("excalidraw document must be a JSON object")
   }
   const obj = raw as Record<string, unknown>
   const elements = obj.elements
   if (!Array.isArray(elements)) {
-    throw new Error("excalidraw document must have an elements array")
+    return Either.left("excalidraw document must have an elements array")
   }
-  return { ...obj, elements }
+  return Either.right({ ...obj, elements })
 }
 
 export const serializeExcalidrawDoc = (doc: ExcalidrawDoc): string => JSON.stringify(doc, null, 2)

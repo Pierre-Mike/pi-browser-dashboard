@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { Either } from "effect"
 import { type FsWatchUnsubscribe, watchFile } from "../../platform/fswatch.io"
 
 // Codec-generic per-document rooms. A room fans out every external mutation
@@ -10,8 +11,13 @@ import { type FsWatchUnsubscribe, watchFile } from "../../platform/fswatch.io"
 // The React-Flow canvas and the Excalidraw board instantiate this factory
 // with their own codecs (see canvas.io.ts / excalidraw.io.ts).
 
+// A codec's decoder is pure and total: a malformed document comes back as a
+// `Left` carrying the reason. This shell decides what that means — a raised
+// read error here, a 400 on the HTTP/WS write paths.
+export type DocParse<S> = (raw: unknown) => Either.Either<S, string>
+
 export type DocCodec<S> = {
-  readonly parse: (raw: unknown) => S
+  readonly parse: DocParse<S>
   readonly serialize: (doc: S) => string
   readonly equal: (a: S, b: S) => boolean
   readonly empty: () => S
@@ -56,7 +62,9 @@ export const makeDocRooms = <S>(codec: DocCodec<S>): DocRooms<S> => {
     try {
       const raw = await fs.promises.readFile(filePath, "utf8")
       if (!raw.trim()) return codec.empty()
-      return codec.parse(JSON.parse(raw))
+      const decoded = codec.parse(JSON.parse(raw))
+      if (Either.isLeft(decoded)) throw new Error(decoded.left)
+      return decoded.right
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException | undefined)?.code
       if (code === "ENOENT") return codec.empty()
@@ -71,7 +79,7 @@ export const makeDocRooms = <S>(codec: DocCodec<S>): DocRooms<S> => {
     await fs.promises.writeFile(tmp, body, "utf8")
     // tmp+rename so concurrent readers never observe a half-written file
     // (mirrors the supervisor's roster.json rewrite pattern; see
-    // platform/fswatch.repo for the watcher that copes with the inode swap).
+    // platform/fswatch.io for the watcher that copes with the inode swap).
     await fs.promises.rename(tmp, filePath)
     return body
   }
@@ -81,7 +89,7 @@ export const makeDocRooms = <S>(codec: DocCodec<S>): DocRooms<S> => {
     try {
       next = await readFromDisk(room.filePath)
     } catch (err) {
-      console.error("[docRoom.repo] read failed", room.filePath, err)
+      console.error("[docRoom.io] read failed", room.filePath, err)
       return
     }
     const incomingBody = codec.serialize(next)
@@ -135,7 +143,7 @@ export const makeDocRooms = <S>(codec: DocCodec<S>): DocRooms<S> => {
           const body = await writeAtomic(room.filePath, stamped)
           room.lastSelfWrite = body
         } catch (err) {
-          console.error("[docRoom.repo] write failed", room.filePath, err)
+          console.error("[docRoom.io] write failed", room.filePath, err)
           throw err
         }
         room.cache = stamped

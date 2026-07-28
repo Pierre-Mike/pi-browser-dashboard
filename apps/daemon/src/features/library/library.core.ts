@@ -4,6 +4,7 @@
 // The catalog is the source-of-truth for what's *available*; install status is
 // derived per-call by probing the filesystem in library.io.ts.
 
+import { Either } from "effect"
 import {
   type Document,
   isMap,
@@ -161,22 +162,25 @@ export class CatalogParseError extends Error {
   override readonly name = "CatalogParseError"
 }
 
-export const parseCatalog = (text: string): Catalog => {
+// A broken catalog is a value, not an exception — `library.io.ts` maps the
+// `Left` onto the `catalog_invalid` error the UI already knows how to render.
+// `parseYaml` itself throws (third-party), so the one `try` here exists purely
+// to convert that throw into a `Left` at the edge of the pure core.
+export const parseCatalog = (text: string): Either.Either<Catalog, CatalogParseError> => {
   if (text.trim() === "") {
-    return { defaultDirs: { ...DEFAULT_DIRS }, entries: [] }
+    return Either.right({ defaultDirs: { ...DEFAULT_DIRS }, entries: [] })
   }
-  let doc: unknown
-  try {
-    doc = parseYaml(text)
-  } catch (e) {
-    throw new CatalogParseError(e instanceof Error ? e.message : "invalid YAML")
+  const doc = Either.try({
+    try: () => parseYaml(text) as unknown,
+    catch: (e) => new CatalogParseError(e instanceof Error ? e.message : "invalid YAML"),
+  })
+  if (Either.isLeft(doc)) return Either.left(doc.left)
+  if (!isObject(doc.right)) {
+    return Either.left(new CatalogParseError("catalog root must be a mapping"))
   }
-  if (!isObject(doc)) {
-    throw new CatalogParseError("catalog root must be a mapping")
-  }
-  const defaultDirs = readDefaultDirs(doc.default_dirs)
-  const entries = readEntries(doc.library)
-  return { defaultDirs, entries }
+  const defaultDirs = readDefaultDirs(doc.right.default_dirs)
+  const entries = readEntries(doc.right.library)
+  return Either.right({ defaultDirs, entries })
 }
 
 const GITHUB_BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/
@@ -233,38 +237,52 @@ export class RequiresCycleError extends Error {
 
 // Resolve the transitive closure of `requires` for one entry. Returns the
 // ordered list with dependencies first and the entry itself last so callers
-// can install in order. Cycles throw `RequiresCycleError`. References that
-// don't resolve to a catalog entry are skipped silently — the UI surfaces
-// missing deps in a separate pass during install.
-export const resolveRequires = (entryName: string, catalog: Catalog): readonly LibraryEntry[] => {
+// can install in order. A cycle is a `Left` carrying the offending chain.
+// References that don't resolve to a catalog entry are skipped silently — the
+// UI surfaces missing deps in a separate pass during install.
+export const resolveRequires = ({
+  entryName,
+  catalog,
+}: {
+  readonly entryName: string
+  readonly catalog: Catalog
+}): Either.Either<readonly LibraryEntry[], RequiresCycleError> => {
   const byKey = new Map<string, LibraryEntry>()
   for (const e of catalog.entries) byKey.set(`${e.type}:${e.name}`, e)
 
   const rootCandidates = catalog.entries.filter((e) => e.name === entryName)
-  if (rootCandidates.length === 0) return []
+  if (rootCandidates.length === 0) return Either.right([])
 
   const visited = new Set<string>()
   const out: LibraryEntry[] = []
 
-  const visit = (entry: LibraryEntry, chain: readonly string[]): void => {
+  const visit = (
+    entry: LibraryEntry,
+    chain: readonly string[],
+  ): Either.Either<void, RequiresCycleError> => {
     const key = `${entry.type}:${entry.name}`
     if (chain.includes(key)) {
-      throw new RequiresCycleError([...chain, key])
+      return Either.left(new RequiresCycleError([...chain, key]))
     }
-    if (visited.has(key)) return
+    if (visited.has(key)) return Either.right(undefined)
     visited.add(key)
     for (const ref of entry.requires ?? []) {
       const parsed = parseRequireRef(ref)
       if (!parsed) continue
       const dep = byKey.get(`${parsed.category}:${parsed.name}`)
       if (!dep) continue
-      visit(dep, [...chain, key])
+      const nested = visit(dep, [...chain, key])
+      if (Either.isLeft(nested)) return nested
     }
     out.push(entry)
+    return Either.right(undefined)
   }
 
-  for (const root of rootCandidates) visit(root, [])
-  return out
+  for (const root of rootCandidates) {
+    const walked = visit(root, [])
+    if (Either.isLeft(walked)) return Either.left(walked.left)
+  }
+  return Either.right(out)
 }
 
 // Expand `~/foo` → `<home>/foo` for status probes.
@@ -328,7 +346,7 @@ export const upsertEntryInDocument = ({
   doc: Document
   entry: LibraryEntry
   mode?: "add" | "upsert"
-}): void => {
+}): Either.Either<void, DuplicateEntryError> => {
   const seq = ensureCategorySeq(doc, entry.type)
   const existingIdx = (seq.items as unknown[]).findIndex((item) => {
     if (!isMap(item)) return false
@@ -343,12 +361,13 @@ export const upsertEntryInDocument = ({
   })
   if (existingIdx >= 0) {
     if (mode === "add") {
-      throw new DuplicateEntryError(`${entry.type}:${entry.name} already in catalog`)
+      return Either.left(new DuplicateEntryError(`${entry.type}:${entry.name} already in catalog`))
     }
     seq.set(existingIdx, node)
   } else {
     seq.add(node)
   }
+  return Either.right(undefined)
 }
 
 export const removeEntryFromDocument = ({

@@ -210,11 +210,12 @@ export const mergeStateWithPrior = ({ parsed, prior }: MergeStateInput): Session
 
 // --- Derived ---------------------------------------------------------------
 
-export type AgeInput = { readonly now: number; readonly createdAt: string | undefined }
+// Both instants arrive as epoch milliseconds: the pure core neither reads the
+// clock nor parses dates — the shell resolves `now` and turns a stored ISO
+// `createdAt` into epoch ms (`Date.parse`) before calling in.
+export type AgeInput = { readonly now: number; readonly createdAtMs: number | undefined }
 
-export const ageMs = ({ now, createdAt }: AgeInput): number | undefined => {
-  if (!createdAt) return undefined
-  const t = Date.parse(createdAt)
-  if (Number.isNaN(t)) return undefined
-  return Math.max(0, now - t)
+export const ageMs = ({ now, createdAtMs }: AgeInput): number | undefined => {
+  if (createdAtMs === undefined || Number.isNaN(createdAtMs)) return undefined
+  return Math.max(0, now - createdAtMs)
 }

@@ -1,12 +1,21 @@
 import { describe, expect, it } from "bun:test"
+import { Either } from "effect"
 import {
   type CanvasSnapshot,
   canvasEqual,
   canvasPathFor,
+  parseCanvas as decodeCanvas,
   emptyCanvas,
-  parseCanvas,
   serializeCanvas,
 } from "./canvas.core"
+
+// The decoder returns Either. Happy paths unwrap; the failure contract is
+// asserted directly on the Left below.
+const parseCanvas = (json: unknown): CanvasSnapshot => {
+  const decoded = decodeCanvas(json)
+  if (Either.isLeft(decoded)) throw new Error(decoded.left)
+  return decoded.right
+}
 
 describe("parseCanvas", () => {
   it("returns an empty canvas for an object with no nodes/edges", () => {
@@ -127,10 +136,10 @@ describe("parseCanvas", () => {
     expect(bad.viewport).toBeUndefined()
   })
 
-  it("throws when the root is not an object — we won't silently drop a real drawing", () => {
-    expect(() => parseCanvas(null)).toThrow()
-    expect(() => parseCanvas("nope")).toThrow()
-    expect(() => parseCanvas([])).toThrow()
+  it("returns a Left when the root is not an object — we won't silently drop a real drawing", () => {
+    expect(decodeCanvas(null)).toEqual(Either.left("canvas: root must be an object"))
+    expect(Either.isLeft(decodeCanvas("nope"))).toBe(true)
+    expect(Either.isLeft(decodeCanvas([]))).toBe(true)
   })
 })
 

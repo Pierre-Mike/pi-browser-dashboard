@@ -2,8 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type CanvasSnapshot, canvasPathFor, parseCanvas } from "./canvas.core"
+import { Either } from "effect"
+import { type CanvasSnapshot, canvasPathFor, parseCanvas as decodeCanvas } from "./canvas.core"
 import { __resetCanvasRoomsForTests, getCanvasRoom, getCanvasRoomAt } from "./canvas.io"
+
+// These cases only read documents this suite just wrote, so the decode always
+// succeeds — unwrap the Right and let a Left fail the test loudly.
+const parseCanvas = (json: unknown): CanvasSnapshot => {
+  const decoded = decodeCanvas(json)
+  if (Either.isLeft(decoded)) throw new Error(decoded.left)
+  return decoded.right
+}
 
 const makeTempConfigDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "pid-canvas-"))
 

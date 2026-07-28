@@ -98,7 +98,13 @@ const startTunnel = (): void => {
 // entrypoint (main.ts) and the Electrobun desktop main process, which runs it
 // in-process with the tunnel off.
 export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<DaemonHandle> => {
-  const { port, issuePollMs, tunnel } = resolveDaemonConfig(opts, process.env)
+  // Name the env keys the pure resolver reads instead of handing it the whole
+  // ambient environment (typed config at the boundary).
+  const { port, issuePollMs, tunnel } = resolveDaemonConfig(opts, {
+    PORT: process.env.PORT,
+    PID_ISSUE_POLL_MS: process.env.PID_ISSUE_POLL_MS,
+    PID_TUNNEL_AUTOSTART: process.env.PID_TUNNEL_AUTOSTART,
+  })
   applyCorsEnv(opts)
 
   // Touch the runtime so SessionRegistryLive is constructed (watchers armed)
@@ -122,7 +128,9 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
 
   const staticDir = opts.staticDir ?? process.env.PID_STATIC_DIR
   const finalApp = buildApp(staticDir)
-  const server: Server = Bun.serve({ port, fetch: finalApp.fetch, websocket, idleTimeout: 0 })
+  // Inferred: Bun's `Server` is generic over the websocket data type, and
+  // Bun.serve already knows it from `websocket`.
+  const server = Bun.serve({ port, fetch: finalApp.fetch, websocket, idleTimeout: 0 })
   console.error(`daemon up: http://localhost:${server.port}`)
   if (tunnel) startTunnel()
 
@@ -137,5 +145,7 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
     await appRuntime.dispose()
   }
 
-  return { port: server.port, stop }
+  // `server.port` is only absent for a unix-socket server; we always bind TCP,
+  // so fall back to the port we asked for rather than widening the handle type.
+  return { port: server.port ?? port, stop }
 }

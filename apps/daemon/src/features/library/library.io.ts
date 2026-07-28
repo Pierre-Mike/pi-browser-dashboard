@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Either, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
 import { ProjectsService } from "../projects/projects.io"
 import {
@@ -14,8 +14,6 @@ import {
 } from "./installer.io"
 import {
   type Catalog,
-  CatalogParseError,
-  DuplicateEntryError,
   expandHome,
   type InstallStatus,
   isSafeSegment,
@@ -25,7 +23,6 @@ import {
   parseCatalog,
   parseCatalogDocument,
   parseSource,
-  RequiresCycleError,
   removeEntryFromDocument,
   resolveAgenticRepoPath,
   resolveRequires,
@@ -244,13 +241,9 @@ type ReadCatalogResult =
 const readCatalogFile = async (catalogPath: string): Promise<ReadCatalogResult> => {
   const text = await tryReadText(catalogPath)
   if (text === null) return { _tag: "err", error: "catalog_not_found" }
-  try {
-    const catalog = parseCatalog(text)
-    return { _tag: "ok", catalog, catalogPath }
-  } catch (e) {
-    if (e instanceof CatalogParseError) return { _tag: "err", error: "catalog_invalid" }
-    return { _tag: "err", error: "catalog_invalid" }
-  }
+  const parsed = parseCatalog(text)
+  if (Either.isLeft(parsed)) return { _tag: "err", error: "catalog_invalid" }
+  return { _tag: "ok", catalog: parsed.right, catalogPath }
 }
 
 // Resolve the destination directory for a (category, scope) pair. For local
@@ -430,9 +423,7 @@ export const LibraryIoLive: Layer.Layer<
               tryReadText(join(tmp, DEFAULT_CATALOG_PATH)),
             )
             if (clonedCatalog === null) return yield* Effect.fail<LibraryError>("source_invalid")
-            try {
-              parseCatalog(clonedCatalog)
-            } catch {
+            if (Either.isLeft(parseCatalog(clonedCatalog))) {
               return yield* Effect.fail<LibraryError>("catalog_invalid")
             }
             yield* Effect.tryPromise({
@@ -477,17 +468,11 @@ export const LibraryIoLive: Layer.Layer<
         Effect.gen(function* () {
           if (!isSafeSegment(input.name)) return yield* Effect.fail<LibraryError>("forbidden")
           const { catalog, projectRoot } = yield* readCatalogEffect(input.projectId)
-          let chain: readonly LibraryEntry[]
-          try {
-            chain = resolveRequires(input.name, catalog).filter((e) =>
-              e.name === input.name ? e.type === input.type : true,
-            )
-          } catch (e) {
-            if (e instanceof RequiresCycleError) {
-              return yield* Effect.fail<LibraryError>("requires_cycle")
-            }
-            return yield* Effect.fail<LibraryError>("catalog_invalid")
-          }
+          const resolved = resolveRequires({ entryName: input.name, catalog })
+          if (Either.isLeft(resolved)) return yield* Effect.fail<LibraryError>("requires_cycle")
+          const chain: readonly LibraryEntry[] = resolved.right.filter((e) =>
+            e.name === input.name ? e.type === input.type : true,
+          )
           if (chain.length === 0) return yield* Effect.fail<LibraryError>("not_found")
           if (input.scope === "local" && !projectRoot) {
             return yield* Effect.fail<LibraryError>("not_found")
@@ -513,23 +498,19 @@ export const LibraryIoLive: Layer.Layer<
           let captured: LibraryEntry | null = null
           yield* mutateCatalog((text) => {
             const doc = parseCatalogDocument(text)
-            try {
-              upsertEntryInDocument({
-                doc,
-                entry: {
-                  name: input.name,
-                  type: input.type,
-                  description: input.description,
-                  source: input.source,
-                  ...(input.requires && input.requires.length > 0
-                    ? { requires: input.requires }
-                    : {}),
-                },
-              })
-            } catch (e) {
-              if (e instanceof DuplicateEntryError) return "duplicate_entry" as LibraryError
-              return "catalog_invalid" as LibraryError
-            }
+            const upserted = upsertEntryInDocument({
+              doc,
+              entry: {
+                name: input.name,
+                type: input.type,
+                description: input.description,
+                source: input.source,
+                ...(input.requires && input.requires.length > 0
+                  ? { requires: input.requires }
+                  : {}),
+              },
+            })
+            if (Either.isLeft(upserted)) return "duplicate_entry" as LibraryError
             captured = {
               name: input.name,
               type: input.type,

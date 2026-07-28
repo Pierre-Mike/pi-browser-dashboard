@@ -220,21 +220,23 @@ describe("mergeStateWithPrior", () => {
 })
 
 describe("ageMs", () => {
-  test("returns undefined for missing createdAt", () => {
-    expect(ageMs({ now: 1_000, createdAt: undefined })).toBeUndefined()
+  test("returns undefined for a missing createdAt", () => {
+    expect(ageMs({ now: 1_000, createdAtMs: undefined })).toBeUndefined()
   })
 
-  test("returns undefined for unparseable createdAt", () => {
-    expect(ageMs({ now: 1_000, createdAt: "not-a-date" })).toBeUndefined()
+  // The shell hands in `Date.parse(createdAt)`, which is NaN for junk input —
+  // the core treats that the same as absent rather than computing a NaN age.
+  test("returns undefined when the shell could not parse createdAt", () => {
+    expect(ageMs({ now: 1_000, createdAtMs: Date.parse("not-a-date") })).toBeUndefined()
   })
 
   test("computes ms since createdAt", () => {
-    const created = new Date("2026-01-01T00:00:00Z").getTime()
-    expect(ageMs({ now: created + 5_000, createdAt: "2026-01-01T00:00:00Z" })).toBe(5_000)
+    const created = Date.parse("2026-01-01T00:00:00Z")
+    expect(ageMs({ now: created + 5_000, createdAtMs: created })).toBe(5_000)
   })
 
   test("clamps negative ages to zero", () => {
-    const created = new Date("2026-01-01T00:00:00Z").getTime()
-    expect(ageMs({ now: created - 1_000, createdAt: "2026-01-01T00:00:00Z" })).toBe(0)
+    const created = Date.parse("2026-01-01T00:00:00Z")
+    expect(ageMs({ now: created - 1_000, createdAtMs: created })).toBe(0)
   })
 })

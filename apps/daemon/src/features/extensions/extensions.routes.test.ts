@@ -36,7 +36,7 @@ afterEach(() => {
   }
 })
 
-const post = (path: string, body?: unknown): Promise<Response> =>
+const post = async (path: string, body?: unknown): Promise<Response> =>
   app.request(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
