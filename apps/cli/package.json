@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "pid-dashboard": "./dist/main.js"
+    "pid-dashboard": "./dist/main.js",
+    "pid": "./dist/agent/main.js"
   },
   "files": [
     "dist",
@@ -13,11 +14,14 @@
   ],
   "scripts": {
     "dev": "bun run src/main.ts",
-    "build": "bun build ./src/main.ts --outdir dist --target bun --minify"
+    "dev:agent": "bun run src/agent/main.ts",
+    "build": "bun build ./src/main.ts ./src/agent/main.ts --outdir dist --target bun --minify"
   },
   "dependencies": {},
   "devDependencies": {
     "@pid/daemon": "workspace:*",
-    "@types/bun": "^1.3.14"
+    "@types/bun": "^1.3.14",
+    "effect": "^3.10.0",
+    "hono": "^4.6.11"
   }
 }
