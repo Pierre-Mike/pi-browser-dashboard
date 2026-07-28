@@ -108,6 +108,14 @@ describe("SessionCard markup", () => {
     // The SendKeys textarea is a sibling of the open surface, never nested in a button.
     expect(maxButtonNestingDepth(blocked)).toBeLessThanOrEqual(1)
   })
+
+  test("the opened SendKeys panel includes the named-vocabulary nav row", () => {
+    const blocked = renderCard({ ...sampleSession, state: "needs_input" })
+    expect(blocked).toContain('data-testid="send-nav-up"')
+    expect(blocked).toContain('data-testid="send-nav-down"')
+    expect(blocked).toContain('data-testid="send-nav-tab"')
+    expect(blocked).toContain('data-testid="send-nav-escape"')
+  })
 })
 
 describe("SessionCard (pi harness)", () => {

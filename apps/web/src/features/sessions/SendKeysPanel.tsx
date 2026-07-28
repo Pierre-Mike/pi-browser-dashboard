@@ -4,6 +4,11 @@ import { api } from "../../lib/api"
 
 type Props = { short: string }
 
+// Named keys the daemon's POST /:id/keys vocabulary accepts — kept in sync
+// with NamedKey in apps/daemon/src/features/sessions/sessions-keys.core.ts.
+// Only the subset the nav row below actually uses is listed here.
+type NamedKey = "up" | "down" | "tab" | "escape"
+
 const PRESETS: ReadonlyArray<{ label: string; keys: string; title: string }> = [
   { label: "y", keys: "y\r", title: "yes + enter" },
   { label: "n", keys: "n\r", title: "no + enter" },
@@ -14,6 +19,17 @@ const PRESETS: ReadonlyArray<{ label: string; keys: string; title: string }> = [
   { label: "Esc", keys: "", title: "escape" },
 ]
 
+// Navigation row: answers a menu (AskUserQuestion / permission prompt) via
+// the named vocabulary rather than a hand-encoded raw byte — the daemon-side
+// vocabulary in sessions-keys.core.ts is the documented, testable source of
+// truth for what each of these bytes actually is.
+const NAV_KEYS: ReadonlyArray<{ label: string; testid: string; named: NamedKey; title: string }> = [
+  { label: "↑", testid: "up", named: "up", title: "up arrow" },
+  { label: "↓", testid: "down", named: "down", title: "down arrow" },
+  { label: "⇥", testid: "tab", named: "tab", title: "tab" },
+  { label: "Esc", testid: "escape", named: "escape", title: "escape (named)" },
+]
+
 export const SendKeysPanel = ({ short }: Props) => {
   const qc = useQueryClient()
   const [sending, setSending] = useState(false)
@@ -21,22 +37,29 @@ export const SendKeysPanel = ({ short }: Props) => {
   const [freeForm, setFreeForm] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const send = async (keys: string) => {
-    if (sending || keys.length === 0) return
+  // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
+  const client = api as any
+
+  // Shared status/spinner/error handling behind both send paths: the raw
+  // `keys` string (POST /:id/send) and the named vocabulary (POST
+  // /:id/keys). Each call site only supplies the request and success label.
+  const runSend = async ({
+    statusLabel,
+    request,
+  }: {
+    statusLabel: string
+    request: () => Promise<Response>
+  }) => {
+    if (sending) return
     setSending(true)
     setStatus(null)
     try {
-      // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
-      const client = api as any
-      const res = await client.sessions[":id"].send.$post({
-        param: { id: short },
-        json: { keys },
-      })
+      const res = await request()
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         setStatus(`failed: ${body.error ?? `HTTP ${res.status}`}`)
       } else {
-        setStatus(`sent ${JSON.stringify(keys)}`)
+        setStatus(statusLabel)
         qc.invalidateQueries({ queryKey: ["sessions"] })
       }
     } catch (err) {
@@ -46,6 +69,24 @@ export const SendKeysPanel = ({ short }: Props) => {
       setTimeout(() => setStatus(null), 2_500)
     }
   }
+
+  const send = (keys: string) => {
+    if (keys.length === 0) return
+    return runSend({
+      statusLabel: `sent ${JSON.stringify(keys)}`,
+      request: () => client.sessions[":id"].send.$post({ param: { id: short }, json: { keys } }),
+    })
+  }
+
+  const sendNamed = (named: NamedKey) =>
+    runSend({
+      statusLabel: `sent ${named}`,
+      request: () =>
+        client.sessions[":id"].keys.$post({
+          param: { id: short },
+          json: { sequence: [{ named }] },
+        }),
+    })
 
   const onSubmitFreeform = (ev: React.FormEvent) => {
     ev.preventDefault()
@@ -75,6 +116,24 @@ export const SendKeysPanel = ({ short }: Props) => {
             className="text-xs font-mono rounded border border-base-300 px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-[10px] uppercase tracking-wide text-base-content/60 mr-1">
+          Navigate
+        </span>
+        {NAV_KEYS.map((n) => (
+          <button
+            type="button"
+            key={n.testid}
+            data-testid={`send-nav-${n.testid}`}
+            onClick={() => void sendNamed(n.named)}
+            disabled={sending}
+            title={n.title}
+            className="text-xs font-mono rounded border border-base-300 px-1.5 py-0.5 hover:bg-base-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {n.label}
           </button>
         ))}
       </div>

@@ -265,6 +265,47 @@ const expectJson = async (
 const oneSession = (overrides: Partial<SessionState>): Map<string, SessionState> =>
   new Map([["ab12", makeSession({ short: "ab12", ...overrides })]])
 
+type PostArgs = { app: ReturnType<typeof buildSessionsApp>; id: string; body: unknown }
+
+// Shared "POST a JSON (or raw-string) body" request builder behind POST
+// /:id/send, /:id/keys and /:id/wait below — each of those suites wraps this
+// with its own endpoint name so call sites stay `post({ app, id, body })`
+// while only one place knows how a body actually gets encoded onto the wire.
+const postJson = async ({
+  app,
+  path,
+  body,
+}: {
+  app: ReturnType<typeof buildSessionsApp>
+  path: string
+  body: unknown
+}): Promise<Response> =>
+  app.request(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  })
+
+// Shared assertion for "malformed request → 400 bad_request, nothing sent" —
+// recurs across POST /:id/send and POST /:id/keys wherever a validation
+// failure (bad keys/sequence, or a bad `wait`) must short-circuit before any
+// bytes reach ShellIo. `waitStub` is only passed by the wait-validation cases.
+const expectRejectedBeforeSend = async ({
+  res,
+  spy,
+  waitStub,
+}: {
+  res: Response
+  spy: ShellSpy
+  waitStub?: WaitSpy
+}): Promise<void> => {
+  expect(res.status).toBe(400)
+  const body = (await res.json()) as { error: string }
+  expect(body.error).toBe("bad_request")
+  expect(spy.calls).toEqual([])
+  if (waitStub) expect(waitStub.calls).toEqual([])
+}
+
 describe("GET /sessions", () => {
   it("returns the registry snapshot as JSON", async () => {
     const sessions = new Map<string, SessionState>([
@@ -687,20 +728,8 @@ describe("POST /sessions/:id/rm", () => {
 })
 
 describe("POST /sessions/:id/send", () => {
-  const post = async ({
-    app,
-    id,
-    body,
-  }: {
-    app: ReturnType<typeof buildSessionsApp>
-    id: string
-    body: unknown
-  }): Promise<Response> =>
-    app.request(`/${id}/send`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: typeof body === "string" ? body : JSON.stringify(body),
-    })
+  const post = ({ app, id, body }: PostArgs): Promise<Response> =>
+    postJson({ app, path: `/${id}/send`, body })
 
   it("rejects a missing keys field with 400 bad_keys", async () => {
     const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
@@ -864,11 +893,114 @@ describe("POST /sessions/:id/send", () => {
     const { app, dispose } = buildHarness({ sessions: new Map(), spy, waitStub })
     try {
       const res = await post({ app, id: "ab12", body: { keys: "hello\n", wait: { until: [] } } })
+      await expectRejectedBeforeSend({ res, spy, waitStub })
+    } finally {
+      await dispose()
+    }
+  })
+})
+
+describe("POST /sessions/:id/keys", () => {
+  const postKeys = ({ app, id, body }: PostArgs): Promise<Response> =>
+    postJson({ app, path: `/${id}/keys`, body })
+
+  it("forwards the resolved bytes to ShellIo.send and returns the trail", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy })
+    try {
+      const res = await postKeys({
+        app,
+        id: "ab12",
+        body: { sequence: [{ named: "down", repeat: 2 }, { named: "enter" }] },
+      })
+      expect(res.status).toBe(200)
+      expect(spy.calls).toEqual([{ op: "send", id: "ab12", keys: "\x1b[B\x1b[B\r" }])
+      await expectJson(res, {
+        status: 200,
+        body: { ok: true, short: "ab12", resolved: ["down", "down", "enter"], bytes: 7 },
+      })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("rejects a malformed sequence with 400 and sends no bytes", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy })
+    try {
+      const res = await postKeys({ app, id: "ab12", body: { sequence: [] } })
+      await expectRejectedBeforeSend({ res, spy })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("rejects an unknown named key (e.g. ctrl-z) with 400 and sends no bytes", async () => {
+    const spy = newSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy })
+    try {
+      const res = await postKeys({ app, id: "ab12", body: { sequence: [{ named: "ctrl-z" }] } })
       expect(res.status).toBe(400)
-      const body = (await res.json()) as { error: string }
-      expect(body.error).toBe("bad_request")
       expect(spy.calls).toEqual([])
-      expect(waitStub.calls).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("rejects a malformed wait object with 400 before sending any keys", async () => {
+    const spy = newSpy()
+    const waitStub = newWaitSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy, waitStub })
+    try {
+      const res = await postKeys({
+        app,
+        id: "ab12",
+        body: { sequence: [{ named: "enter" }], wait: { until: [] } },
+      })
+      await expectRejectedBeforeSend({ res, spy, waitStub })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("sends the resolved keys, then embeds the wait outcome pinned to the pre-send occupant", async () => {
+    const spy = newSpy()
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "Satisfied", state: "done", waitedMs: 12 }
+    const sessions = oneSession({ sessionId: "sess-1" })
+    const { app, dispose } = buildHarness({ sessions, spy, waitStub })
+    try {
+      const res = await postKeys({
+        app,
+        id: "ab12",
+        body: { sequence: [{ named: "down" }, { named: "enter" }], wait: { until: ["done"] } },
+      })
+      expect(res.status).toBe(200)
+      expect(spy.calls).toEqual([{ op: "send", id: "ab12", keys: "\x1b[B\r" }])
+      expect(waitStub.calls[0]).toMatchObject({ short: "ab12", pinnedSessionId: "sess-1" })
+      await expectJson(res, {
+        status: 200,
+        body: {
+          ok: true,
+          short: "ab12",
+          resolved: ["down", "enter"],
+          bytes: 4,
+          wait: { ok: true, short: "ab12", state: "done", waitedMs: 12 },
+        },
+      })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("returns 500 send_failed on shell failure", async () => {
+    const spy = newSpy()
+    spy.failNext = { op: "send" }
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy })
+    try {
+      const res = await postKeys({ app, id: "ab12", body: { sequence: [{ named: "enter" }] } })
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: "send_failed", short: "ab12" })
     } finally {
       await dispose()
     }
@@ -876,20 +1008,8 @@ describe("POST /sessions/:id/send", () => {
 })
 
 describe("POST /sessions/:id/wait", () => {
-  const postWait = async ({
-    app,
-    id,
-    body,
-  }: {
-    app: ReturnType<typeof buildSessionsApp>
-    id: string
-    body: unknown
-  }): Promise<Response> =>
-    app.request(`/${id}/wait`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: typeof body === "string" ? body : JSON.stringify(body),
-    })
+  const postWait = ({ app, id, body }: PostArgs): Promise<Response> =>
+    postJson({ app, path: `/${id}/wait`, body })
 
   // Issues POST /:id/wait against a SessionWaitIo stub pinned to `outcome` —
   // the shape every outcome-mapping test below shares.

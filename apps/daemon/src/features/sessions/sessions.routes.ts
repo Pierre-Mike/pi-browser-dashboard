@@ -17,6 +17,7 @@ import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
 import { explainSession } from "./sessions-explain.core"
+import { type KeyStep, parseKeysRequest } from "./sessions-keys.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
 import { SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
 
@@ -102,6 +103,45 @@ const waitOutcomeBody = ({ outcome, short }: { outcome: WaitOutcome; short: stri
     case "NotFound":
       return { ok: false, reason: "not_found", short }
   }
+}
+
+// Shared "pin the occupant, send the bytes, optionally wait" flow behind both
+// POST /:id/send (raw `keys` string) and POST /:id/keys (named vocabulary) —
+// factored so this ordering (and the wait itself) lives in exactly one place
+// rather than being copy-pasted across the two handlers.
+type SendOutcome =
+  | { readonly _tag: "SendFailed" }
+  | { readonly _tag: "Sent"; readonly wait: WaitOutcome | undefined }
+
+const sendAndMaybeWait = async ({
+  runtime,
+  id,
+  keys,
+  waitRequest,
+}: {
+  runtime: SessionsRouteRuntime
+  id: string
+  keys: string
+  waitRequest: WaitRequest | undefined
+}): Promise<SendOutcome> => {
+  // Capture the occupant's sessionId *before* sending, so a requested wait is
+  // pinned to whoever held the session at request time — not whoever (if
+  // anyone) replaces it by the time the wait actually starts.
+  const pinnedSessionId = waitRequest ? await currentSessionId(runtime, id) : undefined
+  const result = await runtime.runPromiseExit(
+    Effect.gen(function* () {
+      const shell = yield* ShellIo
+      yield* shell.send({ id, keys })
+    }),
+  )
+  if (result._tag === "Failure") return { _tag: "SendFailed" }
+  if (!waitRequest) return { _tag: "Sent", wait: undefined }
+  const outcome = await runtime.runPromise(
+    Effect.flatMap(SessionWaitIo, (svc) =>
+      svc.wait({ short: id, request: waitRequest, pinnedSessionId }),
+    ),
+  )
+  return { _tag: "Sent", wait: outcome }
 }
 
 // Shared shape for the POST /:id/fs/* session routes: resolve the worktree root
@@ -354,26 +394,57 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         }
         waitRequest = parsedWait.right
       }
-      // Capture the occupant's sessionId *before* sending, so the wait below
-      // is pinned to whoever held the session at request time — not whoever
-      // (if anyone) replaces it by the time the wait actually starts.
-      const pinnedSessionId = waitRequest ? await currentSessionId(runtime, id) : undefined
-      const result = await runtime.runPromiseExit(
-        Effect.gen(function* () {
-          const shell = yield* ShellIo
-          yield* shell.send({ id, keys: body.keys as string })
-        }),
-      )
-      if (result._tag === "Failure") {
+      const outcome = await sendAndMaybeWait({
+        runtime,
+        id,
+        keys: body.keys as string,
+        waitRequest,
+      })
+      if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
       }
-      if (!waitRequest) return c.json({ ok: true, short: id })
-      const outcome = await runtime.runPromise(
-        Effect.flatMap(SessionWaitIo, (svc) =>
-          svc.wait({ short: id, request: waitRequest, pinnedSessionId }),
-        ),
-      )
-      return c.json({ ok: true, short: id, wait: waitOutcomeBody({ outcome, short: id }) })
+      if (!outcome.wait) return c.json({ ok: true, short: id })
+      return c.json({
+        ok: true,
+        short: id,
+        wait: waitOutcomeBody({ outcome: outcome.wait, short: id }),
+      })
+    })
+    // Named key vocabulary — the safe, documented sibling of the raw
+    // POST /:id/send above (which stays unchanged as the escape hatch for
+    // anything not named). See sessions-keys.core.ts for the vocabulary and
+    // its two deliberate exclusions (ctrl-z / ctrl-c).
+    .post("/:id/keys", async (c) => {
+      const id = c.req.param("id")
+      // `sequence` is typed as the wire contract (`KeyStep[]`) for readability
+      // here — parseKeysRequest below still treats the body as unknown and is
+      // the only place that actually validates it.
+      const body = (await c.req.json().catch(() => ({}))) as {
+        sequence?: ReadonlyArray<KeyStep>
+        wait?: unknown
+      }
+      const parsedKeys = parseKeysRequest(body)
+      if (Either.isLeft(parsedKeys)) {
+        return c.json({ error: "bad_request", message: parsedKeys.left.message }, 400)
+      }
+      // A malformed `wait` object is rejected before anything is sent — same
+      // contract as POST /:id/send.
+      let waitRequest: WaitRequest | undefined
+      if (body.wait !== undefined) {
+        const parsedWait = parseWaitRequest(body.wait)
+        if (Either.isLeft(parsedWait)) {
+          return c.json({ error: "bad_request", message: parsedWait.left.message }, 400)
+        }
+        waitRequest = parsedWait.right
+      }
+      const { keys, resolved } = parsedKeys.right
+      const outcome = await sendAndMaybeWait({ runtime, id, keys, waitRequest })
+      if (outcome._tag === "SendFailed") {
+        return c.json({ error: "send_failed", short: id }, 500)
+      }
+      const base = { ok: true, short: id, resolved, bytes: keys.length }
+      if (!outcome.wait) return c.json(base)
+      return c.json({ ...base, wait: waitOutcomeBody({ outcome: outcome.wait, short: id }) })
     })
     .post("/:id/wait", async (c) => {
       const id = c.req.param("id")
