@@ -145,3 +145,13 @@ export const piLaunchVerdict = ({ pidRaw, pidAlive, stderr }: PiLaunchProbe): Pi
   const detail = stderr.trim()
   return { ok: false, message: detail.length > 0 ? detail : "pi exited before starting" }
 }
+
+// The pi dispatch payload: plain data the pure core builds and pi.io.ts spends.
+// It lives here rather than in pi.io.ts so the core never imports the shell.
+export type PiDispatchInput = {
+  readonly intent: string
+  readonly cwd?: string
+  readonly thinking?: string
+  readonly model?: string
+  readonly tools?: readonly string[]
+}

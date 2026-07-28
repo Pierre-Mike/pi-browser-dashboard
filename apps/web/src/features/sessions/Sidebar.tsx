@@ -29,7 +29,10 @@ type SidebarProps = {
   readonly rail?: UsePersistedFlag
 }
 
-export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps = {}) => {
+// No `= {}` default on the parameter: with optional props TypeScript resolves
+// `createElement(Sidebar, { rail })` against the no-props overload and rejects
+// `rail`. Every field is already optional, so `<Sidebar />` still type-checks.
+export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps) => {
   const sessionsQ = useSessions()
   const projectsQ = useProjects()
   const params = useParams({ strict: false }) as { id?: string }

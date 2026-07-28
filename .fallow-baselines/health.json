@@ -1,0 +1,470 @@
+{
+  "finding_counts": {
+    "apps/daemon/src/api.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/canvas/canvas.core.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/daemon/src/features/claude-config/claude-config.core.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/claude-config/claude-config.io.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/drops/drops.routes.test.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/drops/drops.routes.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/events/events.routes.test.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/daemon/src/features/extensions/extensions.routes.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/issue-driver/issue-driver.core.ts": {
+      "complexity_high": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/issue-driver/issue-driver.io.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/library/library.core.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/library/library.io.ts": {
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "apps/daemon/src/features/library/library.routes.test.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "apps/daemon/src/features/library/library.routes.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/projects/git.core.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/projects/projects.io.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/projects/projects.io.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/sessions/files.core.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/sessions/sessions.io.test.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/daemon/src/features/terminal/terminal.routes.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/features/uploads/uploads.routes.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/loader.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/manifest.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/manifest.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/permissions.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/scaffold.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/platform/extensions/scaffold.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/daemon/src/server.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/e2e/global-setup.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/e2e/global-teardown.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/e2e/scripts/stub/claude-stub.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/CanvasTab.tsx": {
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "apps/web/src/features/canvas/EditableBoxNode.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/EditableFileNode.tsx": {
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "apps/web/src/features/canvas/EditableGroupNode.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/EditableLinkNode.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/canvas.types.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/canvasGrouping.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/canvas/canvasObsidian.test.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/web/src/features/canvas/canvasObsidian.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/web/src/features/canvas/useCanvasSync.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "apps/web/src/features/claude-config/ClaudeConfigPanel.tsx": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "apps/web/src/features/extensions/ExtensionsPanel.tsx": {
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/AgenticBrowser.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/CatalogList.tsx": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/GlobalSearch.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/LibraryPanel.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/LibrarySetupCard.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/dialogs/AddDialog.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/dialogs/InstallDialog.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/dialogs/RemoveDialog.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/library/useLibrary.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/palette/PaletteController.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/palette/PaletteModal.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/projects/GithubPanel.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/projects/ProjectDashboard.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/sessions/ChatComposer.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/sessions/FilesTab.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/sessions/diffParse.ts": {
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/terminal/TerminalView.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/transcripts/TranscriptView.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/transcripts/flattenContent.ts": {
+      "complexity_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/transcripts/pairTranscript.ts": {
+      "complexity_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/tunnel/TunnelPanel.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/web/src/features/uploads/DropZone.tsx": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "apps/web/src/lib/sse.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/routes/index.tsx": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/routes/projects.$id.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/routes/sessions.$id.tsx": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "scripts/axiom-debt.core.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "scripts/harness-doctor.core.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "apps/web/src/routes/sessions.$id.tsx:complexity",
+    "apps/web/src/features/global-settings/useGlobalSettingsForm.ts:high impact",
+    "apps/web/src/features/transcripts/pairTranscript.ts:high impact",
+    "apps/web/src/features/projects/ProjectDashboard.tsx:complexity",
+    "apps/web/src/features/dispatch/spawnSkills.ts:high impact",
+    "apps/web/src/features/canvas/canvasSync.ts:high impact",
+    "apps/daemon/src/platform/extensions/loader.ts:complexity",
+    "apps/web/src/features/sessions/diffParse.ts:high impact",
+    "apps/daemon/src/platform/extensions/state.ts:high impact",
+    "apps/daemon/src/features/claude-config/claude-config.core.ts:high impact",
+    "apps/daemon/src/features/canvas/canvas.core.ts:high impact",
+    "scripts/harness-doctor.core.ts:complexity"
+  ]
+}

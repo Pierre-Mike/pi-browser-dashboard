@@ -1,0 +1,35 @@
+name: Mutation tests
+
+# Weekly, not per-PR: a mutation run is minutes, not seconds. Line coverage says
+# a line ran; a surviving mutant says nothing asserted its behaviour. Scoped to
+# *.core.ts — pure, so every mutant is deterministic.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: stryker (functional cores)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Mutation run
+        run: bun run test:mutation

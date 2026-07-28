@@ -1,0 +1,24 @@
+{
+  "clone_groups": [
+    "apps/daemon/src/features/claude-config/claude-config.routes.ts:28-33|apps/daemon/src/features/library/library.routes.ts:32-38|apps/daemon/src/features/library/library.routes.ts:41-46",
+    "apps/daemon/src/features/dispatch/dispatch.routes.test.ts:186-194|apps/daemon/src/features/dispatch/dispatch.routes.test.ts:197-205|apps/daemon/src/features/dispatch/dispatch.routes.test.ts:208-216",
+    "apps/daemon/src/features/global-settings/global-settings.io.ts:27-42|apps/daemon/src/features/pid-apps/pid-apps.io.ts:126-146|apps/daemon/src/features/pid-settings/pid-settings.io.ts:34-49",
+    "apps/daemon/src/features/issue-driver/gh-issue.io.ts:16-32|apps/daemon/src/features/library/installer.io.ts:57-73|apps/daemon/src/features/projects/github.io.ts:47-63",
+    "apps/daemon/src/features/library/library.routes.test.ts:118-125|apps/daemon/src/features/library/library.routes.test.ts:149-156|apps/daemon/src/features/library/library.routes.test.ts:178-185",
+    "apps/daemon/src/features/library/library.routes.test.ts:119-124|apps/daemon/src/features/library/library.routes.test.ts:150-155|apps/daemon/src/features/library/library.routes.test.ts:166-171|apps/daemon/src/features/library/library.routes.test.ts:179-184",
+    "apps/daemon/src/features/library/library.routes.ts:116-122|apps/daemon/src/features/library/library.routes.ts:52-57|apps/daemon/src/features/library/library.routes.ts:69-75",
+    "apps/daemon/src/features/library/library.routes.ts:104-106|apps/daemon/src/features/library/library.routes.ts:122-128|apps/daemon/src/features/library/library.routes.ts:57-59",
+    "apps/daemon/src/features/library/library.routes.ts:104-106|apps/daemon/src/features/library/library.routes.ts:122-128|apps/daemon/src/features/library/library.routes.ts:57-59|apps/daemon/src/features/library/library.routes.ts:75-81",
+    "apps/daemon/src/features/library/library.routes.ts:115-121|apps/daemon/src/features/library/library.routes.ts:154-160|apps/daemon/src/features/library/library.routes.ts:68-74",
+    "apps/daemon/src/features/library/library.routes.ts:115-120|apps/daemon/src/features/library/library.routes.ts:140-145|apps/daemon/src/features/library/library.routes.ts:154-159|apps/daemon/src/features/library/library.routes.ts:68-73",
+    "apps/daemon/src/features/sessions/files.io.test.ts:29-33|apps/daemon/src/features/sessions/files.io.test.ts:50-57|apps/daemon/src/features/sessions/files.io.test.ts:68-72",
+    "apps/e2e/tests/dashboard-tabs.spec.ts:55-62|apps/e2e/tests/dashboard-tabs.spec.ts:77-84|apps/e2e/tests/terminal-full-height.spec.ts:10-15",
+    "apps/e2e/tests/drop-to-path.spec.ts:127-133|apps/e2e/tests/drop-to-path.spec.ts:32-38|apps/e2e/tests/drop-to-path.spec.ts:65-71|apps/e2e/tests/drop-to-path.spec.ts:93-99",
+    "apps/e2e/tests/drop-to-path.spec.ts:78-85|apps/e2e/tests/peek.spec.ts:8-13|apps/e2e/tests/send-keys.spec.ts:11-16|apps/e2e/tests/spawn-complete.spec.ts:58-63",
+    "apps/e2e/tests/file-download.spec.ts:13-17|apps/e2e/tests/git-status-badge.spec.ts:47-51|apps/e2e/tests/markdown-table-align.spec.ts:16-20",
+    "apps/e2e/tests/library.spec.ts:28-34|apps/e2e/tests/library.spec.ts:54-60|apps/e2e/tests/library.spec.ts:68-77",
+    "apps/e2e/tests/library.spec.ts:109-113|apps/e2e/tests/library.spec.ts:28-32|apps/e2e/tests/library.spec.ts:54-58|apps/e2e/tests/library.spec.ts:68-74",
+    "apps/e2e/tests/library.spec.ts:109-112|apps/e2e/tests/library.spec.ts:28-31|apps/e2e/tests/library.spec.ts:54-57|apps/e2e/tests/library.spec.ts:68-73|apps/e2e/tests/library.spec.ts:93-96",
+    "apps/web/src/features/extensions/rpc.test.ts:105-116|apps/web/src/features/extensions/rpc.test.ts:253-264|apps/web/src/features/extensions/rpc.test.ts:91-102"
+  ]
+}

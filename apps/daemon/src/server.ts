@@ -1,4 +1,3 @@
-import type { Server } from "bun"
 import { Effect } from "effect"
 import app, { buildApp, mountExtensions, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.io"

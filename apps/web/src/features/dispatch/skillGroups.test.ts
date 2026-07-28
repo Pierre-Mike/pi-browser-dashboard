@@ -47,8 +47,8 @@ describe("upsertSkillGroup", () => {
   })
 
   it("ignores a blank name or an empty skill list (no-op copy)", () => {
-    expect(upsertSkillGroup(base, { name: "   ", skills: ["y"] })).toEqual(base)
-    expect(upsertSkillGroup(base, { name: "C", skills: [] })).toEqual(base)
+    expect(upsertSkillGroup(base, { name: "   ", skills: ["y"] })).toEqual([...base])
+    expect(upsertSkillGroup(base, { name: "C", skills: [] })).toEqual([...base])
   })
 })
 

@@ -64,7 +64,7 @@ for (let i = 1; i < args.length; i++) {
 }
 
 const opts: ScaffoldOptions = { tier, scope }
-const result = buildScaffold(name, opts)
+const result = buildScaffold(name ?? "", opts)
 
 if (!result.ok) {
   console.error(`error: ${result.error}`)

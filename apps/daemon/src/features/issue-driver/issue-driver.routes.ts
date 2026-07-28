@@ -17,8 +17,10 @@ const app = new Hono()
   .post("/pause", async (c) => {
     let paused = true
     try {
-      const body = (await c.req.json()) as { paused?: unknown }
-      if (typeof body.paused === "boolean") paused = body.paused
+      const body: unknown = await c.req.json()
+      if (body !== null && typeof body === "object" && "paused" in body) {
+        if (typeof body.paused === "boolean") paused = body.paused
+      }
     } catch {
       // body optional; default to pause=true
     }

@@ -7,18 +7,9 @@ export class ShellError extends Data.TaggedError("ShellError")<{
   readonly cause?: unknown
 }> {}
 
-export type DispatchInput = {
-  readonly intent: string
-  readonly cwd?: string
-  readonly agent?: string
-  readonly permissionMode?: string
-  readonly effort?: string
-  readonly model?: string
-  // Explicit built-in tool allow-list for `--tools`. Undefined means "every
-  // tool" (the CLI's own default, so we omit the flag entirely); an empty
-  // array is a deliberate "disable every tool" request (`--tools ""`).
-  readonly tools?: readonly string[]
-}
+export type { DispatchInput } from "./shell.types"
+
+import type { DispatchInput } from "./shell.types"
 
 export type SendInput = {
   readonly id: string

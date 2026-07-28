@@ -17,7 +17,12 @@ const failingUploader = async (_file: File): Promise<string> => {
 
 const newClipboard = () => {
   const writes: string[] = []
-  return { writes, writeText: async (s: string) => writes.push(s) }
+  return {
+    writes,
+    writeText: async (s: string): Promise<void> => {
+      writes.push(s)
+    },
+  }
 }
 
 const collectEvents = () => {

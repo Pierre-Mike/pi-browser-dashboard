@@ -2,7 +2,7 @@ import { Cause, Effect, type ManagedRuntime, Option } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { type ShellError, ShellIo } from "../../platform/shell.io"
-import { type DispatchBody, type ParsedDispatch, parseDispatchRequest } from "./dispatch.core"
+import { type ParsedDispatch, parseDispatchRequest } from "./dispatch.core"
 import { PiIo } from "./pi.io"
 
 export type DispatchRouteRuntime = Pick<
@@ -28,9 +28,9 @@ const dispatchEffect = (
 export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
   new Hono()
     .post("/", async (c) => {
-      let body: DispatchBody
+      let body: unknown
       try {
-        body = (await c.req.json()) as DispatchBody
+        body = await c.req.json()
       } catch {
         return c.json({ error: "invalid_json" }, 400)
       }

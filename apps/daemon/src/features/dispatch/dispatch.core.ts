@@ -1,10 +1,10 @@
 // Pure request parsing for POST /dispatch. The route stays a thin
 // json→parse→run→respond pipe; every validation branch lives here where it is
 // unit-testable without a runtime.
-import type { DispatchInput } from "../../platform/shell.io"
-import type { PiDispatchInput } from "./pi.io"
+import type { DispatchInput } from "../../platform/shell.types"
+import type { PiDispatchInput } from "./pi.core"
 
-export type DispatchBody = {
+type DispatchBody = {
   readonly intent?: unknown
   readonly cwd?: unknown
   readonly harness?: unknown
@@ -29,7 +29,12 @@ const asString = (v: unknown): string | undefined => (typeof v === "string" ? v 
 const asStringArray = (v: unknown): string[] | undefined =>
   Array.isArray(v) && v.every((entry) => typeof entry === "string") ? v : undefined
 
-export const parseDispatchRequest = (body: DispatchBody): ParsedDispatch => {
+// Takes `unknown`, not a pre-asserted shape: the route hands the decoded JSON
+// straight in, so nothing between the wire and here claims a type it has not
+// checked (contracts decode at the boundary).
+export const parseDispatchRequest = (raw: unknown): ParsedDispatch => {
+  if (raw === null || typeof raw !== "object") return { ok: false, error: "missing_intent" }
+  const body: DispatchBody = raw
   const intent = asString(body.intent)
   if (!intent || intent.trim().length === 0) {
     return { ok: false, error: "missing_intent" }

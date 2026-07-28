@@ -21,13 +21,9 @@ import {
 import { piShort } from "./pi-sessions.core"
 import { type PiSessionsApi, PiSessionsIo } from "./pi-sessions.io"
 
-export type PiDispatchInput = {
-  readonly intent: string
-  readonly cwd?: string
-  readonly thinking?: string
-  readonly model?: string
-  readonly tools?: readonly string[]
-}
+export type { PiDispatchInput } from "./pi.core"
+
+import type { PiDispatchInput } from "./pi.core"
 
 export type PiRepoApi = {
   // Spawn a non-interactive pi run and return its session id — the handle the
