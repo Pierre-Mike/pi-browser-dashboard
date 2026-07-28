@@ -132,6 +132,8 @@ Web                              Daemon
 ────────────                     ─────────────
 hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/{stop,respawn,rm,rename,tag}
+                        /sessions/:id/send   (optional `wait` → submit-and-wait, one request)
+                        /sessions/:id/wait   (server-owned wait on session state)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
              ──SSE───<  /events  (live deltas, single stream)
 ```
@@ -149,6 +151,29 @@ session.removed      ← id left roster   (derived from roster.changed)
 - Heartbeat every 15s; client reconnects with `Last-Event-ID`.
 - TanStack Query owns server state. SSE patches `queryClient.setQueryData`.
 - POST handlers return the updated entity; SSE remains the truth.
+
+### Server-owned waits (`features/sessions/sessions-wait.*`)
+
+`POST /sessions/:id/wait` and the optional `wait` object on `POST
+/sessions/:id/send` let a caller block on a session reaching one of a set of
+states instead of polling `GET /sessions` — the daemon already publishes
+`session.state` / `session.removed` on the SSE bus, so the wait is
+event-driven, not a poll loop.
+
+- Body: `{ until: SessionStateSlug[], timeoutMs? }` — `until` non-empty,
+  `timeoutMs` defaults to 30s, capped at 10 minutes.
+- `POST /:id/wait` responses: `200 { ok: true, short, state, waitedMs }`
+  (satisfied), `200 { ok: false, reason: "timeout" | "occupant_changed" |
+  "removed", short, waitedMs? }`, or `404 { error: "not_found", short }`.
+- `POST /:id/send` with a `wait` object sends the keys first, then waits, and
+  embeds the same outcome payload under `wait` in its `{ ok: true, short }`
+  response; without `wait` the response is unchanged. A malformed `wait`
+  object is a 400 before any keys are sent.
+- Every wait is **pinned to the occupant**: it captures the session's
+  `sessionId` before subscribing (or the caller-supplied `pinnedSessionId` for
+  send-with-wait, closing the race between the two calls), and reports
+  `occupant_changed` rather than a false `Satisfied` if a different
+  `sessionId` takes over the same `short` while waiting.
 
 ## Per-project pid-apps (`.pid/` HTML)
 

@@ -8,6 +8,7 @@ import { type PiSessionsApi, PiSessionsIo } from "../dispatch/pi-sessions.io"
 import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.io"
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.io"
 import { buildSessionsApp } from "./sessions.routes"
+import { type SessionWaitApi, SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
 
 type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
 
@@ -130,26 +131,70 @@ const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsIo> => {
   return Layer.succeed(PiSessionsIo, api)
 }
 
+// In-memory SessionWaitIo stub: records every call (and, for the send+wait
+// ordering test, whether the ShellIo spy already saw a "send" by the time
+// wait() fired) and always resolves with `outcome`.
+type WaitSpy = {
+  readonly calls: Array<{
+    readonly short: string
+    readonly until: readonly string[]
+    readonly timeoutMs: number
+    readonly pinnedSessionId: string | undefined
+    readonly sawSendFirst: boolean
+  }>
+  outcome: WaitOutcome
+}
+
+const newWaitSpy = (): WaitSpy => ({
+  calls: [],
+  outcome: { _tag: "Satisfied", state: "done", waitedMs: 0 },
+})
+
+const buildWaitLayer = ({
+  spy,
+  shellSpy,
+}: {
+  spy: WaitSpy
+  shellSpy: ShellSpy
+}): Layer.Layer<SessionWaitIo> => {
+  const api: SessionWaitApi = {
+    wait: ({ short, request, pinnedSessionId }) => {
+      spy.calls.push({
+        short,
+        until: request.until,
+        timeoutMs: request.timeoutMs,
+        pinnedSessionId,
+        sawSendFirst: shellSpy.calls.some((c) => c.op === "send"),
+      })
+      return Effect.succeed(spy.outcome)
+    },
+  }
+  return Layer.succeed(SessionWaitIo, api)
+}
+
 const buildHarness = ({
   sessions,
   spy,
   filesStub = newFilesStub(),
   piStub = newPiStub(),
+  waitStub = newWaitSpy(),
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
   filesStub?: FilesStub
   piStub?: PiStub
+  waitStub?: WaitSpy
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions),
     buildShellLayer(spy),
     buildFilesLayer(filesStub),
     buildPiSessionsLayer(piStub),
+    buildWaitLayer({ spy: waitStub, shellSpy: spy }),
   )
   const runtime = ManagedRuntime.make(layer)
   const app = buildSessionsApp(runtime)
-  return { app, runtime, filesStub, piStub, dispose: () => runtime.dispose() }
+  return { app, runtime, filesStub, piStub, waitStub, dispose: () => runtime.dispose() }
 }
 
 // The shape nearly every route test repeats: build a harness, issue one
@@ -162,6 +207,7 @@ const requestOn = async ({
   spy,
   filesStub,
   piStub,
+  waitStub,
 }: {
   path: string
   init?: RequestInit
@@ -169,8 +215,15 @@ const requestOn = async ({
   spy?: ShellSpy
   filesStub?: FilesStub
   piStub?: PiStub
+  waitStub?: WaitSpy
 }): Promise<Response> => {
-  const { app, dispose } = buildHarness({ sessions, spy: spy ?? newSpy(), filesStub, piStub })
+  const { app, dispose } = buildHarness({
+    sessions,
+    spy: spy ?? newSpy(),
+    filesStub,
+    piStub,
+    waitStub,
+  })
   try {
     return await app.request(path, init)
   } finally {
@@ -656,6 +709,175 @@ describe("POST /sessions/:id/send", () => {
     } finally {
       await dispose()
     }
+  })
+
+  it("sends the keys before resolving the wait", async () => {
+    const spy = newSpy()
+    const waitStub = newWaitSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy, waitStub })
+    try {
+      const res = await post({
+        app,
+        id: "ab12",
+        body: { keys: "hello\n", wait: { until: ["done"] } },
+      })
+      expect(res.status).toBe(200)
+      expect(spy.calls).toEqual([{ op: "send", id: "ab12", keys: "hello\n" }])
+      expect(waitStub.calls).toHaveLength(1)
+      expect(waitStub.calls[0]?.sawSendFirst).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("embeds the wait outcome, pinned to the sessionId observed before sending", async () => {
+    const spy = newSpy()
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "Timeout", waitedMs: 1_234 }
+    const sessions = oneSession({ sessionId: "sess-1" })
+    const { app, dispose } = buildHarness({ sessions, spy, waitStub })
+    try {
+      const res = await post({
+        app,
+        id: "ab12",
+        body: { keys: "hello\n", wait: { until: ["done"], timeoutMs: 5_000 } },
+      })
+      expect(res.status).toBe(200)
+      await expectJson(res, {
+        status: 200,
+        body: {
+          ok: true,
+          short: "ab12",
+          wait: { ok: false, reason: "timeout", short: "ab12", waitedMs: 1_234 },
+        },
+      })
+      expect(waitStub.calls[0]).toMatchObject({
+        short: "ab12",
+        until: ["done"],
+        timeoutMs: 5_000,
+        pinnedSessionId: "sess-1",
+      })
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("returns the unchanged { ok, short } shape when no wait is requested", async () => {
+    const waitStub = newWaitSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy(), waitStub })
+    try {
+      const res = await post({ app, id: "ab12", body: { keys: "hello\n" } })
+      await expectJson(res, { status: 200, body: { ok: true, short: "ab12" } })
+      expect(waitStub.calls).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("rejects a malformed wait object with 400 before sending any keys", async () => {
+    const spy = newSpy()
+    const waitStub = newWaitSpy()
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy, waitStub })
+    try {
+      const res = await post({ app, id: "ab12", body: { keys: "hello\n", wait: { until: [] } } })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBe("bad_request")
+      expect(spy.calls).toEqual([])
+      expect(waitStub.calls).toEqual([])
+    } finally {
+      await dispose()
+    }
+  })
+})
+
+describe("POST /sessions/:id/wait", () => {
+  const postWait = async ({
+    app,
+    id,
+    body,
+  }: {
+    app: ReturnType<typeof buildSessionsApp>
+    id: string
+    body: unknown
+  }): Promise<Response> =>
+    app.request(`/${id}/wait`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    })
+
+  // Issues POST /:id/wait against a SessionWaitIo stub pinned to `outcome` —
+  // the shape every outcome-mapping test below shares.
+  const waitRes = ({ id, outcome }: { id: string; outcome: WaitOutcome }): Promise<Response> => {
+    const waitStub = newWaitSpy()
+    waitStub.outcome = outcome
+    return requestOn({
+      path: `/${id}/wait`,
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done"] }),
+      },
+      waitStub,
+    })
+  }
+
+  it("rejects a malformed body with 400 bad_request", async () => {
+    const { app, dispose } = buildHarness({ sessions: new Map(), spy: newSpy() })
+    try {
+      const res = await postWait({ app, id: "ab12", body: { until: [] } })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string; message: string }
+      expect(body.error).toBe("bad_request")
+      expect(typeof body.message).toBe("string")
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("forwards the short and parsed until to SessionWaitIo.wait", async () => {
+    const waitStub = newWaitSpy()
+    const res = await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done", "failed"] }),
+      },
+      waitStub,
+    })
+    expect(res.status).toBe(200)
+    expect(waitStub.calls[0]).toMatchObject({ short: "ab12", until: ["done", "failed"] })
+  })
+
+  it("returns 404 not_found when the wait service reports NotFound", async () => {
+    const res = await waitRes({ id: "missing", outcome: { _tag: "NotFound" } })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
+  })
+
+  it("returns 200 with the Satisfied payload", async () => {
+    const res = await waitRes({
+      id: "ab12",
+      outcome: { _tag: "Satisfied", state: "done", waitedMs: 42 },
+    })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: true, short: "ab12", state: "done", waitedMs: 42 },
+    })
+  })
+
+  it("returns 200 with the OccupantChanged payload", async () => {
+    const res = await waitRes({ id: "ab12", outcome: { _tag: "OccupantChanged" } })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: false, reason: "occupant_changed", short: "ab12" },
+    })
+  })
+
+  it("returns 200 with the Removed payload", async () => {
+    const res = await waitRes({ id: "ab12", outcome: { _tag: "Removed" } })
+    await expectJson(res, { status: 200, body: { ok: false, reason: "removed", short: "ab12" } })
   })
 })
 

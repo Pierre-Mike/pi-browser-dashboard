@@ -13,6 +13,7 @@ import { PidSettingsIoLive } from "../features/pid-settings/pid-settings.io"
 import { ProjectsIoLive } from "../features/projects/projects.io"
 import { FilesIoLive } from "../features/sessions/files.io"
 import { SessionRegistryLive } from "../features/sessions/sessions.io"
+import { SessionWaitIoLive } from "../features/sessions/sessions-wait.io"
 import { TunnelIoLive } from "../features/tunnel/tunnel.io"
 import { ConfigIoLive } from "./config.io"
 import { ShellIoLive } from "./shell.io"
@@ -35,6 +36,7 @@ const FilesLive = Layer.provide(FilesIoLive, GlobalSettingsLive)
 const PidSettingsLive = Layer.provide(PidSettingsIoLive, ProjectsLive)
 const PidAppsLive = Layer.provide(PidAppsIoLive, ProjectsLive)
 const BrainstormsLive = Layer.provide(BrainstormsIoLive, ProjectsLive)
+const SessionWaitLive = Layer.provide(SessionWaitIoLive, SessionRegistryLive)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
     globalCap: ISSUE_DRIVER_GLOBAL_CAP,
@@ -49,6 +51,7 @@ const IssueDriverLive = Layer.provide(
  */
 const AppLayer = Layer.mergeAll(
   SessionRegistryLive,
+  SessionWaitLive,
   ShellIoLive,
   // PiIo (spawn) and PiSessionsIo (visibility) share the spawn log:
   // dispatch records into it, the sessions routes list from it.
