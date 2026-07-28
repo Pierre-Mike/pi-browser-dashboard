@@ -137,6 +137,7 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/wait   (server-owned wait on session state)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why)
+                        /terminal/states  (current agent-state per known terminal)
              ──SSE───<  /events  (live deltas, single stream)
 ```
 
@@ -147,6 +148,8 @@ roster.changed       ← roster.json changed; payload = full new id list
 session.state        ← state.json changed; payload = parsed state
 session.created      ← id appeared in roster (derived from roster.changed)
 session.removed      ← id left roster   (derived from roster.changed)
+terminal.state       ← a terminal's classified agent state changed; payload =
+                        { scope, id, state, matcher, evidence, at }
 ```
 
 - One SSE stream, server fans roster + per-session deltas.
@@ -213,6 +216,54 @@ the escape hatch for anything not named here.
 - Example — answer a two-down-then-select menu and confirm the session
   resumed: `{ sequence: [{ named: "down", repeat: 2 }, { named: "enter" }],
   wait: { until: ["working", "idle"] } }`.
+
+### Terminal agent-state detection (`features/terminal/terminal-state.*`)
+
+The session roster only knows about work the supervisor or the daemon itself
+spawned. A `claude` (or `pi`) the user starts by hand inside the global,
+project, orchestrator, or session-drill-in terminal is otherwise invisible —
+no chip, no notification. Since the daemon already pipes that terminal's
+bytes to the browser over the existing WS bridge (`terminal.routes.ts`), it
+taps the same bytes to classify what the agent is doing, the way `herdr`
+reads any terminal's screen instead of requiring an integration: a pure
+regex table (`MATCHERS` in `terminal-state.core.ts`) matches known
+status-line and dialog shapes — Claude Code's `"<Gerund>…(<N>s · …)"` while
+generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn
+ends, `"Do you want to proceed?"` (or its reject option) while blocked on a
+permission decision; pi's `"Working..."` spinner — against a per-connection
+rolling tail, stripped of ANSI first. States: `working`, `blocked`, `idle`,
+`unknown` — `unknown` is the honest default when nothing matches, not a
+guessed `idle`.
+
+- `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
+  evidence, at } }` for every terminal classified so far, so a client that
+  connects late can render a chip immediately.
+- `terminal.state` SSE event — published only on an actual state change (no
+  event per keystroke), throttled to at most one classification pass per
+  400ms per connection so a fast-redrawing spinner doesn't cost a regex pass
+  per chunk.
+- **Real limitation**: classification only runs while a browser is attached
+  to that terminal's WS — the daemon has no other way to see its bytes. A
+  `claude` running unattended inside a zellij session nobody has opened in
+  the dashboard stays unclassified. The natural follow-up is polling a
+  zellij screen dump (`zellij action dump-screen`) for sessions with no
+  attached WS, which this feature does not implement.
+- Evidence for every VERIFIED row is one of two kinds, named in the row's own
+  comment: bytes captured from a real pty run, or a literal read straight out
+  of the shipped CLI — `strings -a` on the Claude Code binary
+  (`~/.local/share/claude/versions/<version>`, a single compiled Mach-O
+  executable) for `"Do you want to proceed?"` and its reject option (found
+  adjacent to unambiguous tool-approval identifiers — "Bash command
+  (unsandboxed)", "accept-once", "confirm:yes" — confirming it is the
+  dialog's own copy), or pi's unminified `dist/` source directly for
+  `"Working..."`. No row was fabricated from memory of what a CLI "probably"
+  prints. The permission-prompt rows have binary-string evidence but not a
+  captured live render — every attempt to trigger the dialog against a real
+  `claude` process here auto-approved the tool call first (a broad
+  user-level Bash allow-list). See the matcher table's comments for the full
+  trail per row, including a documented pi hint (`(escape to interrupt)`)
+  that exists in source but was not observed live, so has no matcher of its
+  own.
 
 ## Per-project pid-apps (`.pid/` HTML)
 

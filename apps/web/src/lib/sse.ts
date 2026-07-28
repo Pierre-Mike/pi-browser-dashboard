@@ -1,6 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { notifyEnabled, showNotification } from "../features/notifications/notifier"
 import { decideNotification, resolvePrevState } from "../features/notifications/sessionNotify"
+import { type TerminalStateEvent, terminalStateKey } from "../features/terminal/terminalState"
+import { TERMINAL_STATES_QUERY_KEY } from "../features/terminal/useTerminalState"
 import { extensionEventBroker } from "./extensionEvents"
 import type { SessionState, SessionStateValue } from "./types"
 
@@ -113,6 +115,20 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
     next.addEventListener("session.removed", () => {
       mark("session.removed")
       queryClient.invalidateQueries({ queryKey: ["sessions"] })
+    })
+
+    // A terminal's agent-state classification changed (see
+    // apps/daemon/src/features/terminal/terminal-state.core.ts). Patched
+    // straight into the terminal-states cache entry rather than invalidated —
+    // there is no REST re-fetch cheaper than the payload already carries.
+    next.addEventListener("terminal.state", (ev) => {
+      const payload = parse<TerminalStateEvent>((ev as MessageEvent).data)
+      if (!payload) return
+      mark("terminal.state", { scope: payload.scope, id: payload.id, state: payload.state })
+      queryClient.setQueryData<Record<string, TerminalStateEvent>>(
+        TERMINAL_STATES_QUERY_KEY,
+        (prev) => ({ ...prev, [terminalStateKey(payload)]: payload }),
+      )
     })
 
     next.onerror = (err) => {

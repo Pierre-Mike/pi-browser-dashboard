@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
+import { TerminalStateChip } from "./TerminalStateChip"
 import { type ColorScheme, schemeForPrefersDark, terminalTheme } from "./terminalTheme"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
+import { useTerminalState } from "./useTerminalState"
 
 type Props = {
   readonly reconnectTitle: string
@@ -56,6 +58,9 @@ export const TerminalView = (props: Props) => {
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [_reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
+  // `kind` doubles as the daemon's terminal scope; idless kinds use their own
+  // name as the id too (see terminal.routes.ts's idForScope).
+  const terminalState = useTerminalState({ scope: kind, id: isIdlessKind(kind) ? kind : id })
 
   useEffect(() => {
     const host = hostRef.current
@@ -247,6 +252,7 @@ export const TerminalView = (props: Props) => {
         >
           {status}
         </span>
+        <TerminalStateChip event={terminalState} />
         <button
           type="button"
           data-testid="terminal-restart"
