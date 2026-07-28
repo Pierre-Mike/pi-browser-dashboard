@@ -7,11 +7,13 @@ import {
   buildWaitRequestBody,
   DEFAULT_PID_URL,
   errorMessageFrom,
+  exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForUsage,
   exitCodeForWaitBody,
   filterByState,
   formatExplain,
+  formatFleets,
   formatKeysSent,
   formatRemoved,
   formatSent,
@@ -24,6 +26,7 @@ import {
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
+  parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
   parseSendResponse,
@@ -424,6 +427,32 @@ describe("parseAgentArgv", () => {
       )
     })
   })
+
+  describe("fleets", () => {
+    it("defaults project to undefined (resolved by the shell) and json to false", () => {
+      expect(right(parseAgentArgv(["fleets"]))).toEqual({
+        _tag: "Fleets",
+        project: undefined,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("parses --project and --json", () => {
+      expect(right(parseAgentArgv(["fleets", "--project", "demo", "--json"]))).toEqual({
+        _tag: "Fleets",
+        project: "demo",
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("rejects a positional argument", () => {
+      expect(left(parseAgentArgv(["fleets", "extra"])).message).toBe(
+        "fleets: unexpected argument: extra",
+      )
+    })
+  })
 })
 
 describe("resolveBaseUrl", () => {
@@ -774,6 +803,116 @@ describe("parseExplainResponse", () => {
   })
 })
 
+describe("parseFleetsResponse", () => {
+  const step = {
+    id: "review",
+    intent: "review the diff",
+    n: 3,
+    needs: [],
+  }
+
+  it("parses a well-formed response with defaults filled in for optional step fields", () => {
+    expect(
+      right(
+        parseFleetsResponse({
+          fleets: [{ name: "f", steps: [step], waves: [["review"]] }],
+          errors: [],
+        }),
+      ),
+    ).toEqual({
+      fleets: [
+        {
+          name: "f",
+          description: undefined,
+          waves: [["review"]],
+          steps: [
+            {
+              id: "review",
+              intent: "review the diff",
+              n: 3,
+              needs: [],
+              agent: undefined,
+              cwd: undefined,
+              until: undefined,
+              timeoutMs: undefined,
+            },
+          ],
+        },
+      ],
+      errors: [],
+    })
+  })
+
+  it("parses full step fields and a fleet description", () => {
+    const full = { ...step, agent: "reviewer", cwd: "/tmp", until: ["done"], timeoutMs: 500 }
+    expect(
+      right(
+        parseFleetsResponse({
+          fleets: [{ name: "f", description: "d", steps: [full], waves: [["review"]] }],
+          errors: [],
+        }),
+      ).fleets[0],
+    ).toEqual({
+      name: "f",
+      description: "d",
+      waves: [["review"]],
+      steps: [
+        {
+          id: "review",
+          intent: "review the diff",
+          n: 3,
+          needs: [],
+          agent: "reviewer",
+          cwd: "/tmp",
+          until: ["done"],
+          timeoutMs: 500,
+        },
+      ],
+    })
+  })
+
+  it("parses validation errors, defaulting an absent step to undefined", () => {
+    expect(
+      right(
+        parseFleetsResponse({
+          fleets: [],
+          errors: [
+            { fleet: "f", step: "a", message: "bad" },
+            { fleet: "f", message: "also bad" },
+          ],
+        }),
+      ).errors,
+    ).toEqual([
+      { fleet: "f", step: "a", message: "bad" },
+      { fleet: "f", step: undefined, message: "also bad" },
+    ])
+  })
+
+  it("rejects a non-object response", () => {
+    expect(left(parseFleetsResponse("nope")).message).toBe("fleets response must be an object")
+  })
+
+  it("rejects a missing fleets or errors array", () => {
+    expect(left(parseFleetsResponse({ errors: [] })).message).toBe(
+      "fleets response is missing fleets",
+    )
+    expect(left(parseFleetsResponse({ fleets: [] })).message).toBe(
+      "fleets response is missing errors",
+    )
+  })
+
+  it("rejects a step with an unrecognized until state", () => {
+    expect(
+      left(
+        parseFleetsResponse({
+          fleets: [{ name: "f", steps: [{ ...step, until: ["nope"] }], waves: [["review"]] }],
+          errors: [],
+        }),
+      ).message,
+    ).toBe("fleet step until contains an unrecognized state")
+  })
+})
+
 describe("errorMessageFrom", () => {
   it("prefers message, then detail, then error", () => {
     expect(errorMessageFrom({ message: "m", detail: "d", error: "e" })).toBe("m")
@@ -995,5 +1134,62 @@ describe("filterByState", () => {
     expect(filterByState({ items, states: ["done"] })).toEqual([{ state: "done" }])
     expect(filterByState({ items, states: ["idle", "done"] })).toEqual(items)
     expect(filterByState({ items, states: ["failed"] })).toEqual([])
+  })
+})
+
+describe("formatFleets / exitCodeForFleets", () => {
+  it("reports when there are no recipes at all", () => {
+    expect(formatFleets({ fleets: [], errors: [] })).toBe(
+      "no fleet recipes (.pid/fleet.json not found or empty)",
+    )
+    expect(exitCodeForFleets({ fleets: [], errors: [] })).toBe(0)
+  })
+
+  it("formats a fleet's waves, with and without a description", () => {
+    expect(
+      formatFleets({
+        fleets: [
+          {
+            name: "review-and-fix",
+            description: "three reviewers, then one fixer",
+            steps: [],
+            waves: [["review"], ["fix"]],
+          },
+        ],
+        errors: [],
+      }),
+    ).toBe("review-and-fix — three reviewers, then one fixer\n  wave 1: review\n  wave 2: fix")
+
+    expect(
+      formatFleets({
+        fleets: [{ name: "solo", description: undefined, steps: [], waves: [["only"]] }],
+        errors: [],
+      }),
+    ).toBe("solo\n  wave 1: only")
+  })
+
+  it("lists every validation error, attributing a step when one is named", () => {
+    const response = {
+      fleets: [],
+      errors: [
+        { fleet: "f", step: "fix", message: 'needs unknown step: "ghost"' },
+        { fleet: "f", step: undefined, message: "dependency cycle detected among steps: a, b" },
+      ],
+    }
+    expect(formatFleets(response)).toBe(
+      '2 recipe error(s):\n  [f] step "fix": needs unknown step: "ghost"\n  [f] dependency cycle detected among steps: a, b',
+    )
+    expect(exitCodeForFleets(response)).toBe(2)
+  })
+
+  it("shows both valid fleets and errors together when a file has some of each", () => {
+    const response = {
+      fleets: [{ name: "ok", description: undefined, steps: [], waves: [["a"]] }],
+      errors: [{ fleet: "bad", step: undefined, message: "fleet name must be a non-empty string" }],
+    }
+    expect(formatFleets(response)).toBe(
+      "ok\n  wave 1: a\n\n1 recipe error(s):\n  [bad] fleet name must be a non-empty string",
+    )
+    expect(exitCodeForFleets(response)).toBe(2)
   })
 })

@@ -163,6 +163,9 @@ terminal.state       ← a terminal's classified agent state changed; payload =
   named-key vocabulary, wait semantics, `explain`, and the fan-out/join
   `spawn` recipe. Guarded against drift from the real vocabulary/constants/
   routes by `apps/daemon/src/platform/agent-skill.test.ts`.
+- `GET /projects/:id/fleets` — a project's `.pid/fleet.json` recipes, parsed,
+  validated and grouped into dependency waves (see "Fleet recipes" below).
+  Schema + validation + discovery only; there is no run endpoint yet.
 
 ### Server-owned waits (`features/sessions/sessions-wait.*`)
 
@@ -390,6 +393,117 @@ Security (the dropped HTML is UNTRUSTED):
 Spec: `specs/pid-html-extensions.html`. A NEW lightweight feature, kept separate
 from the manifest-based extension platform (`platform/extensions/`).
 
+## Fleet recipes (`.pid/fleet.json`)
+
+A fleet recipe is a declarative, re-runnable description of a multi-agent
+run: N steps, each spawning `n` agents that share an `intent`, plus `needs`
+dependencies between steps. herdr (workspaces, no scripted templates — its own
+docs leave automation to shell scripting over its CLI) is the closest existing
+tool and deliberately does not cover this; this repo already has every
+ingredient (`/dispatch`, the spawn allow-list, server-owned waits), so a
+recipe is just the missing persisted description tying them together.
+
+**Schema + validation + discovery only — there is no runner yet.** Nothing in
+this feature spawns a session. The follow-up PR adds a run endpoint that walks
+the wave plan below, dispatching each wave and waiting on it before starting
+the next; until then, `GET /projects/:id/fleets` and `pid fleets` are read-only.
+
+### File format — `<project>/.pid/fleet.json`
+
+```jsonc
+{
+  "fleets": [
+    {
+      "name": "review-and-fix",            // required, unique across the file
+      "description": "three reviewers, then one fixer",  // optional, presentation-only
+      "steps": [
+        {
+          "id": "review",                  // required, unique within this fleet
+          "intent": "review the working diff for bugs",  // required, non-empty
+          "n": 3,                          // optional, default 1, integer 1..20
+          "agent": "reviewer",             // optional — passed to /dispatch verbatim
+          "cwd": "apps/web"                // optional — passed to /dispatch verbatim
+        },
+        {
+          "id": "fix",
+          "intent": "fix what the reviewers found",
+          "needs": ["review"],             // optional, step ids in this fleet that must finish first
+          "until": ["done"],               // optional, non-empty array of session-state slugs
+          "timeoutMs": 600000              // optional, requires `until`; 1..600000 (10 min)
+        }
+      ]
+    }
+  ]
+}
+```
+
+`n`, `agent`, `cwd` mirror the fields `POST /dispatch` already accepts for one
+spawn; a step's `n` agents would each get their own independent dispatch call
+with the same `intent`/`agent`/`cwd`. `needs`/`until`/`timeoutMs` describe the
+wait the (future) runner applies to a step's own sessions before its
+dependents start — the same `{ until, timeoutMs }` shape as `POST
+/sessions/:id/wait` (see "Server-owned waits" above); a step with no `needs`
+starts immediately, a step with no `until` has nothing to wait for before its
+own dependents look at its `needs`.
+
+### Wave semantics
+
+Steps are grouped into **waves** by topologically sorting on `needs`: every
+step in a wave is independent of every other step in that wave (they can run
+concurrently), and a wave only starts once every step in every earlier wave
+has resolved. A diamond (`a` then `b`+`c` in parallel then `d`) becomes three
+waves: `[[a], [b, c], [d]]`. `GET /projects/:id/fleets` computes and returns
+this plan (`apps/daemon/src/features/fleet/fleet.core.ts` `planFleetRun`) for
+every fleet that parses cleanly, so an author can see the concurrency their
+recipe implies before wiring a runner up to it at all.
+
+### What validation rejects, and why
+
+`parseFleetFile` collects **every** error in one pass — not just the first —
+because a hand-edited recipe should get a full worklist, not a
+fix-one-rerun-see-the-next loop:
+
+- A fleet name and a step id must be non-empty strings; fleet names are
+  unique across the file, step ids unique within their own fleet (needed
+  because `needs` references a step by id).
+- `intent` must be non-empty — an agent with nothing to do is never useful.
+- `n` must be an integer from 1 to 20: spawning agents costs the user's own
+  API quota, so an unbounded `n` would let a typo (`n: 500` for `n: 5`) burn
+  it silently; 20 is comfortably above any fan-out this repo's own dogfood
+  recipes use.
+- Every `needs` entry must name a step id that exists in the same fleet — a
+  reference to another fleet, or to nothing at all, is rejected rather than
+  silently ignored.
+- The `needs` graph must be acyclic; a cycle is reported as one error naming
+  every step still blocked, not a stack overflow or a runner that hangs.
+- `until` entries must be one of the eight known session-state slugs (`done`,
+  `working`, `blocked`, `needs_input`, `idle`, `failed`, `stopped`,
+  `unknown`), and `timeoutMs` must fall inside the same 1..600000ms bound
+  `POST /sessions/:id/wait` itself enforces — a recipe cannot ask for a wait
+  the server would refuse anyway.
+- `timeoutMs` without `until` is rejected: a timeout with nothing to wait for
+  is very likely a typo, not intent.
+
+A malformed file is never a 500: `GET /projects/:id/fleets` returns `200
+{ fleets: [], errors: [...] }` (or a partial `fleets` list alongside `errors`
+for the fleets that DID parse), and `pid fleets` prints every error and exits
+2 — a linter an author can run before trusting a recipe. An absent
+`fleet.json` is not an error either: `{ fleets: [], errors: [] }`, the same
+"nothing configured yet" contract `pid-settings` uses for its own missing file.
+
+### Worked example
+
+The `review-and-fix` fleet above plans as two waves: `[["review"], ["fix"]]`
+— wave membership comes purely from `fix`'s `needs: ["review"]`; `until` and
+`timeoutMs` never affect the plan. `fix` additionally declares `until:
+["done"]` / `timeoutMs: 600000`: once the runner exists, that is the wait
+applied to `fix`'s own sessions before anything depending on `fix` starts.
+This fleet has nothing downstream of `fix`, so today that pair is inert
+metadata — present because an author reviewing the recipe wants to see the
+intended shape even before a runner reads it. This repo's own root
+`.pid/fleet.json` dogfoods two real recipes in the same shape: a
+`review-diff` fan-out and a `fix-then-verify` chain.
+
 ## Single-package CLI distribution (`pid-dashboard`)
 
 `apps/cli` publishes the whole dashboard as one dependency-free package:
@@ -459,6 +573,7 @@ pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
 pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,...>] [--json]
 pid stop <short>
 pid rm <short>
+pid fleets [--project <id>] [--json]
 pid [--help] [--url <base>]
 ```
 
@@ -500,6 +615,14 @@ pid [--help] [--url <base>]
   `shift-tab`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`,
   `page-down`, `backspace`, `delete`, `space` (the same deliberately-closed
   vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
+- `pid fleets` lists a project's `.pid/fleet.json` recipes (see "Fleet
+  recipes" above) via `GET /projects/:id/fleets` — schema + validation +
+  wave planning only, no runner yet. `--project` defaults to the current
+  directory's basename (a project id IS its directory name under the
+  daemon's `projectsRoot`), so the default only resolves correctly when
+  `pid` runs on the same machine as the daemon; pass `--project` explicitly
+  otherwise. A non-empty `errors` list in the response exits 2, making `pid
+  fleets` a linter an author can run before trusting a recipe.
 
 ### Exit codes
 
@@ -511,7 +634,7 @@ An orchestrating agent composes `pid` in a shell
 |---|---|
 | 0 | success / wait satisfied |
 | 1 | transport failure, 5xx, unreachable daemon, or a response this CLI's parser could not make sense of |
-| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) |
+| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or, for `pid fleets`, an invalid recipe file |
 | 3 | wait timed out |
 | 4 | `occupant_changed` — the session was replaced under the wait |
 | 5 | `removed` — the session went away |

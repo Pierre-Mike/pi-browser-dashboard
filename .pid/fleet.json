@@ -1,0 +1,32 @@
+{
+  "fleets": [
+    {
+      "name": "review-diff",
+      "description": "fan out three independent reviewers over the working diff",
+      "steps": [
+        {
+          "id": "review",
+          "intent": "review the working diff against this repo's CLAUDE.md engineering canon and flag bugs, missing tests, or axiom violations",
+          "n": 3
+        }
+      ]
+    },
+    {
+      "name": "fix-then-verify",
+      "description": "fix outstanding review findings, then confirm the gate suite is green",
+      "steps": [
+        {
+          "id": "fix",
+          "intent": "fix the issues left open by the current branch's code review"
+        },
+        {
+          "id": "verify",
+          "intent": "run `bun run verify` and report any failing gate",
+          "needs": ["fix"],
+          "until": ["done"],
+          "timeoutMs": 600000
+        }
+      ]
+    }
+  ]
+}

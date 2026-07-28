@@ -238,7 +238,7 @@ export const AGENT_SKILL_MD: string = [
   "|---|---|",
   "| 0 | success / wait satisfied |",
   "| 1 | transport failure, 5xx, unreachable daemon, or a response this CLI's parser could not make sense of |",
-  "| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) |",
+  "| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or, for `pid fleets`, an invalid recipe file |",
   "| 3 | wait timed out |",
   "| 4 | `occupant_changed` — the session was replaced under the wait |",
   "| 5 | `removed` — the session went away |",

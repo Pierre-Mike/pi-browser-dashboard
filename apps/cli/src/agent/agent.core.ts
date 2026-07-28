@@ -142,6 +142,16 @@ export type RmCommand = {
   readonly url: string | undefined
 }
 
+export type FleetsCommand = {
+  readonly _tag: "Fleets"
+  // undefined means "use the current directory's basename" — resolved by the
+  // shell (main.ts), which is the sanctioned place to read cwd; this core
+  // stays synchronous data-in/data-out.
+  readonly project: string | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
 export type HelpCommand = {
   readonly _tag: "Help"
   readonly url: string | undefined
@@ -156,6 +166,7 @@ export type Command =
   | SpawnCommand
   | StopCommand
   | RmCommand
+  | FleetsCommand
   | HelpCommand
 
 export type UsageError = {
@@ -327,6 +338,7 @@ const FLAG_WAIT: FlagSpec = { name: "wait", boolean: false }
 const FLAG_N: FlagSpec = { name: "n", boolean: false }
 const FLAG_AGENT: FlagSpec = { name: "agent", boolean: false }
 const FLAG_CWD: FlagSpec = { name: "cwd", boolean: false }
+const FLAG_PROJECT: FlagSpec = { name: "project", boolean: false }
 
 const parseOneSlug = ({
   command,
@@ -644,6 +656,23 @@ const parseSpawnCommand = (
   })
 }
 
+const parseFleetsCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "fleets", argv: rest, flagSpecs: withJson([FLAG_PROJECT]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const extra = rejectExtraPositionals({ command: "fleets", positionals, max: 0 })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  return Either.right({
+    _tag: "Fleets",
+    project: flags.get("project"),
+    json: flags.has("json"),
+    url,
+  })
+}
+
 const parseShortOnlyCommand = ({
   tag,
   command,
@@ -699,6 +728,7 @@ const SUBCOMMAND_PARSERS: Readonly<
   spawn: parseSpawnCommand,
   stop: (rest, url) => parseShortOnlyCommand({ tag: "Stop", command: "stop", rest, url }),
   rm: (rest, url) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
+  fleets: parseFleetsCommand,
 }
 
 // `rest` is always non-empty here (parseAgentArgv only calls this once the
@@ -1166,6 +1196,132 @@ export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary
   })
 }
 
+// --- Fleet recipes (GET /projects/:id/fleets) --------------------------------
+//
+// Schema + validation + wave planning only — there is no runner yet (see
+// AGENTS.md "Fleet recipes"). `SessionStateSlug` above already covers `until`.
+
+export type FleetErrorSummary = {
+  readonly fleet: string
+  readonly step: string | undefined
+  readonly message: string
+}
+
+export type FleetStepSummary = {
+  readonly id: string
+  readonly intent: string
+  readonly n: number
+  readonly agent: string | undefined
+  readonly cwd: string | undefined
+  readonly needs: ReadonlyArray<string>
+  readonly until: ReadonlyArray<SessionStateSlug> | undefined
+  readonly timeoutMs: number | undefined
+}
+
+export type FleetSummary = {
+  readonly name: string
+  readonly description: string | undefined
+  readonly steps: ReadonlyArray<FleetStepSummary>
+  readonly waves: ReadonlyArray<ReadonlyArray<string>>
+}
+
+export type FleetsResponse = {
+  readonly fleets: ReadonlyArray<FleetSummary>
+  readonly errors: ReadonlyArray<FleetErrorSummary>
+}
+
+const requireWaveArrayField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<ReadonlyArray<ReadonlyArray<string>>, ParseError> =>
+  Array.isArray(value) && value.every((wave) => Array.isArray(wave) && wave.every(isNonEmptyString))
+    ? Either.right(value)
+    : Either.left(parseError(message))
+
+// Split out of parseFleetStep to keep that function's own branch count low
+// (fallow's complexity gate) — this is the only field whose validation needs
+// more than a single requireXField call.
+const parseFleetStepUntil = (
+  raw: Record<string, unknown>,
+): Either.Either<ReadonlyArray<SessionStateSlug> | undefined, ParseError> => {
+  if (raw.until === undefined) return Either.right(undefined)
+  return requireStringArrayField({
+    value: raw.until,
+    message: "fleet step has an invalid until",
+  }).pipe(
+    Either.filterOrLeft(
+      (slugs): slugs is ReadonlyArray<SessionStateSlug> => slugs.every(isSessionStateSlug),
+      () => parseError("fleet step until contains an unrecognized state"),
+    ),
+  )
+}
+
+const parseFleetStep = (raw: unknown): Either.Either<FleetStepSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet step must be an object"))
+  const combined = Either.all({
+    id: requireNonEmptyStringField({ value: raw.id, message: "fleet step is missing id" }),
+    intent: requireNonEmptyStringField({
+      value: raw.intent,
+      message: "fleet step is missing intent",
+    }),
+    n: requireNumberField({ value: raw.n, message: "fleet step is missing n" }),
+    needs: requireStringArrayField({ value: raw.needs, message: "fleet step is missing needs" }),
+    until: parseFleetStepUntil(raw),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    ...combined.right,
+    agent: optionalString(raw.agent),
+    cwd: optionalString(raw.cwd),
+    timeoutMs: optionalNumber(raw.timeoutMs),
+  })
+}
+
+const parseFleetSummary = (raw: unknown): Either.Either<FleetSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet must be an object"))
+  const combined = Either.all({
+    name: requireNonEmptyStringField({ value: raw.name, message: "fleet is missing name" }),
+    steps: Array.isArray(raw.steps)
+      ? Either.all(raw.steps.map(parseFleetStep))
+      : Either.left(parseError("fleet is missing steps")),
+    waves: requireWaveArrayField({ value: raw.waves, message: "fleet is missing waves" }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ ...combined.right, description: optionalString(raw.description) })
+}
+
+const parseFleetError = (raw: unknown): Either.Either<FleetErrorSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet error must be an object"))
+  const combined = Either.all({
+    fleet: requireNonEmptyStringField({
+      value: raw.fleet,
+      message: "fleet error is missing fleet",
+    }),
+    message: requireNonEmptyStringField({
+      value: raw.message,
+      message: "fleet error is missing message",
+    }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ ...combined.right, step: optionalString(raw.step) })
+}
+
+export const parseFleetsResponse = (raw: unknown): Either.Either<FleetsResponse, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleets response must be an object"))
+  const combined = Either.all({
+    fleets: Array.isArray(raw.fleets)
+      ? Either.all(raw.fleets.map(parseFleetSummary))
+      : Either.left(parseError("fleets response is missing fleets")),
+    errors: Array.isArray(raw.errors)
+      ? Either.all(raw.errors.map(parseFleetError))
+      : Either.left(parseError("fleets response is missing errors")),
+  })
+  return combined
+}
+
 // Best-effort human message out of a daemon error body — every error route in
 // this app responds with some subset of { error, message, detail }.
 export const errorMessageFrom = (raw: unknown): string => {
@@ -1367,6 +1523,36 @@ export const formatSpawned = ({
   const base = `spawned ${short} — ${truncate({ text: intent, max: 60 })}`
   return wait === undefined ? base : `${base}; ${formatWaitOutcome(wait)}`
 }
+
+const formatFleetError = (e: FleetErrorSummary): string =>
+  e.step === undefined ? `[${e.fleet}] ${e.message}` : `[${e.fleet}] step "${e.step}": ${e.message}`
+
+const formatFleetSummary = (f: FleetSummary): string => {
+  const header = f.description === undefined ? f.name : `${f.name} — ${f.description}`
+  const waveLines = f.waves.map((wave, i) => `  wave ${i + 1}: ${wave.join(", ")}`)
+  return [header, ...waveLines].join("\n")
+}
+
+export const formatFleets = (response: FleetsResponse): string => {
+  const sections = response.fleets.map(formatFleetSummary)
+  if (response.errors.length > 0) {
+    sections.push(
+      [
+        `${response.errors.length} recipe error(s):`,
+        ...response.errors.map((e) => `  ${formatFleetError(e)}`),
+      ].join("\n"),
+    )
+  }
+  if (sections.length === 0) sections.push("no fleet recipes (.pid/fleet.json not found or empty)")
+  return sections.join("\n\n")
+}
+
+// `pid fleets` doubles as a linter for a hand-edited recipe: a non-empty
+// `errors` list means the file is invalid, so exit 2 — the same code already
+// used for a usage error, since both mean "fix your input before this does
+// anything useful" (see AGENTS.md's exit-code table).
+export const exitCodeForFleets = (response: FleetsResponse): ExitCode =>
+  response.errors.length > 0 ? 2 : 0
 
 // --- Filtering -----------------------------------------------------------------
 

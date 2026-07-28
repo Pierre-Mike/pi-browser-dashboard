@@ -40,6 +40,18 @@ const projectPath = (id: string): Promise<string | null> =>
     }),
   )
 
+/**
+ * The same resolution, exported as a plain function returning `undefined` for
+ * an unknown id: how another router (fleet.routes.ts, mounted from api.ts)
+ * learns a project's root without importing ProjectsService directly — mirrors
+ * sessions.routes.ts's `resolveSessionRoot`. Matching by id against the real
+ * directory listing (rather than a raw filesystem join) means a traversal
+ * attempt (`../etc`) simply never matches any `p.id` and falls out here as
+ * "unknown", with no separate forbidden case to track.
+ */
+export const resolveProjectRoot = async (id: string): Promise<string | undefined> =>
+  (await projectPath(id)) ?? undefined
+
 // Optional git-status overlay for the file tree, mapped to @pierre/trees'
 // GitStatusEntry[]. Never fails the listing: a non-repo project or a git error
 // just yields no badges.
