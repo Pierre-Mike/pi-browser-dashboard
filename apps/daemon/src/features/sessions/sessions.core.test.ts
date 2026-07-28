@@ -24,6 +24,29 @@ describe("parseState — additional coverage", () => {
     expect(parseState({ short: "x", json: { state: null } }).state).toBe("idle")
   })
 
+  test("falls back to 'idle' with no degradedFrom when state is absent, non-string, or empty", () => {
+    for (const json of [{}, { state: 42 }, { state: null }, { state: "" }, { state: "   " }]) {
+      const out = parseState({ short: "x", json })
+      expect(out.state).toBe("idle")
+      expect(out.degradedFrom).toBeUndefined()
+    }
+  })
+
+  test("surfaces a non-empty unrecognized slug as 'unknown', keeping the raw value", () => {
+    const out = parseState({ short: "x", json: { state: "supervisor-v3-migrating" } })
+    expect(out.state).toBe("unknown")
+    expect(out.degradedFrom).toBe("supervisor-v3-migrating")
+  })
+
+  test("a recognized slug never sets degradedFrom", () => {
+    expect(parseState({ short: "x", json: { state: "working" } }).degradedFrom).toBeUndefined()
+  })
+
+  test("parseState always sets source to 'state.json'", () => {
+    expect(parseState({ short: "x", json: { state: "working" } }).source).toBe("state.json")
+    expect(parseState({ short: "x", json: {} }).source).toBe("state.json")
+  })
+
   test("prefers daemonShort over the registry short when both are present", () => {
     expect(parseState({ short: "ignore-me", json: { daemonShort: "real" } }).short).toBe("real")
   })
@@ -131,9 +154,10 @@ describe("parseState", () => {
     expect(out.worktreeBranch).toBeUndefined()
   })
 
-  test("normalizes unknown states to idle", () => {
+  test("normalizes an unrecognized state to 'unknown', not 'idle'", () => {
     const out = parseState({ short: "x", json: { state: "weird-state" } })
-    expect(out.state).toBe("idle")
+    expect(out.state).toBe("unknown")
+    expect(out.degradedFrom).toBe("weird-state")
   })
 })
 
@@ -143,7 +167,7 @@ describe("parseRoster", () => {
     expect(out.workers).toEqual([])
   })
 
-  test("flattens a workers record into the array shape", () => {
+  test("flattens a workers record into the array shape, carrying pid through", () => {
     const out = parseRoster({
       workers: {
         abc12345: {
@@ -156,15 +180,22 @@ describe("parseRoster", () => {
     expect(out.workers).toHaveLength(1)
     expect(out.workers[0]).toMatchObject({
       short: "abc12345",
+      pid: 1234,
       cwd: "/repo",
       agent: "general",
       intent: "do thing",
     })
   })
+
+  test("leaves pid undefined when the roster worker omits it", () => {
+    const out = parseRoster({ workers: { abc12345: {} } })
+    expect(out.workers[0]?.pid).toBeUndefined()
+  })
 })
 
 const worker = (overrides: Partial<RosterWorker> = {}): RosterWorker => ({
   short: "ab12",
+  pid: undefined,
   sessionId: "sess-1",
   cwd: "/repo",
   intent: "do thing",
@@ -174,11 +205,13 @@ const worker = (overrides: Partial<RosterWorker> = {}): RosterWorker => ({
 })
 
 describe("seedFromWorker", () => {
-  test("seeds an idle session carrying the roster fields", () => {
+  test("seeds an idle session carrying the roster fields, sourced from the roster seed", () => {
     const s = seedFromWorker(worker())
     expect(s).toMatchObject({
       short: "ab12",
       state: "idle",
+      source: "roster-seed",
+      degradedFrom: undefined,
       intent: "do thing",
       sessionId: "sess-1",
       cwd: "/repo",
@@ -191,6 +224,16 @@ describe("backfillRosterFields", () => {
     const existing = parseState({ short: "ab12", json: { state: "done" } })
     const merged = backfillRosterFields({ existing, worker: worker() })
     expect(merged).toMatchObject({ state: "done", intent: "do thing", sessionId: "sess-1" })
+  })
+
+  test("preserves the existing session's source and degradedFrom", () => {
+    const existing = parseState({ short: "ab12", json: { state: "weird-state" } })
+    const merged = backfillRosterFields({ existing, worker: worker() })
+    expect(merged).toMatchObject({
+      state: "unknown",
+      source: "state.json",
+      degradedFrom: "weird-state",
+    })
   })
 
   test("returns null when the session already has every field", () => {
@@ -228,6 +271,14 @@ describe("mergeStateWithPrior", () => {
   test("works without a prior session", () => {
     const parsed = parseState({ short: "ab12", json: { state: "working" } })
     expect(mergeStateWithPrior({ parsed, prior: undefined }).state).toBe("working")
+  })
+
+  test("preserves the parsed session's source and degradedFrom over a roster-seed prior", () => {
+    const prior = seedFromWorker(worker())
+    const parsed = parseState({ short: "ab12", json: { state: "supervisor-drift" } })
+    const merged = mergeStateWithPrior({ parsed, prior })
+    expect(merged.source).toBe("state.json")
+    expect(merged.degradedFrom).toBe("supervisor-drift")
   })
 })
 

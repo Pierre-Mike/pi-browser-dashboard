@@ -27,6 +27,7 @@ type Tone = { bg: string; text: string; dot: string; ring: string; label: string
 //   blocked / needs_input → warning   working → info
 //   done → success                    failed → error
 //   idle / stopped        → base / neutral (muted, non-alarming)
+//   unknown                → base, dimmer than idle (a drift signal, not a status)
 const PALETTE: Record<SessionStateValue, Tone> = {
   blocked: {
     bg: "bg-warning/15",
@@ -76,6 +77,15 @@ const PALETTE: Record<SessionStateValue, Tone> = {
     dot: "bg-base-content/60",
     ring: "ring-base-content/30",
     label: "Stopped",
+  },
+  // A slug the daemon didn't recognize — deliberately dimmer than idle so it
+  // doesn't read as "just resting"; the raw value lives in `degradedFrom`.
+  unknown: {
+    bg: "bg-base-200",
+    text: "text-base-content/50",
+    dot: "bg-base-content/30",
+    ring: "ring-base-content/15",
+    label: "Unknown",
   },
 }
 

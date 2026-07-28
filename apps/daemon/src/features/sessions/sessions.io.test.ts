@@ -35,19 +35,35 @@ const POLL_WAIT_MS = 1200
 
 type SseRecord = { type: string; data: unknown }
 
+type Diagnostics = {
+  readonly session: SessionState
+  readonly updatedAtMs: number | undefined
+  readonly lastEventAtMs: number | undefined
+  readonly pidAlive: boolean | undefined
+  readonly stateFilePresent: boolean
+}
+
 type RegistryApi = {
   readonly snapshot: () => Promise<ReadonlyArray<SessionState>>
   readonly getOne: (short: string) => Promise<SessionState | undefined>
+  readonly diagnostics: (short: string) => Promise<Diagnostics | undefined>
 }
 
 type SessionState = {
   readonly short: string
   readonly state: string
+  readonly source: string
+  readonly degradedFrom: string | undefined
   readonly detail: string | undefined
   readonly intent: string | undefined
   readonly cwd: string | undefined
   readonly sessionId: string | undefined
 }
+
+// A pid guaranteed to have already exited by the time the caller uses it —
+// signal-0 against it must fail, unlike stubbing isPidAlive (as pi-sessions
+// does), sessions.io probes process.kill directly.
+const deadPid = (): number => Bun.spawnSync(["true"]).pid
 
 let cfg: string
 let originalConfigDir: string | undefined
@@ -305,5 +321,69 @@ describe("SessionRegistry — refresh on read (timer-independent)", () => {
     const one = await api.getOne("late1")
     expect(one?.state).toBe("done")
     expect(one?.detail).toBe("shipped")
+  })
+})
+
+// GET /:id/explain's data source: everything `getOne` returns, plus the
+// on-disk/pid facts only the registry can see.
+describe("SessionRegistry — diagnostics", () => {
+  it("resolves the daemonShort alias, same as getOne", async () => {
+    await writeRoster(cfg, { jobdir1: { pid: process.pid } })
+    await writeState({
+      cfg,
+      short: "jobdir1",
+      body: { state: "working", daemonShort: "claude-alias" },
+    })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const diag = await api.diagnostics("claude-alias")
+    expect(diag?.session.short).toBe("claude-alias")
+    expect(diag?.session.state).toBe("working")
+    expect(diag?.stateFilePresent).toBe(true)
+    // The registry's own process is alive for the whole test run.
+    expect(diag?.pidAlive).toBe(true)
+  })
+
+  it("returns undefined for a short the registry has never heard of", async () => {
+    const api = await startRegistry()
+    expect(await api.diagnostics("missing")).toBeUndefined()
+  })
+
+  it("reports stateFilePresent: false for a roster-tracked worker with no state.json yet", async () => {
+    await writeRoster(cfg, { ab12: { sessionId: "s1" } })
+    const api = await startRegistry()
+    const diag = await api.diagnostics("ab12")
+    expect(diag?.session.source).toBe("roster-seed")
+    expect(diag?.stateFilePresent).toBe(false)
+  })
+
+  it("reports pidAlive: false for a worker whose pid has already exited", async () => {
+    await writeRoster(cfg, { ab12: { pid: deadPid() } })
+    await writeState({ cfg, short: "ab12", body: { state: "working" } })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const diag = await api.diagnostics("ab12")
+    expect(diag?.pidAlive).toBe(false)
+  })
+
+  it("reports pidAlive: undefined when the roster never carried a pid for this worker", async () => {
+    await writeRoster(cfg, { ab12: { sessionId: "s1" } })
+    await writeState({ cfg, short: "ab12", body: { state: "working" } })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const diag = await api.diagnostics("ab12")
+    expect(diag?.pidAlive).toBeUndefined()
+  })
+
+  it("records lastEventAtMs from the most recent session.state publish", async () => {
+    await writeRoster(cfg, { ab12: {} })
+    await writeState({ cfg, short: "ab12", body: { state: "idle" } })
+    const api = await startRegistry()
+    await wait(200) // initial state.json read settles
+    const before = Date.now()
+    await writeState({ cfg, short: "ab12", body: { state: "working" } })
+    await api.getOne("ab12") // drives the refresh-on-read pass that observes it
+    const diag = await api.diagnostics("ab12")
+    expect(diag?.lastEventAtMs).toBeGreaterThanOrEqual(before)
   })
 })

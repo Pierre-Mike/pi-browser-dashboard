@@ -135,6 +135,7 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/send   (optional `wait` → submit-and-wait, one request)
                         /sessions/:id/wait   (server-owned wait on session state)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
+                        /sessions/:id/explain  (state provenance: source, staleness, why)
              ──SSE───<  /events  (live deltas, single stream)
 ```
 
@@ -293,6 +294,16 @@ Process-aliveness shape modifier (informational, no transitions):
 - `✢` `/loop` sleeping between iterations (show run count + countdown from `state.json`)
 
 The daemon does not model transitions. The supervisor is the state machine; we mirror.
+
+A slug the supervisor emits that isn't one of the states above no longer
+silently becomes "Idle" — it surfaces as its own `unknown` state, with the
+raw slug preserved on `degradedFrom` so a supervisor upgrade, a typo, or a
+future state this build predates shows up as an honest question mark instead
+of a plausible-looking idle session. `GET /sessions/:id/explain` is the
+provenance surface for all of this: it reports where a session's `state` came
+from (its own state.json vs a roster-only seed ahead of the first read), how
+stale that read is, whether the worker's pid is still alive, and — when the
+slug is `unknown` — what the raw value actually was.
 
 ### 2. Orchestrator role — dispatcher via `claude --bg`
 

@@ -5,6 +5,8 @@
 
 // `blocked` is the current supervisor's slug for a session waiting on the user;
 // older CLIs emitted `needs_input`. Both are kept so neither degrades to `idle`.
+// `unknown` is a slug the daemon didn't recognize — surfaced honestly instead
+// of silently degrading to `idle` (see GET /:id/explain, `degradedFrom`).
 export type SessionStateValue =
   | "done"
   | "working"
@@ -13,10 +15,18 @@ export type SessionStateValue =
   | "idle"
   | "failed"
   | "stopped"
+  | "unknown"
 
 export type SessionState = {
   short: string
   state: SessionStateValue
+  // Where `state` came from: the session's own state.json, a roster-only
+  // placeholder ahead of the first state.json read, or (pi sessions) the
+  // daemon's own pi spawn log — pi has no supervisor state.json at all. See
+  // GET /:id/explain.
+  source?: "state.json" | "roster-seed" | "pi-spawn-log"
+  // The raw slug the daemon didn't recognize, when `state` is "unknown".
+  degradedFrom?: string
   detail: string
   tempo: string
   intent: string

@@ -28,4 +28,12 @@ describe("stateTitle", () => {
     expect(blocked).not.toBe(stateColor("idle"))
     expect(stateTitle("blocked", "waiting for review")).toBe("Blocked — waiting for review")
   })
+
+  it("renders 'unknown' as its own muted tone, distinct from idle and un-animated", () => {
+    const unknown = stateColor("unknown")
+    expect(unknown.label).toBe("Unknown")
+    expect(unknown).not.toBe(stateColor("idle"))
+    expect(unknown.dot).not.toContain("animate")
+    expect(stateTitle("unknown", "")).toBe("Unknown")
+  })
 })

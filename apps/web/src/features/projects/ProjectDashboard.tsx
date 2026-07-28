@@ -86,6 +86,10 @@ const emptyCounts = (): Counts => ({
   done: 0,
   failed: 0,
   stopped: 0,
+  // Not surfaced as its own pill (yet) — the summary bar only calls out
+  // states that need attention; kept here so `Counts` stays total over
+  // SessionStateValue and `tally` never drops a session on the floor.
+  unknown: 0,
 })
 
 const tally = (sessions: readonly SessionState[]): Counts => {

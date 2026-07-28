@@ -13,6 +13,7 @@ const KNOWN_STATES = [
   "idle",
   "failed",
   "stopped",
+  "unknown",
 ] as const
 export type SessionStateSlug = (typeof KNOWN_STATES)[number]
 
@@ -21,10 +22,28 @@ export type SessionStateSlug = (typeof KNOWN_STATES)[number]
 export const isSessionStateSlug = (s: string): s is SessionStateSlug =>
   (KNOWN_STATES as readonly string[]).includes(s)
 
-const normalizeState = (raw: unknown): SessionStateSlug => {
-  if (typeof raw !== "string") return "idle"
+type NormalizedState = {
+  readonly slug: SessionStateSlug
+  // The raw slug a supervisor sent, when it didn't match a known one — kept so
+  // an "unknown" chip can say what it actually saw instead of just its own
+  // shrug. `undefined` for the two "there was nothing to degrade" cases: a
+  // missing/absent state field, and a recognized slug.
+  readonly degradedFrom: string | undefined
+}
+
+// Two failure modes used to collapse into the same "idle": a state field that
+// is absent, non-string, or empty is the pre-state seed case (nothing to
+// report), while a non-empty string that doesn't match a known slug is
+// genuine drift — supervisor upgrade, typo, a future state this build
+// predates — and gets surfaced as "unknown" rather than a plausible-looking
+// "idle" that hides the mismatch.
+const normalizeState = (raw: unknown): NormalizedState => {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return { slug: "idle", degradedFrom: undefined }
+  }
   const lower = raw.toLowerCase().trim()
-  return isSessionStateSlug(lower) ? lower : "idle"
+  if (isSessionStateSlug(lower)) return { slug: lower, degradedFrom: undefined }
+  return { slug: "unknown", degradedFrom: raw }
 }
 
 // --- Roster -----------------------------------------------------------------
@@ -53,6 +72,7 @@ const RosterSchema = S.Struct({
 
 export type RosterWorker = {
   readonly short: string
+  readonly pid: number | undefined
   readonly sessionId: string | undefined
   readonly cwd: string | undefined
   readonly intent: string | undefined
@@ -73,6 +93,7 @@ export const parseRoster = (json: unknown): ParsedRoster => {
   for (const [short, w] of Object.entries(workersRecord)) {
     workers.push({
       short,
+      pid: w.pid,
       sessionId: w.sessionId,
       cwd: w.cwd,
       intent: w.dispatch?.seed?.intent,
@@ -116,6 +137,16 @@ const StateFileSchema = S.Struct({
 export type SessionState = {
   readonly short: string
   readonly state: SessionStateSlug
+  // Where `state` was last set from: `parseState` (state.json, the session's
+  // own status file), `seedFromWorker` (a roster-only placeholder ahead of
+  // the first state.json read), or `piSpawnToSession` (pi has no supervisor
+  // state.json at all — its state comes from the daemon's own spawn log).
+  // Survives both merge helpers below — they only ever touch the
+  // roster-derived fields, never `state`/`source`/`degradedFrom`.
+  readonly source: "state.json" | "roster-seed" | "pi-spawn-log"
+  // The raw slug `normalizeState` couldn't recognize, when `state` is
+  // "unknown"; `undefined` otherwise.
+  readonly degradedFrom: string | undefined
   readonly detail: string | undefined
   readonly tempo: string | undefined
   readonly intent: string | undefined
@@ -138,9 +169,12 @@ export type ParseStateInput = { readonly short: string; readonly json: unknown }
 
 export const parseState = ({ short, json }: ParseStateInput): SessionState => {
   const decoded = S.decodeUnknownSync(StateFileSchema, { onExcessProperty: "ignore" })(json)
+  const normalized = normalizeState(decoded.state)
   return {
     short: decoded.daemonShort ?? short,
-    state: normalizeState(decoded.state),
+    state: normalized.slug,
+    source: "state.json",
+    degradedFrom: normalized.degradedFrom,
     detail: decoded.detail ?? undefined,
     tempo: decoded.tempo ?? undefined,
     intent: decoded.intent ?? undefined,
@@ -161,6 +195,8 @@ export const parseState = ({ short, json }: ParseStateInput): SessionState => {
 export const seedFromWorker = (worker: RosterWorker): SessionState => ({
   short: worker.short,
   state: "idle",
+  source: "roster-seed",
+  degradedFrom: undefined,
   detail: undefined,
   tempo: undefined,
   intent: worker.intent,
