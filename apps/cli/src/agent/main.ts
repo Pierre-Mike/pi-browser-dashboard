@@ -5,6 +5,7 @@
 // typed `hc` client, print, and exit with the code agent.core.ts decided.
 // Every decision (parsing, exit codes, formatting, response parsing) lives in
 // agent.core.ts — this file only wires I/O to it.
+import { basename } from "node:path"
 import type { AppType } from "@pid/daemon/types"
 import { Either } from "effect"
 import { hc } from "hono/client"
@@ -16,11 +17,13 @@ import {
   type Command,
   type ExitCode,
   errorMessageFrom,
+  exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForUsage,
   exitCodeForWaitBody,
   filterByState,
   formatExplain,
+  formatFleets,
   formatKeysSent,
   formatRemoved,
   formatSent,
@@ -34,6 +37,7 @@ import {
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
+  parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
   parseSendResponse,
@@ -59,6 +63,7 @@ Usage:
   pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,...>] [--json]
   pid stop <short>
   pid rm <short>
+  pid fleets [--project <id>] [--json]
   pid [--help] [--url <base>]
 
 --json is accepted on every command (a superset of the table above) and
@@ -69,13 +74,18 @@ PID_URL overrides the default http://localhost:8787; --url overrides PID_URL.
 session states: done, working, blocked, needs_input, idle, failed, stopped, unknown
 key names: ${NAMED_KEYS_HELP}
 
+pid fleets lists the declarative multi-agent recipes in a project's
+.pid/fleet.json (schema + validation + wave planning only — there is no
+runner yet). --project defaults to the current directory's basename, which
+only works when this CLI runs on the same machine as the daemon.
+
 Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
   <base>/agent-skill.md
 
 Exit codes:
   0  success / wait satisfied
   1  transport failure, 5xx, unreachable daemon, or an unparseable response
-  2  usage error
+  2  usage error, or (for "pid fleets") an invalid recipe file
   3  wait timed out
   4  occupant_changed — the session was replaced under the wait
   5  removed — the session went away
@@ -334,6 +344,34 @@ const runOkShortCommand = async ({
   })
 }
 
+// `--project` defaults to the current directory's basename — a project id IS
+// its directory name under the daemon's configured projectsRoot (see
+// apps/daemon/src/features/projects/projects.io.ts), so this only resolves
+// correctly when `pid` runs on the same machine as the daemon (true for the
+// `pid-dashboard` single-port distribution and the common localhost case;
+// pass `--project` explicitly otherwise).
+const runFleets = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "Fleets" }>
+}): Promise<ExitCode> => {
+  const project = command.project ?? basename(process.cwd())
+  const res: Response = await client.projects[":id"].fleets.$get({ param: { id: project } })
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "fleets" })
+  if (notOk !== undefined) return notOk
+  return printAndExit({
+    body,
+    json: command.json,
+    parsed: parseFleetsResponse(body),
+    label: "fleets",
+    format: formatFleets,
+    exitCodeFor: exitCodeForFleets,
+  })
+}
+
 type DispatchOneResult =
   | { readonly _tag: "Failed"; readonly code: ExitCode; readonly body: unknown }
   | { readonly _tag: "Dispatched"; readonly short: string }
@@ -467,6 +505,7 @@ const HANDLERS: Readonly<Record<NonHelpCommand["_tag"], AnyCommandHandler>> = {
   Spawn: runSpawn,
   Stop: (args) => runOkShortCommand({ ...args, path: "stop", format: formatStopped }),
   Rm: (args) => runOkShortCommand({ ...args, path: "rm", format: formatRemoved }),
+  Fleets: runFleets,
 }
 
 const runCommand = ({

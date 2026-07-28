@@ -8,6 +8,7 @@ import * as claudeConfigRoute from "./features/claude-config/claude-config.route
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
+import * as fleetRoute from "./features/fleet/fleet.routes"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
@@ -76,6 +77,12 @@ const app = new Hono()
   .route("/sessions", brainstormsRoute.createApp(sessionsRoute.resolveSessionRoot))
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
+  // Fleet recipes (declarative multi-agent runs in <project>/.pid/fleet.json):
+  // GET /projects/:id/fleets — schema + validation + wave planning only, no
+  // runner yet. Mounted here (not inside projects.routes.ts) so the fleet
+  // slice never imports the projects slice: the root resolver is passed in,
+  // the same pattern brainstormsRoute uses for sessionsRoute above.
+  .route("/projects", fleetRoute.createApp(projectsRoute.resolveProjectRoot))
   .route("/dispatch", dispatchRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
