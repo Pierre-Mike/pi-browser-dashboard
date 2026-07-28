@@ -3,33 +3,18 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { sseBus } from "../../platform/sse-bus"
 import type { SessionState } from "./sessions.core"
 import { SessionRegistry } from "./sessions.io"
+import { makeSessionState as makeSession } from "./sessions.testFixtures"
 import type { WaitRequest } from "./sessions-wait.core"
 import { SessionWaitIo, SessionWaitIoLive, type WaitOutcome } from "./sessions-wait.io"
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-const makeSession = (overrides: Partial<SessionState> = {}): SessionState => ({
-  short: "ab12",
-  state: "working",
-  detail: undefined,
-  tempo: undefined,
-  intent: undefined,
-  name: undefined,
-  sessionId: undefined,
-  cwd: undefined,
-  createdAt: undefined,
-  updatedAt: undefined,
-  linkScanPath: undefined,
-  worktreePath: undefined,
-  worktreeBranch: undefined,
-  result: undefined,
-  ...overrides,
-})
-
 const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<SessionRegistry> =>
   Layer.succeed(SessionRegistry, {
     snapshot: () => Promise.resolve(Array.from(sessions.values())),
     getOne: (short) => Promise.resolve(sessions.get(short)),
+    // Not exercised by SessionWaitIo — present only to satisfy SessionRegistryApi.
+    diagnostics: () => Promise.resolve(undefined),
   })
 
 let runtime: ManagedRuntime.ManagedRuntime<SessionWaitIo, never> | null = null

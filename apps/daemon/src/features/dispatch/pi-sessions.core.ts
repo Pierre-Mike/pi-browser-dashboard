@@ -101,6 +101,13 @@ export const piSpawnToSession = ({
 }: PiSessionInput): SessionState => ({
   short: piShort(spawn.id),
   state,
+  // pi has no supervisor state.json — every read recomputes `state` fresh
+  // from the daemon's own spawn log (findTranscript + pid probe,
+  // derivePiState). GET /:id/explain only reads the claude SessionRegistry
+  // today, so a pi short 404s there rather than seeing this value — kept
+  // honest here regardless, since that gap is one this slice exists to close.
+  source: "pi-spawn-log",
+  degradedFrom: undefined,
   detail: spawn.intent,
   tempo: undefined,
   intent: spawn.intent,

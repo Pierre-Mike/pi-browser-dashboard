@@ -107,4 +107,18 @@ describe("piSpawnToSession", () => {
     expect(s.result).toBe("pong")
     expect(s.name).toBe("pi · 044b10c3")
   })
+
+  // pi has no supervisor state.json — asserting "pi-spawn-log" here is what
+  // keeps a pi session from ever silently claiming state.json provenance it
+  // doesn't have.
+  it("tags the session's provenance as the pi spawn log, not state.json", () => {
+    const s = piSpawnToSession({
+      spawn,
+      state: "working",
+      lastAssistantText: undefined,
+      updatedAt: undefined,
+    })
+    expect(s.source).toBe("pi-spawn-log")
+    expect(s.degradedFrom).toBeUndefined()
+  })
 })

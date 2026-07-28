@@ -8,27 +8,10 @@ import { type PiSessionsApi, PiSessionsIo } from "../dispatch/pi-sessions.io"
 import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.io"
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.io"
 import { buildSessionsApp } from "./sessions.routes"
+import { makeSessionState as makeSession } from "./sessions.testFixtures"
 import { type SessionWaitApi, SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
 
 type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
-
-const makeSession = (overrides: Partial<SessionState> = {}): SessionState => ({
-  short: "ab12",
-  state: "working",
-  detail: undefined,
-  tempo: undefined,
-  intent: undefined,
-  name: undefined,
-  sessionId: undefined,
-  cwd: undefined,
-  createdAt: undefined,
-  updatedAt: undefined,
-  linkScanPath: undefined,
-  worktreePath: undefined,
-  worktreeBranch: undefined,
-  result: undefined,
-  ...overrides,
-})
 
 type ShellSpy = {
   readonly calls: Array<{ op: "stop" | "rm" | "peek" | "send"; id: string; keys?: string }>
@@ -79,10 +62,45 @@ const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellIo> => {
   return Layer.succeed(ShellIo, api)
 }
 
-const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<SessionRegistry> =>
+// Per-short overrides for the diagnostics a real registry would compute from
+// disk/pid probes — explain-route tests set these directly instead of faking
+// a filesystem; anything omitted falls back to "everything is fine".
+type DiagnosticsStub = {
+  readonly updatedAtMs?: number | undefined
+  readonly lastEventAtMs?: number | undefined
+  readonly pidAlive?: boolean | undefined
+  readonly stateFilePresent?: boolean
+}
+
+const DIAGNOSTICS_STUB_DEFAULTS: {
+  readonly updatedAtMs: number | undefined
+  readonly lastEventAtMs: number | undefined
+  readonly pidAlive: boolean | undefined
+  readonly stateFilePresent: boolean
+} = {
+  updatedAtMs: undefined,
+  lastEventAtMs: undefined,
+  pidAlive: true,
+  stateFilePresent: true,
+}
+
+const buildRegistryLayer = (
+  sessions: Map<string, SessionState>,
+  diagnosticsOverrides: Map<string, DiagnosticsStub> = new Map(),
+): Layer.Layer<SessionRegistry> =>
   Layer.succeed(SessionRegistry, {
     snapshot: () => Promise.resolve(Array.from(sessions.values())),
     getOne: (short) => Promise.resolve(sessions.get(short)),
+    diagnostics: (short) => {
+      const session = sessions.get(short)
+      if (!session) return Promise.resolve(undefined)
+      const override = { ...DIAGNOSTICS_STUB_DEFAULTS, ...diagnosticsOverrides.get(short) }
+      return Promise.resolve({
+        session,
+        ...override,
+        updatedAtMs: override.updatedAtMs ?? Date.parse(session.updatedAt ?? ""),
+      })
+    },
   })
 
 type FilesStub = {
@@ -178,15 +196,17 @@ const buildHarness = ({
   filesStub = newFilesStub(),
   piStub = newPiStub(),
   waitStub = newWaitSpy(),
+  diagnosticsOverrides,
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
   filesStub?: FilesStub
   piStub?: PiStub
   waitStub?: WaitSpy
+  diagnosticsOverrides?: Map<string, DiagnosticsStub>
 }) => {
   const layer = Layer.mergeAll(
-    buildRegistryLayer(sessions),
+    buildRegistryLayer(sessions, diagnosticsOverrides),
     buildShellLayer(spy),
     buildFilesLayer(filesStub),
     buildPiSessionsLayer(piStub),
@@ -208,6 +228,7 @@ const requestOn = async ({
   filesStub,
   piStub,
   waitStub,
+  diagnosticsOverrides,
 }: {
   path: string
   init?: RequestInit
@@ -216,6 +237,7 @@ const requestOn = async ({
   filesStub?: FilesStub
   piStub?: PiStub
   waitStub?: WaitSpy
+  diagnosticsOverrides?: Map<string, DiagnosticsStub>
 }): Promise<Response> => {
   const { app, dispose } = buildHarness({
     sessions,
@@ -223,6 +245,7 @@ const requestOn = async ({
     filesStub,
     piStub,
     waitStub,
+    diagnosticsOverrides,
   })
   try {
     return await app.request(path, init)
@@ -318,6 +341,67 @@ describe("GET /sessions/:id", () => {
     const res = await requestOn({ path: "/aaaa1111", piStub })
     expect(res.status).toBe(200)
     expect(((await res.json()) as { harness?: string }).harness).toBe("pi")
+  })
+})
+
+describe("GET /sessions/:id/explain", () => {
+  it("explains a healthy session with 200", async () => {
+    const sessions = oneSession({ state: "working", updatedAt: new Date().toISOString() })
+    const res = await requestOn({ path: "/ab12/explain", sessions })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      short: string
+      state: string
+      source: string
+      stale: boolean
+      reasons: string[]
+    }
+    expect(body.short).toBe("ab12")
+    expect(body.state).toBe("working")
+    expect(body.source).toBe("state.json")
+    expect(body.stale).toBe(false)
+    expect(body.reasons.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("returns 404 + structured error for an unknown id", async () => {
+    const res = await requestOn({ path: "/missing/explain" })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "missing" } })
+  })
+
+  it("reports stale:true for a working session whose state.json has gone quiet", async () => {
+    const staleUpdatedAt = new Date(Date.now() - 200_000).toISOString()
+    const sessions = oneSession({ state: "working", updatedAt: staleUpdatedAt })
+    const res = await requestOn({ path: "/ab12/explain", sessions })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { stale: boolean; reasons: string[] }
+    expect(body.stale).toBe(true)
+    expect(body.reasons.some((r) => r.toLowerCase().includes("stale"))).toBe(true)
+  })
+
+  it("surfaces degradedFrom and a dead pid in the reasons", async () => {
+    const sessions = oneSession({ state: "unknown", degradedFrom: "supervisor-v3" })
+    const diagnosticsOverrides = new Map([["ab12", { pidAlive: false, stateFilePresent: true }]])
+    const res = await requestOn({ path: "/ab12/explain", sessions, diagnosticsOverrides })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { degradedFrom: string; reasons: string[] }
+    expect(body.degradedFrom).toBe("supervisor-v3")
+    expect(body.reasons.some((r) => r.includes("supervisor-v3"))).toBe(true)
+    expect(body.reasons.some((r) => r.includes("respawn"))).toBe(true)
+  })
+
+  // Deliberate, not incidental: unlike GET /:id, this route never falls back
+  // to PiSessionsIo — diagnostics() only knows the claude SessionRegistry, so
+  // a pi short 404s here even though it lists and GETs fine. Documented gap;
+  // a pi-aware explain (reading its own spawn log's "pi-spawn-log" source) is
+  // a follow-up, not something this test should silently mask.
+  it("404s for a pi session — diagnostics has no pi-registry fallback (documented gap)", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "aaaa1111",
+      makeSession({ short: "aaaa1111", state: "working", source: "pi-spawn-log", harness: "pi" }),
+    )
+    const res = await requestOn({ path: "/aaaa1111/explain", piStub })
+    await expectJson(res, { status: 404, body: { error: "not_found", short: "aaaa1111" } })
   })
 })
 

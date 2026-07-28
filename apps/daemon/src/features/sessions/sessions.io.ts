@@ -50,9 +50,23 @@ const readJsonWithRetry = async (filePath: string): Promise<unknown | null> => {
   return null
 }
 
+export type SessionDiagnostics = {
+  readonly session: SessionState
+  readonly updatedAtMs: number | undefined
+  readonly lastEventAtMs: number | undefined
+  readonly pidAlive: boolean | undefined
+  readonly stateFilePresent: boolean
+}
+
 export type SessionRegistryApi = {
   readonly snapshot: () => Promise<ReadonlyArray<SessionState>>
   readonly getOne: (short: string) => Promise<SessionState | undefined>
+  // Provenance facts GET /:id/explain needs beyond the parsed SessionState
+  // itself: resolves the same daemonShort alias getOne does (and drives the
+  // same refresh-on-read pass), so an explain call reports fresh facts about
+  // a session rather than the stale cache it may be trying to diagnose.
+  // `undefined` when the short (or its alias) isn't in the registry at all.
+  readonly diagnostics: (short: string) => Promise<SessionDiagnostics | undefined>
 }
 
 export class SessionRegistry extends Context.Tag("SessionRegistry")<
@@ -73,12 +87,25 @@ type RegistryState = {
   readonly readSigs: Map<string, StatSig>
   rosterWatcher: FsWatchUnsubscribe | null
   rosterShorts: ReadonlySet<string>
+  // Roster-reported worker pids, keyed the same as `sessions` (the job-dir
+  // short, not an exposed daemonShort alias) — rebuilt wholesale on every
+  // roster refresh, since a pid is only known while its worker is listed.
+  workerPids: ReadonlyMap<string, number>
+  // Epoch ms of the last session.state/session.created publish for a short —
+  // GET /:id/explain's freshness signal independent of state.json's own
+  // `updatedAt` (which the session's process controls, not the daemon).
+  readonly lastEventAt: Map<string, number>
   // Serializes refresh-on-read passes so concurrent HTTP reads share one.
   freshen: Promise<void>
 }
 
+const recordEvent = ({ reg, short }: { reg: RegistryState; short: string }): void => {
+  reg.lastEventAt.set(short, Date.now())
+}
+
 const removeSession = ({ reg, short }: { reg: RegistryState; short: string }): void => {
   reg.sessions.delete(short)
+  reg.lastEventAt.delete(short)
   const stop = reg.stateWatchers.get(short)
   if (stop) {
     stop()
@@ -123,6 +150,7 @@ const upsertRosterWorker = ({
     const merged = backfillRosterFields({ existing, worker })
     if (merged) {
       reg.sessions.set(worker.short, merged)
+      recordEvent({ reg, short: worker.short })
       sseBus.publish({ type: "session.state", data: merged })
     }
     return
@@ -130,8 +158,17 @@ const upsertRosterWorker = ({
   // Seed with minimal info from roster; state.json watcher fills the rest.
   const seed = seedFromWorker(worker)
   reg.sessions.set(worker.short, seed)
+  recordEvent({ reg, short: worker.short })
   sseBus.publish({ type: "session.created", data: seed })
   attachStateWatcher({ reg, configDir, short: worker.short })
+}
+
+const workerPidsOf = (workers: ParsedRoster["workers"]): ReadonlyMap<string, number> => {
+  const pids = new Map<string, number>()
+  for (const worker of workers) {
+    if (worker.pid !== undefined) pids.set(worker.short, worker.pid)
+  }
+  return pids
 }
 
 const reconcileRoster = async ({
@@ -145,6 +182,7 @@ const reconcileRoster = async ({
 }): Promise<void> => {
   const presentShorts = new Set(parsed.workers.map((w) => w.short))
   reg.rosterShorts = presentShorts
+  reg.workerPids = workerPidsOf(parsed.workers)
   dropDepartedSessions({ reg, configDir, presentShorts })
   for (const worker of parsed.workers) {
     upsertRosterWorker({ reg, configDir, worker })
@@ -192,6 +230,7 @@ const refreshState = async ({
   const merged = mergeStateWithPrior({ parsed, prior: reg.sessions.get(short) })
   reg.sessions.set(short, merged)
   reg.readSigs.set(filePath, sig)
+  recordEvent({ reg, short })
   sseBus.publish({ type: "session.state", data: merged })
 }
 
@@ -310,6 +349,32 @@ const ensureFresh = async (reg: RegistryState, configDir: string): Promise<void>
   await Promise.all(pending)
 }
 
+// The map is keyed by the job-dir short, but a session whose state.json sets
+// `daemonShort` is exposed (and navigated to) under that alias. Fast path on
+// the key; fall back to a scan over the exposed `.short` so the alias
+// resolves — else the terminal WS, GET, stop & rm all 404 a session that
+// lists fine. Returns the *registry* key (not the exposed alias) so callers
+// can look up key-scoped state (state.json path, roster pid) alongside it.
+const resolveKey = (reg: RegistryState, short: string): string | undefined => {
+  if (reg.sessions.has(short)) return short
+  for (const [key, session] of reg.sessions.entries()) {
+    if (session.short === short) return key
+  }
+  return undefined
+}
+
+// `undefined` when no pid is known (nothing to probe); never throws — a probe
+// failure just means "not alive", not a reason to fail the whole call.
+const probePidAlive = (pid: number | undefined): boolean | undefined => {
+  if (pid === undefined) return undefined
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
 const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> =>
   Effect.gen(function* () {
     const configDir = resolveConfigDir()
@@ -319,6 +384,8 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       readSigs: new Map(),
       rosterWatcher: null,
       rosterShorts: new Set(),
+      workerPids: new Map(),
+      lastEventAt: new Map(),
       freshen: Promise.resolve(),
     }
 
@@ -359,17 +426,22 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       },
       getOne: async (short: string) => {
         await freshenOnRead()
-        // The map is keyed by the job-dir short, but a session whose state.json
-        // sets `daemonShort` is exposed (and navigated to) under that alias.
-        // Fast path on the key; fall back to a scan over the exposed `.short`
-        // so the alias resolves — else the terminal WS, GET, stop & rm all
-        // 404 a session that lists fine.
-        const direct = reg.sessions.get(short)
-        if (direct) return direct
-        for (const session of reg.sessions.values()) {
-          if (session.short === short) return session
+        const key = resolveKey(reg, short)
+        return key === undefined ? undefined : reg.sessions.get(key)
+      },
+      diagnostics: async (short: string) => {
+        await freshenOnRead()
+        const key = resolveKey(reg, short)
+        if (key === undefined) return undefined
+        const session = reg.sessions.get(key)
+        if (!session) return undefined
+        return {
+          session,
+          updatedAtMs: session.updatedAt === undefined ? undefined : Date.parse(session.updatedAt),
+          lastEventAtMs: reg.lastEventAt.get(key),
+          pidAlive: probePidAlive(reg.workerPids.get(key)),
+          stateFilePresent: fs.existsSync(statePathFor(configDir, key)),
         }
-        return undefined
       },
     }
   })

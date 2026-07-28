@@ -16,6 +16,7 @@ import {
 import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
+import { explainSession } from "./sessions-explain.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
 import { SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
 
@@ -153,6 +154,30 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       )
       if (!one) return c.json({ error: "not_found", short: id }, 404)
       return c.json(one)
+    })
+    // State provenance for a status chip that can't otherwise justify itself:
+    // where `state` came from, how stale it is, and why (unrecognized slug,
+    // missing state.json, a dead worker pid). Claude sessions only — pi has
+    // no registry diagnostics to report (see SessionRegistryApi.diagnostics).
+    .get("/:id/explain", async (c) => {
+      const id = c.req.param("id")
+      const diag = await runtime.runPromise(
+        Effect.gen(function* () {
+          const reg = yield* SessionRegistry
+          return yield* Effect.promise(() => reg.diagnostics(id))
+        }),
+      )
+      if (!diag) return c.json({ error: "not_found", short: id }, 404)
+      return c.json(
+        explainSession({
+          session: diag.session,
+          now: Date.now(),
+          updatedAtMs: diag.updatedAtMs,
+          lastEventAtMs: diag.lastEventAtMs,
+          pidAlive: diag.pidAlive,
+          stateFilePresent: diag.stateFilePresent,
+        }),
+      )
     })
     .get("/:id/transcript", async (c) => {
       const id = c.req.param("id")
