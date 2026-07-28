@@ -56,20 +56,84 @@ export const resolveOrchestratorCwd = (
   return { ok: true, cwd: dir }
 }
 
-// Reduce a project id to a zellij session name. Zellij names mostly accept
-// printable chars but trip on whitespace and shell-special chars, so collapse
-// everything outside [A-Za-z0-9._-] to '-'. Case is preserved: `zellij
+// Zellij names mostly accept printable chars but trip on whitespace and
+// shell-special chars, so collapse everything outside [A-Za-z0-9._-] to '-',
+// then drop leading/trailing separators. Shared by zellijSessionName (a raw
+// project/session id) and prefixedZellijSession (a raw PID_ZELLIJ_PREFIX).
+const sanitizeZellijToken = (raw: string): string =>
+  raw
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+
+// zellij's own cap on session-name length (verified empirically); shared by
+// zellijSessionName and prefixedZellijSession so the two compose without
+// either silently exceeding it.
+const ZELLIJ_SESSION_NAME_MAX = 64
+
+// Floor reserved for `name` inside prefixedZellijSession, however long
+// PID_ZELLIJ_PREFIX is. Without a floor, a prefix alone could consume the
+// entire ZELLIJ_SESSION_NAME_MAX budget and every session name in the daemon
+// would collapse to that one fixed string — the same class of collision this
+// prefix exists to prevent, just moved to the other extreme (an operator
+// mistake, not a raw id, but the daemon shouldn't reward it with silent data
+// loss). 16 is generous for what this daemon actually mints: an 8-hex claude
+// short, or a pi run's `pi-<8-hex>` at 11 chars, both survive whole; only a
+// prefix long enough to threaten the floor pays the cost of being trimmed.
+const ZELLIJ_NAME_MIN_BUDGET = 16
+
+// Reduce a project id to a zellij session name. Case is preserved: `zellij
 // list-sessions` and the `grep -qx` match downstream are both case-sensitive,
 // and the user's repo dirs (e.g. `Orchestrator`) are conventionally also their
 // zellij session names — lowercasing here makes attach miss the existing
 // session, and zellij refuses to create a case-colliding twin.
 export const zellijSessionName = (rawId: string): string | null => {
-  const cleaned = rawId
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "")
+  const cleaned = sanitizeZellijToken(rawId)
   if (cleaned.length === 0) return null
-  return cleaned.slice(0, 64)
+  return cleaned.slice(0, ZELLIJ_SESSION_NAME_MAX)
+}
+
+// Namespace a zellij session name for a daemon that must not touch the user's
+// real sessions (a test run, an e2e run, a second checkout, a second
+// pid-dashboard on another port — see PID_ZELLIJ_PREFIX in config.io.ts).
+//
+// An empty prefix returns `name` UNCHANGED, byte for byte — PID_ZELLIJ_PREFIX
+// defaults to "", so a daemon that never opts in reproduces today's exact
+// session names. This is the load-bearing guarantee: GLOBAL_ZELLIJ_SESSION,
+// ORCHESTRATOR_ZELLIJ_SESSION and every project/session name stay exactly what
+// they are today unless an operator explicitly asks otherwise.
+//
+// A non-empty prefix is sanitised with the same rule zellijSessionName applies
+// to a raw id (a hostile PID_ZELLIJ_PREFIX like "e2e run!" becomes "e2e-run",
+// not a shell-breaking session name), then joined to `name` with '-'. The
+// combined length is capped at the same ZELLIJ_SESSION_NAME_MAX zellij
+// enforces — but capping `${prefix}-${name}`.slice(0, MAX) would trim `name`
+// from the END, which is exactly where two names sharing a long common start
+// (e.g. two projects under the same long monorepo stem) differ. Doing that
+// turns two distinct session names into the same truncated one — the very
+// hijack this prefix exists to prevent, just moved one level down. Instead we
+// reserve room for the prefix up front and trim `name` from the FRONT
+// (`.slice(-budget)`), keeping its tail so that differing suffix survives.
+//
+// The prefix itself is bounded too (ZELLIJ_NAME_MIN_BUDGET), for the mirror-
+// image reason: an unbounded prefix could eat the whole budget and leave
+// EVERY name in the daemon truncated to nothing, colliding with each other —
+// see the constant's own comment.
+export const prefixedZellijSession = (args: {
+  readonly prefix: string
+  readonly name: string
+}): string => {
+  if (args.prefix.length === 0) return args.name
+  const cleanedPrefix = sanitizeZellijToken(args.prefix)
+  if (cleanedPrefix.length === 0) return args.name
+  const sep = "-"
+  const maxPrefixLength = ZELLIJ_SESSION_NAME_MAX - ZELLIJ_NAME_MIN_BUDGET - sep.length
+  const boundedPrefix = sanitizeZellijToken(cleanedPrefix.slice(0, maxPrefixLength))
+  if (boundedPrefix.length === 0) return args.name
+  const head = `${boundedPrefix}${sep}`
+  const budget = ZELLIJ_SESSION_NAME_MAX - head.length
+  const tail = args.name.length > budget ? args.name.slice(args.name.length - budget) : args.name
+  return `${head}${tail}`
 }
 
 // Drop the per-session markers ZELLIJ / ZELLIJ_SESSION_NAME / ZELLIJ_PANE_ID
@@ -265,15 +329,23 @@ const orchestratorLayoutKdl = (): string =>
 }
 `
 
-// Orchestrator session terminal: zellij pinned to the ORCHESTRATOR_ZELLIJ_SESSION
-// name. First open materialises orchestratorLayoutKdl and boots the supervisor;
-// subsequent opens (and worker hooks, which also target this name) re-attach the
-// same live session. cwd must be orchestratorRepoDir so the repo CLAUDE.md loads
-// and the bootstrap's relative scripts/ resolve.
-export const orchestratorZellijCommand = (args: { readonly cwd: string }): string =>
+// Orchestrator session terminal: zellij pinned to a session name — normally
+// ORCHESTRATOR_ZELLIJ_SESSION verbatim, or that name run through
+// prefixedZellijSession for a non-primary daemon. First open materialises
+// orchestratorLayoutKdl and boots the supervisor; subsequent opens (and
+// worker hooks, which target ORCHESTRATOR_ZELLIJ_SESSION directly — see its
+// own doc comment) re-attach the same live session. cwd must be
+// orchestratorRepoDir so the repo CLAUDE.md loads and the bootstrap's
+// relative scripts/ resolve. `sessionName` is the caller's job to compute
+// (route-level concern — this core stays pure) so this function has nothing
+// to lie about in tests.
+export const orchestratorZellijCommand = (args: {
+  readonly cwd: string
+  readonly sessionName: string
+}): string =>
   zellijAttachOrCreate({
     cwd: args.cwd,
-    sessionName: ORCHESTRATOR_ZELLIJ_SESSION,
+    sessionName: args.sessionName,
     layoutKdl: orchestratorLayoutKdl(),
   })
 
@@ -339,22 +411,31 @@ const sessionClaudeLayoutKdl = (short: string): string =>
 // `exec zellij attach <name>` is enough — re-applying the layout would
 // stack a second claude TUI on top of the live one.
 //
-// Heredoc safety: `sessionName` already passed through zellijSessionName
-// (restricted to [A-Za-z0-9._-]). Inlining into a double-quoted KDL string
-// inside a single-quoted heredoc is safe.
+// Heredoc safety: `short` is sanitised through zellijSessionName below
+// (restricted to [A-Za-z0-9._-]) before it reaches the KDL. Inlining into a
+// double-quoted KDL string inside a single-quoted heredoc is safe.
+//
+// `sessionName` (the outer zellij container zellijAttachOrCreate creates /
+// attaches) is a SEPARATE parameter from `short` (the argument baked into the
+// `claude attach <short>` command the layout runs) — a non-primary daemon
+// namespaces the former via prefixedZellijSession while the latter must stay
+// the bare sanitised short, since that's what the claude registry actually
+// answers to. They happen to be equal when no prefix is set (today's
+// behaviour) and diverge only when a caller passes a prefixed `sessionName`.
 //
 // Returns null when `short` sanitises to an empty zellij name — the route
 // translates that into an `invalid_id` reason.
 export const sessionZellijCommand = (args: {
   readonly cwd: string
+  readonly sessionName: string
   readonly short: string
 }): string | null => {
-  const sessionName = zellijSessionName(args.short)
-  if (sessionName === null) return null
+  const attachShort = zellijSessionName(args.short)
+  if (attachShort === null) return null
   return zellijAttachOrCreate({
     cwd: args.cwd,
-    sessionName,
-    layoutKdl: sessionClaudeLayoutKdl(sessionName),
+    sessionName: args.sessionName,
+    layoutKdl: sessionClaudeLayoutKdl(attachShort),
   })
 }
 
@@ -420,15 +501,18 @@ const sessionPiLayoutKdl = (sessionId: string): string =>
 // Drill-in terminal for a dispatched pi run: attach the live `pi-<short>`
 // session the dispatcher created, or (fallback) recreate it by resuming the pi
 // session from its transcript. Same attach-or-create lock/poll machinery as the
-// claude drill-in — see zellijAttachOrCreate.
+// claude drill-in — see zellijAttachOrCreate. `sessionName` is the caller's
+// job to compute (piZellijSessionName(short), optionally run through
+// prefixedZellijSession for a non-primary daemon) — this core stays pure and
+// has nothing to lie about in tests.
 export const sessionPiZellijCommand = (args: {
   readonly cwd: string
   readonly sessionId: string
-  readonly short: string
+  readonly sessionName: string
 }): string =>
   zellijAttachOrCreate({
     cwd: args.cwd,
-    sessionName: piZellijSessionName(args.short),
+    sessionName: args.sessionName,
     layoutKdl: sessionPiLayoutKdl(args.sessionId),
   })
 

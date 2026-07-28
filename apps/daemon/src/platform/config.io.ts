@@ -8,6 +8,17 @@ export type PidConfig = {
   readonly appPort: number
   /** Local port the Cloudflare quick-tunnel exposes publicly (the dashboard). */
   readonly tunnelPort: number
+  /**
+   * Prefix applied to every zellij session name this daemon derives (see
+   * `terminal.core.ts`'s `prefixedZellijSession`). Empty by default so a
+   * daemon's zellij sessions are, by design, global to the OS user — the
+   * dashboard's whole point is to attach to sessions the user already has
+   * open (or that shared tooling like `voice-event.sh` also targets). Set
+   * PID_ZELLIJ_PREFIX for any daemon that must NOT touch those sessions: a
+   * test run, an e2e run, a second checkout, or a second `pid-dashboard` on
+   * another port.
+   */
+  readonly zellijPrefix: string
 }
 
 type ConfigServiceApi = {
@@ -27,6 +38,7 @@ const buildConfig = (): PidConfig => {
     appPort: Number(process.env.PORT ?? 8787),
     // Default to the web dashboard dev port so the tunnel URL serves the UI.
     tunnelPort: Number(process.env.PID_TUNNEL_PORT ?? process.env.PID_WEB_PORT ?? 5173),
+    zellijPrefix: process.env.PID_ZELLIJ_PREFIX ?? "",
   }
 }
 

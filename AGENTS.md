@@ -266,6 +266,47 @@ guessed `idle`.
   that exists in source but was not observed live, so has no matcher of its
   own.
 
+### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
+
+Every zellij session name the daemon derives — `default` for the global tab,
+`Orchestrator`, `<project>` for a project terminal, `<short>` / `pi-<short>` for
+a drill-in — is global to the OS user, not scoped to the daemon that produced
+it. That is deliberate in three places, and each one breaks if the names are
+namespaced by default:
+
+- `ORCHESTRATOR_ZELLIJ_SESSION` must byte-match `voice-event.sh`'s
+  `ORCHESTRATOR_SESSION`. That hook types every worker's Stop/Notification
+  event into the session by that name, so renaming it sends the fleet's reports
+  to a session nobody is watching.
+- Project terminals are named after the repo directory because the user's repo
+  dirs are conventionally also their own zellij session names — the dashboard
+  attaching to a session they already have open is the feature, not a bug.
+- Someone running the packaged `pid-dashboard` wants their real sessions, not a
+  private copy of them.
+
+The defect that follows from it is narrow: a **non-primary** daemon had no way
+to opt out. A test run, an e2e run, a second checkout, or a second daemon on
+another port would attach to — or create — the user's real sessions, and its
+keystrokes would land in their panes. This happened: a verification daemon on
+port 18791 drove `/terminal/global`, created a fresh OS-user-global `default`
+session, and typed into a leftover confirmation pane that had nothing to do
+with the test.
+
+`PID_ZELLIJ_PREFIX` (read once in `platform/config.io.ts`, threaded to the
+terminal routes as data) is that opt-out. It defaults to `""`, and an empty
+prefix returns each name **unchanged byte for byte**, so production behaviour is
+provably today's. A non-empty prefix namespaces all five name derivations *and*
+the four DELETE kill paths — a prefixed daemon that killed the unprefixed name
+would be killing the user's session, which is the original bug wearing a hat.
+`apps/e2e/global-setup.ts` sets `PID_ZELLIJ_PREFIX=e2e`, so an e2e run can no
+longer touch them.
+
+Names stay inside zellij's 64-char cap, and the truncation direction matters:
+the prefix is bounded so a minimum budget always remains for the name, and the
+name is trimmed from the **front**, keeping its tail. Trimming the end would map
+two long names sharing a common stem onto one session — the same hijack, one
+level down. Both edge cases are covered in `terminal.core.test.ts`.
+
 ## Brainstorm boards (session-scoped drawings)
 
 A brainstorm board is **any drawing file in the tree a session works in**. There

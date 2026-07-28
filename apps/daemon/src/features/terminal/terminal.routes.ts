@@ -7,9 +7,10 @@ import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { sseBus } from "../../platform/sse-bus"
 import { upgradeWebSocket } from "../../platform/ws"
+import { readZellijPrefix } from "../../platform/zellij-prefix"
 import { PiSessionsIo } from "../dispatch/pi-sessions.io"
+import type { Project } from "../projects/projects.io"
 import { ProjectsService } from "../projects/projects.io"
-import type { SessionState } from "../sessions/sessions.core"
 import { SessionRegistry } from "../sessions/sessions.io"
 import {
   buildChildArgv,
@@ -22,6 +23,7 @@ import {
   orchestratorZellijCommand,
   parseClientMessage,
   piZellijSessionName,
+  prefixedZellijSession,
   projectZellijCommand,
   resolveOrchestratorCwd,
   sessionPiZellijCommand,
@@ -455,35 +457,70 @@ const makeWsHandler = ({ resolveCommand, pty = false, scope }: BridgeOpts) =>
     }
   })
 
+// The prefix is resolved once (see platform/zellij-prefix.ts) before the five
+// WS handlers below are constructed, then threaded through as plain data — a
+// `zellijPrefix` field on each `make…Command` factory's args — rather than
+// closed over as a module-level mutable. Every resolver takes it explicitly,
+// so a test can exercise both the empty-prefix and the prefixed path by
+// constructing a resolver with whatever prefix it likes, with no dependency on
+// the ambient environment or on module re-import timing.
+
+// The fields these resolvers read off a session. Declared structurally rather
+// than importing the sessions slice's `SessionState`: the terminal slice needs
+// a shape, not a dependency on another slice's internals, and a `SessionState`
+// satisfies this as-is.
+type TerminalSessionRef = {
+  readonly short: string
+  readonly cwd: string | undefined
+  readonly sessionId: string | undefined
+}
+
 // Claude drill-in: wrap the session in a per-session zellij so the tab bar is
 // visible and a second pane (tail logs, run tests) can live next to the claude
 // TUI. The user runs `claude attach <short>` themselves — SessionCard exposes a
-// copy button for the exact command.
-const resolveClaudeSession = (session: SessionState): Resolved => {
+// copy button for the exact command. Pure (given the session + prefix) — no
+// I/O — so it's exported and unit-tested directly.
+export const resolveClaudeSession = (args: {
+  readonly session: TerminalSessionRef
+  readonly zellijPrefix: string
+}): Resolved => {
+  const { session, zellijPrefix } = args
   const cwd = session.cwd || process.env.HOME || "/"
-  const cmd = sessionZellijCommand({ cwd, short: session.short })
+  const rawSessionName = zellijSessionName(session.short)
+  if (rawSessionName === null) return { ok: false, reason: "invalid_id" }
+  const sessionName = prefixedZellijSession({ prefix: zellijPrefix, name: rawSessionName })
+  const cmd = sessionZellijCommand({ cwd, sessionName, short: session.short })
   if (cmd === null) return { ok: false, reason: "invalid_id" }
-  return { ok: true, cwd, cmd, sessionName: zellijSessionName(session.short) }
+  return { ok: true, cwd, cmd, sessionName }
 }
 
 // pi drill-in: attach the detached `pi-<short>` session the dispatcher created
-// (or resurrect it by resuming the transcript if it has since died).
-const resolvePiSession = (pi: SessionState): Resolved => {
+// (or resurrect it by resuming the transcript if it has since died). Pure —
+// exported and unit-tested directly, same shape as resolveClaudeSession.
+export const resolvePiSession = (args: {
+  readonly pi: TerminalSessionRef
+  readonly zellijPrefix: string
+}): Resolved => {
+  const { pi, zellijPrefix } = args
   const cwd = pi.cwd || process.env.HOME || "/"
+  const rawSessionName = piZellijSessionName(pi.short)
+  const sessionName = prefixedZellijSession({ prefix: zellijPrefix, name: rawSessionName })
   // sessionId is the full uuid for a pi run; fall back to the short (a partial
   // uuid pi's `--session` also resolves) to keep the type total.
-  const cmd = sessionPiZellijCommand({ cwd, sessionId: pi.sessionId || pi.short, short: pi.short })
-  return { ok: true, cwd, cmd, sessionName: piZellijSessionName(pi.short) }
+  const cmd = sessionPiZellijCommand({ cwd, sessionId: pi.sessionId || pi.short, sessionName })
+  return { ok: true, cwd, cmd, sessionName }
 }
 
-const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
-  const id = c.req.param("id") ?? ""
-  if (!id) return { ok: false, reason: "missing_id" }
-  // A pi run lives in a separate registry (pi-spawns.json, not the claude
-  // roster) and inside its own `pi-<short>` zellij session. Look it up only
-  // when the claude registry misses, so a pi terminal attaches to a live run
-  // instead of failing with "session not found".
-  const { session, pi } = await appRuntime.runPromise(
+type SessionLookup = (
+  id: string,
+) => Promise<{ readonly session?: TerminalSessionRef; readonly pi?: TerminalSessionRef }>
+
+// A pi run lives in a separate registry (pi-spawns.json, not the claude
+// roster) and inside its own `pi-<short>` zellij session. Look it up only
+// when the claude registry misses, so a pi terminal attaches to a live run
+// instead of failing with "session not found".
+const defaultLookupSession: SessionLookup = (id) =>
+  appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
       const piRepo = yield* PiSessionsIo
@@ -491,49 +528,95 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
       return { session, pi: session ? undefined : piRepo.getOne(id) }
     }),
   )
-  if (session) return resolveClaudeSession(session)
-  if (pi) return resolvePiSession(pi)
-  return { ok: false, reason: `session ${id} not found` }
+
+// `lookupSession` is injected (defaulting to the real registries via
+// appRuntime) so tests can drive both the prefixed and unprefixed session
+// paths without touching the live SessionRegistry/PiSessionsIo — same
+// dirExists-injection idiom resolveOrchestratorCwd already uses.
+const makeResolveSessionCommand = (args: {
+  readonly zellijPrefix: string
+  readonly lookupSession?: SessionLookup
+}) => {
+  const lookupSession = args.lookupSession ?? defaultLookupSession
+  return async (c: Context): Promise<Resolved> => {
+    const id = c.req.param("id") ?? ""
+    if (!id) return { ok: false, reason: "missing_id" }
+    const { session, pi } = await lookupSession(id)
+    if (session) return resolveClaudeSession({ session, zellijPrefix: args.zellijPrefix })
+    if (pi) return resolvePiSession({ pi, zellijPrefix: args.zellijPrefix })
+    return { ok: false, reason: `session ${id} not found` }
+  }
 }
 
-// Dashboard global terminal: pinned to zellij session "default". No id in the
-// URL — there's exactly one of these per daemon. cwd defaults to $HOME so the
-// user lands somewhere sensible the first time they open it.
-const resolveGlobalCommand = async (_c: Context): Promise<Resolved> => {
-  const cwd = globalTerminalCwd(process.env)
-  const cmd = projectZellijCommand({ cwd, sessionName: GLOBAL_ZELLIJ_SESSION })
-  return { ok: true, cwd, cmd, sessionName: GLOBAL_ZELLIJ_SESSION }
-}
+// Dashboard global terminal: pinned to zellij session "default" (prefixed for
+// a non-primary daemon). No id in the URL — there's exactly one of these per
+// daemon. cwd defaults to $HOME so the user lands somewhere sensible the
+// first time they open it.
+const makeResolveGlobalCommand =
+  (args: { readonly zellijPrefix: string }) =>
+  async (_c: Context): Promise<Resolved> => {
+    const cwd = globalTerminalCwd(process.env)
+    const sessionName = prefixedZellijSession({
+      prefix: args.zellijPrefix,
+      name: GLOBAL_ZELLIJ_SESSION,
+    })
+    const cmd = projectZellijCommand({ cwd, sessionName })
+    return { ok: true, cwd, cmd, sessionName }
+  }
 
 // Orchestrator terminal: pinned to the single zellij session named
-// "Orchestrator". No id in the URL — there's exactly one supervisor per daemon.
-// cwd is the Orchestrator repo so its CLAUDE.md (the supervisor instructions)
-// loads and the bootstrap's relative scripts/ resolve.
-const resolveOrchestratorCommand = async (_c: Context): Promise<Resolved> => {
-  // Bail before spawn if the repo dir is missing — spawning into a nonexistent
-  // cwd throws synchronously and crashes the daemon. resolveOrchestratorCwd
-  // returns a message the WS surfaces instead.
-  const r = resolveOrchestratorCwd(process.env, (p) => existsSync(p))
-  if (!r.ok) return { ok: false, reason: r.reason }
-  const cmd = orchestratorZellijCommand({ cwd: r.cwd })
-  return { ok: true, cwd: r.cwd, cmd, sessionName: ORCHESTRATOR_ZELLIJ_SESSION }
-}
+// "Orchestrator" (prefixed for a non-primary daemon — worker hooks still
+// target ORCHESTRATOR_ZELLIJ_SESSION verbatim, since voice-event.sh has no
+// concept of a prefix; see that constant's own doc comment). No id in the
+// URL — there's exactly one supervisor per daemon. cwd is the Orchestrator
+// repo so its CLAUDE.md (the supervisor instructions) loads and the
+// bootstrap's relative scripts/ resolve.
+const makeResolveOrchestratorCommand =
+  (args: { readonly zellijPrefix: string }) =>
+  async (_c: Context): Promise<Resolved> => {
+    // Bail before spawn if the repo dir is missing — spawning into a nonexistent
+    // cwd throws synchronously and crashes the daemon. resolveOrchestratorCwd
+    // returns a message the WS surfaces instead.
+    const r = resolveOrchestratorCwd(process.env, (p) => existsSync(p))
+    if (!r.ok) return { ok: false, reason: r.reason }
+    const sessionName = prefixedZellijSession({
+      prefix: args.zellijPrefix,
+      name: ORCHESTRATOR_ZELLIJ_SESSION,
+    })
+    const cmd = orchestratorZellijCommand({ cwd: r.cwd, sessionName })
+    return { ok: true, cwd: r.cwd, cmd, sessionName }
+  }
 
-const resolveProjectCommand = async (c: Context): Promise<Resolved> => {
-  const id = c.req.param("id") ?? ""
-  if (!id) return { ok: false, reason: "missing_id" }
-  const sessionName = zellijSessionName(id)
-  if (!sessionName) return { ok: false, reason: "invalid_id" }
-  const projects = await appRuntime.runPromise(
-    Effect.gen(function* () {
-      const svc = yield* ProjectsService
-      return yield* svc.list()
-    }),
-  )
-  const project = projects.find((p) => p.id === id)
-  if (!project) return { ok: false, reason: `project ${id} not found` }
-  const cmd = projectZellijCommand({ cwd: project.path, sessionName })
-  return { ok: true, cwd: project.path, cmd, sessionName }
+type FindProject = (id: string) => Promise<Pick<Project, "path"> | undefined>
+
+const defaultFindProject: FindProject = (id) =>
+  appRuntime
+    .runPromise(
+      Effect.gen(function* () {
+        const svc = yield* ProjectsService
+        return yield* svc.list()
+      }),
+    )
+    .then((projects) => projects.find((p) => p.id === id))
+
+// `findProject` is injected (defaulting to the real ProjectsService via
+// appRuntime) for the same reason lookupSession is above.
+const makeResolveProjectCommand = (args: {
+  readonly zellijPrefix: string
+  readonly findProject?: FindProject
+}) => {
+  const findProject = args.findProject ?? defaultFindProject
+  return async (c: Context): Promise<Resolved> => {
+    const id = c.req.param("id") ?? ""
+    if (!id) return { ok: false, reason: "missing_id" }
+    const rawSessionName = zellijSessionName(id)
+    if (!rawSessionName) return { ok: false, reason: "invalid_id" }
+    const project = await findProject(id)
+    if (!project) return { ok: false, reason: `project ${id} not found` }
+    const sessionName = prefixedZellijSession({ prefix: args.zellijPrefix, name: rawSessionName })
+    const cmd = projectZellijCommand({ cwd: project.path, sessionName })
+    return { ok: true, cwd: project.path, cmd, sessionName }
+  }
 }
 
 // Wedge recovery: `zellij kill-session <name>` so the user doesn't have to
@@ -555,50 +638,79 @@ const killZellijSession = async (sessionName: string | null): Promise<{ ok: bool
   }
 }
 
-const resolveProjectKillName = async (id: string): Promise<string | null> => {
-  const sessionName = zellijSessionName(id)
-  if (!sessionName) return null
-  return sessionName
+const resolveProjectKillName = (args: {
+  readonly id: string
+  readonly zellijPrefix: string
+}): string | null => {
+  const rawSessionName = zellijSessionName(args.id)
+  if (!rawSessionName) return null
+  return prefixedZellijSession({ prefix: args.zellijPrefix, name: rawSessionName })
 }
 
-const resolveSessionKillName = async (id: string): Promise<string | null> => {
-  const { session, pi } = await appRuntime.runPromise(
-    Effect.gen(function* () {
-      const reg = yield* SessionRegistry
-      const piRepo = yield* PiSessionsIo
-      const session = yield* Effect.promise(() => reg.getOne(id))
-      return { session, pi: session ? undefined : piRepo.getOne(id) }
-    }),
-  )
-  if (session) return zellijSessionName(session.short)
-  if (pi) return piZellijSessionName(pi.short)
-  return null
+const resolveSessionKillName = async (args: {
+  readonly id: string
+  readonly zellijPrefix: string
+  readonly lookupSession?: SessionLookup
+}): Promise<string | null> => {
+  const lookupSession = args.lookupSession ?? defaultLookupSession
+  const { session, pi } = await lookupSession(args.id)
+  const rawSessionName = session
+    ? zellijSessionName(session.short)
+    : pi
+      ? piZellijSessionName(pi.short)
+      : null
+  if (rawSessionName === null) return null
+  return prefixedZellijSession({ prefix: args.zellijPrefix, name: rawSessionName })
 }
+
+const zellijPrefix = readZellijPrefix()
 
 const app = new Hono()
   .get(
     "/global",
-    makeWsHandler({ resolveCommand: resolveGlobalCommand, pty: true, scope: "global" }),
+    makeWsHandler({
+      resolveCommand: makeResolveGlobalCommand({ zellijPrefix }),
+      pty: true,
+      scope: "global",
+    }),
   )
   .get(
     "/orchestrator",
-    makeWsHandler({ resolveCommand: resolveOrchestratorCommand, pty: true, scope: "orchestrator" }),
+    makeWsHandler({
+      resolveCommand: makeResolveOrchestratorCommand({ zellijPrefix }),
+      pty: true,
+      scope: "orchestrator",
+    }),
   )
   .get(
     "/project/:id",
-    makeWsHandler({ resolveCommand: resolveProjectCommand, pty: true, scope: "project" }),
+    makeWsHandler({
+      resolveCommand: makeResolveProjectCommand({ zellijPrefix }),
+      pty: true,
+      scope: "project",
+    }),
   )
-  .delete("/global", async (c) => c.json(await killZellijSession(GLOBAL_ZELLIJ_SESSION)))
+  .delete("/global", async (c) =>
+    c.json(
+      await killZellijSession(
+        prefixedZellijSession({ prefix: zellijPrefix, name: GLOBAL_ZELLIJ_SESSION }),
+      ),
+    ),
+  )
   .delete("/orchestrator", async (c) =>
-    c.json(await killZellijSession(ORCHESTRATOR_ZELLIJ_SESSION)),
+    c.json(
+      await killZellijSession(
+        prefixedZellijSession({ prefix: zellijPrefix, name: ORCHESTRATOR_ZELLIJ_SESSION }),
+      ),
+    ),
   )
   .delete("/project/:id", async (c) => {
     const id = c.req.param("id") ?? ""
-    return c.json(await killZellijSession(await resolveProjectKillName(id)))
+    return c.json(await killZellijSession(resolveProjectKillName({ id, zellijPrefix })))
   })
   .delete("/:id", async (c) => {
     const id = c.req.param("id") ?? ""
-    return c.json(await killZellijSession(await resolveSessionKillName(id)))
+    return c.json(await killZellijSession(await resolveSessionKillName({ id, zellijPrefix })))
   })
   // Current classification per known terminal — lets a client that connects
   // (or reconnects) late render a chip immediately instead of waiting for the
@@ -607,7 +719,11 @@ const app = new Hono()
   .get("/states", (c) => c.json(Object.fromEntries(terminalStates)))
   .get(
     "/:id",
-    makeWsHandler({ resolveCommand: resolveSessionCommand, pty: true, scope: "session" }),
+    makeWsHandler({
+      resolveCommand: makeResolveSessionCommand({ zellijPrefix }),
+      pty: true,
+      scope: "session",
+    }),
   )
 
 export { app }

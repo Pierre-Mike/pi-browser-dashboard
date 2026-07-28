@@ -1,5 +1,11 @@
 import { describe, expect, it, mock } from "bun:test"
-import { app, type ChildBridgeForTest, closeChildBridge } from "./terminal.routes"
+import {
+  app,
+  type ChildBridgeForTest,
+  closeChildBridge,
+  resolveClaudeSession,
+  resolvePiSession,
+} from "./terminal.routes"
 
 const makeChild = (opts?: {
   killThrows?: boolean
@@ -73,5 +79,39 @@ describe("GET /terminal/states", () => {
     // Hono's fetch() would 500 on, not 200 with a plain JSON body).
     const res = await app.request("/states")
     expect(res.headers.get("content-type")).toContain("application/json")
+  })
+})
+
+// A prefixed daemon must namespace EVERY name it derives, including the two
+// per-session ones. If one path stayed unprefixed, a test or second-checkout
+// daemon would attach to (and its DELETE would kill) the user's real session.
+describe("session resolvers honour PID_ZELLIJ_PREFIX", () => {
+  const session = { short: "ab12", cwd: "/repo", sessionId: "ab12-uuid" } as Parameters<
+    typeof resolveClaudeSession
+  >[0]["session"]
+
+  it("leaves the claude session name untouched with no prefix", () => {
+    const r = resolveClaudeSession({ session, zellijPrefix: "" })
+    expect(r.ok && r.sessionName).toBe("ab12")
+  })
+
+  it("namespaces the claude session name, in both the name and the command", () => {
+    const r = resolveClaudeSession({ session, zellijPrefix: "e2e" })
+    expect(r.ok && r.sessionName).toBe("e2e-ab12")
+    expect(r.ok && r.cmd).toContain("'e2e-ab12'")
+    // The inner `claude attach <short>` targets the session id, not the zellij
+    // session, so it must NOT pick up the prefix.
+    expect(r.ok && r.cmd).toContain("claude attach")
+  })
+
+  it("leaves the pi session name untouched with no prefix", () => {
+    const r = resolvePiSession({ pi: session, zellijPrefix: "" })
+    expect(r.ok && r.sessionName).toBe("pi-ab12")
+  })
+
+  it("namespaces the pi session name, in both the name and the command", () => {
+    const r = resolvePiSession({ pi: session, zellijPrefix: "e2e" })
+    expect(r.ok && r.sessionName).toBe("e2e-pi-ab12")
+    expect(r.ok && r.cmd).toContain("'e2e-pi-ab12'")
   })
 })

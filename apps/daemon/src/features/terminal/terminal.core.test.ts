@@ -13,6 +13,7 @@ import {
   parseClientMessage,
   piBackgroundLayoutKdl,
   piZellijSessionName,
+  prefixedZellijSession,
   projectZellijCommand,
   resolveOrchestratorCwd,
   sessionPiZellijCommand,
@@ -197,15 +198,21 @@ describe("projectZellijCommand", () => {
 })
 
 describe("sessionZellijCommand", () => {
+  // Every assertion below needs the same drill-in command; hoisting it drops
+  // the repeated build-and-null-guard preamble that fallow flags as a clone.
+  const drillInCmd = (): string => {
+    const cmd = sessionZellijCommand({ cwd: "/wt", sessionName: "abcd1234", short: "abcd1234" })
+    expect(cmd).not.toBeNull()
+    return cmd ?? ""
+  }
+
   it("auto-attaches to the claude bg session while keeping zellij's tab bar visible", () => {
     // The drill-in used to exec `claude attach <short>` directly (no tab bar,
     // no room for a second pane); then dropped auto-attach entirely because
     // the layout used didn't include default_tab_template and swallowed the
     // zellij UI. This shape keeps both: default_tab_template restores the
     // tab bar / status bar, and the first pane auto-runs `claude attach`.
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toContain("cd '/wt'")
     expect(cmd).toContain("zellij list-sessions -s")
     expect(cmd).toContain("grep -qx 'abcd1234'")
@@ -234,9 +241,7 @@ describe("sessionZellijCommand", () => {
     // new-tabs-only template. The drill-in claude pane must live inside an
     // explicit `tab { … }` so it's injected through the template and the bars
     // render on the very first (and only) tab the user sees.
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toMatch(
       /default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{[\s\S]*pane command="bash"/,
     )
@@ -250,9 +255,7 @@ describe("sessionZellijCommand", () => {
     // stripped session and the user has to retype `claude attach` themselves.
     // Chain `; exec bash -l` so failure / clean-exit drops to a shell with
     // any diagnostics visible. No close_on_exit on the pane.
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toContain(`args "-lc" "claude attach abcd1234; exec bash -l"`)
     expect(cmd).not.toContain("close_on_exit true")
   })
@@ -261,18 +264,14 @@ describe("sessionZellijCommand", () => {
     // Same race as projectZellijCommand: StrictMode double-mount → two bash
     // children both see "no session", both try `zellij -s -n`, the loser
     // panics. mkdir lockdir serialises the critical section.
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toContain("pid-zellij-abcd1234.lock")
     expect(cmd).toContain(`mkdir "$lock"`)
     expect(cmd).toMatch(/rmdir "\$lock"[\s\S]*exec zellij attach 'abcd1234'/)
   })
 
   it("releases the lock only after zellij registers the new drill-in session (backgrounded poll loop)", () => {
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toMatch(/grep -qx 'abcd1234'[\s\S]*rmdir "\$lock"[\s\S]*\) &/)
     const createIdx = cmd.indexOf(`exec zellij -s 'abcd1234'`)
     const bgIdx = cmd.indexOf(") &")
@@ -281,8 +280,8 @@ describe("sessionZellijCommand", () => {
   })
 
   it("returns null when the short sanitises to empty (route surfaces invalid_id)", () => {
-    expect(sessionZellijCommand({ cwd: "/wt", short: "" })).toBeNull()
-    expect(sessionZellijCommand({ cwd: "/wt", short: "///" })).toBeNull()
+    expect(sessionZellijCommand({ cwd: "/wt", sessionName: "irrelevant", short: "" })).toBeNull()
+    expect(sessionZellijCommand({ cwd: "/wt", sessionName: "irrelevant", short: "///" })).toBeNull()
   })
 
   it("writes the layout file with a .kdl extension so `zellij -n <file>` parses it as a layout", () => {
@@ -296,22 +295,24 @@ describe("sessionZellijCommand", () => {
     // BSD mktemp doesn't accept a template-with-suffix, so use `mktemp -u`
     // to reserve a unique name without creating the stub file, then append
     // `.kdl` and let the heredoc create it.
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "abcd1234" })
-    expect(cmd).not.toBeNull()
-    if (cmd === null) return
+    const cmd = drillInCmd()
     expect(cmd).toMatch(/layout_file="\$\(mktemp -u [^)]+\)\.kdl"/)
     expect(cmd).toMatch(/exec zellij -s 'abcd1234' -n "\$layout_file"/)
   })
 
   it("single-quote-escapes the cwd", () => {
-    const cmd = sessionZellijCommand({ cwd: "/it's/here", short: "x" })
+    const cmd = sessionZellijCommand({ cwd: "/it's/here", sessionName: "x", short: "x" })
     expect(cmd).not.toBeNull()
     if (cmd === null) return
     expect(cmd).toContain(`cd '/it'\\''s/here'`)
   })
 
   it("inlines the sanitised short into the KDL — sanitiser keeps it within [A-Za-z0-9._-] so no string escaping is needed", () => {
-    const cmd = sessionZellijCommand({ cwd: "/wt", short: "weird name!" })
+    const cmd = sessionZellijCommand({
+      cwd: "/wt",
+      sessionName: "weird-name",
+      short: "weird name!",
+    })
     expect(cmd).not.toBeNull()
     if (cmd === null) return
     expect(cmd).toContain(`args "-lc" "claude attach weird-name; exec bash -l"`)
@@ -353,7 +354,7 @@ describe("sessionPiZellijCommand", () => {
   const cmd = sessionPiZellijCommand({
     cwd: "/repo",
     sessionId: "bd83d0a7-1111-2222-3333-444455556666",
-    short: "bd83d0a7",
+    sessionName: piZellijSessionName("bd83d0a7"),
   })
 
   it("cds into the run's cwd before touching zellij", () => {
@@ -389,6 +390,66 @@ describe("GLOBAL_ZELLIJ_SESSION", () => {
 
   it("survives zellijSessionName unchanged — already a safe zellij identifier", () => {
     expect(zellijSessionName(GLOBAL_ZELLIJ_SESSION)).toBe(GLOBAL_ZELLIJ_SESSION)
+  })
+})
+
+describe("prefixedZellijSession", () => {
+  // The default path. PID_ZELLIJ_PREFIX is "" for every production daemon, so
+  // an empty prefix MUST be the identity — anything else silently renames the
+  // sessions the user (and voice-event.sh) already attach to by name.
+  it("returns the name byte-for-byte unchanged when the prefix is empty", () => {
+    for (const name of [GLOBAL_ZELLIJ_SESSION, ORCHESTRATOR_ZELLIJ_SESSION, "pi-ab12", "my.repo"]) {
+      expect(prefixedZellijSession({ prefix: "", name })).toBe(name)
+    }
+  })
+
+  it("joins a prefix to the name with a single dash", () => {
+    expect(prefixedZellijSession({ prefix: "e2e", name: GLOBAL_ZELLIJ_SESSION })).toBe(
+      "e2e-default",
+    )
+    expect(prefixedZellijSession({ prefix: "e2e", name: ORCHESTRATOR_ZELLIJ_SESSION })).toBe(
+      "e2e-Orchestrator",
+    )
+  })
+
+  it("sanitizes a hostile prefix rather than emitting a shell-breaking session name", () => {
+    const out = prefixedZellijSession({ prefix: "e2e run!; rm -rf /", name: "default" })
+    expect(out).toMatch(/^[A-Za-z0-9._-]+$/)
+    expect(out).toContain("default")
+    expect(out).not.toContain(" ")
+    expect(out).not.toContain(";")
+  })
+
+  it("falls back to the bare name when the prefix sanitizes to nothing", () => {
+    expect(prefixedZellijSession({ prefix: "!!!", name: "default" })).toBe("default")
+  })
+
+  // The collision this whole helper exists to avoid, one level down: two long
+  // project names that share a long common stem differ only in their TAIL, so
+  // truncating the name from the end would map both onto one session — exactly
+  // the hijack the prefix is meant to prevent.
+  it("keeps two long names distinct by trimming from the front, not the end", () => {
+    const stem = "pi-browser-dashboard-monorepo-packages-service-"
+    const a = prefixedZellijSession({ prefix: "e2e", name: `${stem}alpha` })
+    const b = prefixedZellijSession({ prefix: "e2e", name: `${stem}beta` })
+    expect(a).not.toBe(b)
+    expect(a.length).toBeLessThanOrEqual(64)
+    expect(b.length).toBeLessThanOrEqual(64)
+    expect(a.endsWith("alpha")).toBe(true)
+    expect(b.endsWith("beta")).toBe(true)
+  })
+
+  // The mirror-image failure: an unbounded prefix eats the whole budget and
+  // every name in the daemon truncates to the same string.
+  it("keeps names distinct even when the prefix is longer than the whole cap", () => {
+    const prefix = "x".repeat(200)
+    const a = prefixedZellijSession({ prefix, name: "project-alpha" })
+    const b = prefixedZellijSession({ prefix, name: "project-beta" })
+    expect(a).not.toBe(b)
+    expect(a.length).toBeLessThanOrEqual(64)
+    expect(b.length).toBeLessThanOrEqual(64)
+    expect(a.endsWith("alpha")).toBe(true)
+    expect(b.endsWith("beta")).toBe(true)
   })
 })
 
@@ -442,7 +503,10 @@ describe("resolveOrchestratorCwd", () => {
 })
 
 describe("orchestratorZellijCommand", () => {
-  const cmd = orchestratorZellijCommand({ cwd: "/Users/me/Github/Orchestrator" })
+  const cmd = orchestratorZellijCommand({
+    cwd: "/Users/me/Github/Orchestrator",
+    sessionName: ORCHESTRATOR_ZELLIJ_SESSION,
+  })
 
   it("cds into the orchestrator repo before launching (so the orchestrator CLAUDE.md + relative scripts/ resolve)", () => {
     expect(cmd).toContain(`cd '/Users/me/Github/Orchestrator'`)
@@ -464,7 +528,10 @@ describe("orchestratorZellijCommand", () => {
   })
 
   it("single-quote-escapes a cwd containing an apostrophe", () => {
-    const c = orchestratorZellijCommand({ cwd: "/it's/here" })
+    const c = orchestratorZellijCommand({
+      cwd: "/it's/here",
+      sessionName: ORCHESTRATOR_ZELLIJ_SESSION,
+    })
     expect(c).toContain(`cd '/it'\\''s/here'`)
   })
 })
