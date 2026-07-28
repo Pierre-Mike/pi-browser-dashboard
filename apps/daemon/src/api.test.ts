@@ -115,6 +115,18 @@ describe("file-drop surface", () => {
   })
 })
 
+describe("GET /agent-skill.md", () => {
+  it("serves the agent skill doc as markdown with substantive content", async () => {
+    const res = await app.request("/agent-skill.md")
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type") ?? "").toContain("text/markdown")
+    const body = await res.text()
+    expect(body).toContain("pid wait")
+    expect(body).toContain("occupant_changed")
+    expect(body).toContain("GET /sessions/:id/explain")
+  })
+})
+
 describe("buildApp", () => {
   it("without a staticDir, mirrors today's shape: API at the bare root AND under /__api", async () => {
     const wrapped = buildApp()
