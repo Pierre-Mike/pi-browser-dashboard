@@ -18,6 +18,7 @@ import { buildStaticApp } from "./features/static-web/static-web.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
+import { AGENT_SKILL_MD } from "./platform/agent-skill"
 import { extensionRegistry } from "./platform/extensions/registry"
 
 // Minimal content-type map for extension static assets (iframe tier).
@@ -59,6 +60,13 @@ const app = new Hono()
     }),
   )
   .get("/health", (c) => c.json({ ok: true }))
+  // Served on the plain app (not a mounted sub-router) so it is reachable both
+  // bare and under /__api — see buildApp below. Teaches an agent this
+  // daemon's own control surface (pid CLI + HTTP); guarded against drifting
+  // from the real vocabulary/constants/routes by platform/agent-skill.test.ts.
+  .get("/agent-skill.md", (c) =>
+    c.text(AGENT_SKILL_MD, 200, { "Content-Type": "text/markdown; charset=utf-8" }),
+  )
   .route("/sessions", sessionsRoute.app)
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)

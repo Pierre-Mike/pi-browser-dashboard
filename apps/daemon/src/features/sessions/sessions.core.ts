@@ -5,7 +5,9 @@ import { Schema as S } from "effect"
 // `blocked` is what the current supervisor emits for a session waiting on the
 // user; older CLIs emitted `needs_input`. Keep both so neither version's
 // sessions silently degrade to `idle`.
-const KNOWN_STATES = [
+// Exported (not just the type) so a doc-drift guard (platform/agent-skill.ts's
+// test) can assert against the real vocabulary instead of a hand-copied list.
+export const KNOWN_STATES = [
   "done",
   "working",
   "blocked",

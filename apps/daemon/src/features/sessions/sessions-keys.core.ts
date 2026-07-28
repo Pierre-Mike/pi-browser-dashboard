@@ -84,6 +84,12 @@ const NAMED_KEY_BYTES: Record<NamedKey, string> = {
   space: " ",
 }
 
+// Exported (not just the type) so a doc-drift guard (platform/agent-skill.ts's
+// test) can assert against the real vocabulary instead of a hand-copied list.
+export const NAMED_KEYS: ReadonlyArray<NamedKey> = Object.keys(
+  NAMED_KEY_BYTES,
+) as ReadonlyArray<NamedKey>
+
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 

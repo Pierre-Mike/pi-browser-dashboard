@@ -153,6 +153,12 @@ session.removed      ← id left roster   (derived from roster.changed)
 - Heartbeat every 15s; client reconnects with `Last-Event-ID`.
 - TanStack Query owns server state. SSE patches `queryClient.setQueryData`.
 - POST handlers return the updated entity; SSE remains the truth.
+- `GET /agent-skill.md` — not part of the web RPC surface above; a
+  markdown instruction file, compiled into the daemon binary, teaching an
+  *agent* (not the SPA) this daemon's own control surface: the `pid` CLI, the
+  named-key vocabulary, wait semantics, `explain`, and the fan-out/join
+  `spawn` recipe. Guarded against drift from the real vocabulary/constants/
+  routes by `apps/daemon/src/platform/agent-skill.test.ts`.
 
 ### Server-owned waits (`features/sessions/sessions-wait.*`)
 
@@ -276,10 +282,13 @@ browser — no separate `apps/web`/`apps/daemon` setup.
 ## Agent-facing CLI (`pid`)
 
 `apps/cli` ships a second, independent binary alongside `pid-dashboard`: `pid`
-is a control surface an agent drives itself — a socket API plus (in a
-follow-up PR) a served `SKILL.md` teaching an agent to use it — so an agent
-running inside one pane can spawn helpers, send them input, and wait on them,
-composing `pid` in a shell the same way it composes any other CLI.
+is a control surface an agent drives itself, so an agent running inside one
+pane can spawn helpers, send them input, and wait on them, composing `pid` in
+a shell the same way it composes any other CLI. The daemon itself teaches this
+surface: `GET /agent-skill.md` (`<base>/agent-skill.md`) serves a markdown
+instruction file covering `pid`, the HTTP endpoints beneath it, the named-key
+vocabulary, wait semantics, `explain`, and a fan-out/join `spawn` recipe (see
+"API surface" above; `apps/daemon/src/platform/agent-skill.ts`).
 
 - Entry point `apps/cli/src/agent/main.ts`, pure logic in
   `apps/cli/src/agent/agent.core.ts`. Same layout discipline as the rest of

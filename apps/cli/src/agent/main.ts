@@ -69,6 +69,9 @@ PID_URL overrides the default http://localhost:8787; --url overrides PID_URL.
 session states: done, working, blocked, needs_input, idle, failed, stopped, unknown
 key names: ${NAMED_KEYS_HELP}
 
+Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
+  <base>/agent-skill.md
+
 Exit codes:
   0  success / wait satisfied
   1  transport failure, 5xx, unreachable daemon, or an unparseable response
