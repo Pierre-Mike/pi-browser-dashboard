@@ -93,6 +93,18 @@ describe("parseRoster — additional coverage", () => {
   test("throws on a fundamentally wrong shape", () => {
     expect(() => parseRoster("not an object")).toThrow()
   })
+
+  // The roster is decoded by `Schema` from `effect`, not asserted. These pin the
+  // decode semantics the slice leans on — excess keys tolerated (above), but a
+  // wrong-typed *value* rejected — so swapping or upgrading the schema library
+  // cannot quietly turn a rejected roster into a silently-accepted one.
+  test("rejects a workers value that is not a worker object", () => {
+    expect(() => parseRoster({ workers: { x1: "not an object" } })).toThrow()
+  })
+
+  test("rejects a wrong-typed field inside a worker rather than coercing it", () => {
+    expect(() => parseRoster({ workers: { x1: { pid: "not a number" } } })).toThrow()
+  })
 })
 
 describe("parseState", () => {

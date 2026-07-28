@@ -31,3 +31,8 @@ apps/e2e/playwright-report/
 
 # apps/cli's bundled apps/web build (bun run build:cli) — generated, not committed.
 apps/cli/dist-web/
+
+# Build artifacts regenerated on every run — tsc's incremental cache and the
+# temp config Vite writes next to vite.config.ts while it loads it.
+*.tsbuildinfo
+vite.config.ts.timestamp-*.mjs

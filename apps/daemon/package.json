@@ -13,7 +13,6 @@
     "start": "bun run src/main.ts"
   },
   "dependencies": {
-    "@effect/schema": "^0.75.5",
     "effect": "^3.10.0",
     "hono": "^4.6.11",
     "yaml": "^2.9.0"
