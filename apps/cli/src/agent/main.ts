@@ -21,6 +21,7 @@ import {
   exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
+  exitCodeForRulesErrors,
   exitCodeForUsage,
   exitCodeForWaitBody,
   type FleetRunStarted,
@@ -34,6 +35,8 @@ import {
   formatFleets,
   formatKeysSent,
   formatRemoved,
+  formatRulesPreview,
+  formatRulesStatus,
   formatSent,
   formatSessions,
   formatSpawned,
@@ -52,6 +55,8 @@ import {
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
+  parseRulesPreviewResponse,
+  parseRulesStatusResponse,
   parseSendResponse,
   parseSessionsResponse,
   parseWaitOutcomeBody,
@@ -78,6 +83,8 @@ Usage:
   pid fleets [--project <id>] [--json]
   pid fleet run <name> [--project <id>] [--dry-run] [--wait] [--json]
   pid fleet runs [--project <id>] [--json]
+  pid rules [--json]
+  pid rules preview [--json]
   pid [--help] [--url <base>]
 
 --json is accepted on every command (a superset of the table above) and
@@ -99,13 +106,21 @@ skipped. pid fleet runs lists every run started for a project. --project
 defaults to the current directory's basename, which only works when this CLI
 runs on the same machine as the daemon.
 
+pid rules lists the state-change automation rules in
+<claudeConfigDir>/pid-dashboard/rules.json — off by default (both a missing
+file and enabled: false, or absent, mean nothing fires), plus any validation
+errors, whether the engine is paused, and recent firing activity. pid rules
+preview evaluates every currently-known session against those rules and
+reports what would happen — it fires nothing.
+
 Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
   <base>/agent-skill.md
 
 Exit codes:
   0  success / wait satisfied
   1  transport failure, 5xx, unreachable daemon, or an unparseable response
-  2  usage error, or an invalid recipe file / cap-exceeded fleet run request
+  2  usage error, or an invalid recipe/rules file / cap-exceeded fleet run
+     request
   3  wait timed out
   4  occupant_changed — the session was replaced under the wait
   5  removed — the session went away
@@ -572,6 +587,48 @@ const runFleetRuns = async ({
   })
 }
 
+const runRules = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "Rules" }>
+}): Promise<ExitCode> => {
+  const res: Response = await client.rules.$get()
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "rules" })
+  if (notOk !== undefined) return notOk
+  return printAndExit({
+    body,
+    json: command.json,
+    parsed: parseRulesStatusResponse(body),
+    label: "rules",
+    format: formatRulesStatus,
+    exitCodeFor: (v) => exitCodeForRulesErrors(v.errors),
+  })
+}
+
+const runRulesPreview = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "RulesPreview" }>
+}): Promise<ExitCode> => {
+  const res: Response = await client.rules.preview.$post()
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "rules preview" })
+  if (notOk !== undefined) return notOk
+  return printAndExit({
+    body,
+    json: command.json,
+    parsed: parseRulesPreviewResponse(body),
+    label: "rules preview",
+    format: formatRulesPreview,
+    exitCodeFor: (v) => exitCodeForRulesErrors(v.errors),
+  })
+}
+
 type DispatchOneResult =
   | { readonly _tag: "Failed"; readonly code: ExitCode; readonly body: unknown }
   | { readonly _tag: "Dispatched"; readonly short: string }
@@ -708,6 +765,8 @@ const HANDLERS: Readonly<Record<NonHelpCommand["_tag"], AnyCommandHandler>> = {
   Fleets: runFleets,
   FleetRun: runFleetRun,
   FleetRuns: runFleetRuns,
+  Rules: runRules,
+  RulesPreview: runRulesPreview,
 }
 
 const runCommand = ({

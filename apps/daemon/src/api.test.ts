@@ -115,6 +115,20 @@ describe("file-drop surface", () => {
   })
 })
 
+describe("GET /rules — mounted and off by default", () => {
+  it("reports the disabled shape with no rules.json present", async () => {
+    const res = await app.request("/rules")
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      enabled: false,
+      paused: false,
+      errors: [],
+      rules: [],
+      log: [],
+    })
+  })
+})
+
 describe("GET /agent-skill.md", () => {
   it("serves the agent skill doc as markdown with substantive content", async () => {
     const res = await app.request("/agent-skill.md")
