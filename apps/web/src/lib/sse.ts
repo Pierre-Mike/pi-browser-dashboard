@@ -1,4 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
+import { parseRunSummary } from "../features/fleet/fleetParse"
+import type { RunSummaryWire } from "../features/fleet/types"
+import { fleetRunsKey } from "../features/fleet/useFleetRuns"
 import { notifyEnabled, showNotification } from "../features/notifications/notifier"
 import { decideNotification, resolvePrevState } from "../features/notifications/sessionNotify"
 import { type TerminalStateEvent, terminalStateKey } from "../features/terminal/terminalState"
@@ -22,6 +25,18 @@ const parse = <T>(raw: string): T | null => {
 const upsertList = (prev: SessionState[] | undefined, next: SessionState): SessionState[] => {
   if (!prev) return [next]
   const idx = prev.findIndex((s) => s.short === next.short)
+  if (idx < 0) return [next, ...prev]
+  const copy = prev.slice()
+  copy[idx] = next
+  return copy
+}
+
+const upsertRun = (
+  prev: readonly RunSummaryWire[] | undefined,
+  next: RunSummaryWire,
+): readonly RunSummaryWire[] => {
+  if (!prev) return [next]
+  const idx = prev.findIndex((r) => r.id === next.id)
   if (idx < 0) return [next, ...prev]
   const copy = prev.slice()
   copy[idx] = next
@@ -128,6 +143,20 @@ export const startSse = (queryClient: QueryClient): SsePatcher => {
       queryClient.setQueryData<Record<string, TerminalStateEvent>>(
         TERMINAL_STATES_QUERY_KEY,
         (prev) => ({ ...prev, [terminalStateKey(payload)]: payload }),
+      )
+    })
+
+    // A fleet run transitioned (see apps/daemon/src/features/fleet/fleet-run.io.ts,
+    // published on every `advance`). Patched straight into that project's
+    // fleet-runs cache entry — useFleetRuns seeds it once via GET, this keeps
+    // it live without a re-fetch.
+    next.addEventListener("fleet.run", (ev) => {
+      const payload = parse<unknown>((ev as MessageEvent).data)
+      const run = payload === null ? undefined : parseRunSummary(payload)
+      if (!run) return
+      mark("fleet.run", { runId: run.id, fleet: run.fleet, status: run.status })
+      queryClient.setQueryData<readonly RunSummaryWire[]>(fleetRunsKey(run.projectId), (prev) =>
+        upsertRun(prev, run),
       )
     })
 

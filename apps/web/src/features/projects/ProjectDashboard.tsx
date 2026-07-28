@@ -14,6 +14,7 @@ import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
 import { useExtensions } from "../extensions/useExtensions"
+import { FleetPanel } from "../fleet/FleetPanel"
 import { LibraryPanel } from "../library/LibraryPanel"
 import { NewPidAppButton } from "../pid-apps/NewPidAppButton"
 import { PidAppHost } from "../pid-apps/PidAppHost"
@@ -43,6 +44,9 @@ type StaticTabKey =
   | "claude"
   | "library"
   | "settings"
+  // Declarative multi-agent runs (<project>/.pid/fleet.json — see AGENTS.md
+  // "Fleet recipes"): preview a run, start one, watch the waves.
+  | "fleets"
   // The single parent "Specs" dock tab; individual apps live in its left rail.
   | "pidapps"
 // Extension-contributed project panels are namespaced (`ext:<name>`). Every
@@ -224,6 +228,7 @@ export const ProjectDashboard = ({ project }: Props) => {
       { key: "claude", label: "Claude" },
       { key: "library", label: "Library" },
       { key: "settings", label: "Settings" },
+      { key: "fleets", label: "Fleets" },
       // One parent tab for every pid-app; the individual apps hang off its left
       // rail rather than each claiming a top-level dock tab.
       { key: "pidapps", label: "Specs" },
@@ -404,6 +409,14 @@ export const ProjectDashboard = ({ project }: Props) => {
         className={tab === "settings" ? "flex flex-col gap-3" : "hidden"}
       >
         <PidSettingsPanel projectId={project.id} />
+      </div>
+
+      <div
+        role="tabpanel"
+        data-testid="project-tab-panel-fleets"
+        className={tab === "fleets" ? "flex flex-col gap-3" : "hidden"}
+      >
+        <FleetPanel projectId={project.id} projectName={project.name} />
       </div>
 
       {extPanels.map((e) => {

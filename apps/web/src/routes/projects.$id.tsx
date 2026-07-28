@@ -11,6 +11,7 @@ const PROJECT_STATIC_TAB_KEYS = [
   "claude",
   "library",
   "settings",
+  "fleets",
   "pidapps",
   "brainstorm",
 ] as const
