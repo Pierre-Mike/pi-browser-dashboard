@@ -36,16 +36,27 @@ export const RecentSessionsFeed = ({
       </div>
       <div className="flex flex-col gap-2">
         {items.map(({ session, projectName }) => (
-          <div key={session.short} className="flex flex-col gap-1" data-testid="recent-session-row">
+          <div
+            key={session.short}
+            className="flex items-start gap-3"
+            data-testid="recent-session-row"
+          >
+            {/* The feed row is far wider than a card needs, so the project rides
+                in a gutter to its left instead of as a small line on top — at
+                row scale it reads, and it costs no extra height. `pt-3` matches
+                the card's own padding so the two names sit on one baseline. */}
             {showProjectName ? (
               <div
-                className="text-[11px] font-medium text-base-content/60 truncate"
+                data-testid="recent-session-project"
+                className="w-28 sm:w-44 shrink-0 pt-3 text-sm font-medium text-base-content/70 truncate"
                 title={session.cwd}
               >
                 {projectName}
               </div>
             ) : null}
-            <SessionCard session={session} />
+            <div className="min-w-0 flex-1">
+              <SessionCard session={session} />
+            </div>
           </div>
         ))}
       </div>
