@@ -64,7 +64,7 @@ pi-browser-dashboard/
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repo        | bun workspaces, no Turborepo                                                                                                                          |
 | Tooling     | Biome (`biome ci` in CI), Lefthook (`stage_fixed: true`)                                                                                              |
-| Daemon      | Bun + Hono + Effect-TS, FCIS suffix-discipline (`*.core.ts` / `*.repo.ts` / `*.routes.ts`), `hc<AppType>` typed RPC                                   |
+| Daemon      | Bun + Hono + Effect-TS, FCIS suffix-discipline (`*.core.ts` / `*.io.ts` / `*.routes.ts`), `hc<AppType>` typed RPC                                   |
 | Web         | Vite + React + TanStack Router (file-based) + TanStack Query + SSE patcher; Zustand only if needed; Tailwind                                          |
 | API         | `POST /dispatch`, `POST /sessions/:id/{stop,respawn,rm,rename,tag}`; `GET /events` (single SSE); `@effect/schema` both ends                           |
 | Persistence | None in daemon. Supervisor + SDK FS own all state                                                                                                     |
@@ -80,8 +80,8 @@ apps/daemon/src/
 │   ├── transcripts/   # JSONL read on drill-in (uses Agent SDK helpers)
 │   └── sessions/      # routes: stop / respawn / rm / rename / tag
 ├── platform/
-│   ├── shell.repo.ts          # spawn/wait/collect shell commands (Effect-wrapped)
-│   ├── fswatch.repo.ts        # Bun.watch wrapper, debounced
+│   ├── shell.io.ts          # spawn/wait/collect shell commands (Effect-wrapped)
+│   ├── fswatch.io.ts        # Bun.watch wrapper, debounced
 │   ├── sse-bus.ts
 │   ├── effect-handler.ts      # Effect runtime adapter
 │   └── route-types.ts         # RouteModule<TApp>
@@ -110,7 +110,7 @@ state.json change  ──> jobs.repo   ──> sse-bus  ──> GET /events
 
 Rules:
 - `*.core.ts` = pure; no `new Date()`, no `crypto.randomUUID()`, no `Math.random()` — pass in.
-- `*.repo.ts` = Effect services behind `Context.Tag`. `shell.repo` and `fswatch.repo` encapsulate all side effects.
+- `*.io.ts` = Effect services behind `Context.Tag`. `shell.repo` and `fswatch.repo` encapsulate all side effects.
 - `*.routes.ts` = Hono routes + `Effect.gen` orchestration.
 - `Effect.runPromise` only in `*.routes.ts` and `main.ts`.
 - No cross-feature imports — compose at `api.ts` or via `platform/sse-bus.ts` types.
@@ -436,7 +436,7 @@ cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
 ## Engineering axioms (inherited)
 
 - **Effect-TS** for error handling, DI, concurrency — no `try/catch`, no mock frameworks.
-- **Functional Core / Imperative Shell** — pure `*.core.ts`, services in `*.repo.ts`, orchestration in `*.routes.ts`.
+- **Functional Core / Imperative Shell** — pure `*.core.ts`, services in `*.io.ts`, orchestration in `*.routes.ts`.
 - **Biome** for lint+format. No ESLint/Prettier.
 - **Bun** for dev/build/runtime.
 - **Named parameters** (destructured objects) for 3+ params (Biome `complexity/useMaxParams: { max: 2 }`).

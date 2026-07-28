@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import type { PidSettings, PidSettingsPatch } from "./pid-settings.core"
-import { type PidSettingsError, PidSettingsService } from "./pid-settings.repo"
+import { type PidSettingsError, PidSettingsService } from "./pid-settings.io"
 
 const errorToStatus = (e: PidSettingsError): 403 | 404 => (e === "forbidden" ? 403 : 404)
 

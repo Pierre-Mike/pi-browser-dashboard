@@ -3,7 +3,7 @@ import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { validateRelPath } from "../projects/projects.core"
 import { PID_APP_CSP } from "./pid-apps.core"
-import { PidAppsService, type PidAppWriteError } from "./pid-apps.repo"
+import { PidAppsService, type PidAppWriteError } from "./pid-apps.io"
 
 const errorToStatus = (e: PidAppWriteError): 400 | 403 | 404 | 409 | 413 =>
   e === "forbidden"

@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { IssueDriverService } from "./issue-driver.repo"
+import { IssueDriverService } from "./issue-driver.io"
 
 const app = new Hono()
   .get("/status", async (c) => {

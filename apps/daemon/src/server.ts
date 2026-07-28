@@ -1,9 +1,9 @@
 import type { Server } from "bun"
 import { Effect } from "effect"
 import app, { buildApp, mountExtensions, websocket } from "./api"
-import { IssueDriverService } from "./features/issue-driver/issue-driver.repo"
-import { SessionRegistry } from "./features/sessions/sessions.repo"
-import { TunnelService } from "./features/tunnel/tunnel.repo"
+import { IssueDriverService } from "./features/issue-driver/issue-driver.io"
+import { SessionRegistry } from "./features/sessions/sessions.io"
+import { TunnelService } from "./features/tunnel/tunnel.io"
 import { loadExtensions } from "./platform/extensions/loader"
 import { appRuntime } from "./platform/runtime"
 

@@ -1,8 +1,8 @@
 // Pure parsers and helpers for the Library catalog (~/.claude/skills/library/library.yaml).
-// No I/O — file reads + git ops live in library.repo.ts.
+// No I/O — file reads + git ops live in library.io.ts.
 //
 // The catalog is the source-of-truth for what's *available*; install status is
-// derived per-call by probing the filesystem in library.repo.ts.
+// derived per-call by probing the filesystem in library.io.ts.
 
 import {
   type Document,

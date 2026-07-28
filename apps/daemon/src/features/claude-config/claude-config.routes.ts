@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { type ClaudeConfigError, ClaudeConfigService } from "./claude-config.repo"
+import { type ClaudeConfigError, ClaudeConfigService } from "./claude-config.io"
 
 const errorToStatus = (e: ClaudeConfigError): 403 | 404 => (e === "forbidden" ? 403 : 404)
 

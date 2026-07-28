@@ -1,5 +1,5 @@
 // Pure parsers/mergers for per-project pid settings (<project>/.pid/settings.json).
-// No I/O — file reads/writes live in pid-settings.repo.ts.
+// No I/O — file reads/writes live in pid-settings.io.ts.
 //
 // The schema is intentionally small to start (just the default selected skills
 // for the spawn modal) but is designed to grow: parse fills missing/invalid

@@ -3,8 +3,8 @@ import { Hono } from "hono"
 import { resolveConfigDir } from "../../platform/config-dir"
 import { upgradeWebSocket } from "../../platform/ws"
 import { type CanvasSnapshot, parseCanvas, serializeCanvas } from "./canvas.core"
-import { type CanvasRoom, getCanvasRoom } from "./canvas.repo"
-import type { DocRoom } from "./docRoom.repo"
+import { type CanvasRoom, getCanvasRoom } from "./canvas.io"
+import type { DocRoom } from "./docRoom.io"
 
 const MAX_FRAME_BYTES = 256 * 1024
 

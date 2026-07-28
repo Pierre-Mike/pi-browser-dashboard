@@ -44,7 +44,7 @@ README for the full requirements list.
   frameworks.
 - **Functional Core / Imperative Shell** suffix discipline in the daemon:
   - `*.core.ts` — pure logic, fully tested
-  - `*.repo.ts` — side-effects (fs, shell, network)
+  - `*.io.ts` — side-effects (fs, shell, network)
   - `*.routes.ts` — HTTP boundary
 - **Co-located tests**: `foo.ts` → `foo.test.ts` next to it.
 - **Named parameters** for any function with 3+ args.

@@ -1,5 +1,5 @@
 // Pure helpers for dispatching to the pi coding harness (the second spawn
-// harness next to `claude --bg`). No I/O — pi.repo.ts shells out, this module
+// harness next to `claude --bg`). No I/O — pi.io.ts shells out, this module
 // parses and builds argv.
 
 export type PiModel = {

@@ -1,9 +1,9 @@
 // Shared HTTP helpers for file-browser route handlers. Reused by both
 // projects.routes and sessions.routes to avoid duplication.
 
-import { createAt, moveAt, removeAt, type WriteError } from "./fileBrowser.repo"
+import { createAt, moveAt, removeAt, type WriteError } from "./fileBrowser.io"
 import { type TreeGitStatusEntry, toTreeGitStatus } from "./git.core"
-import { gitStatus } from "./git.repo"
+import { gitStatus } from "./git.io"
 
 // Accepts WriteError (FileError ∪ "exists"); read routes pass plain FileError.
 export const errorToStatus = (e: WriteError): 400 | 403 | 404 | 409 | 413 => {

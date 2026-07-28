@@ -1,7 +1,7 @@
 import { Effect, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { TunnelService } from "./tunnel.repo"
+import { TunnelService } from "./tunnel.io"
 
 // Effect runtime surface the route handlers depend on. Real prod wiring passes
 // `appRuntime`; route tests substitute a stub runtime built over a fake

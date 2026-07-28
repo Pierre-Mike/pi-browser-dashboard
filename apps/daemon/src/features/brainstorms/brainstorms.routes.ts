@@ -2,16 +2,16 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { parseCanvas, serializeCanvas } from "../canvas/canvas.core"
-import { getCanvasRoomAt } from "../canvas/canvas.repo"
+import { getCanvasRoomAt } from "../canvas/canvas.io"
 import {
   type CanvasRoomResolver,
   makeCanvasWsHandler,
   makeDocWsHandler,
 } from "../canvas/canvas.routes"
 import { parseExcalidrawDoc, serializeExcalidrawDoc } from "../canvas/excalidraw.core"
-import { getExcalidrawRoomAt } from "../canvas/excalidraw.repo"
+import { getExcalidrawRoomAt } from "../canvas/excalidraw.io"
 import type { BrainstormKind } from "./brainstorms.core"
-import { BrainstormsService, type BrainstormWriteError } from "./brainstorms.repo"
+import { BrainstormsService, type BrainstormWriteError } from "./brainstorms.io"
 
 // Excalidraw scenes carry freedraw point arrays, so a board frame can dwarf a
 // React-Flow canvas frame — give the doc socket a roomier cap than the 256KB

@@ -21,7 +21,7 @@
 //   claude attach <short>
 //   claude tick <short>          (internal — drives state working -> done)
 //
-// Exit codes and stdout match what apps/daemon/src/platform/shell.repo.ts
+// Exit codes and stdout match what apps/daemon/src/platform/shell.io.ts
 // parses (`backgrounded · <short>` on a line by itself).
 
 import { spawn } from "node:child_process"

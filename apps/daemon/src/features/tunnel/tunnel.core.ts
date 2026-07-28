@@ -3,7 +3,7 @@
  *
  * Parsing the trycloudflare URL out of cloudflared's log stream and deriving
  * its host are side-effect-free, so they live here and are unit-tested with
- * plain string fixtures. All subprocess I/O lives in tunnel.process.ts.
+ * plain string fixtures. All subprocess I/O lives in tunnel-process.io.ts.
  */
 
 export type TunnelStatus = "stopped" | "starting" | "running" | "error"

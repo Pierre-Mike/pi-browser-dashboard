@@ -1,5 +1,5 @@
 // Pure discovery + manifest parsing for per-project pid-apps (HTML dropped into
-// <project>/.pid/). No I/O — filesystem reads/streaming live in pid-apps.repo.ts.
+// <project>/.pid/). No I/O — filesystem reads/streaming live in pid-apps.io.ts.
 //
 // A pid-app is a static HTML site surfaced as a sandboxed, project-scoped
 // extension tab. Discovery is zero-config: presence of an index.html is enough,

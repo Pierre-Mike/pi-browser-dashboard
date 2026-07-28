@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import type { TunnelState } from "./tunnel.core"
-import { TunnelService, type TunnelServiceApi } from "./tunnel.repo"
+import { TunnelService, type TunnelServiceApi } from "./tunnel.io"
 import { buildTunnelApp } from "./tunnel.routes"
 
 const buildHarness = (initial: TunnelState) => {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import { ManagedRuntime } from "effect"
-import { PidSettingsRepoTest } from "./pid-settings.repo"
+import { PidSettingsIoTest } from "./pid-settings.io"
 import { createApp } from "./pid-settings.routes"
 
 const buildApp = () => {
-  const rt = ManagedRuntime.make(PidSettingsRepoTest({ preset: { defaultSkills: ["align"] } }))
+  const rt = ManagedRuntime.make(PidSettingsIoTest({ preset: { defaultSkills: ["align"] } }))
   return createApp((effect) => rt.runPromise(effect))
 }
 

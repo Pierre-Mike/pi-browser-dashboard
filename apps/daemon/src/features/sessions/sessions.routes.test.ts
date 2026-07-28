@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
-import { ShellError, ShellRepo, type ShellRepoApi } from "../../platform/shell.repo"
-import { type PiSessionsApi, PiSessionsRepo } from "../dispatch/pi-sessions.repo"
-import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.repo"
-import { SessionRegistry, type SessionRegistryApi } from "./sessions.repo"
+import { ShellError, ShellIo, type ShellRepoApi } from "../../platform/shell.io"
+import { type PiSessionsApi, PiSessionsIo } from "../dispatch/pi-sessions.io"
+import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } from "./files.io"
+import { SessionRegistry, type SessionRegistryApi } from "./sessions.io"
 import { buildSessionsApp } from "./sessions.routes"
 
 type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
@@ -35,7 +35,7 @@ type ShellSpy = {
   peekReturn: string
 }
 
-const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellRepo> => {
+const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellIo> => {
   const record = ({
     op,
     id,
@@ -75,7 +75,7 @@ const buildShellLayer = (spy: ShellSpy): Layer.Layer<ShellRepo> => {
       return failIfRequested("send") ?? Effect.void
     },
   }
-  return Layer.succeed(ShellRepo, api)
+  return Layer.succeed(ShellIo, api)
 }
 
 const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<SessionRegistry> =>
@@ -105,7 +105,7 @@ const newSpy = (): ShellSpy => ({ calls: [], failNext: null, peekReturn: "" })
 
 const newFilesStub = (): FilesStub => ({ diffByPath: new Map(), failWith: undefined })
 
-// In-memory PiSessionsRepo stub: pi sessions are keyed by short, remove()
+// In-memory PiSessionsIo stub: pi sessions are keyed by short, remove()
 // records what it dropped so tests can assert the pi rm branch fired.
 type PiStub = {
   readonly sessions: Map<string, SessionState>
@@ -114,7 +114,7 @@ type PiStub = {
 
 const newPiStub = (): PiStub => ({ sessions: new Map(), removed: [] })
 
-const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsRepo> => {
+const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsIo> => {
   const api: PiSessionsApi = {
     config: { spawnsFile: "", sessionsRoot: "", isPidAlive: () => false },
     record: () => {},
@@ -127,7 +127,7 @@ const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsRepo> => {
     },
     getOne: (short) => stub.sessions.get(short),
   }
-  return Layer.succeed(PiSessionsRepo, api)
+  return Layer.succeed(PiSessionsIo, api)
 }
 
 const buildHarness = ({
@@ -446,7 +446,7 @@ describe("GET /sessions/:id/files", () => {
 })
 
 describe("POST /sessions/:id/stop", () => {
-  it("invokes ShellRepo.stop and returns ok", async () => {
+  it("invokes ShellIo.stop and returns ok", async () => {
     const spy = newSpy()
     const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
@@ -503,7 +503,7 @@ describe("POST /sessions/:id/peek", () => {
 })
 
 describe("POST /sessions/:id/rm", () => {
-  it("invokes ShellRepo.rm and returns ok", async () => {
+  it("invokes ShellIo.rm and returns ok", async () => {
     const spy = newSpy()
     const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {
@@ -622,7 +622,7 @@ describe("POST /sessions/:id/send", () => {
     }
   })
 
-  it("forwards keys to ShellRepo.send and returns ok", async () => {
+  it("forwards keys to ShellIo.send and returns ok", async () => {
     const spy = newSpy()
     const { app, dispose } = buildHarness({ sessions: new Map(), spy: spy })
     try {

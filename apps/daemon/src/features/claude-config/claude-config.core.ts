@@ -1,5 +1,5 @@
 // Pure parsers for Claude Code config (settings.json, skills, hooks).
-// No I/O — file reads live in claude-config.repo.ts.
+// No I/O — file reads live in claude-config.io.ts.
 
 export type HookEntry = {
   readonly event: string

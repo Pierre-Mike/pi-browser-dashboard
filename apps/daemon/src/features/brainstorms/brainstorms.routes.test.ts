@@ -4,19 +4,19 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
 import { parseCanvas, serializeCanvas } from "../canvas/canvas.core"
-import { __resetCanvasRoomsForTests } from "../canvas/canvas.repo"
-import { __resetExcalidrawRoomsForTests } from "../canvas/excalidraw.repo"
-import { type Project, ProjectsRepoTest } from "../projects/projects.repo"
-import { BrainstormsRepoLive } from "./brainstorms.repo"
+import { __resetCanvasRoomsForTests } from "../canvas/canvas.io"
+import { __resetExcalidrawRoomsForTests } from "../canvas/excalidraw.io"
+import { type Project, ProjectsIoTest } from "../projects/projects.io"
+import { BrainstormsIoLive } from "./brainstorms.io"
 import { createApp } from "./brainstorms.routes"
 
 // Drive the real route handlers over the live repo layer backed by an
-// in-memory ProjectsRepoTest fixture pointing at a real tmp project tree
+// in-memory ProjectsIoTest fixture pointing at a real tmp project tree
 // (mirrors pid-apps.routes.test.ts).
 let root: string
 
 const appFor = (proj: Project) => {
-  const layer = Layer.provide(BrainstormsRepoLive, ProjectsRepoTest([proj]))
+  const layer = Layer.provide(BrainstormsIoLive, ProjectsIoTest([proj]))
   return createApp((eff) => Effect.runPromise(Effect.provide(eff, layer)))
 }
 

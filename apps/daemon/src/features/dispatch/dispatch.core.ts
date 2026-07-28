@@ -1,8 +1,8 @@
 // Pure request parsing for POST /dispatch. The route stays a thin
 // json→parse→run→respond pipe; every validation branch lives here where it is
 // unit-testable without a runtime.
-import type { DispatchInput } from "../../platform/shell.repo"
-import type { PiDispatchInput } from "./pi.repo"
+import type { DispatchInput } from "../../platform/shell.io"
+import type { PiDispatchInput } from "./pi.io"
 
 export type DispatchBody = {
   readonly intent?: unknown

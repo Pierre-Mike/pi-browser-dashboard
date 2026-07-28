@@ -4,7 +4,7 @@
 # co-located test file (`*.test.ts`/`*.spec.ts`).
 #
 # Scoped to the daemon for now: that's where the AGENTS.md feature-slice
-# pattern (`*.core.ts` / `*.repo.ts` / `*.routes.ts` + co-located tests)
+# pattern (`*.core.ts` / `*.io.ts` / `*.routes.ts` + co-located tests)
 # lives. The web app has different conventions (Playwright e2e); add it here
 # once it adopts co-located unit tests.
 #

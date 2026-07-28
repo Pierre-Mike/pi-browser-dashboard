@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test"
 import { Effect, ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import type { SkillDetail } from "./claude-config.core"
-import type { ScopeBundle } from "./claude-config.repo"
-import { ClaudeConfigRepoTest, ClaudeConfigService } from "./claude-config.repo"
+import type { ScopeBundle } from "./claude-config.io"
+import { ClaudeConfigIoTest, ClaudeConfigService } from "./claude-config.io"
 
 const sampleGlobal: ScopeBundle = {
   scope: "global",
@@ -42,7 +42,7 @@ const sampleSkill: SkillDetail = {
 
 const buildApp = () => {
   const testRuntime = ManagedRuntime.make(
-    ClaudeConfigRepoTest({
+    ClaudeConfigIoTest({
       global: sampleGlobal,
       projects: { demo: sampleProject },
       skills: { concise: sampleSkill },

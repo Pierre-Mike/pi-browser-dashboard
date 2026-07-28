@@ -34,7 +34,7 @@ updated_by: claude
   early death, harmless for a survivor.
 
 - ~~**DIS-G003: a pi dispatch has no dashboard presence after launch**~~
-  *Superseded 2026-07-09: pi-sessions.repo.ts records every dispatch in
+  *Superseded 2026-07-09: pi-sessions.io.ts records every dispatch in
   `~/.pid/pi-spawns.json` (override: PID_PI_SPAWNS_FILE) and GET /sessions
   merges them as harness:"pi" cards. See DIS-G004.*
 
