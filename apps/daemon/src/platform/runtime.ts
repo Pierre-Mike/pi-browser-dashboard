@@ -1,5 +1,4 @@
 import { Layer, ManagedRuntime } from "effect"
-import { BrainstormsIoLive } from "../features/brainstorms/brainstorms.io"
 import { ClaudeConfigIoLive } from "../features/claude-config/claude-config.io"
 import { PiIoLive } from "../features/dispatch/pi.io"
 import { PiSessionsIoLive } from "../features/dispatch/pi-sessions.io"
@@ -35,7 +34,6 @@ const GlobalSettingsLive = Layer.provide(GlobalSettingsIoLive, ConfigIoLive)
 const FilesLive = Layer.provide(FilesIoLive, GlobalSettingsLive)
 const PidSettingsLive = Layer.provide(PidSettingsIoLive, ProjectsLive)
 const PidAppsLive = Layer.provide(PidAppsIoLive, ProjectsLive)
-const BrainstormsLive = Layer.provide(BrainstormsIoLive, ProjectsLive)
 const SessionWaitLive = Layer.provide(SessionWaitIoLive, SessionRegistryLive)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
@@ -65,7 +63,6 @@ const AppLayer = Layer.mergeAll(
   TunnelLive,
   PidSettingsLive,
   PidAppsLive,
-  BrainstormsLive,
   GlobalSettingsLive,
 )
 

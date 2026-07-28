@@ -6,8 +6,8 @@ import type { ExcalidrawSyncStatus } from "./useExcalidrawSync"
 import { useExcalidrawSync } from "./useExcalidrawSync"
 
 type Props = {
-  readonly projectId: string
-  readonly slug: string
+  readonly short: string
+  readonly path: string
   readonly label: string
 }
 
@@ -57,13 +57,13 @@ const sanitizeElements = (elements: readonly unknown[]) =>
   restoreElements(elements as Parameters<typeof restoreElements>[0], null)
 
 /**
- * The V2 brainstorm editor: a full local Excalidraw bound to one
- * <project>/.pid/brainstorms/<slug>.excalidraw document. The daemon doc room
- * pushes every external write (agent, other tab) down the socket, and local
- * strokes flow back up debounced — same live-sync contract as the V1 canvas.
+ * The Excalidraw brainstorm editor: a full local Excalidraw bound to one
+ * `*.excalidraw` file in the session's worktree. The daemon doc room pushes
+ * every external write (the session's agent, another tab) down the socket, and
+ * local strokes flow back up debounced — same live-sync contract as the canvas.
  */
-export const ExcalidrawBoard = ({ projectId, slug, label }: Props) => {
-  const { status, remote, sendElements } = useExcalidrawSync({ projectId, slug })
+export const ExcalidrawBoard = ({ short, path, label }: Props) => {
+  const { status, remote, sendElements } = useExcalidrawSync({ short, path })
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null)
 
   useEffect(() => {

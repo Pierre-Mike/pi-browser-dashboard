@@ -2,12 +2,13 @@ import { type UseQueryResult, useQuery } from "@tanstack/react-query"
 import { type RefObject, useEffect, useRef } from "react"
 import { api } from "../../lib/api"
 import type { SessionState, TranscriptMessage } from "../../lib/types"
+import { SessionBrainstormTab } from "../brainstorms/SessionBrainstormTab"
 import { CanvasTab } from "../canvas/CanvasTab"
 import { FileTree } from "../projects/FileTree"
 import { parseTranscriptResponse } from "../transcripts/loadTranscript"
 import { TranscriptView } from "../transcripts/TranscriptView"
 import { ChatComposer } from "./ChatComposer"
-import type { SessionTab } from "./sessionTabs"
+import { sessionSectionFor } from "./sessionTabs"
 import { TerminalTab } from "./TerminalTab"
 
 const Pending = ({ label }: { readonly label: string }) => (
@@ -78,16 +79,21 @@ const ChatPanel = ({ short }: { readonly short: string }) => {
   )
 }
 
-// Canvas and Terminal both need the resolved session, so they share the
-// not-yet-loaded fallback.
+// Canvas, Brainstorm and Terminal all need the resolved session, so they share
+// the not-yet-loaded fallback.
 const LivePanel = ({
   tab,
   session,
+  onSelectTab,
 }: {
-  readonly tab: SessionTab
+  readonly tab: string
   readonly session: SessionState | null | undefined
+  readonly onSelectTab: (next: string) => void
 }) => {
   if (!session) return <Pending label="Loading session…" />
+  if (sessionSectionFor(tab) === "brainstorm") {
+    return <SessionBrainstormTab session={session} tab={tab} onSelectTab={onSelectTab} />
+  }
   return (
     <div className="flex-1 min-h-0">
       {tab === "canvas" ? (
@@ -105,10 +111,13 @@ export const SessionPanel = ({
   tab,
   id,
   session,
+  onSelectTab,
 }: {
-  readonly tab: SessionTab
+  // The raw `?tab=` value: a board arrives as `brainstorm:<encoded path>`.
+  readonly tab: string
   readonly id: string
   readonly session: SessionState | null | undefined
+  readonly onSelectTab: (next: string) => void
 }) => {
   if (tab === "chat") return <ChatPanel short={id} />
   if (tab === "files") {
@@ -118,5 +127,5 @@ export const SessionPanel = ({
       </div>
     )
   }
-  return <LivePanel tab={tab} session={session} />
+  return <LivePanel tab={tab} session={session} onSelectTab={onSelectTab} />
 }

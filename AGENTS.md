@@ -138,6 +138,7 @@ hc<AppType>  ──POST──>  /dispatch
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why)
                         /terminal/states  (current agent-state per known terminal)
+                        /sessions/:id/brainstorms  (drawings in the session's worktree)
              ──SSE───<  /events  (live deltas, single stream)
 ```
 
@@ -264,6 +265,52 @@ guessed `idle`.
   trail per row, including a documented pi hint (`(escape to interrupt)`)
   that exists in source but was not observed live, so has no matcher of its
   own.
+
+## Brainstorm boards (session-scoped drawings)
+
+A brainstorm board is **any drawing file in the tree a session works in**. There
+is no registry and no blessed directory: the daemon walks the session's worktree
+(falling back to its cwd) and every matching suffix is a board.
+
+| Suffix | `kind` | On disk | Editor |
+| --- | --- | --- | --- |
+| `*.canvas` | `canvas` | Obsidian JSON Canvas (jsoncanvas.org) | React Flow |
+| `*.canvas.json` | `canvasJson` | the older React-Flow encoding — read/write, never created | React Flow |
+| `*.excalidraw` | `excalidraw` | native Excalidraw scene | Excalidraw |
+
+A board's **identity is its worktree-relative path**, so moving the file is a
+plain `git mv` and nothing else. New boards land in `brainstorms/<name>.canvas`
+because a default has to be somewhere; nothing depends on them staying there,
+and boards created before this design (`.pid/brainstorms/*.canvas.json`) keep
+working because they are found by suffix like anything else.
+
+Pure rules in `features/brainstorms/brainstorms.core.ts` (suffix → kind, path →
+label, discovery, the default create path); the shell
+(`brainstorms.io.ts`) is plain async functions over an already-resolved root,
+mirroring `fileBrowser.io` — no Effect layer, because there is no dependency to
+inject once the router has resolved *which* tree.
+
+Daemon (`features/brainstorms/`, mounted on the sessions router in `api.ts`; the
+root resolver is passed in, so the slice never imports the sessions slice):
+- `GET  /sessions/:id/brainstorms` — every board in the tree, ordered by path.
+- `POST /sessions/:id/brainstorms` — create `{ name, kind? }` under `brainstorms/`.
+- `GET|POST /sessions/:id/brainstorms/canvas?path=<rel>` — snapshot / publish.
+- `GET  /sessions/:id/brainstorms/canvas/ws?path=<rel>` — live sync (WebSocket).
+- `GET|POST /sessions/:id/brainstorms/excalidraw[/ws]?path=<rel>` — same, native.
+
+Both canvas encodings decode to one `CanvasSnapshot` on the wire, so the socket,
+the routes and the browser editor are shared and only the bytes on disk differ
+(`features/canvas/jsonCanvas.core.ts` is the Obsidian codec; `canvas.io.ts` is
+the slice's room door for both).
+
+**Why the session and not the project.** The boards live in the tree the session
+already owns, so when its agent writes the file the browser is looking at, the
+write lands. The project-scoped version asked a session to write *outside* its
+own worktree — which is the edit that used to go missing. The drill-in's
+Brainstorm tab therefore docks the board beside that session's own terminal, and
+"Brief AI" hands the agent the board's absolute path plus the format it must
+write (`canvasBriefing.ts` — naming the wrong shape produces a file the editor
+then refuses to decode).
 
 ## Per-project pid-apps (`.pid/` HTML)
 
@@ -653,7 +700,8 @@ The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every c
 - [apps/daemon/src/features/global-settings](apps/daemon/src/features/global-settings/CLAUDE.md) — Global settings file + UI: git/library/orchestration/network params formerly hard-coded; field→consumer wiring map.
 - [apps/daemon/src/features/dispatch](apps/daemon/src/features/dispatch/CLAUDE.md) — Dual-harness spawn (claude --bg / pi -p): pi launch-failure modes, detached-spawn stderr handling, pi session visibility.
 - [apps/web/src/features/canvas](apps/web/src/features/canvas/CLAUDE.md) — Shared React Flow canvas: sync field-dropping trap, edge-label editing, fitView/bezier e2e geometry.
-- [apps/web/src/features/excalidraw](apps/web/src/features/excalidraw/CLAUDE.md) — Brainstorm V2 Excalidraw boards: 0.18 ESM integration, restoreElements boundary, element-key sync dedupe, canvas-text-not-in-DOM e2e.
+- [apps/daemon/src/features/brainstorms](apps/daemon/src/features/brainstorms/CLAUDE.md) — Session-scoped board discovery: path-as-identity, three on-disk formats, why the surface hangs off the session and not the project.
+- [apps/web/src/features/excalidraw](apps/web/src/features/excalidraw/CLAUDE.md) — Excalidraw boards: 0.18 ESM integration, restoreElements boundary, element-key sync dedupe, canvas-text-not-in-DOM e2e.
 - [apps/web/src/features/sessions](apps/web/src/features/sessions/CLAUDE.md) — App-shell nav chrome: collapsed sidebar/rails must reserve zero width, reopen chips ride in existing rows, verify reclaimed space in pixels.
 - [apps/e2e](apps/e2e/CLAUDE.md) — Playwright stub vs real-claude modes: pre-push runs real spawns (slow, env-sensitive), CI forces the stub.
 

@@ -139,19 +139,17 @@ describe("ProjectDashboard pid-app tabs", () => {
 })
 
 describe("ProjectDashboard collapsible rails", () => {
-  it("makes both the Specs and Brainstorm left rails reducible for more space", () => {
-    // Each rail is wrapped so it can shrink to a slim strip, handing its width
-    // to the spec host / canvas.
+  it("makes the Specs left rail reducible for more space", () => {
+    // The rail is wrapped so it can vanish, handing its width to the spec host.
+    // Drawing boards moved to the session drill-in, so this page has one rail.
     const rails = src.match(/<CollapsibleRail/g) ?? []
-    expect(rails.length).toBe(2)
+    expect(rails.length).toBe(1)
     expect(src).toContain('testid="pidapp-subtabs"')
-    expect(src).toContain('testid="brainstorm-subtabs"')
   })
 
-  it("persists each rail's collapsed state per browser via usePersistedFlag", () => {
+  it("persists the rail's collapsed state per browser via usePersistedFlag", () => {
     expect(src).toContain("usePersistedFlag")
     expect(src).toMatch(/usePersistedFlag\("pid:specs:rail-collapsed"\)/)
-    expect(src).toMatch(/usePersistedFlag\("pid:brainstorm:rail-collapsed"\)/)
   })
 
   it("reopens a collapsed rail from a topbar chip so the panel keeps the full width", () => {
@@ -166,9 +164,14 @@ describe("ProjectDashboard collapsible rails", () => {
   })
 
   it("wires the chip to the rail it names so one click restores that rail", () => {
-    expect(src).toMatch(
-      /onToggle=\{railChip\.kind === "specs" \? specsRail\.toggle : brainstormRail\.toggle\}/,
-    )
+    expect(src).toMatch(/<RailExpandButton rail=\{railChip\} onToggle=\{specsRail\.toggle\} \/>/)
+  })
+
+  it("no longer docks a Brainstorm section — boards live on the session drill-in", () => {
+    // A board is a canvas file in a session's worktree, so the section belongs
+    // to the surface whose agent can actually write into that tree.
+    expect(src).not.toContain("brainstorm")
+    expect(src).not.toContain("Brainstorm")
   })
 })
 

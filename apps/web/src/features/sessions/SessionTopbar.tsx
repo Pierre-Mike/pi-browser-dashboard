@@ -3,7 +3,7 @@ import { stateColor } from "../../lib/format"
 import { TAB_ICONS, tabButtonClass, tabDockNavClass } from "../../lib/tabDock"
 import type { SessionState } from "../../lib/types"
 import { sessionIdentity } from "./sessionIdentity"
-import { SESSION_TAB_DOCK, type SessionTab } from "./sessionTabs"
+import { isSessionTabActive, SESSION_TAB_DOCK, type SessionTab } from "./sessionTabs"
 import { SidebarReopenButton } from "./sidebarRail"
 import type { SessionActions } from "./useSessionActions"
 
@@ -56,7 +56,9 @@ const SessionTabDock = ({
   tab,
   onSelect,
 }: {
-  readonly tab: SessionTab
+  // Not narrowed to SessionTab: a selected board arrives as
+  // `brainstorm:<path>`, and its parent section still has to read as active.
+  readonly tab: string
   readonly onSelect: (next: SessionTab) => void
 }) => (
   <nav
@@ -65,21 +67,24 @@ const SessionTabDock = ({
     aria-label="Session sections"
     className={`${tabDockNavClass} flex-1 min-w-0`}
   >
-    {SESSION_TAB_DOCK.map((t) => (
-      <button
-        key={t.key}
-        type="button"
-        role="tab"
-        aria-selected={tab === t.key}
-        data-testid={`tab-${t.key}`}
-        data-active={tab === t.key}
-        onClick={() => onSelect(t.key)}
-        className={tabButtonClass(tab === t.key)}
-      >
-        {TAB_ICONS[t.key]}
-        {t.label}
-      </button>
-    ))}
+    {SESSION_TAB_DOCK.map((t) => {
+      const active = isSessionTabActive({ tab, key: t.key })
+      return (
+        <button
+          key={t.key}
+          type="button"
+          role="tab"
+          aria-selected={active}
+          data-testid={`tab-${t.key}`}
+          data-active={active}
+          onClick={() => onSelect(t.key)}
+          className={tabButtonClass(active)}
+        >
+          {TAB_ICONS[t.key]}
+          {t.label}
+        </button>
+      )
+    })}
   </nav>
 )
 
@@ -166,7 +171,8 @@ export const SessionTopbar = ({
 }: {
   readonly session: SessionState | null | undefined
   readonly fallbackId: string
-  readonly tab: SessionTab
+  // The raw `?tab=` value, which may name a board inside a section.
+  readonly tab: string
   readonly onSelectTab: (next: SessionTab) => void
   readonly actions: SessionActions
 }) => (

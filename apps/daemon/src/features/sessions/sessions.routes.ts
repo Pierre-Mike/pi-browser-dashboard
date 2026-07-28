@@ -71,6 +71,15 @@ const sessionRoot = async (
   return session.worktreePath ?? session.cwd ?? null
 }
 
+/**
+ * The same resolution, bound to the shared runtime and exported as a plain
+ * function: it is how another router (the brainstorm boards mounted under
+ * `/sessions/:id/brainstorms`) learns which directory tree a session works in
+ * without depending on the registry itself.
+ */
+export const resolveSessionRoot = (id: string): Promise<string | null | undefined> =>
+  sessionRoot(appRuntime, id)
+
 // The sessionId a session currently carries, or `undefined` when the session
 // is unknown — read once up front so a send-with-wait can pin the wait to
 // *this* occupant before any keys go out, closing the race a caller would

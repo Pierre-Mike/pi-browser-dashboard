@@ -40,8 +40,8 @@ export type ExcalidrawSyncApi = {
 // socket. Deliberately simpler than useCanvasSync: Excalidraw owns the scene
 // state, so the hook only relays whole documents and dedupes by element key.
 export const useExcalidrawSync = (ref: {
-  readonly projectId: string
-  readonly slug: string
+  readonly short: string
+  readonly path: string
 }): ExcalidrawSyncApi => {
   const [status, setStatus] = useState<ExcalidrawSyncStatus>("connecting")
   const [remote, setRemote] = useState<RemoteExcalidrawDoc | null>(null)

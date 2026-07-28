@@ -8,12 +8,12 @@ import { join } from "node:path"
 const src = readFileSync(join(import.meta.dir, "NewBrainstormButton.tsx"), "utf8")
 
 describe("NewBrainstormButton source invariants", () => {
-  it("exposes a per-kind control in the left rail (canvas keeps the historical testid)", () => {
+  it("exposes a per-format control in the left rail (canvas keeps the historical testid)", () => {
     expect(src).toContain('"brainstorm-new"')
     expect(src).toContain('"brainstorm-new-excalidraw"')
   })
 
-  it("defaults to the V1 canvas kind so existing call sites are unchanged", () => {
+  it("defaults to the .canvas format so the plain + button creates a JSON Canvas board", () => {
     expect(src).toContain('kind = "canvas"')
   })
 
@@ -22,13 +22,13 @@ describe("NewBrainstormButton source invariants", () => {
     expect(src).not.toContain("window.prompt")
   })
 
-  it("creates the document via useCreateBrainstorm and mutates with name + kind", () => {
-    expect(src).toContain("useCreateBrainstorm(projectId)")
+  it("creates the document in the session's worktree, with name + format", () => {
+    expect(src).toContain("useCreateBrainstorm(short)")
     expect(src).toContain("create.mutate(")
     expect(src).toContain("{ name: trimmed, kind }")
   })
 
-  it("switches to the newly created board on success", () => {
-    expect(src).toContain("onCreated(doc.id)")
+  it("switches to the new board by path — boards are identified by where they live", () => {
+    expect(src).toContain("onCreated(doc.path)")
   })
 })

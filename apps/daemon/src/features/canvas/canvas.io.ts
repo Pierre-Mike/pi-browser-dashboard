@@ -36,4 +36,9 @@ export const getCanvasRoom = (configDir: string, short: string): Promise<CanvasR
 
 export const getCanvasRoomAt = rooms.getRoomAt
 
+// The slice's room door: both canvas encodings hand back a
+// DocRoom<CanvasSnapshot>, so a consumer picks the encoding but never has to
+// know which module implements it.
+export { __resetJsonCanvasRoomsForTests, getJsonCanvasRoomAt } from "./jsonCanvas.io"
+
 export const __resetCanvasRoomsForTests = rooms.resetForTests
