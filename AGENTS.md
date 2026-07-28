@@ -132,7 +132,8 @@ Web                              Daemon
 ────────────                     ─────────────
 hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/{stop,respawn,rm,rename,tag}
-                        /sessions/:id/send   (optional `wait` → submit-and-wait, one request)
+                        /sessions/:id/send   (raw keys string; optional `wait` → submit-and-wait)
+                        /sessions/:id/keys   (named key vocabulary; optional `wait`)
                         /sessions/:id/wait   (server-owned wait on session state)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why)
@@ -175,6 +176,37 @@ event-driven, not a poll loop.
   send-with-wait, closing the race between the two calls), and reports
   `occupant_changed` rather than a false `Satisfied` if a different
   `sessionId` takes over the same `short` while waiting.
+
+### Named key vocabulary (`features/sessions/sessions-keys.*`)
+
+`POST /sessions/:id/keys` answers a permission prompt or an `AskUserQuestion`
+menu by name — `escape`, `enter`, `tab`, `shift-tab`, `up`, `down`, `left`,
+`right`, `home`, `end`, `page-up`, `page-down`, `backspace`, `delete`,
+`space` — instead of a caller hand-encoding terminal control bytes into
+`POST /:id/send`'s raw `keys` string. `POST /:id/send` is unchanged and stays
+the escape hatch for anything not named here.
+
+- Body: `{ sequence: KeyStep[], wait? }`, where a step is either
+  `{ named, repeat? }` (a vocabulary entry, `repeat` an integer 1–32) or
+  `{ text }` (literal input — no control characters; use `named` for those).
+  `sequence` is a non-empty array of at most 32 steps; the resolved bytes are
+  capped at 4096, the same cap `POST /:id/send` enforces. `wait` is the same
+  `{ until, timeoutMs? }` shape as above and gets the same pinned-occupant
+  send-then-wait treatment.
+- `ctrl-z` and `ctrl-c` are deliberately not in the vocabulary — both are
+  rejected as unknown names. `ctrl-z` is the byte the daemon's own attach pool
+  uses to evict an idle `claude attach` (see `shell.io.ts`); `ctrl-c` quits the
+  TUI outright, where `POST /:id/stop` is the supported way to end a session.
+  Naming either would let a caller reach past the daemon's own bookkeeping.
+- Response: `200 { ok: true, short, resolved, bytes }` — `resolved` is a
+  human-readable trail (e.g. `["down", "down", "enter"]` for a `repeat: 2`
+  step followed by `enter`; a `text` step appears quoted, e.g. `"hello"`) and
+  `bytes` is the resolved byte count — plus a `wait` field with the same
+  outcome shape as `POST /:id/wait` when a wait was requested. A malformed
+  `sequence` or `wait` is a 400 before anything is sent.
+- Example — answer a two-down-then-select menu and confirm the session
+  resumed: `{ sequence: [{ named: "down", repeat: 2 }, { named: "enter" }],
+  wait: { until: ["working", "idle"] } }`.
 
 ## Per-project pid-apps (`.pid/` HTML)
 
@@ -346,18 +378,29 @@ Daemon is stateless across restarts. On boot:
 
 The supervisor exits when idle; our file watchers stay attached to the paths and resume seeing changes when it next runs. `state.json` writes aren't atomic on all platforms — retry parse on transient errors.
 
-### 5. Permission UX — v1 is read-only
+### 5. Permission UX — reply via send/keys, not a documented supervisor IPC
 
 `state.json` for a `Needs input` session contains the pending question or permission request. Card renders inline:
 - tool name + input snippet (collapse-by-default for long Bash / Edit payloads)
-- for `AskUserQuestion`: `questions[].options` rendered as radio/checkbox (read-only — selection is informational only at v1)
+- for `AskUserQuestion`: `questions[].options` rendered as radio/checkbox (read-only display — the daemon has no side channel to the supervisor's own render of the same menu, so this is a preview, not a control)
 
 Available actions on a `Needs input` card:
 - **Open in terminal** — copies `claude attach <id>` to clipboard.
+- **Send keys** — `POST /sessions/:id/send` (raw `keys` string) or `POST
+  /sessions/:id/keys` (named vocabulary: `escape`, `enter`, `tab`, arrows, …
+  — see "Named key vocabulary" above) pty-attach and write into the
+  supervisor's TUI. Answering an `AskUserQuestion` menu is
+  `[{ named: "down", repeat: N }, { named: "enter" }]`, optionally with a
+  `wait: { until }` to confirm the session left `needs_input` before the
+  request returns.
 - **Stop** — `POST /sessions/:id/stop` → `claude stop <id>`.
 - **Delete** — `POST /sessions/:id/rm` → `claude rm <id>`.
 
-No programmatic approve/deny at v1 — the supervisor exposes no documented IPC for external reply. **This is the project's main known limitation at v1.**
+There is still no documented supervisor IPC for external reply — `send`/`keys`
+work by driving the attached TUI's stdin, the same as a human typing into
+`claude attach`, not by talking to the supervisor directly. That remains the
+project's main architectural constraint: every reply is a keystroke, not a
+structured API call.
 
 ### 6. Card content — reuse supervisor's Haiku summary
 
