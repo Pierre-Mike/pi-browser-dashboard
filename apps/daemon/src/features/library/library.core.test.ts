@@ -1,21 +1,36 @@
 import { describe, expect, it } from "bun:test"
+import { Either } from "effect"
 import {
+  type Catalog,
   CatalogParseError,
   DuplicateEntryError,
+  parseCatalog as decodeCatalog,
+  resolveRequires as decodeRequires,
+  upsertEntryInDocument as decodeUpsert,
   expandHome,
   isSafeSegment,
   LIBRARY_CATEGORIES,
-  parseCatalog,
+  type LibraryEntry,
   parseCatalogDocument,
   parseRequireRef,
   parseSource,
   RequiresCycleError,
   removeEntryFromDocument,
   resolveAgenticRepoPath,
-  resolveRequires,
   serializeCatalogDocument,
-  upsertEntryInDocument,
 } from "./library.core"
+
+// The pure core returns Either — failures are values. Happy paths unwrap
+// through these helpers; each failure contract is asserted on the Left itself.
+const unwrap = <A, L>(e: Either.Either<A, L>): A => {
+  if (Either.isLeft(e)) throw e.left
+  return e.right
+}
+const parseCatalog = (text: string): Catalog => unwrap(decodeCatalog(text))
+const resolveRequires = (entryName: string, catalog: Catalog): readonly LibraryEntry[] =>
+  unwrap(decodeRequires({ entryName, catalog }))
+const upsertEntryInDocument = (input: Parameters<typeof decodeUpsert>[0]): void =>
+  unwrap(decodeUpsert(input))
 
 const SAMPLE = `default_dirs:
   skills:
@@ -60,12 +75,14 @@ describe("parseCatalog", () => {
     expect(c.entries).toEqual([])
   })
 
-  it("throws CatalogParseError on broken YAML", () => {
-    expect(() => parseCatalog(":\n - [not")).toThrow(CatalogParseError)
+  it("returns a Left CatalogParseError on broken YAML", () => {
+    const decoded = decodeCatalog(":\n - [not")
+    expect(Either.isLeft(decoded) && decoded.left instanceof CatalogParseError).toBe(true)
   })
 
-  it("throws when root is not a mapping", () => {
-    expect(() => parseCatalog("- 1\n- 2\n")).toThrow(CatalogParseError)
+  it("returns a Left when root is not a mapping", () => {
+    const decoded = decodeCatalog("- 1\n- 2\n")
+    expect(Either.isLeft(decoded) && decoded.left instanceof CatalogParseError).toBe(true)
   })
 
   it("skips items missing name or source", () => {
@@ -172,11 +189,12 @@ describe("resolveRequires", () => {
     expect(chain.map((e) => e.name)).toEqual(["lonely"])
   })
 
-  it("throws RequiresCycleError on a cycle", () => {
+  it("returns a Left RequiresCycleError on a cycle", () => {
     const cyclic = parseCatalog(
       "library:\n  skills:\n    - name: a\n      description: a\n      source: /a/SKILL.md\n      requires: [skill:b]\n    - name: b\n      description: b\n      source: /b/SKILL.md\n      requires: [skill:a]\n",
     )
-    expect(() => resolveRequires("a", cyclic)).toThrow(RequiresCycleError)
+    const decoded = decodeRequires({ entryName: "a", catalog: cyclic })
+    expect(Either.isLeft(decoded) && decoded.left instanceof RequiresCycleError).toBe(true)
   })
 })
 
@@ -228,19 +246,18 @@ describe("catalog document mutation", () => {
     expect(parsed.entries.map((e) => e.name).sort()).toEqual(["align", "concise"])
   })
 
-  it("upsert (mode=add) throws DuplicateEntryError for an existing name", () => {
+  it("upsert (mode=add) returns a Left DuplicateEntryError for an existing name", () => {
     const doc = parseCatalogDocument(DOC_SAMPLE)
-    expect(() =>
-      upsertEntryInDocument({
-        doc,
-        entry: {
-          name: "align",
-          type: "skills",
-          description: "x",
-          source: "/y/SKILL.md",
-        },
-      }),
-    ).toThrow(DuplicateEntryError)
+    const decoded = decodeUpsert({
+      doc,
+      entry: {
+        name: "align",
+        type: "skills",
+        description: "x",
+        source: "/y/SKILL.md",
+      },
+    })
+    expect(Either.isLeft(decoded) && decoded.left instanceof DuplicateEntryError).toBe(true)
   })
 
   it("upsert (mode=upsert) replaces an existing entry in place", () => {

@@ -1,0 +1,91 @@
+#!/usr/bin/env bun
+/**
+ * Ratchet gate for the axioms this repo still owes debt on. See
+ * scripts/axiom-debt.core.ts for why these three are ratcheted instead of
+ * lint-enforced.
+ *
+ *   bun run axiom-debt          # check against scripts/axiom-debt.json
+ *   bun run axiom-debt:update   # re-record the baseline after paying debt down
+ *
+ * Any drift fails — a new violation *and* a fixed one. Fixing debt is meant to
+ * show up as a smaller number committed alongside the fix.
+ */
+import { join } from "node:path"
+import { Glob } from "bun"
+import {
+  type DebtBaseline,
+  diffDebt,
+  type SourceFile,
+  scanDebt,
+  totalDebt,
+} from "./axiom-debt.core"
+
+const root = join(import.meta.dir, "..")
+const baselineFile = join(import.meta.dir, "axiom-debt.json")
+const update = process.argv.includes("--update")
+
+const SKIP = [
+  "node_modules",
+  "/dist/",
+  "/dist-web/",
+  ".stryker-tmp",
+  ".claude/worktrees",
+  "routeTree.gen.ts",
+]
+
+const collect = async (): Promise<readonly SourceFile[]> => {
+  const files: SourceFile[] = []
+  for await (const rel of new Glob("{apps,scripts}/**/*.{ts,tsx}").scan({ cwd: root })) {
+    const path = rel.replaceAll("\\", "/")
+    if (SKIP.some((s) => `/${path}`.includes(s))) continue
+    files.push({ path, text: await Bun.file(join(root, path)).text() })
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path))
+  return files
+}
+
+const actual = scanDebt(await collect())
+
+if (update) {
+  await Bun.write(baselineFile, `${JSON.stringify(actual, null, 2)}\n`)
+  console.error(`✓ axiom-debt baseline updated: ${totalDebt(actual)} known violations`)
+  process.exit(0)
+}
+
+const baseline = (await Bun.file(baselineFile)
+  .json()
+  .catch(() => null)) as DebtBaseline | null
+if (baseline === null) {
+  console.error(`✖ missing ${baselineFile} — run: bun run axiom-debt:update`)
+  process.exit(1)
+}
+
+const drift = diffDebt({ baseline, actual })
+if (drift.length === 0) {
+  console.error(`✓ axiom debt unchanged: ${totalDebt(actual)} known violations, none new`)
+  process.exit(0)
+}
+
+const added = drift.filter((d) => d.actual > d.baseline)
+const paid = drift.filter((d) => d.actual < d.baseline)
+
+if (added.length > 0) {
+  console.error("✖ new axiom violations — these are not allowed to grow:")
+  for (const d of added) {
+    console.error(`  [${d.cls}] ${d.path}: ${d.baseline} -> ${d.actual}`)
+  }
+  console.error("")
+  console.error("  cross-slice-import: depend on a published door (a service Tag), not a sibling")
+  console.error("                      slice's internals.")
+  console.error("  env-outside-config: read the environment in platform/config.io.ts and pass")
+  console.error("                      values in.")
+  console.error("  raw-fetch:          call the typed Hono RPC client, or do the I/O in a *.io.ts.")
+}
+if (paid.length > 0) {
+  console.error(`${added.length > 0 ? "" : "✖ "}axiom debt was paid down — lock it in:`)
+  for (const d of paid) {
+    console.error(`  [${d.cls}] ${d.path}: ${d.baseline} -> ${d.actual}`)
+  }
+  console.error("  run: bun run axiom-debt:update && git add scripts/axiom-debt.json")
+}
+process.exit(1)

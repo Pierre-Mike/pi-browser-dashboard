@@ -29,7 +29,7 @@ migrated incrementally — each consumer reads its `GlobalSettings` section at
 config-driven repos). Status:
 
 - ✅ `git.{defaultBranch,remoteName}` → `sessions/files.repo` diff base, via the
-  pure `gitBaseCandidates(git)` helper in `global-settings.core`. `FilesRepoLive`
+  pure `gitBaseCandidates(git)` helper in `global-settings.core`. `FilesIoLive`
   depends on `GlobalSettingsService`. The default (`origin`/`main`) yields the
   historical candidate list (`origin/main, origin/master, main, master, HEAD`)
   unchanged — verify with the core test before reordering.
@@ -37,7 +37,7 @@ config-driven repos). Status:
   `resolveAgenticRepoPath` (currently env: `PID_LIBRARY_DIR`,
   `PID_AGENTIC_REPO_PATH`).
 - ⬜ `orchestration.{claudeBin,defaultAgent,defaultPermissionMode,defaultEffort,maxParallel}`
-  → `platform/shell.repo` spawn cmd + `features/dispatch`.
+  → `platform/shell.io` spawn cmd + `features/dispatch`.
 - ⬜ `network.{projectsRoot,appPort,tunnelPort}` → `platform/config.repo`
   `ConfigService` (currently env: `PID_PROJECTS_ROOT`, `PORT`, `PID_TUNNEL_PORT`).
   Precedence target: explicit env var > settings file > default.

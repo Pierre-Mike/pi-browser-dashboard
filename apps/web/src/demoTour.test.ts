@@ -21,7 +21,7 @@ const html = readFileSync(join(DEMO_DIR, "index.html"), "utf8")
 const gifFiles = readdirSync(join(DEMO_DIR, "gifs")).filter((f) => f.endsWith(".gif"))
 
 // Every `gif: "NN-slug"` referenced by the inlined STORIES data.
-const referencedGifs = [...html.matchAll(/gif:\s*"([^"]+)"/g)].map((m) => m[1])
+const referencedGifs = [...html.matchAll(/gif:\s*"([^"]+)"/g)].map((m) => m[1] ?? "")
 
 describe("demo feature-tour page stays consistent with the recordings", () => {
   it("references every recorded GIF exactly once", () => {
@@ -36,7 +36,7 @@ describe("demo feature-tour page stays consistent with the recordings", () => {
 
   it("every story has a non-empty narrative scenario", () => {
     const kickers = [...html.matchAll(/kicker:\s*"/g)].length
-    const scenarios = [...html.matchAll(/scenario:\s*"([^"]+)"/g)].map((m) => m[1])
+    const scenarios = [...html.matchAll(/scenario:\s*"([^"]+)"/g)].map((m) => m[1] ?? "")
     expect(kickers).toBeGreaterThanOrEqual(6)
     // One scenario per story…
     expect(scenarios.length).toBe(kickers)

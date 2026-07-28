@@ -1,16 +1,24 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "includes": [
       "**",
       "!**/dist",
+      "!**/dist-web",
       "!**/node_modules",
       "!**/.vite",
+      "!**/.tanstack",
+      "!**/.stryker-tmp",
       "!**/apps/web/src/routeTree.gen.ts",
       "!doc",
       "!examples",
-      "!record.mjs"
+      "!record.mjs",
+      "!.fallow-baselines"
     ]
   },
   "formatter": {
@@ -31,11 +39,21 @@
     "rules": {
       "recommended": true,
       "complexity": {
-        "useMaxParams": { "level": "error", "options": { "max": 2 } }
+        "useMaxParams": {
+          "level": "error",
+          "options": {
+            "max": 2
+          }
+        }
       },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } },
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["error", "warn"]
+          }
+        },
         "noUnknownAtRules": "off",
         "noArrayIndexKey": "off"
       },
@@ -47,8 +65,96 @@
       },
       "style": {
         "useConst": "error",
-        "useTemplate": "warn"
+        "useTemplate": "warn",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "axios": {
+                "message": "Use the typed Hono RPC client (api = hc<AppType>) instead of axios (ts-axioms: no axios)."
+              }
+            }
+          }
+        }
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["scripts/**/*.ts"],
+      "plugins": ["./biome-plugins/max-one-param-declarations.grit"]
+    },
+    {
+      "includes": [
+        "apps/daemon/**/*.ts",
+        "apps/cli/**/*.ts",
+        "apps/desktop/**/*.ts",
+        "scripts/**/*.ts",
+        "!**/*.test.ts",
+        "!**/*.spec.ts"
+      ],
+      "plugins": ["./biome-plugins/no-cast-json.grit"]
+    },
+    {
+      "includes": ["**/*.core.ts", "**/*.core.tsx"],
+      "plugins": ["./biome-plugins/no-throw-in-core.grit", "./biome-plugins/no-await-in-core.grit"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "fetch": "The functional core performs no I/O \u2014 do the request in a *.io.ts port and pass plain data in.",
+                  "process": "The functional core must not read the environment \u2014 accept config as plain input; the shell reads platform/config.io.ts.",
+                  "Date": "The functional core must not read the clock \u2014 accept timestamps (epoch ms) as plain input from the shell.",
+                  "Promise": "The functional core stays synchronous \u2014 do async work in *.io.ts and pass plain data in.",
+                  "console": "The functional core performs no I/O \u2014 return values and let the shell log.",
+                  "setTimeout": "The functional core must not schedule work \u2014 keep it synchronous data-in/data-out.",
+                  "setInterval": "The functional core must not schedule work \u2014 keep it synchronous data-in/data-out."
+                }
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "effect": {
+                    "importNames": ["Effect", "Layer", "Context", "ManagedRuntime", "Runtime"],
+                    "message": "The functional core stays pure: model failures as Either/Option/Data tagged unions. The Effect runtime (Effect/Layer/Context) lives only in *.io.ts / *.routes.ts / server.ts / main.ts. Either, Option, Data and Schema are allowed here."
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": ["**/*.io", "**/*.io.ts", "./*.io", "../**/*.io"],
+                    "message": "The functional core must not import imperative-shell I/O services (*.io). Keep the core pure; wire io in *.routes.ts / server.ts."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/main.ts", "apps/daemon/src/server.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "apps/e2e/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }

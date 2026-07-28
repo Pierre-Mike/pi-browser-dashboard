@@ -1,5 +1,5 @@
 // Pure helpers for dispatching to the pi coding harness (the second spawn
-// harness next to `claude --bg`). No I/O — pi.repo.ts shells out, this module
+// harness next to `claude --bg`). No I/O — pi.io.ts shells out, this module
 // parses and builds argv.
 
 export type PiModel = {
@@ -144,4 +144,14 @@ export const piLaunchVerdict = ({ pidRaw, pidAlive, stderr }: PiLaunchProbe): Pi
   if (Number.isFinite(pid) && pid > 0 && pidAlive) return { ok: true, pid }
   const detail = stderr.trim()
   return { ok: false, message: detail.length > 0 ? detail : "pi exited before starting" }
+}
+
+// The pi dispatch payload: plain data the pure core builds and pi.io.ts spends.
+// It lives here rather than in pi.io.ts so the core never imports the shell.
+export type PiDispatchInput = {
+  readonly intent: string
+  readonly cwd?: string
+  readonly thinking?: string
+  readonly model?: string
+  readonly tools?: readonly string[]
 }

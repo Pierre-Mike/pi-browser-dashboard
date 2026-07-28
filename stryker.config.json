@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/api/schema/stryker-schema.json",
+  "_comment": "Mutation testing scoped to the functional cores. Line coverage says a line ran; a surviving mutant says nothing asserted its behaviour. Only *.core.ts is worth mutating — it is pure, so every mutant is deterministic and fast.",
+  "packageManager": "npm",
+  "testRunner": "command",
+  "commandRunner": { "command": "bun test ./apps/daemon/src ./apps/cli/src ./scripts" },
+  "mutate": ["apps/*/src/**/*.core.ts", "scripts/*.core.ts", "!**/*.test.ts"],
+  "reporters": ["clear-text", "progress"],
+  "thresholds": { "high": 80, "low": 60, "break": 50 },
+  "tempDirName": ".stryker-tmp",
+  "concurrency": 4
+}

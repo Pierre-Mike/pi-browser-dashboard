@@ -3,7 +3,7 @@ import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { validateRelPath } from "../projects/projects.core"
 import { PID_APP_CSP } from "./pid-apps.core"
-import { PidAppsService, type PidAppWriteError } from "./pid-apps.repo"
+import { PidAppsService, type PidAppWriteError } from "./pid-apps.io"
 
 const errorToStatus = (e: PidAppWriteError): 400 | 403 | 404 | 409 | 413 =>
   e === "forbidden"
@@ -58,11 +58,17 @@ const assetHeaders = (size: number, mime: string): Record<string, string> => ({
 const serveAsset =
   (run: RunPromise) =>
   async (c: HonoContext): Promise<Response> => {
+    // Hono types both params as possibly-absent; an asset URL without them is
+    // unreachable through the mounted routes, so treat it as a bad path.
     const appId = c.req.param("appId")
+    const projectId = c.req.param("id")
+    if (appId === undefined || projectId === undefined) {
+      return c.json({ error: "bad_path" }, 400)
+    }
     const rel = cleanRel(c.req.path, appId)
     if (rel === null) return c.json({ error: "bad_path" }, 400)
     const r = await run(
-      Effect.flatMap(PidAppsService, (s) => s.resolveAsset(c.req.param("id"), { appId, rel })).pipe(
+      Effect.flatMap(PidAppsService, (s) => s.resolveAsset(projectId, { appId, rel })).pipe(
         Effect.either,
       ),
     )

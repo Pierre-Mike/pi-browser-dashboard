@@ -1,10 +1,11 @@
+import { Either } from "effect"
 import type { Context } from "hono"
 import { Hono } from "hono"
 import { resolveConfigDir } from "../../platform/config-dir"
 import { upgradeWebSocket } from "../../platform/ws"
 import { type CanvasSnapshot, parseCanvas, serializeCanvas } from "./canvas.core"
-import { type CanvasRoom, getCanvasRoom } from "./canvas.repo"
-import type { DocRoom } from "./docRoom.repo"
+import { getCanvasRoom } from "./canvas.io"
+import type { DocParse, DocRoom } from "./docRoom.io"
 
 const MAX_FRAME_BYTES = 256 * 1024
 
@@ -22,7 +23,7 @@ type ServerFrame<S> =
 
 const parseClientFrame = <S>(
   raw: unknown,
-  opts: { readonly parse: (u: unknown) => S; readonly maxFrameBytes: number },
+  opts: { readonly parse: DocParse<S>; readonly maxFrameBytes: number },
 ): ClientFrame<S> | { error: string } => {
   if (typeof raw !== "string") return { error: "frame must be a JSON string" }
   if (raw.length > opts.maxFrameBytes) {
@@ -38,11 +39,10 @@ const parseClientFrame = <S>(
   const obj = parsed as Record<string, unknown>
   if (obj.kind === "request") return { kind: "request" }
   if (obj.kind === "snapshot") {
-    try {
-      return { kind: "snapshot", snapshot: opts.parse(obj.snapshot) }
-    } catch (err) {
-      return { error: `bad snapshot: ${(err as Error).message}` }
-    }
+    const decoded = opts.parse(obj.snapshot)
+    return Either.isLeft(decoded)
+      ? { error: `bad snapshot: ${decoded.left}` }
+      : { kind: "snapshot", snapshot: decoded.right }
   }
   return { error: `unknown kind: ${String(obj.kind)}` }
 }
@@ -71,7 +71,7 @@ export type DocRoomResolver<S> = (c: Context) => Promise<DocRoom<S>>
 
 export type DocWsOptions<S> = {
   readonly resolveRoom: DocRoomResolver<S>
-  readonly parse: (raw: unknown) => S
+  readonly parse: DocParse<S>
   readonly maxFrameBytes: number
 }
 
@@ -165,14 +165,16 @@ const app = new Hono()
   .put("/:id", async (c) => {
     const short = c.req.param("id")
     const raw = await c.req.text()
-    let parsed: CanvasSnapshot
-    try {
-      parsed = parseCanvas(JSON.parse(raw))
-    } catch (err) {
-      return c.json({ error: "bad_canvas", message: (err as Error).message }, 400)
+    // impure read -> pure decode -> impure write: a Left is a 400, never a throw.
+    const parsed = Either.try({
+      try: () => JSON.parse(raw) as unknown,
+      catch: () => "invalid JSON",
+    }).pipe(Either.flatMap(parseCanvas))
+    if (Either.isLeft(parsed)) {
+      return c.json({ error: "bad_canvas", message: parsed.left }, 400)
     }
     const room = await getCanvasRoom(resolveConfigDir(), short)
-    const stamped = await room.publish(parsed, null)
+    const stamped = await room.publish(parsed.right, null)
     return c.body(serializeCanvas(stamped), 200, { "Content-Type": "application/json" })
   })
 

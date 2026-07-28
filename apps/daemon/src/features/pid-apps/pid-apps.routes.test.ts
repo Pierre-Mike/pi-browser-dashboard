@@ -3,18 +3,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
-import { type Project, ProjectsRepoTest } from "../projects/projects.repo"
-import { PidAppsRepoLive } from "./pid-apps.repo"
+import { type Project, ProjectsIoTest } from "../projects/projects.io"
+import { PidAppsIoLive } from "./pid-apps.io"
 import { createApp } from "./pid-apps.routes"
 
 // Drive the real route handlers over the live repo layer backed by an in-memory
-// ProjectsRepoTest fixture pointing at a real tmp project tree (so the serve
+// ProjectsIoTest fixture pointing at a real tmp project tree (so the serve
 // route streams real files).
 let root: string
 let specsRoot: string
 
 const appFor = (proj: Project) => {
-  const layer = Layer.provide(PidAppsRepoLive, ProjectsRepoTest([proj]))
+  const layer = Layer.provide(PidAppsIoLive, ProjectsIoTest([proj]))
   return createApp((eff) => Effect.runPromise(Effect.provide(eff, layer)))
 }
 

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import { buildDispatchBody, dispatchErrorMessage } from "./spawnDispatch"
 
-const project = { id: "p1", name: "proj", path: "/repo" }
+const project = {
+  id: "p1",
+  name: "proj",
+  path: "/repo",
+  isGitRepo: true,
+  lastModified: 0,
+}
 
 describe("dispatchErrorMessage", () => {
   it("prefers the daemon's failure detail — the harness's own words", () => {

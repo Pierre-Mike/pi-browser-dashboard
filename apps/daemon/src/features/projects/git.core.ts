@@ -1,5 +1,5 @@
 // Pure parsers for git porcelain output. No side effects — the spawning lives
-// in git.repo.ts so these stay trivially testable.
+// in git.io.ts so these stay trivially testable.
 
 export type GitStatusEntry = {
   // Porcelain v1 two-letter code: index (staged) status + worktree status.

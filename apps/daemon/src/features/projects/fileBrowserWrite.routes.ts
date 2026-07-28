@@ -6,7 +6,7 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { type FsResponse, runFsCreate, runFsDelete, runFsMove } from "./fileBrowser.routes"
-import { ProjectsService, resolveProjectDir } from "./projects.repo"
+import { ProjectsService, resolveProjectDir } from "./projects.io"
 
 // Resolve a project id to its absolute root via the shared resolver, or null.
 const projectRoot = (id: string): Promise<string | null> =>

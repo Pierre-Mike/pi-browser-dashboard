@@ -1,13 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import { Effect, Layer, ManagedRuntime } from "effect"
-import {
-  type DispatchInput,
-  ShellError,
-  ShellRepo,
-  type ShellRepoApi,
-} from "../../platform/shell.repo"
+import { type DispatchInput, ShellError, ShellIo, type ShellRepoApi } from "../../platform/shell.io"
 import { buildDispatchApp } from "./dispatch.routes"
-import { type PiDispatchInput, PiRepo, type PiRepoApi } from "./pi.repo"
+import { type PiDispatchInput, PiIo, type PiRepoApi } from "./pi.io"
 
 type Spy = {
   readonly calls: DispatchInput[]
@@ -29,7 +24,7 @@ const newSpy = (): Spy => ({
   piModelsFailNext: false,
 })
 
-const buildShellLayer = (spy: Spy): Layer.Layer<ShellRepo> => {
+const buildShellLayer = (spy: Spy): Layer.Layer<ShellIo> => {
   const api: ShellRepoApi = {
     dispatch: (input) => {
       spy.calls.push(input)
@@ -44,10 +39,10 @@ const buildShellLayer = (spy: Spy): Layer.Layer<ShellRepo> => {
     peek: () => Effect.fail(new ShellError({ message: "peek not used in this test" })),
     send: () => Effect.fail(new ShellError({ message: "send not used in this test" })),
   }
-  return Layer.succeed(ShellRepo, api)
+  return Layer.succeed(ShellIo, api)
 }
 
-const buildPiLayer = (spy: Spy): Layer.Layer<PiRepo> => {
+const buildPiLayer = (spy: Spy): Layer.Layer<PiIo> => {
   const api: PiRepoApi = {
     dispatch: (input) => {
       spy.piCalls.push(input)
@@ -69,7 +64,7 @@ const buildPiLayer = (spy: Spy): Layer.Layer<PiRepo> => {
       ])
     },
   }
-  return Layer.succeed(PiRepo, api)
+  return Layer.succeed(PiIo, api)
 }
 
 const buildHarness = (spy: Spy) => {
@@ -241,7 +236,7 @@ describe("POST /dispatch", () => {
     }
   })
 
-  it("returns 500 dispatch_failed with the failure detail when ShellRepo.dispatch fails", async () => {
+  it("returns 500 dispatch_failed with the failure detail when ShellIo.dispatch fails", async () => {
     const spy = newSpy()
     spy.failNext = true
     const { app, dispose } = buildHarness(spy)
@@ -274,7 +269,7 @@ describe("POST /dispatch", () => {
     }
   })
 
-  it("routes harness 'pi' to PiRepo with pi-shaped fields, never ShellRepo", async () => {
+  it("routes harness 'pi' to PiIo with pi-shaped fields, never ShellIo", async () => {
     const spy = newSpy()
     const { app, dispose } = buildHarness(spy)
     try {

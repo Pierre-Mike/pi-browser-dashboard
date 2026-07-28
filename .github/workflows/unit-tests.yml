@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
@@ -52,10 +52,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
@@ -65,6 +65,14 @@ jobs:
       - name: Feature-test floor
         run: bun run check:feature-tests
 
+      # Ratchet on the axioms with legacy debt (cross-slice imports, env reads
+      # outside the config funnel, raw fetch, cast .json()). New violations fail;
+      # see scripts/axiom-debt.core.ts.
+      - name: Axiom-debt ratchet
+        run: bun run axiom-debt
+
+      # Composes the co-located-core-test check and the harness self-check
+      # (bun run doctor) before the daemon + scripts suites.
       - name: Run unit tests
         run: bun run test
 
@@ -73,6 +81,31 @@ jobs:
 
       - name: Run cli unit tests
         run: bun run test:cli
+
+  typecheck:
+    # Not yet a required check in the branch ruleset (adding one needs repo-admin
+    # rights, not a workflow token). Until it is, this job reports on every PR
+    # and the pre-push hook runs the same gate locally.
+    name: tsc --noEmit (all workspaces)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
 
   dead-code:
     name: fallow audit (dead code)
@@ -84,19 +117,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      # Complexity and duplication are graded against the committed baselines in
+      # .fallow-baselines/ (refresh with `bun run audit:baseline`), so a large
+      # rename cannot re-attribute inherited debt to the PR that touched the
+      # filenames. Dead code is still judged on the changeset.
       - name: Audit changed files for dead code
         run: |
           git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
-          bun run dead-code:audit -- --base "origin/${{ github.base_ref }}"
+          bun run audit -- --base "origin/${{ github.base_ref }}"

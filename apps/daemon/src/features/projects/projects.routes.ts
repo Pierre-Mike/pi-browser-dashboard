@@ -6,10 +6,10 @@ import { app as pidAppsApp } from "../pid-apps/pid-apps.routes"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { errorToStatus, treeGitStatusAt } from "./fileBrowser.routes"
 import type { TreeGitStatusEntry } from "./git.core"
-import { type GitError, type GitResult, gitLog, gitPull, gitStatus } from "./git.repo"
-import { fetchGithubSummary, fetchPrDiff } from "./github.repo"
+import { type GitError, type GitResult, gitLog, gitPull, gitStatus } from "./git.io"
+import { fetchGithubSummary, fetchPrDiff } from "./github.io"
 import { contentDispositionAttachment } from "./projects.core"
-import { ProjectsService } from "./projects.repo"
+import { ProjectsService } from "./projects.io"
 
 const gitErrorToStatus = (e: GitError): 404 | 500 => (e === "not_a_repo" ? 404 : 500)
 

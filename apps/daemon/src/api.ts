@@ -51,7 +51,13 @@ const app = new Hono()
       // Evaluated per-request so the embedded-daemon path (Electrobun) can inject
       // PID_CORS_ORIGINS / PID_ALLOW_VIEWS_ORIGIN before serving even though this
       // module is imported earlier. See cors.core.ts.
-      origin: (origin) => resolveCorsOrigin(origin, process.env),
+      // The pure core gets exactly the two keys it reads, named at the call
+      // site, rather than the whole ambient environment.
+      origin: (origin) =>
+        resolveCorsOrigin(origin, {
+          PID_CORS_ORIGINS: process.env.PID_CORS_ORIGINS,
+          PID_ALLOW_VIEWS_ORIGIN: process.env.PID_ALLOW_VIEWS_ORIGIN,
+        }),
       allowHeaders: ["Content-Type", "Last-Event-ID"],
       allowMethods: ["GET", "POST", "OPTIONS"],
       credentials: false,

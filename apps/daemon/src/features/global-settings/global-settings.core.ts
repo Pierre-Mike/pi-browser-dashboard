@@ -1,6 +1,6 @@
 // Pure parsers/mergers for the dashboard's GLOBAL settings file
 // (<claudeConfigDir>/pid-dashboard/settings.json). No I/O — file reads/writes
-// live in global-settings.repo.ts.
+// live in global-settings.io.ts.
 //
 // This file is the single source of truth for values that were previously
 // hard-coded across the daemon: the git defaults (base branch / remote), the

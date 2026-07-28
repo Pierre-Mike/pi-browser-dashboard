@@ -3,6 +3,9 @@
 #
 # Bypass everything:  LEFTHOOK=0 git …   or   git … --no-verify
 # Per-gate bypass env vars are noted on each job below.
+#
+# `bun run doctor` asserts every job below still exists — deleting one fails CI
+# instead of silently disarming the axiom it enforces.
 
 pre-commit:
   piped: true # run in order, abort on first failure
@@ -18,6 +21,13 @@ pre-commit:
     - name: tdd-gate
       run: ./scripts/check-tests-touched.sh
 
+commit-msg:
+  jobs:
+    # Conventional commits: machine-readable history for changelogs, bisects and
+    # agents summarizing the repo.
+    - name: conventional-commit
+      run: bun run scripts/check-commit-msg.ts {1}
+
 pre-push:
   piped: true
   jobs:
@@ -25,7 +35,15 @@ pre-push:
     # at least one co-located test. Bypass: SKIP_FEATURE_TEST_FLOOR=1 git push …
     - name: feature-test-floor
       run: ./scripts/check-feature-tests.sh
-    # Fast daemon unit suite.
+    # Type gate over every workspace (discovery-based: a new app joins the gate
+    # or breaks it — it cannot be silently skipped).
+    - name: typecheck
+      run: bun run typecheck
+    # Ratchet on the axioms with legacy debt: new violations fail, repayments
+    # must be recorded. See scripts/axiom-debt.core.ts.
+    - name: axiom-debt
+      run: bun run axiom-debt
+    # Fast unit suites + the co-location and harness self-checks.
     - name: unit
       run: bun run test
     # Full Playwright e2e suite. Bypass: SKIP_E2E=1 git push …

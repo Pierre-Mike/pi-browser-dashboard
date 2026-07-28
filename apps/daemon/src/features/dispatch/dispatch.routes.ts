@@ -1,12 +1,12 @@
 import { Cause, Effect, type ManagedRuntime, Option } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { type ShellError, ShellRepo } from "../../platform/shell.repo"
-import { type DispatchBody, type ParsedDispatch, parseDispatchRequest } from "./dispatch.core"
-import { PiRepo } from "./pi.repo"
+import { type ShellError, ShellIo } from "../../platform/shell.io"
+import { type ParsedDispatch, parseDispatchRequest } from "./dispatch.core"
+import { PiIo } from "./pi.io"
 
 export type DispatchRouteRuntime = Pick<
-  ManagedRuntime.ManagedRuntime<ShellRepo | PiRepo, never>,
+  ManagedRuntime.ManagedRuntime<ShellIo | PiIo, never>,
   "runPromiseExit"
 >
 
@@ -15,22 +15,22 @@ export type DispatchRouteRuntime = Pick<
 // the pi session uuid the daemon minted.
 const dispatchEffect = (
   parsed: Extract<ParsedDispatch, { ok: true }>,
-): Effect.Effect<string, ShellError, ShellRepo | PiRepo> =>
+): Effect.Effect<string, ShellError, ShellIo | PiIo> =>
   Effect.gen(function* () {
     if (parsed.harness === "pi") {
-      const pi = yield* PiRepo
+      const pi = yield* PiIo
       return yield* pi.dispatch(parsed.pi)
     }
-    const shell = yield* ShellRepo
+    const shell = yield* ShellIo
     return yield* shell.dispatch(parsed.claude)
   })
 
 export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
   new Hono()
     .post("/", async (c) => {
-      let body: DispatchBody
+      let body: unknown
       try {
-        body = (await c.req.json()) as DispatchBody
+        body = await c.req.json()
       } catch {
         return c.json({ error: "invalid_json" }, 400)
       }
@@ -50,7 +50,7 @@ export const buildDispatchApp = (runtime: DispatchRouteRuntime) =>
     .get("/pi-models", async (c) => {
       const exit = await runtime.runPromiseExit(
         Effect.gen(function* () {
-          const pi = yield* PiRepo
+          const pi = yield* PiIo
           return yield* pi.listModels()
         }),
       )

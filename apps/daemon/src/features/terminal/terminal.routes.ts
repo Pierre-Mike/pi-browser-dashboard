@@ -6,10 +6,10 @@ import type { Context } from "hono"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { upgradeWebSocket } from "../../platform/ws"
-import { PiSessionsRepo } from "../dispatch/pi-sessions.repo"
-import { ProjectsService } from "../projects/projects.repo"
+import { PiSessionsIo } from "../dispatch/pi-sessions.io"
+import { ProjectsService } from "../projects/projects.io"
 import type { SessionState } from "../sessions/sessions.core"
-import { SessionRegistry } from "../sessions/sessions.repo"
+import { SessionRegistry } from "../sessions/sessions.io"
 import {
   buildChildArgv,
   cleanZellijEnv,
@@ -361,7 +361,7 @@ const resolveSessionCommand = async (c: Context): Promise<Resolved> => {
   const { session, pi } = await appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
-      const piRepo = yield* PiSessionsRepo
+      const piRepo = yield* PiSessionsIo
       const session = yield* Effect.promise(() => reg.getOne(id))
       return { session, pi: session ? undefined : piRepo.getOne(id) }
     }),
@@ -440,7 +440,7 @@ const resolveSessionKillName = async (id: string): Promise<string | null> => {
   const { session, pi } = await appRuntime.runPromise(
     Effect.gen(function* () {
       const reg = yield* SessionRegistry
-      const piRepo = yield* PiSessionsRepo
+      const piRepo = yield* PiSessionsIo
       const session = yield* Effect.promise(() => reg.getOne(id))
       return { session, pi: session ? undefined : piRepo.getOne(id) }
     }),

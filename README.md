@@ -66,11 +66,13 @@ apps/
   daemon/   # Bun + Hono + Effect-TS service. Stateless.
   web/      # Vite + React + TanStack Router SPA.
   e2e/      # Playwright suite.
-scripts/    # TDD floor + feature-test gate.
+scripts/    # the harness: typecheck, co-location, commit-msg, debt ratchet, doctor.
+biome-plugins/ # GritQL rules: no throw/await in a core, no cast .json(), one param.
 .claude/loops/  # host-level launchd scripts (issue-driver pipeline)
-lefthook.yml  # pre-commit (biome + test-touched) + pre-push (unit + e2e).
+lefthook.yml  # pre-commit (biome + test-touched) + pre-push (types, debt, unit, e2e).
 .github/    # CI workflows + issue/PR templates.
 AGENTS.md   # Architecture, surface area, deferred work.
+CLAUDE.md   # The engineering canon (shared verbatim with AGENTS.md).
 ```
 
 Package names: `@pid/daemon`, `@pid/web`, `@pid/e2e`. The daemon exports its
@@ -80,15 +82,23 @@ Hono `AppType` via `@pid/daemon/types`; the web app consumes it with
 ## Tests
 
 ```bash
-bun run test          # daemon unit tests (bun test)
+bun run verify        # every gate in one shot (what CI runs)
+bun run test          # co-location check + harness doctor + daemon & scripts suites
+bun run test:web      # web unit suite
+bun run test:cli      # cli unit suite
 bun run test:e2e      # Playwright e2e
+bun run typecheck     # tsc --noEmit over every workspace
 bun run lint          # Biome check + fix
 bun run lint:ci       # Biome check (no fix)
+bun run audit         # fallow: dead code / duplication / cycles / complexity
+bun run doctor        # harness self-check (also inside `test`)
+bun run axiom-debt    # ratchet on the axioms with legacy debt
 ```
 
 Pre-commit blocks any commit that touches `apps/*/src/**` without staging a
-test. Pre-push runs the unit + Playwright suite. Bypasses (`SKIP_TDD=1`,
-`SKIP_E2E=1`) exist for docs/dep-only commits — see `AGENTS.md`.
+test. Pre-push runs the typecheck, the debt ratchet, the unit suites and the
+Playwright suite. Bypasses (`SKIP_TDD=1`, `SKIP_E2E=1`) exist for docs/dep-only
+commits — see `CLAUDE.md`.
 
 ## Authoring an extension
 

@@ -1,4 +1,4 @@
-// Pure helpers for the GitHub feature. The `gh` spawning lives in github.repo;
+// Pure helpers for the GitHub feature. The `gh` spawning lives in github.io;
 // these stay trivially testable.
 
 // A PR's unified patch, or an empty diff plus a warning when `gh pr diff` could

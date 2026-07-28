@@ -1,4 +1,5 @@
 import path from "node:path"
+import { Either } from "effect"
 
 // Wire format of the canvas snapshot. Mirrors the React Flow shape so the
 // browser side can pass nodes/edges through with no remapping. We only persist
@@ -104,31 +105,39 @@ const parseViewport = (v: unknown): CanvasViewport | undefined => {
   return { x: v.x, y: v.y, zoom: v.zoom }
 }
 
+// The `updatedAt` a snapshot carries before anything has stamped it. A literal
+// rather than `new Date(0).toISOString()`: the pure core never touches the
+// clock, and the epoch is a constant anyway.
+const EPOCH_ISO = "1970-01-01T00:00:00.000Z"
+
 /**
  * Parse arbitrary JSON into a CanvasSnapshot, silently dropping malformed nodes
- * or edges instead of failing the whole document. We *do* throw if the root
- * isn't an object at all — that's a strong signal of a corrupted file or a
- * caller passing garbage, and falling back to an empty canvas would silently
- * lose the user's drawing.
+ * or edges instead of failing the whole document. A root that isn't an object
+ * at all is a `Left` — that's a strong signal of a corrupted file or a caller
+ * passing garbage, and falling back to an empty canvas would silently lose the
+ * user's drawing. Failures are values here; the shell decides whether that
+ * means a 400 or a raised read error.
  */
-export const parseCanvas = (json: unknown): CanvasSnapshot => {
-  if (!isObj(json)) throw new Error("canvas: root must be an object")
+export const parseCanvas = (json: unknown): Either.Either<CanvasSnapshot, string> => {
+  if (!isObj(json)) return Either.left("canvas: root must be an object")
   const nodes = Array.isArray(json.nodes)
     ? (json.nodes.map(parseNode).filter((n): n is CanvasNode => n !== null) as CanvasNode[])
     : []
   const edges = Array.isArray(json.edges)
     ? (json.edges.map(parseEdge).filter((e): e is CanvasEdge => e !== null) as CanvasEdge[])
     : []
-  const updatedAt = isStr(json.updatedAt) ? json.updatedAt : new Date(0).toISOString()
+  const updatedAt = isStr(json.updatedAt) ? json.updatedAt : EPOCH_ISO
   const viewport = parseViewport(json.viewport)
-  return viewport
-    ? { version: 1, updatedAt, nodes, edges, viewport }
-    : { version: 1, updatedAt, nodes, edges }
+  return Either.right(
+    viewport
+      ? { version: 1, updatedAt, nodes, edges, viewport }
+      : { version: 1, updatedAt, nodes, edges },
+  )
 }
 
 export const emptyCanvas = (): CanvasSnapshot => ({
   version: 1,
-  updatedAt: new Date(0).toISOString(),
+  updatedAt: EPOCH_ISO,
   nodes: [],
   edges: [],
 })

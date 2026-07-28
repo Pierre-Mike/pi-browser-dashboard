@@ -6,9 +6,9 @@ import {
   type AgenticListing,
   type CatalogBundle,
   type LibraryError,
-  LibraryRepoTest,
+  LibraryIoTest,
   LibraryService,
-} from "./library.repo"
+} from "./library.io"
 
 const sampleCatalog: CatalogBundle = {
   catalog: {
@@ -43,7 +43,7 @@ const sampleAgentic: AgenticListing = {
 
 const buildApp = () => {
   const testRuntime = ManagedRuntime.make(
-    LibraryRepoTest({
+    LibraryIoTest({
       catalog: sampleCatalog,
       agentic: { skills: sampleAgentic },
     }),
@@ -77,8 +77,8 @@ const buildApp = () => {
 }
 
 const buildAppWithMutations = (overrides?: {
-  installEntry?: Parameters<typeof LibraryRepoTest>[0]
-  fixtures?: Parameters<typeof LibraryRepoTest>[0]
+  installEntry?: Parameters<typeof LibraryIoTest>[0]
+  fixtures?: Parameters<typeof LibraryIoTest>[0]
 }) => {
   const fixtures = {
     catalog: sampleCatalog,
@@ -86,7 +86,7 @@ const buildAppWithMutations = (overrides?: {
     ...(overrides?.installEntry ?? {}),
     ...(overrides?.fixtures ?? {}),
   }
-  const testRuntime = ManagedRuntime.make(LibraryRepoTest(fixtures))
+  const testRuntime = ManagedRuntime.make(LibraryIoTest(fixtures))
   return new Hono()
     .post("/init", async (c) => {
       const body = await c.req.json().catch(() => null)

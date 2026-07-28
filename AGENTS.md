@@ -43,16 +43,26 @@ Three flows:
 pi-browser-dashboard/
 ├── apps/
 │   ├── daemon/        # Bun + Hono + Effect-TS (thin)
-│   └── web/           # Vite + React SPA
+│   ├── web/           # Vite + React SPA
+│   ├── cli/           # `pid-dashboard` single-binary distribution
+│   ├── desktop/       # Electrobun shell, daemon in-process
+│   └── e2e/           # Playwright suite
+├── scripts/           # the harness: gate scripts + their co-located tests
+├── biome-plugins/     # GritQL rules the biome config loads
+├── .fallow-baselines/ # committed complexity/duplication baselines
 ├── biome.json
 ├── lefthook.yml
+├── stryker.config.json
 ├── tsconfig.base.json
 ├── package.json       # bun workspaces, no Turborepo
+├── CLAUDE.md          # the engineering canon (shared verbatim below)
 ├── AGENTS.md
 └── .gitignore
 ```
 
-- Package names: `@pid/daemon`, `@pid/web`.
+- Package names: `@pid/daemon`, `@pid/web`, `@pid/cli`, `@pid/desktop`, `@pid/e2e`.
+- Every `apps/*` workspace carries a `tsconfig.json`; `scripts/typecheck.ts`
+  discovers them and treats a missing one as an error, not a skip.
 - Daemon exports `AppType` via `"exports": { "./types" }`; web imports it for `hc<AppType>` client.
 - `tsconfig.base.json` extended by both apps; `strict: true`, `noUncheckedIndexedAccess: true`.
 - `AGENTS.md` at root, `CLAUDE.md` per app.
@@ -64,7 +74,7 @@ pi-browser-dashboard/
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repo        | bun workspaces, no Turborepo                                                                                                                          |
 | Tooling     | Biome (`biome ci` in CI), Lefthook (`stage_fixed: true`)                                                                                              |
-| Daemon      | Bun + Hono + Effect-TS, FCIS suffix-discipline (`*.core.ts` / `*.repo.ts` / `*.routes.ts`), `hc<AppType>` typed RPC                                   |
+| Daemon      | Bun + Hono + Effect-TS, FCIS suffix-discipline (`*.core.ts` / `*.io.ts` / `*.routes.ts`), `hc<AppType>` typed RPC                                   |
 | Web         | Vite + React + TanStack Router (file-based) + TanStack Query + SSE patcher; Zustand only if needed; Tailwind                                          |
 | API         | `POST /dispatch`, `POST /sessions/:id/{stop,respawn,rm,rename,tag}`; `GET /events` (single SSE); `@effect/schema` both ends                           |
 | Persistence | None in daemon. Supervisor + SDK FS own all state                                                                                                     |
@@ -80,8 +90,8 @@ apps/daemon/src/
 │   ├── transcripts/   # JSONL read on drill-in (uses Agent SDK helpers)
 │   └── sessions/      # routes: stop / respawn / rm / rename / tag
 ├── platform/
-│   ├── shell.repo.ts          # spawn/wait/collect shell commands (Effect-wrapped)
-│   ├── fswatch.repo.ts        # Bun.watch wrapper, debounced
+│   ├── shell.io.ts          # spawn/wait/collect shell commands (Effect-wrapped)
+│   ├── fswatch.io.ts        # Bun.watch wrapper, debounced
 │   ├── sse-bus.ts
 │   ├── effect-handler.ts      # Effect runtime adapter
 │   └── route-types.ts         # RouteModule<TApp>
@@ -110,7 +120,7 @@ state.json change  ──> jobs.repo   ──> sse-bus  ──> GET /events
 
 Rules:
 - `*.core.ts` = pure; no `new Date()`, no `crypto.randomUUID()`, no `Math.random()` — pass in.
-- `*.repo.ts` = Effect services behind `Context.Tag`. `shell.repo` and `fswatch.repo` encapsulate all side effects.
+- `*.io.ts` = Effect services behind `Context.Tag`. `shell.repo` and `fswatch.repo` encapsulate all side effects.
 - `*.routes.ts` = Hono routes + `Effect.gen` orchestration.
 - `Effect.runPromise` only in `*.routes.ts` and `main.ts`.
 - No cross-feature imports — compose at `api.ts` or via `platform/sse-bus.ts` types.
@@ -395,36 +405,6 @@ Agents working in a `.claude/worktrees/<name>/` copy must always:
 
 The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every commit made inside a worktree.
 
-## TDD gates (mandatory)
-
-This repo enforces TDD at three layers; do not bypass without a written reason.
-
-1. **Pre-commit (`lefthook.yml` → `biome` + `scripts/check-tests-touched.sh`)**
-   `biome` auto-fixes the staged files (`--write`) and re-stages them
-   (`stage_fixed`) — the lint-staged equivalent. The TDD gate then blocks any
-   commit that touches `apps/*/src/**` without staging a `*.spec.ts` /
-   `*.test.ts` / `*.spec.tsx` / `*.test.tsx`. Bypass: `SKIP_TDD=1 git commit …` or
-   `git commit --no-verify …` — docs/deps/config only.
-
-2. **Pre-push (`lefthook.yml` → feature-test floor → `bun run test` → e2e)**
-   Runs the daemon unit suite and `bun run test:e2e` (full Playwright suite)
-   before every push. Failures abort the push, so a red branch never reaches the
-   remote and no PR is opened on broken code. Bypass: `SKIP_E2E=1 git push …` or
-   `git push --no-verify …`.
-
-3. **PR e2e workflow (`.github/workflows/pr-e2e.yml`)**
-   Runs on every PR against `main`: `bun install` → `lint:ci` → Playwright. The
-   workflow uploads `test-results/` as an artifact, publishes per-test
-   screenshots to an orphan `pr-screenshots` branch, and posts a sticky PR
-   comment (`<!-- pr-e2e-screenshots -->`) with each screenshot rendered inline
-   via `raw.githubusercontent.com`. Screenshot capture is wired in
-   `apps/e2e/playwright.config.ts` (`screenshot: { mode: "on", fullPage: true }`).
-
-The local hooks activate automatically via `package.json` `prepare` →
-`lefthook install` (configured in `lefthook.yml`). Run `bun install` once after
-cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
-`core.hooksPath`; wire new gates as `lefthook.yml` jobs.
-
 ## Expertise Index
 
 - [apps/daemon/src/features/global-settings](apps/daemon/src/features/global-settings/CLAUDE.md) — Global settings file + UI: git/library/orchestration/network params formerly hard-coded; field→consumer wiring map.
@@ -434,14 +414,189 @@ cloning. Lefthook is the single hook runner — do not add raw `.git/hooks` or a
 - [apps/web/src/features/sessions](apps/web/src/features/sessions/CLAUDE.md) — App-shell nav chrome: collapsed sidebar/rails must reserve zero width, reopen chips ride in existing rows, verify reclaimed space in pixels.
 - [apps/e2e](apps/e2e/CLAUDE.md) — Playwright stub vs real-claude modes: pre-push runs real spawns (slow, env-sensitive), CI forces the stub.
 
-## Engineering axioms (inherited)
+<!-- CANON:START -->
 
-- **Effect-TS** for error handling, DI, concurrency — no `try/catch`, no mock frameworks.
-- **Functional Core / Imperative Shell** — pure `*.core.ts`, services in `*.repo.ts`, orchestration in `*.routes.ts`.
-- **Biome** for lint+format. No ESLint/Prettier.
-- **Bun** for dev/build/runtime.
-- **Named parameters** (destructured objects) for 3+ params (Biome `complexity/useMaxParams: { max: 2 }`).
-- **Immutability by default** — `readonly`, `as const`.
-- **Co-located tests** — `foo.ts` → `foo.test.ts` next to it.
-- **No `any`**, **no `console.log`**, **no empty catch**, **no `as` casts outside tests** — decode via `@effect/schema`.
-- **Pin versions** — pin Claude Code version range; pin model versions in any SDK call.
+## Engineering canon
+
+Everything between the `CANON` markers is shared verbatim between `CLAUDE.md`
+and `AGENTS.md`; `bun run doctor` fails the build if the two copies drift. Edit
+both files together.
+
+Every rule below is enforced by a tool. If you find yourself fighting one, fix
+the design, not the linter.
+
+### Architecture: feature-first vertical slices
+
+Code is organized by **feature**, not by layer. Each slice owns its full vertical:
+
+```
+apps/daemon/src/
+  features/<feature>/
+    <feature>.core.ts        # PURE domain logic — no I/O, no Effect runtime
+    <feature>.core.test.ts   # co-located unit test (data-in / data-out)
+    <feature>.io.ts          # I/O as an Effect service (Context.Tag + Layer)
+    <feature>.routes.ts      # Hono shell; impure read -> pure core -> respond
+  platform/                  # cross-cutting infra (runtime, config, ws, sse-bus)
+  api.ts                     # assembles routes; exports AppType for hc RPC
+  server.ts / main.ts        # composition root (Bun.serve, live Layers)
+apps/web/                    # Vite + React + TanStack Router (UI only) + Query
+apps/cli/                    # `pid-dashboard` single-binary distribution
+apps/desktop/                # Electrobun shell embedding the daemon in-process
+apps/e2e/                    # Playwright end-to-end suite
+scripts/                     # the harness: gate scripts + their co-located tests
+```
+
+`platform/` is for infra shared across slices. Anything feature-specific lives
+in its slice.
+
+### The impureim sandwich (critical)
+
+- **`*.core.ts` is pure.** Failures are values: `Either<A, E>`, `Option`, or a
+  `Data` tagged union. Typed errors YES — but **NO** `throw`, no `await`, no
+  `Effect` / `Layer` / `Context`, no clock, no environment, no I/O. `Either`,
+  `Option`, `Data` and `Schema` from `effect` are allowed.
+- **`*.io.ts` / `*.routes.ts` / `server.ts` use Effect.** Services are
+  `Context.Tag`s, wiring is `Layer`s, the runtime is a `ManagedRuntime`.
+- **Lift the core into Effect at the boundary.** A route reads I/O (impure),
+  calls the pure core (the sandwich filling), responds. An `Either` returned by
+  a core can be `yield*`-ed inside `Effect.gen` — a `Left` short-circuits as a
+  typed failure.
+- **`*.io.ts` is the slice's I/O port** (hexagonal sense) — any effectful
+  dependency: subprocess spawn, filesystem, HTTP, clock. Not just persistence.
+  That breadth is why the tier is named `io` and not `repo`, and it keeps the
+  word "repo" free for what it means in this domain: a git repository.
+
+Biome enforces this by file shape: in `**/*.core.ts` the imports
+`Effect`/`Layer`/`Context` and any `*.io` module are banned, the globals
+`Date` / `process` / `Promise` / `console` / `setTimeout` / `setInterval` /
+`fetch` are banned, and two GritQL plugins (`biome-plugins/`) ban `throw` and
+`await`.
+
+### Axioms, and the tool that enforces each
+
+- **Failures are values in the core.** `biome-plugins/no-throw-in-core.grit`
+  bans `throw`; `no-await-in-core.grit` bans `await`. Return
+  `Either.left(...)` and let the shell decide whether that is a 400, a retry or
+  a log line.
+- **Co-located tests.** `*.test.ts` next to its source, never a `__tests__/`
+  folder. `scripts/check-colocated-tests.ts` requires a sibling
+  `*.core.test.ts` for every `*.core.ts` and rejects mirrored test directories.
+  `scripts/check-feature-tests.sh` additionally requires every feature folder to
+  ship at least one test.
+- **TDD at three layers.** Pre-commit (`scripts/check-tests-touched.sh`) blocks
+  a commit touching `apps/*/src/**` with no staged test — bypass with
+  `SKIP_TDD=1` for docs/deps/config only. Pre-push runs the typecheck, the debt
+  ratchet, the unit suites and the full Playwright suite, so a red branch never
+  reaches the remote (`SKIP_E2E=1` to skip e2e). The PR e2e workflow re-runs
+  Playwright and posts per-test screenshots as a sticky PR comment.
+- **Everything type-checks.** `scripts/typecheck.ts` discovers every `apps/*`
+  workspace from the filesystem and runs `tsc --noEmit` on each; a workspace
+  *without* a `tsconfig.json` is an error, not a skip. A hand-maintained project
+  list would fail open — this cannot.
+- **No raw `fetch`, no `axios`.** `noRestrictedImports` bans `axios`
+  repo-wide; the web app talks to the daemon through the typed Hono RPC client
+  (`api = hc<AppType>` in `apps/web/src/lib/api.ts`). `*.io.ts` is the sanctioned
+  place for a raw request.
+- **Contracts decode at the boundary.** `biome-plugins/no-cast-json.grit` bans
+  `(await res.json()) as T` — a cast asserts a wire shape without checking it, so
+  drift compiles forever and fails at runtime. Hand the decoded `unknown` to a
+  pure parser instead.
+- **Typed config at boot.** `platform/config.io.ts` (plus `config-dir.ts` and the
+  composition roots) is the one place that reads `process.env`. Slices receive
+  values; they do not fetch them.
+- **Log through the runtime, not `console`.** `noConsole` is an error outside the
+  composition root and tests.
+- **One parameter on declarations you design.**
+  `biome-plugins/max-one-param-declarations.grit` bans 2+ positional parameters
+  on named declarations — pass a single options object so the signature stays
+  narrow as the implementation deepens. Callback shapes a library dictates
+  (`sort((a, b))`, Hono's `(c, next)`) are exempt by construction.
+  `complexity/useMaxParams: max 2` is the floor everywhere.
+- **Modules talk through doors, not back-channels (modular monolith).** A slice
+  may import another slice's *published* door — a service `Context.Tag` — but
+  never its internal files. Compose every module's live `Layer` into one process
+  by default; a module becomes a separate deployment only under real pressure,
+  and because consumers depend on the `Tag`, that split swaps a `Layer` at the
+  composition root, not call sites. Design as if distributed; deploy as if
+  together.
+- **Conventional commits.** `type(scope)?: subject` — the lefthook `commit-msg`
+  hook (`scripts/check-commit-msg.ts`) rejects anything else.
+- **Dead code, cycles and duplication are audited.** `fallow audit`
+  (`bun run audit`) runs in CI and pre-push.
+- **Mutation tests grade the assertions.** `bun run test:mutation` mutates every
+  `*.core.ts`; line coverage says a line ran, a surviving mutant says nothing
+  asserted its behaviour. Weekly in CI, not per-PR — it costs minutes.
+
+### Axiom debt is ratcheted, never waived
+
+Four axioms are violated in bulk by code that predates their enforcement, so
+turning them into hard lint errors today would fail CI on ~120 sites:
+cross-slice internal imports, `process.env` reads outside the config funnel, raw
+`fetch`, and cast `.json()` in `apps/web`.
+
+Rather than documenting them and hoping, `scripts/axiom-debt.json` records the
+exact per-file counts and `bun run axiom-debt` fails on **any** difference — a
+new violation *or* a repaid one. New code therefore cannot add debt silently,
+and every repayment lands as a smaller number in a reviewable diff:
+
+```bash
+bun run axiom-debt          # gate (CI + pre-push)
+bun run axiom-debt:update   # after paying some down; commit the new baseline
+```
+
+### The harness checks itself
+
+Enforcement attaches to file *shape* (`**/*.core.ts`, `**/*.io.ts`,
+`**/features/**`), not to a path: denials are global, allows are sanctioned
+shapes, so renaming or adding an app cannot make a rule quietly stop applying.
+
+`bun run doctor` (`scripts/check-harness.ts`, inside `bun run test`) then
+asserts the enforcement stack itself: grit plugins referenced and present, the
+core-purity override still scoped by shape and still denying every listed
+global, lefthook jobs wired, gate scripts composed into `test` and `verify`,
+GitHub Actions pinned to commit SHAs, the canon block in sync — and the literal
+CI job names the branch ruleset requires as status checks. Deleting a gate is a
+deliberate, visible act that fails CI, not silent drift.
+
+**Do not rename the `lint` / `bun-test` job display names in
+`.github/workflows/unit-tests.yml`.** The branch ruleset pins its required
+status checks to the exact strings `biome ci (lint + format)` and
+`bun test (daemon + web)`; renaming one makes every PR unmergeable ("the base
+branch policy prohibits the merge") while every visible check is green. Update
+the ruleset first. `bun run doctor` guards those two strings.
+
+### Gate commands
+
+```bash
+bun install            # installs + wires git hooks (lefthook)
+bun run verify         # lint:ci + typecheck + test + web/cli suites + audit + axiom-debt
+bun run lint           # biome check --write .   (autofix)
+bun run lint:ci        # biome ci .              (CI gate)
+bun run typecheck      # tsc --noEmit over every workspace
+bun run test           # colocation check + doctor + daemon + scripts suites
+bun run test:web       # web unit suite
+bun run test:cli       # cli unit suite
+bun run test:e2e       # playwright (apps/e2e)
+bun run test:mutation  # stryker over *.core.ts (also weekly in CI)
+bun run audit          # fallow: dead code / duplication / cycles / complexity
+bun run doctor         # harness self-check (also inside `test`)
+bun run axiom-debt     # ratchet on the four debt classes
+bun run dev            # daemon (:8787) + web (:5173)
+```
+
+### How to add a feature slice
+
+1. `apps/daemon/src/features/<feature>/<feature>.core.ts` — the pure decision
+   logic, plus its co-located `<feature>.core.test.ts`. Start here: if the rule
+   can be expressed as data-in/data-out, it belongs in the core.
+2. `<feature>.io.ts` — a `Context.Tag` service for every effectful dependency,
+   with a `…IoLive` layer and a `…IoTest` layer for tests.
+3. `<feature>.routes.ts` — the Hono shell: read through the service, call the
+   core, map the result onto a response.
+4. Register the live layer in `platform/runtime.ts` and mount the route in
+   `api.ts`.
+5. (web) add the query hook and route under `apps/web/src/features/<feature>/`,
+   going through the typed RPC client.
+6. `bun run verify`.
+
+<!-- CANON:END -->

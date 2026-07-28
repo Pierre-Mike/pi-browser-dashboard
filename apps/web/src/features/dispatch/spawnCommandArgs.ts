@@ -1,4 +1,4 @@
-// Mirrors `buildDispatchArgs` in apps/daemon/src/platform/shell.repo.ts so the
+// Mirrors `buildDispatchArgs` in apps/daemon/src/platform/shell.io.ts so the
 // spawn modal can show the exact `claude --bg ...` argv the daemon will run.
 // Duplicated rather than imported: web only consumes the daemon's RPC types
 // (`@pid/daemon/types`), never its runtime modules, so the two stay

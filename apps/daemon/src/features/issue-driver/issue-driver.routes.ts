@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { IssueDriverService } from "./issue-driver.repo"
+import { IssueDriverService } from "./issue-driver.io"
 
 const app = new Hono()
   .get("/status", async (c) => {
@@ -17,8 +17,10 @@ const app = new Hono()
   .post("/pause", async (c) => {
     let paused = true
     try {
-      const body = (await c.req.json()) as { paused?: unknown }
-      if (typeof body.paused === "boolean") paused = body.paused
+      const body: unknown = await c.req.json()
+      if (body !== null && typeof body === "object" && "paused" in body) {
+        if (typeof body.paused === "boolean") paused = body.paused
+      }
     } catch {
       // body optional; default to pause=true
     }

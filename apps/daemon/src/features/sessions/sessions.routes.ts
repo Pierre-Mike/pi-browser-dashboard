@@ -2,9 +2,9 @@ import fs from "node:fs"
 import { Effect, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { ShellRepo } from "../../platform/shell.repo"
-import { PiSessionsRepo } from "../dispatch/pi-sessions.repo"
-import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.repo"
+import { ShellIo } from "../../platform/shell.io"
+import { PiSessionsIo } from "../dispatch/pi-sessions.io"
+import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.io"
 import {
   errorToStatus,
   type FsResponse,
@@ -14,17 +14,17 @@ import {
   treeGitStatusAt,
 } from "../projects/fileBrowser.routes"
 import { contentDispositionAttachment } from "../projects/projects.core"
-import { FilesError, FilesService } from "./files.repo"
-import { SessionRegistry } from "./sessions.repo"
+import { FilesError, FilesService } from "./files.io"
+import { SessionRegistry } from "./sessions.io"
 
 const MAX_TRANSCRIPT_LINES = 500
 
 // Effect runtime surface the route handlers depend on. Real prod wiring passes
 // `appRuntime`; route tests substitute a stub runtime built over fake
-// SessionRegistry / ShellRepo / FilesService layers
+// SessionRegistry / ShellIo / FilesService layers
 // (see sessions.routes.test.ts).
 export type SessionsRouteRuntime = Pick<
-  ManagedRuntime.ManagedRuntime<SessionRegistry | ShellRepo | FilesService | PiSessionsRepo, never>,
+  ManagedRuntime.ManagedRuntime<SessionRegistry | ShellIo | FilesService | PiSessionsIo, never>,
   "runPromise" | "runPromiseExit"
 >
 
@@ -93,10 +93,10 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const list = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          const pi = yield* PiSessionsRepo
+          const pi = yield* PiSessionsIo
           const claude = yield* Effect.promise(() => reg.snapshot())
           // pi runs live outside the supervisor's roster/jobs world — the
-          // dispatch spawn log is their registry (see pi-sessions.repo.ts).
+          // dispatch spawn log is their registry (see pi-sessions.io.ts).
           return [...claude, ...pi.list()]
         }),
       )
@@ -107,7 +107,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const one = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          const pi = yield* PiSessionsRepo
+          const pi = yield* PiSessionsIo
           const claude = yield* Effect.promise(() => reg.getOne(id))
           return claude ?? pi.getOne(id)
         }),
@@ -232,7 +232,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const id = c.req.param("id")
       const result = await runtime.runPromiseExit(
         Effect.gen(function* () {
-          const shell = yield* ShellRepo
+          const shell = yield* ShellIo
           yield* shell.stop(id)
         }),
       )
@@ -245,7 +245,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       const id = c.req.param("id")
       const result = await runtime.runPromiseExit(
         Effect.gen(function* () {
-          const shell = yield* ShellRepo
+          const shell = yield* ShellIo
           return yield* shell.peek(id)
         }),
       )
@@ -260,9 +260,9 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         Effect.gen(function* () {
           // A pi session has no claude job dir — removing it just drops the
           // spawn-log entry (the pi transcript stays on disk, resumable).
-          const pi = yield* PiSessionsRepo
+          const pi = yield* PiSessionsIo
           if (pi.remove(id)) return
-          const shell = yield* ShellRepo
+          const shell = yield* ShellIo
           yield* shell.rm(id)
         }),
       )
@@ -282,7 +282,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       }
       const result = await runtime.runPromiseExit(
         Effect.gen(function* () {
-          const shell = yield* ShellRepo
+          const shell = yield* ShellIo
           yield* shell.send({ id, keys: body.keys as string })
         }),
       )

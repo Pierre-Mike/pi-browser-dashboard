@@ -20,7 +20,8 @@ README for the full requirements list.
 1. Branch from `origin/main` (not a stale local HEAD).
 2. Make the change. Add or update tests in the same commit — the pre-commit
    hook will block you otherwise.
-3. Push. Pre-push runs `bun run test` and `bun run test:e2e`. A red branch
+3. Push. Pre-push runs the typecheck, `bun run axiom-debt`, `bun run test`
+   and `bun run test:e2e`. A red branch
    never reaches the remote.
 4. `gh pr create --base main` (or via the GitHub UI). PR e2e runs in CI and
    posts a sticky comment with screenshots.
@@ -44,7 +45,7 @@ README for the full requirements list.
   frameworks.
 - **Functional Core / Imperative Shell** suffix discipline in the daemon:
   - `*.core.ts` — pure logic, fully tested
-  - `*.repo.ts` — side-effects (fs, shell, network)
+  - `*.io.ts` — side-effects (fs, shell, network)
   - `*.routes.ts` — HTTP boundary
 - **Co-located tests**: `foo.ts` → `foo.test.ts` next to it.
 - **Named parameters** for any function with 3+ args.

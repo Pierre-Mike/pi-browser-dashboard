@@ -2,7 +2,7 @@
 // no supervisor: the only ground truth is the transcript pi writes under
 // ~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<id>.jsonl plus the child
 // pid the daemon recorded at spawn. Everything here is data-in/data-out;
-// pi-sessions.repo.ts owns the file reads and pid probes.
+// pi-sessions.io.ts owns the file reads and pid probes.
 import type { SessionState, SessionStateSlug } from "../sessions/sessions.core"
 
 // One dispatched pi run, as recorded by the spawn log at launch time.

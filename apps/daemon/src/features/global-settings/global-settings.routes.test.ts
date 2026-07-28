@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { ManagedRuntime } from "effect"
 import { DEFAULT_GLOBAL_SETTINGS } from "./global-settings.core"
-import { GlobalSettingsRepoTest } from "./global-settings.repo"
+import { GlobalSettingsIoTest } from "./global-settings.io"
 import { createApp } from "./global-settings.routes"
 
 const buildApp = () => {
-  const rt = ManagedRuntime.make(GlobalSettingsRepoTest())
+  const rt = ManagedRuntime.make(GlobalSettingsIoTest())
   return createApp((effect) => rt.runPromise(effect))
 }
 

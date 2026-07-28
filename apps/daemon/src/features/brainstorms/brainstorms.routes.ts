@@ -1,17 +1,17 @@
-import { Effect } from "effect"
+import { Effect, Either } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { parseCanvas, serializeCanvas } from "../canvas/canvas.core"
-import { getCanvasRoomAt } from "../canvas/canvas.repo"
+import { getCanvasRoomAt } from "../canvas/canvas.io"
 import {
   type CanvasRoomResolver,
   makeCanvasWsHandler,
   makeDocWsHandler,
 } from "../canvas/canvas.routes"
 import { parseExcalidrawDoc, serializeExcalidrawDoc } from "../canvas/excalidraw.core"
-import { getExcalidrawRoomAt } from "../canvas/excalidraw.repo"
+import { getExcalidrawRoomAt } from "../canvas/excalidraw.io"
 import type { BrainstormKind } from "./brainstorms.core"
-import { BrainstormsService, type BrainstormWriteError } from "./brainstorms.repo"
+import { BrainstormsService, type BrainstormWriteError } from "./brainstorms.io"
 
 // Excalidraw scenes carry freedraw point arrays, so a board frame can dwarf a
 // React-Flow canvas frame — give the doc socket a roomier cap than the 256KB
@@ -133,14 +133,12 @@ export const createApp = (run: RunPromise) =>
       } catch (err) {
         return c.json({ error: (err as Error).message }, docErrorStatus(err))
       }
-      let parsed: ReturnType<typeof parseExcalidrawDoc>
-      try {
-        parsed = parseExcalidrawDoc(await c.req.json())
-      } catch (err) {
-        return c.json({ error: "bad_document", message: (err as Error).message }, 400)
+      const parsed = parseExcalidrawDoc(await c.req.json())
+      if (Either.isLeft(parsed)) {
+        return c.json({ error: "bad_document", message: parsed.left }, 400)
       }
       const room = await getExcalidrawRoomAt(file)
-      const published = await room.publish(parsed, null)
+      const published = await room.publish(parsed.right, null)
       return c.body(serializeExcalidrawDoc(published), 200, { "Content-Type": "application/json" })
     })
     .get("/:id/brainstorms/:slug", async (c) => {
@@ -160,14 +158,12 @@ export const createApp = (run: RunPromise) =>
       } catch (err) {
         return c.json({ error: (err as Error).message }, docErrorStatus(err))
       }
-      let parsed: ReturnType<typeof parseCanvas>
-      try {
-        parsed = parseCanvas(await c.req.json())
-      } catch (err) {
-        return c.json({ error: "bad_canvas", message: (err as Error).message }, 400)
+      const parsed = parseCanvas(await c.req.json())
+      if (Either.isLeft(parsed)) {
+        return c.json({ error: "bad_canvas", message: parsed.left }, 400)
       }
       const room = await getCanvasRoomAt(file)
-      const stamped = await room.publish(parsed, null)
+      const stamped = await room.publish(parsed.right, null)
       return c.body(serializeCanvas(stamped), 200, { "Content-Type": "application/json" })
     })
 

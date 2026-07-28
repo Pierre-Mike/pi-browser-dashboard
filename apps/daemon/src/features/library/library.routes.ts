@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { LIBRARY_CATEGORIES, type LibraryCategory } from "./library.core"
-import { type InstallScope, type LibraryError, LibraryService } from "./library.repo"
+import { type InstallScope, type LibraryError, LibraryService } from "./library.io"
 
 const errorToStatus = (e: LibraryError): 400 | 403 | 404 | 409 | 422 | 500 => {
   if (e === "forbidden") return 403

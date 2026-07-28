@@ -1,10 +1,20 @@
 import { describe, expect, it } from "bun:test"
+import { Either } from "effect"
 import {
+  parseExcalidrawDoc as decodeExcalidrawDoc,
+  type ExcalidrawDoc,
   emptyExcalidrawDoc,
   excalidrawEqual,
-  parseExcalidrawDoc,
   serializeExcalidrawDoc,
 } from "./excalidraw.core"
+
+// The decoder returns Either. Happy paths unwrap; the failure contract is
+// asserted directly on the Left below.
+const parseExcalidrawDoc = (raw: unknown): ExcalidrawDoc => {
+  const decoded = decodeExcalidrawDoc(raw)
+  if (Either.isLeft(decoded)) throw new Error(decoded.left)
+  return decoded.right
+}
 
 describe("parseExcalidrawDoc", () => {
   it("passes a native Excalidraw document through untouched (unknown keys kept)", () => {
@@ -31,12 +41,16 @@ describe("parseExcalidrawDoc", () => {
     expect(JSON.parse(serializeExcalidrawDoc(doc))).toEqual(raw)
   })
 
-  it("rejects non-objects and documents without an elements array", () => {
-    expect(() => parseExcalidrawDoc(null)).toThrow()
-    expect(() => parseExcalidrawDoc([])).toThrow()
-    expect(() => parseExcalidrawDoc("{}")).toThrow()
-    expect(() => parseExcalidrawDoc({ type: "excalidraw" })).toThrow()
-    expect(() => parseExcalidrawDoc({ elements: {} })).toThrow()
+  it("returns a Left for non-objects and documents without an elements array", () => {
+    expect(decodeExcalidrawDoc(null)).toEqual(
+      Either.left("excalidraw document must be a JSON object"),
+    )
+    expect(Either.isLeft(decodeExcalidrawDoc([]))).toBe(true)
+    expect(Either.isLeft(decodeExcalidrawDoc("{}"))).toBe(true)
+    expect(decodeExcalidrawDoc({ type: "excalidraw" })).toEqual(
+      Either.left("excalidraw document must have an elements array"),
+    )
+    expect(Either.isLeft(decodeExcalidrawDoc({ elements: {} }))).toBe(true)
   })
 })
 

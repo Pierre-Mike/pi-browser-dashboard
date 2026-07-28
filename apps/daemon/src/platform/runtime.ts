@@ -1,46 +1,46 @@
 import { Layer, ManagedRuntime } from "effect"
-import { BrainstormsRepoLive } from "../features/brainstorms/brainstorms.repo"
-import { ClaudeConfigRepoLive } from "../features/claude-config/claude-config.repo"
-import { PiRepoLive } from "../features/dispatch/pi.repo"
-import { PiSessionsRepoLive } from "../features/dispatch/pi-sessions.repo"
-import { GlobalSettingsRepoLive } from "../features/global-settings/global-settings.repo"
-import { GhIssueClientLive } from "../features/issue-driver/gh-issue.repo"
-import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.repo"
-import { GitClientLive } from "../features/library/installer"
-import { LibraryRepoLive } from "../features/library/library.repo"
-import { PidAppsRepoLive } from "../features/pid-apps/pid-apps.repo"
-import { PidSettingsRepoLive } from "../features/pid-settings/pid-settings.repo"
-import { ProjectsRepoLive } from "../features/projects/projects.repo"
-import { FilesRepoLive } from "../features/sessions/files.repo"
-import { SessionRegistryLive } from "../features/sessions/sessions.repo"
-import { TunnelRepoLive } from "../features/tunnel/tunnel.repo"
-import { ConfigRepoLive } from "./config.repo"
-import { ShellRepoLive } from "./shell.repo"
+import { BrainstormsIoLive } from "../features/brainstorms/brainstorms.io"
+import { ClaudeConfigIoLive } from "../features/claude-config/claude-config.io"
+import { PiIoLive } from "../features/dispatch/pi.io"
+import { PiSessionsIoLive } from "../features/dispatch/pi-sessions.io"
+import { GlobalSettingsIoLive } from "../features/global-settings/global-settings.io"
+import { GhIssueClientLive } from "../features/issue-driver/gh-issue.io"
+import { makeIssueDriverLive } from "../features/issue-driver/issue-driver.io"
+import { GitClientLive } from "../features/library/installer.io"
+import { LibraryIoLive } from "../features/library/library.io"
+import { PidAppsIoLive } from "../features/pid-apps/pid-apps.io"
+import { PidSettingsIoLive } from "../features/pid-settings/pid-settings.io"
+import { ProjectsIoLive } from "../features/projects/projects.io"
+import { FilesIoLive } from "../features/sessions/files.io"
+import { SessionRegistryLive } from "../features/sessions/sessions.io"
+import { TunnelIoLive } from "../features/tunnel/tunnel.io"
+import { ConfigIoLive } from "./config.io"
+import { ShellIoLive } from "./shell.io"
 
 const ISSUE_DRIVER_GLOBAL_CAP = 2
 const ISSUE_DRIVER_PER_REPO_CAP = 1
 
-const ProjectsLive = Layer.provide(ProjectsRepoLive, ConfigRepoLive)
+const ProjectsLive = Layer.provide(ProjectsIoLive, ConfigIoLive)
 const ClaudeConfigLive = Layer.provide(
-  ClaudeConfigRepoLive,
-  Layer.mergeAll(ConfigRepoLive, ProjectsLive),
+  ClaudeConfigIoLive,
+  Layer.mergeAll(ConfigIoLive, ProjectsLive),
 )
 const LibraryLive = Layer.provide(
-  LibraryRepoLive,
-  Layer.mergeAll(ConfigRepoLive, ProjectsLive, GitClientLive),
+  LibraryIoLive,
+  Layer.mergeAll(ConfigIoLive, ProjectsLive, GitClientLive),
 )
-const TunnelLive = Layer.provide(TunnelRepoLive, ConfigRepoLive)
-const GlobalSettingsLive = Layer.provide(GlobalSettingsRepoLive, ConfigRepoLive)
-const FilesLive = Layer.provide(FilesRepoLive, GlobalSettingsLive)
-const PidSettingsLive = Layer.provide(PidSettingsRepoLive, ProjectsLive)
-const PidAppsLive = Layer.provide(PidAppsRepoLive, ProjectsLive)
-const BrainstormsLive = Layer.provide(BrainstormsRepoLive, ProjectsLive)
+const TunnelLive = Layer.provide(TunnelIoLive, ConfigIoLive)
+const GlobalSettingsLive = Layer.provide(GlobalSettingsIoLive, ConfigIoLive)
+const FilesLive = Layer.provide(FilesIoLive, GlobalSettingsLive)
+const PidSettingsLive = Layer.provide(PidSettingsIoLive, ProjectsLive)
+const PidAppsLive = Layer.provide(PidAppsIoLive, ProjectsLive)
+const BrainstormsLive = Layer.provide(BrainstormsIoLive, ProjectsLive)
 const IssueDriverLive = Layer.provide(
   makeIssueDriverLive({
     globalCap: ISSUE_DRIVER_GLOBAL_CAP,
     perRepoCap: ISSUE_DRIVER_PER_REPO_CAP,
   }),
-  Layer.mergeAll(ProjectsLive, ShellRepoLive, GhIssueClientLive),
+  Layer.mergeAll(ProjectsLive, ShellIoLive, GhIssueClientLive),
 )
 
 /**
@@ -49,11 +49,11 @@ const IssueDriverLive = Layer.provide(
  */
 const AppLayer = Layer.mergeAll(
   SessionRegistryLive,
-  ShellRepoLive,
-  // PiRepo (spawn) and PiSessionsRepo (visibility) share the spawn log:
+  ShellIoLive,
+  // PiIo (spawn) and PiSessionsIo (visibility) share the spawn log:
   // dispatch records into it, the sessions routes list from it.
-  Layer.provide(PiRepoLive, PiSessionsRepoLive),
-  PiSessionsRepoLive,
+  Layer.provide(PiIoLive, PiSessionsIoLive),
+  PiSessionsIoLive,
   FilesLive,
   ProjectsLive,
   ClaudeConfigLive,

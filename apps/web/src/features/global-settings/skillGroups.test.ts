@@ -13,6 +13,6 @@ describe("removeSkillGroup", () => {
   })
 
   it("is a no-op when the name is absent", () => {
-    expect(removeSkillGroup(groups, "missing")).toEqual(groups)
+    expect(removeSkillGroup(groups, "missing")).toEqual([...groups])
   })
 })

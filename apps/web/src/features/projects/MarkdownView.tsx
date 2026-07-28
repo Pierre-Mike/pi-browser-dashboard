@@ -17,7 +17,7 @@ const codeChildText = (children: ReactNode): string => String(children ?? "").re
 
 const fenceLang = (className: string | undefined): string => {
   const match = /language-(\w+)/.exec(className ?? "")
-  return match ? match[1] : ""
+  return match?.[1] ?? ""
 }
 
 // A fenced code block lifted out of <pre>: mermaid renders as a diagram,
