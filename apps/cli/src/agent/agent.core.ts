@@ -169,6 +169,18 @@ export type FleetRunsCommand = {
   readonly url: string | undefined
 }
 
+export type RulesCommand = {
+  readonly _tag: "Rules"
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type RulesPreviewCommand = {
+  readonly _tag: "RulesPreview"
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
 export type HelpCommand = {
   readonly _tag: "Help"
   readonly url: string | undefined
@@ -186,6 +198,8 @@ export type Command =
   | FleetsCommand
   | FleetRunCommand
   | FleetRunsCommand
+  | RulesCommand
+  | RulesPreviewCommand
   | HelpCommand
 
 export type UsageError = {
@@ -766,6 +780,49 @@ const parseFleetCommand = (
   )
 }
 
+const parseRulesListCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "rules", argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const extra = rejectExtraPositionals({
+    command: "rules",
+    positionals: scanned.right.positionals,
+    max: 0,
+  })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  return Either.right({ _tag: "Rules", json: scanned.right.flags.has("json"), url })
+}
+
+const parseRulesPreviewCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "rules preview", argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const extra = rejectExtraPositionals({
+    command: "rules preview",
+    positionals: scanned.right.positionals,
+    max: 0,
+  })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  return Either.right({ _tag: "RulesPreview", json: scanned.right.flags.has("json"), url })
+}
+
+// `pid rules preview` is the only rules subcommand — dispatched by hand the
+// same way `pid fleet <run|runs>` is above; anything else (including no
+// subcommand at all) is the plain listing.
+const parseRulesCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const [sub, ...subRest] = rest
+  return sub === "preview"
+    ? parseRulesPreviewCommand(subRest, url)
+    : parseRulesListCommand(rest, url)
+}
+
 const parseShortOnlyCommand = ({
   tag,
   command,
@@ -823,6 +880,7 @@ const SUBCOMMAND_PARSERS: Readonly<
   rm: (rest, url) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
   fleets: parseFleetsCommand,
   fleet: parseFleetCommand,
+  rules: parseRulesCommand,
 }
 
 // `rest` is always non-empty here (parseAgentArgv only calls this once the
@@ -1428,6 +1486,150 @@ export const parseFleetsResponse = (raw: unknown): Either.Either<FleetsResponse,
   return combined
 }
 
+// --- State-change rules (GET /rules, POST /rules/preview) --------------------
+//
+// `--json` always prints the daemon's response verbatim (see runRules/
+// runRulesPreview in main.ts), so only enough of the shape is parsed here to
+// render a useful human summary: a rule's name/enabled (not its full
+// when/do), and a firing-log entry's tag/rule/short/at (not its full action/
+// suppression-reason payload).
+
+export type RuleErrorSummary = {
+  readonly rule: string
+  readonly message: string
+}
+
+const parseRuleErrorSummary = (raw: unknown): Either.Either<RuleErrorSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("rule error must be an object"))
+  return Either.all({
+    rule: requireNonEmptyStringField({ value: raw.rule, message: "rule error is missing rule" }),
+    message: requireNonEmptyStringField({
+      value: raw.message,
+      message: "rule error is missing message",
+    }),
+  })
+}
+
+const parseRuleErrors = (
+  raw: unknown,
+): Either.Either<ReadonlyArray<RuleErrorSummary>, ParseError> =>
+  Array.isArray(raw)
+    ? Either.all(raw.map(parseRuleErrorSummary))
+    : Either.left(parseError("rules response is missing errors"))
+
+export type RuleSummary = {
+  readonly name: string
+  readonly enabled: boolean
+}
+
+const parseRuleSummary = (raw: unknown): Either.Either<RuleSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("rule must be an object"))
+  return Either.all({
+    name: requireNonEmptyStringField({ value: raw.name, message: "rule is missing name" }),
+    enabled: requireBooleanField({ value: raw.enabled, message: "rule is missing enabled" }),
+  })
+}
+
+export type RuleFiringLogEntry = {
+  readonly tag: string
+  readonly rule: string
+  readonly short: string
+  readonly at: number
+}
+
+const parseRuleFiringLogEntry = (raw: unknown): Either.Either<RuleFiringLogEntry, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("log entry must be an object"))
+  const combined = Either.all({
+    tag: requireNonEmptyStringField({ value: raw._tag, message: "log entry is missing _tag" }),
+    rule: requireNonEmptyStringField({ value: raw.rule, message: "log entry is missing rule" }),
+    short: requireNonEmptyStringField({ value: raw.short, message: "log entry is missing short" }),
+    at: requireNumberField({ value: raw.at, message: "log entry is missing at" }),
+  })
+  return combined
+}
+
+export type RulesStatusSummary = {
+  readonly enabled: boolean
+  readonly paused: boolean
+  readonly errors: ReadonlyArray<RuleErrorSummary>
+  readonly rules: ReadonlyArray<RuleSummary>
+  readonly log: ReadonlyArray<RuleFiringLogEntry>
+}
+
+export const parseRulesStatusResponse = (
+  raw: unknown,
+): Either.Either<RulesStatusSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("rules response must be an object"))
+  return Either.all({
+    enabled: requireBooleanField({
+      value: raw.enabled,
+      message: "rules response is missing enabled",
+    }),
+    paused: requireBooleanField({ value: raw.paused, message: "rules response is missing paused" }),
+    errors: parseRuleErrors(raw.errors),
+    rules: Array.isArray(raw.rules)
+      ? Either.all(raw.rules.map(parseRuleSummary))
+      : Either.left(parseError("rules response is missing rules")),
+    log: Array.isArray(raw.log)
+      ? Either.all(raw.log.map(parseRuleFiringLogEntry))
+      : Either.left(parseError("rules response is missing log")),
+  })
+}
+
+export type RulesPreviewOutcomeSummary = {
+  readonly tag: "Fired" | "Suppressed"
+  readonly rule: string
+  readonly short: string
+}
+
+const requireOutcomeTag = (value: unknown): Either.Either<"Fired" | "Suppressed", ParseError> =>
+  value === "Fired" || value === "Suppressed"
+    ? Either.right(value)
+    : Either.left(parseError(`preview outcome has an unrecognized _tag: ${JSON.stringify(value)}`))
+
+const parseRulesPreviewOutcome = (
+  raw: unknown,
+): Either.Either<RulesPreviewOutcomeSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("preview outcome must be an object"))
+  return Either.all({
+    tag: requireOutcomeTag(raw._tag),
+    rule: requireNonEmptyStringField({
+      value: raw.rule,
+      message: "preview outcome is missing rule",
+    }),
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "preview outcome is missing short",
+    }),
+  })
+}
+
+export type RulesPreviewSummary = {
+  readonly errors: ReadonlyArray<RuleErrorSummary>
+  readonly outcomes: ReadonlyArray<RulesPreviewOutcomeSummary>
+}
+
+export const parseRulesPreviewResponse = (
+  raw: unknown,
+): Either.Either<RulesPreviewSummary, ParseError> => {
+  if (!isPlainObject(raw))
+    return Either.left(parseError("rules preview response must be an object"))
+  return Either.all({
+    errors: parseRuleErrors(raw.errors),
+    outcomes: Array.isArray(raw.outcomes)
+      ? Either.all(raw.outcomes.map(parseRulesPreviewOutcome))
+      : Either.left(parseError("rules preview response is missing outcomes")),
+  })
+}
+
+// `pid rules` doubles as a linter for a hand-edited rules.json, same as `pid
+// fleets` — a non-empty `errors` list means the file is invalid, so exit 2
+// (see AGENTS.md's exit-code table: 2 already covers "an invalid recipe
+// file", broadened here to cover an invalid rules file too — no new outcome
+// exists that 2 doesn't already mean).
+export const exitCodeForRulesErrors = (errors: ReadonlyArray<RuleErrorSummary>): ExitCode =>
+  errors.length > 0 ? 2 : 0
+
 // --- Fleet runs (POST .../fleets/:name/run, GET .../fleet-runs[/:runId]) ----
 //
 // The daemon's wave/step wire shape for a run's plan is identical to
@@ -1960,6 +2162,61 @@ export const formatSpawned = ({
 }): string => {
   const base = `spawned ${short} — ${truncate({ text: intent, max: 60 })}`
   return wait === undefined ? base : `${base}; ${formatWaitOutcome(wait)}`
+}
+
+// --- State-change rules formatting --------------------------------------------
+
+const formatRuleError = (e: RuleErrorSummary): string => `[${e.rule}] ${e.message}`
+
+const RULE_LOG_TAIL = 10
+
+// One helper per section, each returning `undefined` for "nothing to show"
+// — mirrors sessions-explain.core.ts's buildReasons — so formatRulesStatus
+// itself is just an array literal + filter + join, not a branch per section.
+const formatRulesHeader = (s: RulesStatusSummary): string =>
+  `state-change rules: ${s.enabled ? "enabled" : "disabled"}${s.paused ? " (paused)" : ""}`
+
+const formatRulesList = (rules: ReadonlyArray<RuleSummary>): string =>
+  rules.length === 0
+    ? "no rules configured"
+    : rules.map((r) => `  ${r.name}${r.enabled ? "" : " (disabled)"}`).join("\n")
+
+const formatRulesErrorsSection = (errors: ReadonlyArray<RuleErrorSummary>): string | undefined =>
+  errors.length === 0
+    ? undefined
+    : [`${errors.length} rule error(s):`, ...errors.map((e) => `  ${formatRuleError(e)}`)].join(
+        "\n",
+      )
+
+const formatRulesActivitySection = (log: ReadonlyArray<RuleFiringLogEntry>): string | undefined =>
+  log.length === 0
+    ? undefined
+    : [
+        "recent activity:",
+        ...log.slice(-RULE_LOG_TAIL).map((l) => `  ${l.tag} ${l.rule} → ${l.short}`),
+      ].join("\n")
+
+export const formatRulesStatus = (s: RulesStatusSummary): string =>
+  [
+    formatRulesHeader(s),
+    formatRulesList(s.rules),
+    formatRulesErrorsSection(s.errors),
+    formatRulesActivitySection(s.log),
+  ]
+    .filter((section): section is string => section !== undefined)
+    .join("\n\n")
+
+export const formatRulesPreview = (p: RulesPreviewSummary): string => {
+  if (p.errors.length > 0) {
+    return [
+      `${p.errors.length} rule error(s):`,
+      ...p.errors.map((e) => `  ${formatRuleError(e)}`),
+    ].join("\n")
+  }
+  if (p.outcomes.length === 0) return "preview: nothing would fire"
+  return p.outcomes
+    .map((o) => `${o.tag === "Fired" ? "would fire" : "suppressed"}: ${o.rule} → ${o.short}`)
+    .join("\n")
 }
 
 const formatFleetError = (e: FleetErrorSummary): string =>

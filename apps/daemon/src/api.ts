@@ -1,5 +1,5 @@
 import { join, normalize } from "node:path"
-import { Cause, Effect, Option } from "effect"
+import { Cause, Effect, Either, Option } from "effect"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { resolveCorsOrigin } from "./cors.core"
@@ -18,7 +18,10 @@ import * as libraryRoute from "./features/library/library.routes"
 import * as fileBrowserWriteRoute from "./features/projects/fileBrowserWrite.routes"
 import { validateRelPath } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
+import { createRulesEngine, type RulesPorts } from "./features/rules/rules.io"
+import * as rulesRoute from "./features/rules/rules.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
+import { parseKeysRequest } from "./features/sessions/sessions-keys.core"
 import { SessionWaitIo } from "./features/sessions/sessions-wait.io"
 import { buildStaticApp } from "./features/static-web/static-web.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
@@ -28,29 +31,42 @@ import { AGENT_SKILL_MD } from "./platform/agent-skill"
 import { extensionRegistry } from "./platform/extensions/registry"
 import { appRuntime } from "./platform/runtime"
 import { ShellIo } from "./platform/shell.io"
+import { sseBus } from "./platform/sse-bus"
+
+// Shared by fleetRunPorts/rulesPorts below: runs an Effect against the real
+// ShellIo through runPromiseExit rather than runPromise, so a ShellError's
+// own message (not an Effect FiberFailure dump) becomes the port's own
+// rejection — the same reason dispatchRoute.buildDispatchApp does this.
+const runShellEffectOrThrow = async <A>({
+  effect,
+  fallbackMessage,
+}: {
+  readonly effect: Effect.Effect<A, { readonly message: string }, ShellIo>
+  readonly fallbackMessage: string
+}): Promise<A> => {
+  const exit = await appRuntime.runPromiseExit(effect)
+  if (exit._tag === "Failure") {
+    const detail = Option.map(Cause.failureOption(exit.cause), (e) => e.message)
+    throw new Error(Option.getOrElse(detail, () => fallbackMessage))
+  }
+  return exit.value
+}
 
 // Bridges the fleet run engine's plain-Promise ports (features/fleet/ must not
 // import the sessions slice or platform/shell.io directly — see
 // fleet-run.io.ts's own header) to the real ShellIo/SessionWaitIo Effect
-// services. `spawn` uses runPromiseExit rather than runPromise, the same way
-// dispatchRoute.buildDispatchApp does, so a ShellError's own message (not an
-// Effect FiberFailure dump) becomes the rejection a SpawnFailed event reports.
+// services.
 const fleetRunPorts: FleetRunPorts = {
   now: () => Date.now(),
   newRunId: () => crypto.randomUUID(),
-  spawn: async ({ intent, agent, cwd }) => {
-    const exit = await appRuntime.runPromiseExit(
-      Effect.gen(function* () {
+  spawn: ({ intent, agent, cwd }) =>
+    runShellEffectOrThrow({
+      effect: Effect.gen(function* () {
         const shell = yield* ShellIo
         return yield* shell.dispatch({ intent, agent, cwd })
       }),
-    )
-    if (exit._tag === "Failure") {
-      const detail = Option.map(Cause.failureOption(exit.cause), (e) => e.message)
-      throw new Error(Option.getOrElse(detail, () => "dispatch failed"))
-    }
-    return exit.value
-  },
+      fallbackMessage: "dispatch failed",
+    }),
   wait: ({ short, until, timeoutMs }) =>
     appRuntime.runPromise(
       Effect.gen(function* () {
@@ -59,6 +75,51 @@ const fleetRunPorts: FleetRunPorts = {
       }),
     ),
 }
+
+// Bridges the rules engine's plain-Promise ports (features/rules/ must not
+// import the sessions slice or platform/shell.io directly — see
+// rules.io.ts's own header) to the real ShellIo/sse-bus. `notify` publishes a
+// standalone `notification` event (not `rules.fired`, which the engine
+// itself already publishes for every outcome as its own audit trail) so a
+// future web toast/notifier has one simple, human-facing event to listen
+// for. `sendKeys` re-resolves the named sequence through the REAL
+// sessions-keys vocabulary (`parseKeysRequest`) rather than trusting
+// rules.core's mirrored copy at the wire boundary — a mismatch here would
+// only mean the two vocabularies have drifted, which
+// scripts/mirrored-constants.test.ts exists to catch before this ever runs.
+const rulesPorts: RulesPorts = {
+  now: () => Date.now(),
+  notify: async ({ short, rule, message }) => {
+    sseBus.publish({ type: "notification", data: { short, rule, message, at: Date.now() } })
+  },
+  sendKeys: async ({ short, sequence }) => {
+    const parsed = parseKeysRequest({ sequence: sequence.map((named) => ({ named })) })
+    if (Either.isLeft(parsed)) {
+      throw new Error(`rules: unresolvable key sequence for ${short}: ${parsed.left.message}`)
+    }
+    await runShellEffectOrThrow({
+      effect: Effect.gen(function* () {
+        const shell = yield* ShellIo
+        yield* shell.send({ id: short, keys: parsed.right.keys })
+      }),
+      fallbackMessage: "rules: send failed",
+    })
+  },
+  stop: ({ short }) =>
+    runShellEffectOrThrow({
+      effect: Effect.gen(function* () {
+        const shell = yield* ShellIo
+        yield* shell.stop(short)
+      }),
+      fallbackMessage: "rules: stop failed",
+    }),
+}
+
+// Constructing the engine only wires its (inert) internal state — it does
+// NOT subscribe to the SSE bus. Importing this module must never itself
+// start acting on the user's live sessions; only server.ts's startDaemon()
+// calls `rulesEngine.start()`. See rules.io.ts's own header for why.
+export const rulesEngine = createRulesEngine({ ports: rulesPorts })
 
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
@@ -137,6 +198,11 @@ const app = new Hono()
   .route("/tunnel", tunnelRoute.app)
   .route("/canvas", canvasRoute.app)
   .route("/issue-driver", issueDriverRoute.app)
+  // State-change rules (<claudeConfigDir>/pid-dashboard/rules.json): GET
+  // /rules (parsed rules + validation errors + enabled/paused + firing log),
+  // POST /rules/pause, POST /rules/preview (dry-run — fires nothing). Off by
+  // default; see rules.io.ts / AGENTS.md "State-change rules".
+  .route("/rules", rulesRoute.createApp({ engine: rulesEngine }))
   .route("/claude-config", claudeConfigRoute.app)
   .route("/library", libraryRoute.app)
   .route("/uploads", uploadsRoute.app)

@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import app, { buildApp, mountExtensions, websocket } from "./api"
+import app, { buildApp, mountExtensions, rulesEngine, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.io"
 import { SessionRegistry } from "./features/sessions/sessions.io"
 import { TunnelService } from "./features/tunnel/tunnel.io"
@@ -14,6 +14,10 @@ export type StartDaemonOptions = {
   tunnel?: boolean
   // GitHub-issue poll interval in ms. 0 disables the heartbeat.
   issuePollMs?: number
+  // State-change rules dwell sweep interval in ms. 0 disables it (a rule with
+  // no `forMs` still fires off bus events; a dwell rule just won't be swept
+  // until the next boot with a non-zero interval).
+  rulesTickMs?: number
   // Directory of a pre-built apps/web SPA to serve from "/" (moves the API
   // behind "/__api" — see api.ts's buildApp). Set by the pid-dashboard CLI;
   // every other caller leaves this unset and keeps the API at the bare root.
@@ -28,18 +32,33 @@ export type DaemonHandle = {
 export type DaemonConfig = {
   port: number
   issuePollMs: number
+  rulesTickMs: number
   tunnel: boolean
 }
 
 type DaemonConfigEnv = {
   PORT?: string
   PID_ISSUE_POLL_MS?: string
+  PID_RULES_TICK_MS?: string
   PID_TUNNEL_AUTOSTART?: string
 }
 
 const numEnv = (raw: string | undefined, fallback: number): number => Number(raw ?? fallback)
 // PID_TUNNEL_AUTOSTART defaults on; only "0" disables.
 const tunnelFlag = (raw: string | undefined): boolean => (raw ?? "1") !== "0"
+
+// An explicit option wins; otherwise fall back to the env var (numEnv's own
+// fallback if that's unset too). Factored out so resolveDaemonConfig's own
+// branch count doesn't grow one `??` per config field.
+const resolveNum = ({
+  explicit,
+  raw,
+  fallback,
+}: {
+  readonly explicit: number | undefined
+  readonly raw: string | undefined
+  readonly fallback: number
+}): number => explicit ?? numEnv(raw, fallback)
 
 // Pure: resolve runtime config from explicit options falling back to env. The
 // dev daemon passes no options (pure env); the pid-dashboard CLI passes explicit
@@ -48,8 +67,17 @@ export const resolveDaemonConfig = (
   opts: StartDaemonOptions,
   env: DaemonConfigEnv,
 ): DaemonConfig => ({
-  port: opts.port ?? numEnv(env.PORT, 8787),
-  issuePollMs: opts.issuePollMs ?? numEnv(env.PID_ISSUE_POLL_MS, 120_000),
+  port: resolveNum({ explicit: opts.port, raw: env.PORT, fallback: 8787 }),
+  issuePollMs: resolveNum({
+    explicit: opts.issuePollMs,
+    raw: env.PID_ISSUE_POLL_MS,
+    fallback: 120_000,
+  }),
+  rulesTickMs: resolveNum({
+    explicit: opts.rulesTickMs,
+    raw: env.PID_RULES_TICK_MS,
+    fallback: 30_000,
+  }),
   tunnel: opts.tunnel ?? tunnelFlag(env.PID_TUNNEL_AUTOSTART),
 })
 
@@ -64,6 +92,18 @@ const startIssuePoll = (issuePollMs: number): ReturnType<typeof setInterval> | n
   }
   runTick()
   return setInterval(runTick, issuePollMs)
+}
+
+// Periodic dwell sweep for state-change rules — the belt to `rulesEngine`'s
+// own bus-subscription suspenders (see rules.io.ts's own header on why
+// neither alone is enough). Off by construction until a rules.json exists
+// AND sets `enabled: true`; see AGENTS.md "State-change rules".
+const startRulesTick = (rulesTickMs: number): ReturnType<typeof setInterval> | null => {
+  if (rulesTickMs <= 0) return null
+  const runTick = (): void => {
+    void rulesEngine.tick().catch((err) => console.error("[rules] tick failed", err))
+  }
+  return setInterval(runTick, rulesTickMs)
 }
 
 // Bring up the Cloudflare quick-tunnel. Failures must never block the daemon.
@@ -82,11 +122,20 @@ const startTunnel = (): void => {
 export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<DaemonHandle> => {
   // Name the env keys the pure resolver reads instead of handing it the whole
   // ambient environment (typed config at the boundary).
-  const { port, issuePollMs, tunnel } = resolveDaemonConfig(opts, {
+  const { port, issuePollMs, rulesTickMs, tunnel } = resolveDaemonConfig(opts, {
     PORT: process.env.PORT,
     PID_ISSUE_POLL_MS: process.env.PID_ISSUE_POLL_MS,
+    PID_RULES_TICK_MS: process.env.PID_RULES_TICK_MS,
     PID_TUNNEL_AUTOSTART: process.env.PID_TUNNEL_AUTOSTART,
   })
+
+  // Arm the rules engine's SSE-bus subscription BEFORE touching
+  // SessionRegistry below: the registry's own boot-time jobs-dir scan and
+  // roster reconciliation publish `session.created` / `session.state` for
+  // every session that already exists, and this ordering is what lets the
+  // engine observe that initial replay instead of only ever seeing sessions
+  // that change state *after* boot. See rules.io.ts's own header.
+  rulesEngine.start()
 
   // Touch the runtime so SessionRegistryLive is constructed (watchers armed)
   // before the first request arrives.
@@ -97,6 +146,7 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
   )
 
   const issueDriverTimer = startIssuePoll(issuePollMs)
+  const rulesTickTimer = startRulesTick(rulesTickMs)
 
   // Discover, permission-gate and mount extensions. A failure here must never
   // block daemon boot.
@@ -117,6 +167,7 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
 
   const stop = async (): Promise<void> => {
     if (issueDriverTimer) clearInterval(issueDriverTimer)
+    if (rulesTickTimer) clearInterval(rulesTickTimer)
     server.stop()
     if (tunnel) {
       await appRuntime

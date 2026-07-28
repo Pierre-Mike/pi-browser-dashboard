@@ -153,6 +153,12 @@ terminal.state       ← a terminal's classified agent state changed; payload =
                         { scope, id, state, matcher, evidence, at }
 fleet.run            ← a fleet run or one of its steps changed status; payload =
                         the run summary (see "Fleet recipes" below)
+rules.fired          ← a state-change rule matched and either fired or was
+                        suppressed; payload = { _tag, rule, short, action,
+                        reason?, at } (see "State-change rules" below)
+notification         ← a `notify` rule action's own message, for a future
+                        web toast/notifier; payload = { short, rule, message,
+                        at }
 ```
 
 - One SSE stream, server fans roster + per-session deltas.
@@ -170,6 +176,9 @@ fleet.run            ← a fleet run or one of its steps changed status; payload
 - `POST /projects/:id/fleets/:name/run` — dry-run or execute a recipe.
   `GET /projects/:id/fleet-runs[/:runId]` — run status. Daemon + CLI only —
   no web UI yet (see "Fleet recipes" below).
+- `GET /rules`, `POST /rules/pause`, `POST /rules/preview` — state-change
+  automation rules, off by default. Daemon + CLI only — no web UI yet (see
+  "State-change rules" below).
 
 ### Server-owned waits (`features/sessions/sessions-wait.*`)
 
@@ -586,6 +595,189 @@ plain words (sessions, waves, project), a live-updating run list fed by the
 step is deliberately styled differently from a failed one. See "Frontend
 skeleton" below.
 
+## State-change rules (`<claudeConfigDir>/pid-dashboard/rules.json`)
+
+herdr's own docs leave "when a session does X, do Y" to shell scripting over
+its CLI — there is no configuration-based trigger, no on-state-change action.
+This repo already publishes every transition on the SSE bus and already has
+the named-key vocabulary and the wait primitive, so a rules engine is the
+layer neither tool covers: a session that goes `blocked` at 3am can page you,
+and a session that finishes can kick off the next step.
+
+**Safety is the feature, not a constraint bolted onto it:**
+
+- **Disabled by default.** With no `rules.json` present, or with the file's
+  top-level `enabled` absent or `false`, the engine never calls its own
+  evaluator — not "evaluates and suppresses everything," genuinely never
+  runs. The user opts in explicitly, once, in a file they wrote.
+- **`keys` requires its own per-rule `confirm: true`.** Sending keys means
+  typing into a live `claude attach` TUI a human may be watching — the same
+  keystrokes `POST /sessions/:id/keys` sends (see "Named key vocabulary"
+  above), sent by a machine instead of a person. There is no file-wide "allow
+  keys" switch; a `keys` action missing `confirm: true` on ITS OWN rule still
+  parses (so an author can build a rule up before turning the dangerous part
+  on) but the engine refuses to fire it, reported as a `KeysNotConfirmed`
+  suppression.
+- **Two loop breakers**, both enforced in the pure core (`evaluate`) and
+  tested there:
+  - A per-(rule, session) **cooldown** — `cooldownMs` on the rule, defaulting
+    to 300000ms (5 minutes) when omitted — so a dwell rule re-checked on
+    every tick cannot resend the same keystroke to a still-blocked session a
+    hundred times.
+  - A per-session **ceiling** — at most 5 actions across every rule combined
+    within a rolling 600000ms (10 minute) window — the backstop for several
+    distinct rules each individually respecting their own cooldown but still
+    piling onto one session together.
+  - A ceiling or cooldown trip is a first-class `Suppressed` outcome, not
+    silence: it is recorded in the firing log and published on the bus the
+    same as a real firing, because a silently-throttled automation is
+    indistinguishable from a broken one.
+- **A dry-run preview** (`POST /rules/preview`) evaluates every
+  currently-known session against the rules file on disk and reports what
+  would happen — fires nothing, calls no port, records nothing. It ignores
+  the file's own top-level `enabled` gate (but not a rule's own `enabled`) so
+  an author can test-drive a rules file before ever flipping automation on.
+- **A pause switch** (`POST /rules/pause`) at runtime, mirroring
+  `issue-driver`'s own `/pause` — suppresses every action without touching
+  the file or losing the engine's tracked session state.
+- Actions never touch a session the rule did not match, and a rule that
+  matches nothing is not an error — it simply produces no outcome.
+
+### File format — `<claudeConfigDir>/pid-dashboard/rules.json`
+
+```jsonc
+{
+  "enabled": true,                       // required to actually fire anything; absent/false = fully off
+  "rules": [
+    {
+      "name": "page-on-stuck-blocked",   // required, unique across the file
+      "enabled": true,                   // optional, default true — a per-rule kill switch
+      "when": {
+        "state": "blocked",              // required: blocked | needs_input | done | failed | idle | unknown
+        "forMs": 300000,                 // optional: present = dwell condition, absent = transition condition
+        "harness": "claude",             // optional: claude | pi — restrict to one CLI's sessions
+        "stale": true                    // optional boolean — match sessions-explain.core's own staleness verdict
+      },
+      "then": {
+        "action": "notify",              // notify | keys | stop
+        "message": "still blocked after 5 minutes"
+      },
+      "cooldownMs": 300000               // optional, default 300000, integer 0..86400000
+    }
+  ]
+}
+```
+
+Wire field name note: the schema's action object is spelled `then` in this
+document's prose (it reads naturally: "when X, then Y") but is named `do` on
+the actual JSON wire and in `rules.core.ts` — Biome's `noThenProperty` lint
+rule flags any object literal with a `then` key (thenable ambiguity), so the
+real field is `do: { action, ... }`.
+
+### Conditions (`when`)
+
+- **`state`** is required and is one of the six trigger states —
+  deliberately narrower than the full eight-slug vocabulary: `working` is
+  excluded (a session actively working needs no automation reacting to it)
+  and so is `stopped` (that session was already ended deliberately, by a
+  human or `pid stop`; nothing should react to that on its own).
+- **Transition condition** (`forMs` absent): matches the instant a session's
+  state becomes `state` and was not already `state` a moment before —
+  including the very first time this daemon ever observes that session, so a
+  session already sitting in `blocked` at daemon boot counts as "just
+  entered blocked."
+- **Dwell condition** (`forMs` present, an integer 1000..86400000ms): matches
+  whenever the session is CURRENTLY in `state` and has held it for at least
+  `forMs`, re-checked on every periodic tick (`PID_RULES_TICK_MS`, default
+  30000ms; `0` disables the sweep). A dwell rule therefore depends on this
+  engine's own tick staying alive — this daemon has previously lost its
+  entire timer subsystem on a long uptime (see `sessions.io.ts`'s
+  `ensureFresh` comment), so a dwell rule should never be the only thing a
+  user relies on for something time-critical.
+- **`harness`** (optional: `claude` | `pi`) restricts the rule to sessions of
+  one CLI, mirroring `SessionState.harness`.
+- **`stale`** (optional boolean) matches against the same staleness verdict
+  `GET /sessions/:id/explain` computes (state claims an active slug but
+  hasn't been updated in over 120000ms) — recomputed independently inside
+  the rules engine from the same `session.state` bus payload, since the
+  rules slice cannot import `sessions-explain.core.ts`'s internals (see
+  below).
+
+### Actions (`do`)
+
+- **`notify`** — `{ action: "notify", message }`. Publishes a `notification`
+  SSE event (`{ short, rule, message, at }`) for a future web toast/notifier,
+  distinct from the `rules.fired` audit event every outcome already gets
+  (see "SSE surface" below).
+- **`keys`** — `{ action: "keys", sequence: NamedKey[], confirm: true }`. The
+  same 15-name vocabulary "Named key vocabulary" above documents (no `text`
+  steps, no `repeat` — just names); resolved through the REAL
+  `sessions-keys.core.ts` vocabulary at the wire boundary, not the rules
+  slice's own mirrored copy, so a vocabulary drift would surface as a runtime
+  error rather than silently sending the wrong bytes. **`confirm: true` is
+  mandatory to ever actually fire** — see "Safety" above.
+- **`stop`** — `{ action: "stop" }`. Ends the session the supported way
+  (`ShellIo.stop`, the same call `POST /sessions/:id/stop` makes).
+
+### Validation
+
+`parseRulesFile` collects **every** error in one pass, the same discipline
+`parseFleetFile` uses: a bad `name`, an unrecognized `when.state` /
+`when.harness`, an out-of-range `when.forMs` / `cooldownMs`, a malformed
+`then`/`do` object for the declared `action`, an unknown key name in a `keys`
+sequence, and duplicate rule names are all reported together, not
+one-fix-rerun-see-the-next. A malformed `rules.json` (bad JSON, or JSON that
+doesn't match the schema) is never a 500: `GET /rules` and `pid rules` both
+surface it as an `errors` list — `pid rules` exits 2, the same code `pid
+fleets` uses for an invalid recipe. An absent `rules.json` is not an error
+either: `{ enabled: false, rules: [] }`, disabled.
+
+### Why the rules slice can't import the real vocabulary
+
+`features/rules/rules.core.ts` mirrors `KNOWN_STATES`, `NAMED_KEYS`, the
+`harness` field and `STALE_ACTIVE_MS` as literal copies rather than
+importing `sessions.core.ts` / `sessions-keys.core.ts` /
+`sessions-explain.core.ts` directly — those are slice internals, not a
+published door, and `bun run axiom-debt`'s cross-slice-import counter fails
+the build on any NEW violation of that rule. `fleet.core.ts` and
+`apps/cli/src/agent/agent.core.ts` hit the identical constraint and keep the
+same kind of literal copy; `scripts/mirrored-constants.test.ts` guards all
+three against drifting from the real values. For the same reason, the
+engine's own picture of "what is every session doing right now"
+(`features/rules/rules.io.ts`) is built entirely from decoding
+`session.state` / `session.removed` payloads off the SSE bus — it never
+queries the sessions slice directly. Ports (`notify`, `sendKeys`, `stop`,
+`now`) are injected plain-Promise functions, exactly like
+`fleet-run.io.ts`'s `FleetRunPorts`; `api.ts` (outside any slice, so free of
+the ratchet) wires the real `ShellIo` / `sse-bus` implementations into them.
+
+### Endpoints
+
+- `GET /rules` — `{ enabled, paused, errors, rules, log }`: the parsed rules
+  (empty when the file is invalid), every validation error, whether the
+  file/engine is enabled, whether it's currently paused, and the recent
+  firing log (bounded to the last 200 entries — fired AND suppressed).
+- `POST /rules/pause` — body `{ paused?: boolean }` (default `true`, same
+  contract as `POST /issue-driver/pause`) — `{ paused }`.
+- `POST /rules/preview` — `{ errors, outcomes }`: evaluates every
+  currently-known session against the on-disk rules file and reports what
+  would fire and what would be suppressed (and why) — fires nothing.
+
+### CLI and SSE surface
+
+`pid rules [--json]` lists the parsed rules, validation errors, and
+enabled/paused state; `pid rules preview [--json]` runs the dry-run above.
+Both exit 2 on an invalid rules file, the same as `pid fleets` — see AGENTS.md
+"Exit codes" below (2 already means "an invalid recipe file," broadened here
+to cover an invalid rules file too; no new code was introduced).
+
+`rules.fired` joins the SSE event union (see "API surface" above): published
+once per outcome the engine's `evaluate` produces — fired AND suppressed —
+carrying the same shape `GET /rules`'s `log` array does
+(`{ _tag: "Fired" | "Suppressed", rule, short, action, reason?, at }`). This
+is the daemon's own audit trail for "why did/didn't this rule fire," separate
+from the human-facing `notification` event a `notify` action publishes.
+
 ## Single-package CLI distribution (`pid-dashboard`)
 
 `apps/cli` publishes the whole dashboard as one dependency-free package:
@@ -658,6 +850,8 @@ pid rm <short>
 pid fleets [--project <id>] [--json]
 pid fleet run <name> [--project <id>] [--dry-run] [--wait] [--json]
 pid fleet runs [--project <id>] [--json]
+pid rules [--json]
+pid rules preview [--json]
 pid [--help] [--url <base>]
 ```
 
@@ -717,6 +911,13 @@ pid [--help] [--url <base>]
   .../fleet-runs/:runId` to completion and prints the final run summary.
   `pid fleet runs` lists every run started for a project via
   `GET /projects/:id/fleet-runs`.
+- `pid rules` lists the state-change automation rules in
+  `<claudeConfigDir>/pid-dashboard/rules.json` (see "State-change rules"
+  above) via `GET /rules` — off by default, so this is safe to run at any
+  time. A non-empty `errors` list exits 2, the same linter contract as `pid
+  fleets`. `pid rules preview` evaluates every currently-known session
+  against the file via `POST /rules/preview` and reports what would fire —
+  it never spawns, sends keys, or stops anything.
 
 ### Exit codes
 

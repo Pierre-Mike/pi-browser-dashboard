@@ -11,6 +11,7 @@ import {
   exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
+  exitCodeForRulesErrors,
   exitCodeForUsage,
   exitCodeForWaitBody,
   filterByState,
@@ -22,6 +23,8 @@ import {
   formatFleets,
   formatKeysSent,
   formatRemoved,
+  formatRulesPreview,
+  formatRulesStatus,
   formatSent,
   formatSessions,
   formatSpawned,
@@ -39,6 +42,8 @@ import {
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
+  parseRulesPreviewResponse,
+  parseRulesStatusResponse,
   parseSendResponse,
   parseSessionsResponse,
   parseWaitOutcomeBody,
@@ -544,6 +549,49 @@ describe("parseAgentArgv", () => {
     it("rejects a bare fleet with no subcommand", () => {
       expect(left(parseAgentArgv(["fleet"])).message).toBe(
         "fleet: unknown subcommand (expected run|runs)",
+      )
+    })
+  })
+
+  describe("rules / rules preview", () => {
+    it("defaults json to false for a bare `rules`", () => {
+      expect(right(parseAgentArgv(["rules"]))).toEqual({
+        _tag: "Rules",
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("parses --json", () => {
+      expect(right(parseAgentArgv(["rules", "--json"]))).toEqual({
+        _tag: "Rules",
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("rejects a positional argument", () => {
+      expect(left(parseAgentArgv(["rules", "extra"])).message).toBe(
+        "rules: unexpected argument: extra",
+      )
+    })
+
+    it("parses `rules preview` with defaults and with --json", () => {
+      expect(right(parseAgentArgv(["rules", "preview"]))).toEqual({
+        _tag: "RulesPreview",
+        json: false,
+        url: undefined,
+      })
+      expect(right(parseAgentArgv(["rules", "preview", "--json"]))).toEqual({
+        _tag: "RulesPreview",
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("rejects a positional argument on rules preview", () => {
+      expect(left(parseAgentArgv(["rules", "preview", "extra"])).message).toBe(
+        "rules preview: unexpected argument: extra",
       )
     })
   })
@@ -1554,5 +1602,179 @@ describe("fleet run formatting", () => {
     expect(formatFleetRuns(runs)).toBe(
       `run-1  review-and-fix  done\nrun-2  ${"fix".padEnd(14)}  running`,
     )
+  })
+})
+
+describe("parseRulesStatusResponse", () => {
+  it("parses a well-formed response", () => {
+    expect(
+      right(
+        parseRulesStatusResponse({
+          enabled: true,
+          paused: false,
+          errors: [],
+          rules: [{ name: "r", enabled: true }],
+          log: [{ _tag: "Fired", rule: "r", short: "ab12", at: 100 }],
+        }),
+      ),
+    ).toEqual({
+      enabled: true,
+      paused: false,
+      errors: [],
+      rules: [{ name: "r", enabled: true }],
+      log: [{ tag: "Fired", rule: "r", short: "ab12", at: 100 }],
+    })
+  })
+
+  it("rejects a non-object response", () => {
+    expect(left(parseRulesStatusResponse(null)).message).toBe("rules response must be an object")
+  })
+
+  it("requires enabled, paused, errors, rules and log", () => {
+    const full = { enabled: false, paused: false, errors: [], rules: [], log: [] }
+    expect(left(parseRulesStatusResponse({ ...full, enabled: undefined })).message).toBe(
+      "rules response is missing enabled",
+    )
+    expect(left(parseRulesStatusResponse({ ...full, paused: undefined })).message).toBe(
+      "rules response is missing paused",
+    )
+    expect(left(parseRulesStatusResponse({ ...full, errors: undefined })).message).toBe(
+      "rules response is missing errors",
+    )
+    expect(left(parseRulesStatusResponse({ ...full, rules: undefined })).message).toBe(
+      "rules response is missing rules",
+    )
+    expect(left(parseRulesStatusResponse({ ...full, log: undefined })).message).toBe(
+      "rules response is missing log",
+    )
+  })
+
+  it("surfaces every rule error, attributing it to the rule it belongs to", () => {
+    const response = {
+      enabled: false,
+      paused: false,
+      errors: [{ rule: "r", message: "cooldownMs must be an integer between 0 and 86400000" }],
+      rules: [],
+      log: [],
+    }
+    expect(right(parseRulesStatusResponse(response)).errors).toEqual(response.errors)
+  })
+})
+
+describe("parseRulesPreviewResponse", () => {
+  it("parses Fired and Suppressed outcomes", () => {
+    expect(
+      right(
+        parseRulesPreviewResponse({
+          errors: [],
+          outcomes: [
+            { _tag: "Fired", rule: "r1", short: "ab12" },
+            { _tag: "Suppressed", rule: "r2", short: "cd34" },
+          ],
+        }),
+      ),
+    ).toEqual({
+      errors: [],
+      outcomes: [
+        { tag: "Fired", rule: "r1", short: "ab12" },
+        { tag: "Suppressed", rule: "r2", short: "cd34" },
+      ],
+    })
+  })
+
+  it("rejects an outcome with an unrecognized _tag", () => {
+    expect(
+      left(
+        parseRulesPreviewResponse({
+          errors: [],
+          outcomes: [{ _tag: "Exploded", rule: "r", short: "ab12" }],
+        }),
+      ).message,
+    ).toBe('preview outcome has an unrecognized _tag: "Exploded"')
+  })
+
+  it("requires errors and outcomes", () => {
+    // The "missing errors" message is shared with parseRulesStatusResponse's
+    // own errors field (both reuse the same parseRuleErrors helper).
+    expect(left(parseRulesPreviewResponse({ outcomes: [] })).message).toBe(
+      "rules response is missing errors",
+    )
+    expect(left(parseRulesPreviewResponse({ errors: [] })).message).toBe(
+      "rules preview response is missing outcomes",
+    )
+  })
+})
+
+describe("formatRulesStatus / exitCodeForRulesErrors", () => {
+  it("reports disabled/paused state and 'no rules configured'", () => {
+    expect(
+      formatRulesStatus({ enabled: false, paused: false, errors: [], rules: [], log: [] }),
+    ).toBe("state-change rules: disabled\n\nno rules configured")
+  })
+
+  it("reports enabled + paused together, and lists rules with their enabled state", () => {
+    expect(
+      formatRulesStatus({
+        enabled: true,
+        paused: true,
+        errors: [],
+        rules: [
+          { name: "notify-on-blocked", enabled: true },
+          { name: "old-rule", enabled: false },
+        ],
+        log: [],
+      }),
+    ).toBe("state-change rules: enabled (paused)\n\n  notify-on-blocked\n  old-rule (disabled)")
+  })
+
+  it("lists validation errors and recent activity, and exits 2 on any error", () => {
+    const withErrors = {
+      enabled: false,
+      paused: false,
+      errors: [{ rule: "r", message: "name must be a non-empty string" }],
+      rules: [],
+      log: [],
+    }
+    expect(formatRulesStatus(withErrors)).toContain(
+      "1 rule error(s):\n  [r] name must be a non-empty string",
+    )
+    expect(exitCodeForRulesErrors(withErrors.errors)).toBe(2)
+
+    const withLog = {
+      enabled: true,
+      paused: false,
+      errors: [],
+      rules: [{ name: "r", enabled: true }],
+      log: [{ tag: "Fired", rule: "r", short: "ab12", at: 1 }],
+    }
+    expect(formatRulesStatus(withLog)).toContain("recent activity:\n  Fired r → ab12")
+    expect(exitCodeForRulesErrors(withLog.errors)).toBe(0)
+  })
+})
+
+describe("formatRulesPreview", () => {
+  it("reports 'nothing would fire' when there are no outcomes", () => {
+    expect(formatRulesPreview({ errors: [], outcomes: [] })).toBe("preview: nothing would fire")
+  })
+
+  it("formats a mix of Fired and Suppressed outcomes", () => {
+    expect(
+      formatRulesPreview({
+        errors: [],
+        outcomes: [
+          { tag: "Fired", rule: "r1", short: "ab12" },
+          { tag: "Suppressed", rule: "r2", short: "cd34" },
+        ],
+      }),
+    ).toBe("would fire: r1 → ab12\nsuppressed: r2 → cd34")
+  })
+
+  it("reports validation errors instead of outcomes when the file is invalid", () => {
+    expect(
+      formatRulesPreview({
+        errors: [{ rule: "(file)", message: "root must be an object" }],
+        outcomes: [],
+      }),
+    ).toBe("1 rule error(s):\n  [(file)] root must be an object")
   })
 })
