@@ -575,9 +575,16 @@ Endpoints:
 this from the CLI; `--wait` polls `GET .../fleet-runs/:runId` to completion
 and exits non-zero (`7`) if the run finished with a failed or skipped step, or
 if the daemon refused to start it as a twin run — see "Exit codes" below.
-`pid fleet runs [--project <id>] [--json]` lists every run for a project. Both
-are daemon + CLI only for now; a dashboard tab is a deliberate follow-up, not
-an oversight.
+`pid fleet runs [--project <id>] [--json]` lists every run for a project.
+
+The project dashboard's **Fleets** tab (`apps/web/src/features/fleet/`,
+`project-tab-panel-fleets`) is the same feature over the same endpoints: one
+card per fleet with a dry-run action (no confirmation — it spawns nothing) and
+a Run action gated behind a confirm dialog that states the exact cost in
+plain words (sessions, waves, project), a live-updating run list fed by the
+`fleet.run` SSE event, and a per-step view (`FleetRunView`) where a skipped
+step is deliberately styled differently from a failed one. See "Frontend
+skeleton" below.
 
 ## Single-package CLI distribution (`pid-dashboard`)
 
@@ -774,6 +781,14 @@ EventSource(/events) ──> sse.ts ──> queryClient.setQueryData
 - `sse.ts` opens one `EventSource` at root mount; reconnects with `Last-Event-ID`.
 - `import.meta.env.VITE_API_URL` with fallback `http://localhost:8787`.
 - Vitest, co-located, exercises hooks with `QueryClientProvider` wrapper.
+- `features/fleet/` (project dashboard "Fleets" tab — see "Fleet recipes"
+  above): `useFleets`/`useFleetRuns`/`useRunFleet` over the typed RPC client,
+  `FleetPanel` (query wiring) → `FleetView` (presentational, mirrors the
+  `pid-settings` Panel/View split) → `FleetRunView` (one run's per-step
+  status). `fleetParse.ts` decodes every wire shape from `unknown` rather than
+  casting `.json()`; `fleetFormat.ts` holds the plan/run-rollup/tone helpers.
+  `sse.ts`'s `fleet.run` listener keeps `useFleetRuns`' cache fresh the same
+  way `terminal.state` keeps `useTerminalState` fresh.
 
 ## Decisions
 
