@@ -45,6 +45,9 @@ describe("shared tab dock", () => {
       "tunnel",
       "github",
       "files",
+      // The session drill-in docks its own sections here too.
+      "chat",
+      "canvas",
     ]) {
       expect(TAB_ICONS[key]).toBeTruthy()
     }

@@ -2,31 +2,52 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-// The drill-in header pulls together router hooks (useParams) and live
-// TanStack Query data (session, transcript) — rendering it needs the same
-// router + resolved-query scaffolding SessionDrillIn itself builds, which SSR
-// can't reach synchronously. Checked structurally instead, same approach as
-// SidebarBucket.test.ts / RecentSessionsFeed.test.ts for the same reason.
+// The drill-in wires router hooks (useParams / useSearch) to live TanStack Query
+// data — rendering it needs the same router + resolved-query scaffolding
+// SessionDrillIn itself builds, which SSR can't reach synchronously. Checked
+// structurally instead, same approach as SidebarBucket.test.ts.
 const src = readFileSync(join(import.meta.dir, "sessions.$id.tsx"), "utf8")
 
-describe("session drill-in header", () => {
-  it("folds short id + cwd into the h1 row instead of a separate metadata row underneath", () => {
-    // That row used to cost a whole extra line under the title, duplicating
-    // info already reachable via hover / the URL.
-    expect(src).not.toContain(
-      'className="text-[11px] text-base-content/50 flex flex-wrap gap-x-2 mt-0.5"',
-    )
-    expect(src).toContain("{session.short} · {session.cwd}")
+describe("session drill-in route", () => {
+  it("composes one topbar and one panel — no second row of chrome", () => {
+    // It used to inline a <header> (title, badge, actions) plus a bordered tab
+    // strip underneath: two rows where the project page spends one, and every
+    // terminal / chat pane paid for the second row in height.
+    expect(src).toContain("<SessionTopbar")
+    expect(src).toContain("<SessionPanel")
+    expect(src).not.toContain("<header")
+    expect(src).not.toContain("border-b-2 -mb-px")
   })
 
-  it("keeps the full cwd path reachable as a hover title even though it's inline now", () => {
-    expect(src).toMatch(/title=\{session\.cwd\}/)
+  it("sizes the page as a viewport-tall flex column, like the project dashboard", () => {
+    expect(src).toContain('className="flex flex-col gap-1 h-screen -my-4 pt-1"')
   })
 
-  it("hosts the collapsed-sidebar reopen chip in the header row it already renders", () => {
-    // No reserved left column: the chip lives in this row, so the terminal /
-    // chat panes below run flush to the left edge.
-    expect(src).toContain('from "../features/sessions/sidebarRail"')
-    expect(src).toMatch(/<header[^>]*>\s*<SidebarReopenButton\s*\/>/)
+  it("takes its ?tab= whitelist from the shared dock definition", () => {
+    // A tab listed in the dock but missing from the whitelist would 404 its own
+    // deep link, so both come from one source.
+    expect(src).toContain('from "../features/sessions/sessionTabs"')
+    expect(src).toContain("coerceEnumTab(search.tab, SESSION_TABS)")
+    expect(src).not.toMatch(/const SESSION_TABS = \[/)
+  })
+
+  it("keeps Terminal as the tab a bare /sessions/:id opens on", () => {
+    expect(src).toContain('const { tab = "terminal" }')
+  })
+
+  it("delegates the action state to the shared hook rather than owning it", () => {
+    expect(src).toContain("useSessionActions({ id, session })")
+    for (const gone of ["setStopping", "setDeleting", "setPeeking", "confirmTimerRef"]) {
+      expect(src).not.toContain(gone)
+    }
+  })
+
+  it("still renders the peek summary under the topbar", () => {
+    expect(src).toContain('data-testid="peek-summary"')
+    expect(src).toContain("actions.peekSummary")
+  })
+
+  it("paints with semantic tokens, not the raw Tailwind palette", () => {
+    for (const raw of ["slate-", "amber-", "rose-", "dark:"]) expect(src).not.toContain(raw)
   })
 })

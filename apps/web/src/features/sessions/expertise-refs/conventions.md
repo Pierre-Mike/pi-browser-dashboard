@@ -1,7 +1,7 @@
 ---
 domain: apps/web/src/features/sessions
 updated: 2026-07-28
-updated_by: claude (left-edge flush collapse)
+updated_by: claude (session topbar folded to one row)
 ---
 
 # Conventions
@@ -33,3 +33,30 @@ updated_by: claude (left-edge flush collapse)
   the top row itself — that row legitimately holds the chip. Sanity-check the
   assertion by stashing the implementation and re-running: the old code must
   fail it (44px vs ≤20px, +39px rail residue), otherwise the test proves nothing.
+
+- **SES-C003: every primary surface spends exactly ONE row on chrome — identity, then the `lib/tabDock` nav, then actions**
+  confidence: 0.7 | added: 2026-07-28
+  The root dashboard, the project page and the session drill-in are the app's
+  three navigable surfaces, and they must be interchangeable at a glance:
+  `<SidebarReopenButton /> · ← · <h1 name + chips> · <nav {tabDockNavClass}> ·
+  <actions>` inside one `flex items-center gap-2`, page container
+  `flex flex-col gap-1 h-screen -my-4 pt-1`. The drill-in was the odd one out —
+  a bordered `<header>` plus a second `border-b-2 -mb-px` underline strip — which
+  pushed its terminal pane to y≈79 against the project page's y≈42. Do not
+  hand-roll tab buttons on a new surface: import `tabDockNavClass` /
+  `tabButtonClass` / `TAB_ICONS` so all three docks change together, and add the
+  section's glyph to `TAB_ICONS` rather than inlining an SVG. Identity mirrors
+  `ProjectIdentity`: one `h1` of inline chips, absolute path in `title=` only.
+
+- **SES-C004: `SessionState.name` is typed `string` but arrives `undefined`**
+  confidence: 0.8 | added: 2026-07-28
+  The daemon omits `name` entirely for a session that was never named, so
+  `session.name.trim()` throws "Cannot read properties of undefined" and the
+  React error boundary swallows the WHOLE drill-in — the unit suites stay green
+  because they never see a real payload, and the failure only shows up as an e2e
+  timeout waiting for a testid that never renders. `apps/web/src/lib/types.ts`
+  is hand-written and unvalidated (`(await res.json()) as SessionState` is
+  ratcheted axiom debt), so treat any string field on it as
+  `string | undefined` at the point of use. `sessionIdentity.ts` is the pure
+  guard for the name/short pair; `session.name || session.short` is the older
+  inline form used by `SessionCard`.
