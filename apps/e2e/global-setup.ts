@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { E2E_ZELLIJ_PREFIX } from "./e2e-env"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -211,6 +212,13 @@ export default async function globalSetup(): Promise<void> {
     PID_AGENTIC_REPO_PATH: agenticRepoPath,
     PID_EXT_LOCAL_DIR: extRoot,
     PID_EXT_GLOBAL_DIR: extGlobalRoot,
+    // Namespace every zellij session this daemon derives. Without it an e2e
+    // run attaches to — or creates — the same OS-user-global `default` /
+    // `Orchestrator` / `<project>` sessions the developer has open in their
+    // own dashboard, and its keystrokes land in their real panes. The names
+    // are deliberately user-global in production (see PID_ZELLIJ_PREFIX in
+    // platform/config.io.ts); a test run is exactly the case that must opt out.
+    PID_ZELLIJ_PREFIX: E2E_ZELLIJ_PREFIX,
     PATH: pathWithStub ?? process.env.PATH ?? "",
   }
 
