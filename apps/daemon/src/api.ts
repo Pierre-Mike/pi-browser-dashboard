@@ -2,6 +2,7 @@ import { join, normalize } from "node:path"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { resolveCorsOrigin } from "./cors.core"
+import * as brainstormsRoute from "./features/brainstorms/brainstorms.routes"
 import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
@@ -68,6 +69,11 @@ const app = new Hono()
     c.text(AGENT_SKILL_MD, 200, { "Content-Type": "text/markdown; charset=utf-8" }),
   )
   .route("/sessions", sessionsRoute.app)
+  // Brainstorm boards are the canvas files in the session's own worktree, so
+  // they hang off the session — an agent editing one writes inside the tree it
+  // already owns. Mounted here rather than inside the sessions router so the
+  // brainstorms slice stays independent of it: the root resolver is passed in.
+  .route("/sessions", brainstormsRoute.createApp(sessionsRoute.resolveSessionRoot))
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
   .route("/dispatch", dispatchRoute.app)

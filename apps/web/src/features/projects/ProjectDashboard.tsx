@@ -2,7 +2,6 @@ import { getRouteApi, Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { usePersistedFlag } from "../../lib/collapse"
 import {
-  BRAINSTORM_ICON,
   EXT_ICON,
   PIDAPP_ICON,
   subTabButtonClass,
@@ -11,9 +10,6 @@ import {
   tabDockNavClass,
 } from "../../lib/tabDock"
 import type { Project, SessionState, SessionStateValue } from "../../lib/types"
-import { BrainstormBoardPanel } from "../brainstorms/BoardPanel"
-import { NewBrainstormButton } from "../brainstorms/NewBrainstormButton"
-import { useBrainstorms } from "../brainstorms/useBrainstorms"
 import { ClaudeConfigPanel } from "../claude-config/ClaudeConfigPanel"
 import { SpawnModal } from "../dispatch/SpawnModal"
 import { ExtensionHost } from "../extensions/ExtensionHost"
@@ -49,15 +45,12 @@ type StaticTabKey =
   | "settings"
   // The single parent "Specs" dock tab; individual apps live in its left rail.
   | "pidapps"
-  // The single parent "Brainstorm" dock tab; individual boards live in its
-  // left rail, same pattern as Specs.
-  | "brainstorm"
 // Extension-contributed project panels are namespaced (`ext:<name>`). Every
 // per-project pid-app (dropped into <project>/.pid/ or a top-level specs/*.html)
 // is selected within the Specs tab via a `pidapp:<id>` search param — a
-// selected app implies the parent `pidapps` tab is active. Brainstorm boards
-// follow the same scheme with `brainstorm:<id>`.
-type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}` | `brainstorm:${string}`
+// selected app implies the parent `pidapps` tab is active. Drawing boards moved
+// to the session drill-in, where they sit in the worktree the agent edits.
+type TabKey = StaticTabKey | `ext:${string}` | `pidapp:${string}`
 
 type Tab = { readonly key: TabKey; readonly label: string }
 
@@ -66,7 +59,6 @@ type Tab = { readonly key: TabKey; readonly label: string }
 const NAMESPACE_ICONS = [
   ["ext:", EXT_ICON],
   ["pidapp", PIDAPP_ICON],
-  ["brainstorm", BRAINSTORM_ICON],
 ] as const
 
 // Each project tab borrows the shared section glyph (see lib/tabDock) so a
@@ -200,13 +192,11 @@ export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
   const extensionsQ = useExtensions()
   const pidAppsQ = usePidApps(project.id)
-  const brainstormsQ = useBrainstorms(project.id)
   const pull = useProjectGitPull(project.id)
   const [spawnOpen, setSpawnOpen] = useState(false)
   // Per-tab left-rail collapse — reclaims the rail's width for the spec host /
   // canvas. Persisted per browser (see usePersistedFlag).
   const specsRail = usePersistedFlag("pid:specs:rail-collapsed")
-  const brainstormRail = usePersistedFlag("pid:brainstorm:rail-collapsed")
   const sessions = (sessionsQ.data ?? []).filter((s) => s.cwd === project.path)
   const counts = tally(sessions)
 
@@ -237,8 +227,6 @@ export const ProjectDashboard = ({ project }: Props) => {
       // One parent tab for every pid-app; the individual apps hang off its left
       // rail rather than each claiming a top-level dock tab.
       { key: "pidapps", label: "Specs" },
-      // Same left-rail pattern for the AI drawing boards.
-      { key: "brainstorm", label: "Brainstorm" },
       ...extPanels.map((e): Tab => ({ key: `ext:${e.name}`, label: e.name })),
     )
     return base
@@ -254,22 +242,11 @@ export const ProjectDashboard = ({ project }: Props) => {
   const selectedFromTab = tab.startsWith("pidapp:") ? tab.slice("pidapp:".length) : undefined
   const selectedAppId = pidApps.find((a) => a.id === selectedFromTab)?.id ?? pidApps[0]?.id
 
-  // Same fallback scheme for brainstorm boards.
-  const brainstorms = brainstormsQ.data ?? []
-  const brainstormActive = tab === "brainstorm" || tab.startsWith("brainstorm:")
-  const selectedBoardFromTab = tab.startsWith("brainstorm:")
-    ? tab.slice("brainstorm:".length)
-    : undefined
-  const selectedBoard =
-    brainstorms.find((b) => b.id === selectedBoardFromTab) ?? brainstorms[0] ?? null
-
   // A collapsed rail leaves nothing behind beside the panel, so the topbar hosts
-  // the chip that brings back whichever rail the active tab owns.
+  // the chip that brings it back.
   const railChip = collapsedRail({
     specsActive: pidAppsActive,
-    brainstormActive,
     specsCollapsed: specsRail.value,
-    brainstormCollapsed: brainstormRail.value,
   })
 
   const fillViewport =
@@ -279,8 +256,7 @@ export const ProjectDashboard = ({ project }: Props) => {
     tab === "library" ||
     tab.startsWith("ext:") ||
     tab === "pidapps" ||
-    tab.startsWith("pidapp:") ||
-    brainstormActive
+    tab.startsWith("pidapp:")
 
   return (
     <div
@@ -308,12 +284,7 @@ export const ProjectDashboard = ({ project }: Props) => {
         >
           {tabs.map((t) => {
             // A parent tab stays lit while any of its children is selected.
-            const active =
-              t.key === "pidapps"
-                ? pidAppsActive
-                : t.key === "brainstorm"
-                  ? brainstormActive
-                  : tab === t.key
+            const active = t.key === "pidapps" ? pidAppsActive : tab === t.key
             return (
               <button
                 key={t.key}
@@ -332,12 +303,7 @@ export const ProjectDashboard = ({ project }: Props) => {
           })}
         </nav>
 
-        {railChip ? (
-          <RailExpandButton
-            rail={railChip}
-            onToggle={railChip.kind === "specs" ? specsRail.toggle : brainstormRail.toggle}
-          />
-        ) : null}
+        {railChip ? <RailExpandButton rail={railChip} onToggle={specsRail.toggle} /> : null}
 
         <div className="flex items-center gap-1 shrink-0">
           {counts.working > 0 ? (
@@ -509,58 +475,6 @@ export const ProjectDashboard = ({ project }: Props) => {
             })
           )}
         </div>
-      </div>
-
-      {/* One "Brainstorm" section: a left rail of boards beside the shared
-          canvas editor and the AI-companion panel for the selected board. */}
-      <div
-        role="tabpanel"
-        data-testid="project-tab-panel-brainstorm"
-        className={brainstormActive ? "flex flex-1 min-h-0 gap-2" : "hidden"}
-      >
-        <CollapsibleRail
-          collapsed={brainstormRail.value}
-          onToggle={brainstormRail.toggle}
-          ariaLabel="Brainstorm boards"
-          testid="brainstorm-subtabs"
-        >
-          {brainstorms.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              role="tab"
-              aria-selected={selectedBoard?.id === b.id}
-              data-testid={`brainstorm-subtab-${b.id}`}
-              data-active={selectedBoard?.id === b.id}
-              onClick={() => setTab(`brainstorm:${b.id}`)}
-              title={b.label}
-              className={subTabButtonClass(selectedBoard?.id === b.id)}
-            >
-              <span className="shrink-0">{BRAINSTORM_ICON}</span>
-              <span className="truncate">{b.label}</span>
-            </button>
-          ))}
-          <NewBrainstormButton
-            projectId={project.id}
-            onCreated={(id) => setTab(`brainstorm:${id}`)}
-          />
-          <NewBrainstormButton
-            projectId={project.id}
-            kind="excalidraw"
-            onCreated={(id) => setTab(`brainstorm:${id}`)}
-          />
-        </CollapsibleRail>
-
-        {selectedBoard === null ? (
-          <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
-            No brainstorms yet — click <span className="font-medium text-base-content/80">+</span>{" "}
-            to open a drawing board with AI companions.
-          </div>
-        ) : (
-          // Keyed by board so the document sync + companion selection fully
-          // reset when switching boards.
-          <BrainstormBoardPanel key={selectedBoard.id} project={project} board={selectedBoard} />
-        )}
       </div>
 
       <SpawnModal open={spawnOpen} project={project} onClose={() => setSpawnOpen(false)} />

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { TAB_ICONS } from "../../lib/tabDock"
-import { SESSION_TAB_DOCK, SESSION_TABS } from "./sessionTabs"
+import {
+  isSessionTabActive,
+  SESSION_TAB_DOCK,
+  SESSION_TABS,
+  sessionSectionFor,
+} from "./sessionTabs"
 
 describe("session tab dock", () => {
   it("leads with Terminal, the drill-in's default tab", () => {
@@ -9,9 +14,21 @@ describe("session tab dock", () => {
     expect(SESSION_TAB_DOCK[0]).toEqual({ key: "terminal", label: "Terminal" })
   })
 
-  it("docks exactly the four drill-in sections, title-cased", () => {
-    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual(["terminal", "chat", "canvas", "files"])
-    expect(SESSION_TAB_DOCK.map((t) => t.label)).toEqual(["Terminal", "Chat", "Canvas", "Files"])
+  it("docks exactly the five drill-in sections, title-cased", () => {
+    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual([
+      "terminal",
+      "chat",
+      "canvas",
+      "brainstorm",
+      "files",
+    ])
+    expect(SESSION_TAB_DOCK.map((t) => t.label)).toEqual([
+      "Terminal",
+      "Chat",
+      "Canvas",
+      "Brainstorm",
+      "Files",
+    ])
   })
 
   it("derives the ?tab= whitelist from the dock so no section is dockable-but-unroutable", () => {
@@ -22,5 +39,29 @@ describe("session tab dock", () => {
     // A missing glyph would render a label with no icon, breaking the dock's
     // icon+label rhythm on this surface only.
     for (const t of SESSION_TAB_DOCK) expect(TAB_ICONS[t.key]).toBeTruthy()
+  })
+})
+
+describe("isSessionTabActive", () => {
+  it("lights the exact section a plain tab names", () => {
+    expect(isSessionTabActive({ tab: "terminal", key: "terminal" })).toBe(true)
+    expect(isSessionTabActive({ tab: "terminal", key: "canvas" })).toBe(false)
+  })
+
+  it("keeps Brainstorm lit while one of its boards is selected", () => {
+    const tab = "brainstorm:brainstorms%2Fauth.canvas"
+    expect(isSessionTabActive({ tab, key: "brainstorm" })).toBe(true)
+    expect(isSessionTabActive({ tab, key: "canvas" })).toBe(false)
+  })
+})
+
+describe("sessionSectionFor", () => {
+  it("resolves a board tab to the Brainstorm section", () => {
+    expect(sessionSectionFor("brainstorm:docs%2Fa.canvas")).toBe("brainstorm")
+    expect(sessionSectionFor("brainstorm")).toBe("brainstorm")
+  })
+
+  it("passes a plain section through", () => {
+    expect(sessionSectionFor("files")).toBe("files")
   })
 })

@@ -1,7 +1,6 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { app as brainstormsApp } from "../brainstorms/brainstorms.routes"
 import { app as pidAppsApp } from "../pid-apps/pid-apps.routes"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
 import { errorToStatus, treeGitStatusAt } from "./fileBrowser.routes"
@@ -160,8 +159,5 @@ const app = new Hono()
   // Per-project pid-apps (HTML dropped into <project>/.pid/): GET
   // /projects/:id/pid-apps and /projects/:id/pid-apps/:appId/*.
   .route("/", pidAppsApp)
-  // Per-project brainstorm canvases (<project>/.pid/brainstorms/*.canvas.json):
-  // GET/POST /projects/:id/brainstorms[/:slug[/ws]].
-  .route("/", brainstormsApp)
 
 export { app }

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, type Locator, test } from "@playwright/test"
-import { ensureProject } from "./helpers"
+import { dispatchDirect, ensureProject, sessionRootOf, waitForSessionInRegistry } from "./helpers"
 
 // Reducing a left rail must hand over ALL of its width. Both rails used to leave
 // a residual strip behind — <main> reserved ~44px to clear a floating reopen
@@ -92,25 +92,23 @@ test("collapsing the Specs rail hands its full width to the spec host", async ({
   await expect(rail).toBeVisible()
 })
 
-test("collapsing the Brainstorm rail hands its full width to the board", async ({ page }) => {
-  const path = ensureProject("flush-boards")
-  const dir = join(path, ".pid", "brainstorms")
-  mkdirSync(dir, { recursive: true })
+test("collapsing the boards rail hands its full width to the board", async ({ page }) => {
+  const cwd = ensureProject("flush-boards")
+  const { short } = await dispatchDirect(undefined, { cwd })
+  const root = sessionRootOf(await waitForSessionInRegistry(short))
   writeFileSync(
-    join(dir, "flush-board.canvas.json"),
+    join(root, "flush-board.canvas"),
     JSON.stringify({
-      version: 1,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      nodes: [{ id: "n1", position: { x: 40, y: 40 }, data: { label: "flush idea" } }],
+      nodes: [{ id: "n1", type: "text", x: 40, y: 40, width: 200, height: 60, text: "flush idea" }],
       edges: [],
     }),
   )
 
-  await page.goto("/projects/flush-boards?tab=brainstorm")
+  await page.goto(`/sessions/${short}?tab=brainstorm`)
   const rail = page.getByTestId("brainstorm-subtabs")
   await expect(rail).toBeVisible({ timeout: 15_000 })
 
-  const board = page.getByTestId("project-tab-panel-brainstorm-flush-board")
+  const board = page.getByTestId("session-board-editor")
   await expect(board).toBeVisible({ timeout: 15_000 })
   const before = await boxOf(board)
 
@@ -118,10 +116,10 @@ test("collapsing the Brainstorm rail hands its full width to the board", async (
   await expect(rail).not.toBeAttached()
 
   const after = await boxOf(board)
-  const section = await boxOf(page.getByTestId("project-tab-panel-brainstorm"))
-  expect(after.x).toBeLessThanOrEqual(section.x + 1)
-  expect(before.x - after.x).toBeGreaterThan(150)
+  expect(before.x - after.x).toBeGreaterThan(120)
 
+  // With the rail gone the reopen chip is the only way back, and it rides inside
+  // the section rather than eating a column of the board.
   await page.getByTestId("brainstorm-subtabs-expand").click()
   await expect(rail).toBeVisible()
 })

@@ -27,8 +27,15 @@ describe("session drill-in route", () => {
     // A tab listed in the dock but missing from the whitelist would 404 its own
     // deep link, so both come from one source.
     expect(src).toContain('from "../features/sessions/sessionTabs"')
-    expect(src).toContain("coerceEnumTab(search.tab, SESSION_TABS)")
+    expect(src).toContain("staticKeys: SESSION_TABS")
     expect(src).not.toMatch(/const SESSION_TABS = \[/)
+  })
+
+  it("keeps a deep link to one brainstorm board through validateSearch", () => {
+    // `?tab=brainstorm:<encoded path>` names a board inside the Brainstorm
+    // section; a fixed-enum coercion would silently drop it back to Terminal.
+    expect(src).toContain("coerceNamespacedTab")
+    expect(src).toContain("prefixes: [BOARD_TAB_PREFIX]")
   })
 
   it("keeps Terminal as the tab a bare /sessions/:id opens on", () => {

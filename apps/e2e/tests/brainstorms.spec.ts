@@ -1,75 +1,130 @@
 import { mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { ensureProject } from "./helpers"
+import { dispatchDirect, ensureProject, sessionRootOf, waitForSessionInRegistry } from "./helpers"
 
-// End-to-end brainstorms: named canvas documents under <project>/.pid/brainstorms/
-// surface as left-rail boards on the project's Brainstorm tab, the shared canvas
-// editor binds to the selected document over the brainstorm ws route, and the
-// AI-companion panel is the simple plain-session control. global-setup runs the real daemon
-// + web; we seed a document on disk so discovery runs against a real filesystem.
+// End-to-end brainstorms, session-scoped. A board is any canvas file in the tree
+// the session works in — no blessed directory — so the specs seed one *outside*
+// `brainstorms/` and expect it listed anyway. global-setup runs the real daemon
+// + web; the documents are seeded on disk so discovery runs against a real
+// filesystem, and the root is read back from the daemon so the same spec works
+// whether the session got an isolated worktree (real mode) or works in its cwd
+// (stub mode).
 const DAEMON_PORT = process.env.PID_E2E_DAEMON_PORT ?? 18787
 
-const seedBrainstorm = (): string => {
-  const path = ensureProject("brainstorm-demo")
-  const dir = join(path, ".pid", "brainstorms")
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(
-    join(dir, "seeded-board.canvas.json"),
-    JSON.stringify({
-      version: 1,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      nodes: [{ id: "n1", position: { x: 40, y: 40 }, data: { label: "seeded idea" } }],
-      edges: [],
-    }),
-  )
-  return path
+// Obsidian JSON Canvas — the format `.canvas` boards are stored in.
+const seededCanvas = {
+  nodes: [{ id: "n1", type: "text", x: 40, y: 40, width: 200, height: 60, text: "seeded idea" }],
+  edges: [],
 }
 
-test("brainstorm: seeded board lists in the left rail, binds the live canvas, and shows AI companions", async ({
+const seedBoard = async (input: {
+  readonly project: string
+  readonly path: string
+  readonly body: unknown
+}): Promise<{ short: string; root: string }> => {
+  const cwd = ensureProject(input.project)
+  const { short } = await dispatchDirect(undefined, { cwd })
+  const root = sessionRootOf(await waitForSessionInRegistry(short))
+  const file = join(root, input.path)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(input.body))
+  return { short, root }
+}
+
+test("brainstorm: a .canvas anywhere in the worktree lists in the rail and binds the live canvas", async ({
   page,
 }) => {
-  seedBrainstorm()
-  await page.goto("/projects/brainstorm-demo")
-  await expect(page.getByTestId("project-dashboard")).toBeVisible({ timeout: 15_000 })
-
-  // Boards live under the single parent "Brainstorm" tab, not their own dock tabs.
-  const brainstormTab = page.getByTestId("project-tab-brainstorm")
-  await expect(brainstormTab).toBeVisible({ timeout: 15_000 })
-  await brainstormTab.click()
-  await expect(brainstormTab).toHaveAttribute("data-active", "true")
-
-  // The seeded document appears as a left-rail sub-tab and is auto-selected.
-  await expect(page.getByTestId("brainstorm-subtab-seeded-board")).toBeVisible({
-    timeout: 15_000,
+  // Deliberately not under brainstorms/ — discovery is by suffix over the tree.
+  const { short } = await seedBoard({
+    project: "brainstorm-demo",
+    path: "docs/arch.canvas",
+    body: seededCanvas,
   })
-  await expect(page.getByTestId("project-tab-panel-brainstorm-seeded-board")).toBeVisible()
 
-  // The shared canvas editor binds to the document over the brainstorm ws
+  await page.goto(`/sessions/${short}?tab=brainstorm`)
+  await expect(page.getByTestId("session-topbar")).toBeVisible({ timeout: 15_000 })
+
+  // Brainstorm is a docked section of the drill-in, and boards hang off its rail.
+  await expect(page.getByTestId("tab-brainstorm")).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("brainstorm-subtab-docs/arch")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("brainstorm-subtab-docs/arch")).toHaveAttribute(
+    "data-active",
+    "true",
+  )
+
+  // The shared canvas editor binds to the document over the session-scoped ws
   // route: the sync badge reaching "live" proves the whole WS path end-to-end.
   await expect(page.getByTestId("canvas-tab")).toBeVisible()
   await expect(page.getByTestId("canvas-status")).toHaveText("live", { timeout: 15_000 })
 
-  // The seeded node made it from disk onto the canvas.
+  // The seeded Obsidian node made it from disk onto the canvas — proof the
+  // .canvas codec decoded, not just that a socket opened.
   await expect(page.getByText("seeded idea")).toBeVisible({ timeout: 15_000 })
 
-  // The AI companion panel is the simple V2-style chat: a single "New session"
-  // start control and NO V1 role buttons (no live spawn in e2e).
+  // This session's own terminal is docked beside the board, and "Brief AI" works
+  // here now: the board lives in this session's tree, so its writes land in the
+  // file on screen.
   await expect(page.getByTestId("brainstorm-companion")).toBeVisible()
-  await expect(page.getByTestId("brainstorm-session-start")).toBeVisible()
-  for (const role of ["review", "beautify", "critique", "ideate"]) {
-    await expect(page.getByTestId(`brainstorm-role-${role}`)).toHaveCount(0)
-  }
-
-  // The session-canvas-only "Brief AI" button must NOT leak into brainstorm mode.
-  await expect(page.getByTestId("canvas-brief-ai")).toHaveCount(0)
+  await expect(page.getByTestId("canvas-brief-ai")).toBeVisible()
+  await expect(page.getByTestId("brainstorm-board-file")).toHaveText("docs/arch.canvas")
 })
 
-test("brainstorm: the AI companion panel is resizable", async ({ page }) => {
-  seedBrainstorm()
-  await page.goto("/projects/brainstorm-demo?tab=brainstorm")
+test("brainstorm: a deep link selects one board by its path", async ({ page }) => {
+  const { short, root } = await seedBoard({
+    project: "brainstorm-deeplink",
+    path: "docs/arch.canvas",
+    body: seededCanvas,
+  })
+  // A second board, alphabetically first, so "the linked board" and "the
+  // fallback board" are not the same one.
+  writeFileSync(join(root, "aaa.canvas"), JSON.stringify({ nodes: [], edges: [] }))
+
+  await page.goto(`/sessions/${short}?tab=brainstorm:${encodeURIComponent("docs/arch.canvas")}`)
+  await expect(page.getByTestId("brainstorm-subtab-docs/arch")).toHaveAttribute(
+    "data-active",
+    "true",
+    { timeout: 15_000 },
+  )
+  await expect(page.getByTestId("brainstorm-subtab-aaa")).toHaveAttribute("data-active", "false")
+})
+
+test("brainstorm: the + button creates a board under brainstorms/ and switches to it", async ({
+  page,
+}) => {
+  const { short } = await seedBoard({
+    project: "brainstorm-create",
+    path: "docs/arch.canvas",
+    body: seededCanvas,
+  })
+
+  await page.goto(`/sessions/${short}?tab=brainstorm`)
   await expect(page.getByTestId("brainstorm-subtabs")).toBeVisible({ timeout: 15_000 })
 
+  await page.getByTestId("brainstorm-new").click()
+  await page.getByTestId("brainstorm-new-input").fill("fresh-board")
+  await page.getByTestId("brainstorm-new-input").press("Enter")
+
+  await expect(page.getByTestId("brainstorm-subtab-fresh-board")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("brainstorm-subtab-fresh-board")).toHaveAttribute(
+    "data-active",
+    "true",
+  )
+  // Created inside brainstorms/ by default — the label drops that prefix, the
+  // panel shows where the file really landed.
+  await expect(page.getByTestId("brainstorm-board-file")).toHaveText(
+    "brainstorms/fresh-board.canvas",
+  )
+  await expect(page.getByTestId("canvas-status")).toHaveText("live", { timeout: 15_000 })
+})
+
+test("brainstorm: the session panel beside the board is resizable", async ({ page }) => {
+  const { short } = await seedBoard({
+    project: "brainstorm-resize",
+    path: "docs/arch.canvas",
+    body: seededCanvas,
+  })
+  await page.goto(`/sessions/${short}?tab=brainstorm`)
   const panel = page.getByTestId("brainstorm-companion")
   await expect(panel).toBeVisible({ timeout: 15_000 })
   const handle = page.getByTestId("brainstorm-companion-resize")
@@ -85,63 +140,69 @@ test("brainstorm: the AI companion panel is resizable", async ({ page }) => {
   await page.keyboard.press("ArrowLeft")
   await expect.poll(widthOf).toBeGreaterThan(before)
 
-  // ...and ArrowRight narrows it back below the widened width.
   const widened = await widthOf()
   await page.keyboard.press("ArrowRight")
   await expect.poll(widthOf).toBeLessThan(widened)
 
-  // Double-clicking the handle resets to the default width.
   await handle.dblclick()
   await expect.poll(widthOf).toBe(384)
 })
 
-test("brainstorm: the + button creates a board and switches to it", async ({ page }) => {
-  seedBrainstorm()
-  await page.goto("/projects/brainstorm-demo?tab=brainstorm")
-  await expect(page.getByTestId("brainstorm-subtabs")).toBeVisible({ timeout: 15_000 })
-
-  await page.getByTestId("brainstorm-new").click()
-  await page.getByTestId("brainstorm-new-input").fill("fresh-board")
-  await page.getByTestId("brainstorm-new-input").press("Enter")
-
-  await expect(page.getByTestId("brainstorm-subtab-fresh-board")).toBeVisible({
-    timeout: 15_000,
-  })
-  await expect(page.getByTestId("brainstorm-subtab-fresh-board")).toHaveAttribute(
-    "data-active",
-    "true",
-  )
-  await expect(page.getByTestId("canvas-status")).toHaveText("live", { timeout: 15_000 })
-})
-
-test("daemon brainstorms routes list/create documents and reject bad names + traversal", async ({
+test("daemon brainstorm routes: list every format, create under brainstorms/, refuse traversal", async ({
   request,
 }) => {
-  seedBrainstorm()
-  const daemonUrl = `http://localhost:${DAEMON_PORT}`
-
-  const list = await request.get(`${daemonUrl}/projects/brainstorm-demo/brainstorms`)
-  expect(list.ok()).toBeTruthy()
-  const body = (await list.json()) as Array<{ id: string; file: string }>
-  expect(body.map((b) => b.id)).toContain("seeded-board")
-
-  const created = await request.post(`${daemonUrl}/projects/brainstorm-demo/brainstorms`, {
-    data: { name: "api-made" },
+  const { short, root } = await seedBoard({
+    project: "brainstorm-api",
+    path: "docs/arch.canvas",
+    body: seededCanvas,
   })
-  expect(created.status()).toBe(201)
-
-  const dupe = await request.post(`${daemonUrl}/projects/brainstorm-demo/brainstorms`, {
-    data: { name: "api-made" },
-  })
-  expect(dupe.status()).toBe(409)
-
-  const badName = await request.post(`${daemonUrl}/projects/brainstorm-demo/brainstorms`, {
-    data: { name: "../escape" },
-  })
-  expect(badName.status()).toBe(400)
-
-  const traversal = await request.get(
-    `${daemonUrl}/projects/brainstorm-demo/brainstorms/..%2fsecrets`,
+  // A legacy React-Flow board and an Excalidraw scene, both outside brainstorms/.
+  writeFileSync(
+    join(root, "legacy.canvas.json"),
+    JSON.stringify({ version: 1, nodes: [], edges: [] }),
   )
-  expect([400, 404]).toContain(traversal.status())
+  writeFileSync(join(root, "sketch.excalidraw"), JSON.stringify({ elements: [] }))
+
+  const base = `http://localhost:${DAEMON_PORT}/sessions/${short}/brainstorms`
+
+  const list = (await (await request.get(base)).json()) as Array<{ path: string; kind: string }>
+  expect(list).toContainEqual(expect.objectContaining({ path: "docs/arch.canvas", kind: "canvas" }))
+  expect(list).toContainEqual(
+    expect.objectContaining({ path: "legacy.canvas.json", kind: "canvasJson" }),
+  )
+  expect(list).toContainEqual(
+    expect.objectContaining({ path: "sketch.excalidraw", kind: "excalidraw" }),
+  )
+
+  const created = await request.post(base, { data: { name: "api-made" } })
+  expect(created.status()).toBe(201)
+  expect(await created.json()).toMatchObject({
+    path: "brainstorms/api-made.canvas",
+    kind: "canvas",
+  })
+
+  expect((await request.post(base, { data: { name: "api-made" } })).status()).toBe(409)
+  expect((await request.post(base, { data: { name: "../escape" } })).status()).toBe(400)
+  expect((await request.post(base, { data: { name: "x", kind: "vsdx" } })).status()).toBe(400)
+
+  // A .canvas board decodes into the shared canvas wire shape…
+  const snapshot = await request.get(
+    `${base}/canvas?path=${encodeURIComponent("docs/arch.canvas")}`,
+  )
+  expect(snapshot.ok()).toBeTruthy()
+  const snap = (await snapshot.json()) as { nodes: Array<{ data?: { label?: string } }> }
+  expect(snap.nodes[0]?.data?.label).toBe("seeded idea")
+
+  // …and a path that escapes the worktree is refused before any filesystem access.
+  const traversal = await request.get(
+    `${base}/canvas?path=${encodeURIComponent("../secrets.canvas")}`,
+  )
+  expect([400, 403, 404]).toContain(traversal.status())
+
+  // An unknown session has no tree to list.
+  expect(
+    (
+      await request.get(`http://localhost:${DAEMON_PORT}/sessions/nope-not-a-session/brainstorms`)
+    ).status(),
+  ).toBe(404)
 })

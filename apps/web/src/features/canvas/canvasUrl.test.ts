@@ -34,22 +34,25 @@ describe("canvasWsUrl — session canvas", () => {
   })
 })
 
-describe("canvasWsUrl — brainstorm document", () => {
-  it("points at the project-scoped brainstorm ws route", () => {
+describe("canvasWsUrl — brainstorm board", () => {
+  it("points at the session-scoped board route with the document in ?path=", () => {
     const url = canvasWsUrl({
       baseUrl: "http://localhost:8787",
-      ref: { kind: "brainstorm", projectId: "projA", slug: "auth-flow" },
+      ref: { kind: "board", short: "abc123", path: "brainstorms/auth-flow.canvas" },
     })
     const u = new URL(url)
     expect(u.protocol).toBe("ws:")
-    expect(u.pathname).toBe("/projects/projA/brainstorms/auth-flow/ws")
+    expect(u.pathname).toBe("/sessions/abc123/brainstorms/canvas/ws")
+    expect(u.searchParams.get("path")).toBe("brainstorms/auth-flow.canvas")
   })
 
-  it("keeps the /__api prefix in front of the brainstorm route", () => {
+  it("keeps the /__api prefix in front of the board route, query intact", () => {
     const url = canvasWsUrl({
       baseUrl: "https://abc.trycloudflare.com/__api",
-      ref: { kind: "brainstorm", projectId: "p", slug: "s" },
+      ref: { kind: "board", short: "s", path: "docs/a b.canvas" },
     })
-    expect(new URL(url).pathname).toBe("/__api/projects/p/brainstorms/s/ws")
+    const u = new URL(url)
+    expect(u.pathname).toBe("/__api/sessions/s/brainstorms/canvas/ws")
+    expect(u.searchParams.get("path")).toBe("docs/a b.canvas")
   })
 })

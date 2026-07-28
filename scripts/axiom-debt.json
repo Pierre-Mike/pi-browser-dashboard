@@ -1,7 +1,7 @@
 {
   "cross-slice-import": {
     "apps/daemon/src/features/brainstorms/brainstorms.io.ts": 3,
-    "apps/daemon/src/features/brainstorms/brainstorms.routes.test.ts": 4,
+    "apps/daemon/src/features/brainstorms/brainstorms.routes.test.ts": 3,
     "apps/daemon/src/features/brainstorms/brainstorms.routes.ts": 5,
     "apps/daemon/src/features/claude-config/claude-config.io.test.ts": 1,
     "apps/daemon/src/features/claude-config/claude-config.io.ts": 1,
@@ -19,7 +19,7 @@
     "apps/daemon/src/features/pid-settings/pid-settings.io.test.ts": 1,
     "apps/daemon/src/features/pid-settings/pid-settings.io.ts": 2,
     "apps/daemon/src/features/projects/projects.io.ts": 1,
-    "apps/daemon/src/features/projects/projects.routes.ts": 3,
+    "apps/daemon/src/features/projects/projects.routes.ts": 2,
     "apps/daemon/src/features/sessions/files.io.ts": 2,
     "apps/daemon/src/features/sessions/sessions.routes.test.ts": 1,
     "apps/daemon/src/features/sessions/sessions.routes.ts": 4,

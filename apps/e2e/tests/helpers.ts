@@ -81,15 +81,42 @@ export const ensureProject = (name: string, opts: { gitInit?: boolean } = {}): s
   return path
 }
 
+// The session as the daemon knows it, narrowed to the fields the helpers read.
+// Decoded rather than cast: the registry is another process's output.
+export type RegisteredSession = {
+  readonly worktreePath?: string | null
+  readonly cwd?: string | null
+}
+
+const asRegisteredSession = (body: unknown): RegisteredSession => {
+  if (typeof body !== "object" || body === null) return {}
+  const o: Record<string, unknown> = { ...body }
+  const str = (v: unknown): string | null => (typeof v === "string" ? v : null)
+  return { worktreePath: str(o.worktreePath), cwd: str(o.cwd) }
+}
+
+/**
+ * The directory tree a session actually works in — its isolated worktree when
+ * the supervisor made one, else its cwd. Read from the registry rather than
+ * assumed: in stub mode a session works in the cwd it was dispatched with, in
+ * real mode in a worktree, and a brainstorm board only belongs to a session if
+ * the file sits inside whichever of the two it is.
+ */
+export const sessionRootOf = (session: RegisteredSession): string => {
+  const root = session.worktreePath ?? session.cwd
+  if (!root) throw new Error("sessionRootOf: session has neither worktreePath nor cwd")
+  return root
+}
+
 export const waitForSessionInRegistry = async (
   short: string,
   timeoutMs = 10_000,
-): Promise<void> => {
+): Promise<RegisteredSession> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
       const r = await fetch(`http://localhost:${DAEMON_PORT}/sessions/${short}`)
-      if (r.ok) return
+      if (r.ok) return asRegisteredSession(await r.json())
     } catch {
       // retry
     }

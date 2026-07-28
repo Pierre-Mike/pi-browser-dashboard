@@ -51,6 +51,9 @@ export const TAB_ICONS: Record<string, ReactNode> = {
   // drill-in's dock reading as the same system as the project / root docks.
   chat: <Icon d="M21 12a8 8 0 01-11.6 7.1L4 21l1.9-5.4A8 8 0 1121 12z" />,
   canvas: <Icon d="M4 4h16v16H4zM7 15l3.5-3.5 2 2L17 9" />,
+  brainstorm: (
+    <Icon d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.9.7 1.5 1.7 1.5 2.8V17h4v-.3c0-1.1.6-2.1 1.5-2.8A6 6 0 0012 3z" />
+  ),
   settings: (
     <Icon d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
   ),
@@ -59,11 +62,11 @@ export const TAB_ICONS: Record<string, ReactNode> = {
 // Generic icon for extension-contributed tabs / panels (puzzle piece).
 export const EXT_ICON = TAB_ICONS.extensions
 
-// Icon for the per-project Brainstorm tab and its boards (a lightbulb — these
-// are free-form drawing canvases with AI companions).
-export const BRAINSTORM_ICON = (
-  <Icon d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.9.7 1.5 1.7 1.5 2.8V17h4v-.3c0-1.1.6-2.1 1.5-2.8A6 6 0 0012 3z" />
-)
+// Icon for the session's Brainstorm section and its boards (a lightbulb — these
+// are free-form drawing canvases the session's agent edits alongside you). It
+// lives in TAB_ICONS because Brainstorm is a docked section; this alias is what
+// the boards rail reaches for, same shape as EXT_ICON above.
+export const BRAINSTORM_ICON = TAB_ICONS.brainstorm
 
 // Icon for per-project pid-app tabs (a document/page — these render dropped
 // HTML such as specs and plans).
