@@ -1,5 +1,5 @@
 import fs from "node:fs"
-import { Effect, type ManagedRuntime } from "effect"
+import { Effect, Either, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
 import { ShellIo } from "../../platform/shell.io"
@@ -16,6 +16,8 @@ import {
 import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
+import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
+import { SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
 
 const MAX_TRANSCRIPT_LINES = 500
 
@@ -24,7 +26,10 @@ const MAX_TRANSCRIPT_LINES = 500
 // SessionRegistry / ShellIo / FilesService layers
 // (see sessions.routes.test.ts).
 export type SessionsRouteRuntime = Pick<
-  ManagedRuntime.ManagedRuntime<SessionRegistry | ShellIo | FilesService | PiSessionsIo, never>,
+  ManagedRuntime.ManagedRuntime<
+    SessionRegistry | ShellIo | FilesService | PiSessionsIo | SessionWaitIo,
+    never
+  >,
   "runPromise" | "runPromiseExit"
 >
 
@@ -62,6 +67,40 @@ const sessionRoot = async (
   )
   if (!session) return undefined
   return session.worktreePath ?? session.cwd ?? null
+}
+
+// The sessionId a session currently carries, or `undefined` when the session
+// is unknown — read once up front so a send-with-wait can pin the wait to
+// *this* occupant before any keys go out, closing the race a caller would
+// otherwise hit issuing /send then /wait as two separate requests.
+const currentSessionId = async (
+  runtime: SessionsRouteRuntime,
+  id: string,
+): Promise<string | undefined> =>
+  runtime.runPromise(
+    Effect.gen(function* () {
+      const reg = yield* SessionRegistry
+      const session = yield* Effect.promise(() => reg.getOne(id))
+      return session?.sessionId
+    }),
+  )
+
+// Maps a WaitOutcome onto the JSON payload documented for POST /:id/wait —
+// reused as-is for the `wait` field POST /:id/send embeds when the caller
+// opts into submit-and-wait.
+const waitOutcomeBody = ({ outcome, short }: { outcome: WaitOutcome; short: string }) => {
+  switch (outcome._tag) {
+    case "Satisfied":
+      return { ok: true, short, state: outcome.state, waitedMs: outcome.waitedMs }
+    case "Timeout":
+      return { ok: false, reason: "timeout", short, waitedMs: outcome.waitedMs }
+    case "OccupantChanged":
+      return { ok: false, reason: "occupant_changed", short }
+    case "Removed":
+      return { ok: false, reason: "removed", short }
+    case "NotFound":
+      return { ok: false, reason: "not_found", short }
+  }
 }
 
 // Shared shape for the POST /:id/fs/* session routes: resolve the worktree root
@@ -273,13 +312,27 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
     })
     .post("/:id/send", async (c) => {
       const id = c.req.param("id")
-      const body = (await c.req.json().catch(() => ({}))) as { keys?: unknown }
+      const body = (await c.req.json().catch(() => ({}))) as { keys?: unknown; wait?: unknown }
       if (typeof body.keys !== "string" || body.keys.length === 0) {
         return c.json({ error: "bad_keys", message: "keys must be a non-empty string" }, 400)
       }
       if (body.keys.length > 4096) {
         return c.json({ error: "keys_too_long", message: "keys length capped at 4096" }, 413)
       }
+      // A malformed `wait` object is rejected before anything is sent — the
+      // caller gets a clean 400 rather than keys going out with no wait.
+      let waitRequest: WaitRequest | undefined
+      if (body.wait !== undefined) {
+        const parsedWait = parseWaitRequest(body.wait)
+        if (Either.isLeft(parsedWait)) {
+          return c.json({ error: "bad_request", message: parsedWait.left.message }, 400)
+        }
+        waitRequest = parsedWait.right
+      }
+      // Capture the occupant's sessionId *before* sending, so the wait below
+      // is pinned to whoever held the session at request time — not whoever
+      // (if anyone) replaces it by the time the wait actually starts.
+      const pinnedSessionId = waitRequest ? await currentSessionId(runtime, id) : undefined
       const result = await runtime.runPromiseExit(
         Effect.gen(function* () {
           const shell = yield* ShellIo
@@ -289,7 +342,26 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
       if (result._tag === "Failure") {
         return c.json({ error: "send_failed", short: id }, 500)
       }
-      return c.json({ ok: true, short: id })
+      if (!waitRequest) return c.json({ ok: true, short: id })
+      const outcome = await runtime.runPromise(
+        Effect.flatMap(SessionWaitIo, (svc) =>
+          svc.wait({ short: id, request: waitRequest, pinnedSessionId }),
+        ),
+      )
+      return c.json({ ok: true, short: id, wait: waitOutcomeBody({ outcome, short: id }) })
+    })
+    .post("/:id/wait", async (c) => {
+      const id = c.req.param("id")
+      const rawBody = await c.req.json().catch(() => ({}))
+      const parsed = parseWaitRequest(rawBody)
+      if (Either.isLeft(parsed)) {
+        return c.json({ error: "bad_request", message: parsed.left.message }, 400)
+      }
+      const outcome = await runtime.runPromise(
+        Effect.flatMap(SessionWaitIo, (svc) => svc.wait({ short: id, request: parsed.right })),
+      )
+      if (outcome._tag === "NotFound") return c.json({ error: "not_found", short: id }, 404)
+      return c.json(waitOutcomeBody({ outcome, short: id }))
     })
 
 const app = buildSessionsApp(appRuntime)

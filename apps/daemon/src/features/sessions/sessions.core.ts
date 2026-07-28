@@ -16,13 +16,15 @@ const KNOWN_STATES = [
 ] as const
 export type SessionStateSlug = (typeof KNOWN_STATES)[number]
 
-const isKnownState = (s: string): s is SessionStateSlug =>
+// Exported so other slices (sessions-wait) can validate a slug against the
+// same list instead of duplicating it.
+export const isSessionStateSlug = (s: string): s is SessionStateSlug =>
   (KNOWN_STATES as readonly string[]).includes(s)
 
 const normalizeState = (raw: unknown): SessionStateSlug => {
   if (typeof raw !== "string") return "idle"
   const lower = raw.toLowerCase().trim()
-  return isKnownState(lower) ? lower : "idle"
+  return isSessionStateSlug(lower) ? lower : "idle"
 }
 
 // --- Roster -----------------------------------------------------------------

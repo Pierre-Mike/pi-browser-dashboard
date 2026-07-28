@@ -5,6 +5,9 @@ type Unsubscribe = () => void
 type Bus = {
   readonly subscribe: (cb: SseSubscriber) => Unsubscribe
   readonly publish: (event: SseEvent) => void
+  // Test-only introspection (e.g. sessions-wait.io.test.ts's leak check) — not
+  // used by any production path.
+  readonly subscriberCount: () => number
 }
 
 const createBus = (): Bus => {
@@ -23,6 +26,7 @@ const createBus = (): Bus => {
         }
       }
     },
+    subscriberCount: () => subscribers.size,
   }
 }
 
