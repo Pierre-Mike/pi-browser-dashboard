@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test"
 
 // Collapsing the desktop sidebar used to leave a slim w-12 rail behind. It
 // must now vanish completely — no rail chrome at all — replaced by one small
-// floating button that restores it.
-test("collapsing the desktop sidebar removes it entirely; the floating button restores it", async ({
+// reopen chip in the page's own top row (left-edge-flush.spec.ts measures that
+// the page keeps the reclaimed width).
+test("collapsing the desktop sidebar removes it entirely; the reopen chip restores it", async ({
   page,
 }) => {
   await page.goto("/")

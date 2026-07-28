@@ -59,27 +59,25 @@ describe("sidebarLoadingClass", () => {
   })
 })
 
+// Collapsing the rail used to widen <main>'s left padding to clear a floating
+// reopen button, which left an empty column running the full page height. The
+// button now lives inline in each page's top row (see SidebarReopenButton), so
+// page content keeps the same uniform padding whatever the rail does — the left
+// edge is fully used.
 describe("mainClass", () => {
-  test("expanded: uniform padding on every side", () => {
-    const cls = mainClass(false)
-    expect(cls).toContain("px-4")
-    expect(cls).not.toContain("pl-11")
-  })
-  test("collapsed: left padding widens on desktop to clear the floating reopen button", () => {
-    const cls = mainClass(true)
-    expect(cls).toContain("md:pl-11")
-    expect(cls).not.toContain("px-4")
-    // Phones never show the floating button (it's md:-only), so their left
-    // padding stays the normal size instead of reserving clearance for it.
-    expect(cls).toContain("pl-4")
+  test("uniform padding on every side, with no state-dependent left column", () => {
+    expect(mainClass).toContain("px-4")
+    expect(mainClass).not.toContain("pl-11")
   })
 })
 
 describe("sidebarRailOpenBtnClass", () => {
-  test("desktop-only, fixed near the top-left corner, above page content", () => {
+  // Inline in the page's top row, not fixed over it: a fixed button forces the
+  // page to reserve clearance, which is the gap we removed.
+  test("desktop-only inline chip that costs no layout column", () => {
     expect(sidebarRailOpenBtnClass).toContain("hidden md:inline-flex")
-    expect(sidebarRailOpenBtnClass).toContain("fixed")
-    expect(sidebarRailOpenBtnClass).toContain("left-2")
-    expect(sidebarRailOpenBtnClass).toContain("top-2")
+    expect(sidebarRailOpenBtnClass).toContain("shrink-0")
+    expect(sidebarRailOpenBtnClass).not.toContain("fixed")
+    expect(sidebarRailOpenBtnClass).not.toContain("absolute")
   })
 })

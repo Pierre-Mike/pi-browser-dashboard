@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   EXT_ICON,
+  railExpandBtnClass,
   subTabButtonClass,
   subTabRailClass,
   TAB_ICONS,
@@ -67,6 +68,16 @@ describe("shared tab dock", () => {
     expect(subTabRailClass).toContain("w-48")
     expect(subTabRailClass).toContain("overflow-y-auto")
     expect(subTabRailClass).toContain("bg-base-200/60")
+  })
+
+  it("reopens a collapsed rail from a topbar chip, not a column beside the panel", () => {
+    // The old expand control was a full-height w-8 bar sitting where the rail
+    // had been, so a "collapsed" rail still cost the panel ~40px of width.
+    expect(railExpandBtnClass).not.toContain("w-8")
+    expect(railExpandBtnClass).toContain("shrink-0")
+    expect(railExpandBtnClass).toContain("h-6 w-6")
+    // Still reads as the rail's surface returning.
+    expect(railExpandBtnClass).toContain("bg-base-200/60")
   })
 
   it("fills the active sub-tab with primary and left-aligns full-width rows", () => {

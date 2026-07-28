@@ -24,11 +24,13 @@ import { PidAppHost } from "../pid-apps/PidAppHost"
 import { usePidApps } from "../pid-apps/usePidApps"
 import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
+import { SidebarReopenButton } from "../sessions/sidebarRail"
 import { useSessions } from "../sessions/useSessions"
-import { CollapsibleRail } from "./CollapsibleRail"
+import { CollapsibleRail, RailExpandButton } from "./CollapsibleRail"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
 import { ProjectTerminal } from "./ProjectTerminal"
+import { collapsedRail } from "./railExpand"
 import { useProjectGitPull } from "./useProjectGithub"
 
 const route = getRouteApi("/projects/$id")
@@ -257,6 +259,15 @@ export const ProjectDashboard = ({ project }: Props) => {
   const selectedBoard =
     brainstorms.find((b) => b.id === selectedBoardFromTab) ?? brainstorms[0] ?? null
 
+  // A collapsed rail leaves nothing behind beside the panel, so the topbar hosts
+  // the chip that brings back whichever rail the active tab owns.
+  const railChip = collapsedRail({
+    specsActive: pidAppsActive,
+    brainstormActive,
+    specsCollapsed: specsRail.value,
+    brainstormCollapsed: brainstormRail.value,
+  })
+
   const fillViewport =
     tab === "terminal" ||
     tab === "files" ||
@@ -273,6 +284,8 @@ export const ProjectDashboard = ({ project }: Props) => {
       className={`flex flex-col gap-1 ${fillViewport ? "h-screen -my-4 pt-1" : ""}`}
     >
       <div data-testid="project-topbar" className="flex items-center gap-2">
+        <SidebarReopenButton />
+
         <Link
           to="/"
           className="text-[11px] text-base-content/60 hover:underline shrink-0"
@@ -314,6 +327,13 @@ export const ProjectDashboard = ({ project }: Props) => {
             )
           })}
         </nav>
+
+        {railChip ? (
+          <RailExpandButton
+            rail={railChip}
+            onToggle={railChip.kind === "specs" ? specsRail.toggle : brainstormRail.toggle}
+          />
+        ) : null}
 
         <div className="flex items-center gap-1 shrink-0">
           {counts.working > 0 ? (

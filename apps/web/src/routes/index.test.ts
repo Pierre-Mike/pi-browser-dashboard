@@ -47,9 +47,18 @@ describe("root dashboard navigation polish (shared daisyUI dock)", () => {
   it("uses the shared tab-dock helpers instead of inlining the styling", () => {
     // The look lives in lib/tabDock so the dashboard + project page stay identical.
     expect(src).toContain('from "../lib/tabDock"')
-    expect(src).toContain("className={tabDockNavClass}")
+    // The dock shares one styling helper; it only adds the flex sizing it needs
+    // to sit beside the collapsed-sidebar reopen chip.
+    expect(src).toMatch(/className=\{`\$\{tabDockNavClass\} flex-1 min-w-0`\}/)
     const usages = src.match(/className=\{tabButtonClass\(active\)\}/g) ?? []
     expect(usages.length).toBe(2)
+  })
+})
+
+describe("root dashboard — collapsed-sidebar reopen chip", () => {
+  it("hosts the chip as the first item of the tab-dock row, not as a floating overlay", () => {
+    expect(src).toContain('from "../features/sessions/sidebarRail"')
+    expect(src).toMatch(/<SidebarReopenButton\s*\/>\s*<nav/)
   })
 })
 

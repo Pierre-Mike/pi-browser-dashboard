@@ -21,7 +21,7 @@ import { useSessions } from "./useSessions"
 
 type SidebarProps = {
   readonly variant?: SidebarVariant
-  // Whole-rail collapse flag, shared with RootLayout's floating reopen button.
+  // Whole-rail collapse flag, shared with the pages' SidebarReopenButton chip.
   // Two separate usePersistedFlag instances in the same tab don't sync with
   // each other (the hook only listens for cross-tab storage events), so the
   // desktop call site must pass its own instance down. Optional so the
@@ -74,10 +74,10 @@ export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps = 
     },
   }
 
-  // Collapsed (desktop only): render nothing at all — RootLayout shows a
-  // small floating reopen button instead (see sidebarRailOpenBtnClass) and
-  // <main> reclaims the full width. Sits ahead of the loading branch so the
-  // sidebar stays gone even while sessions/projects are still loading.
+  // Collapsed (desktop only): render nothing at all — each page's top row shows
+  // a small reopen chip instead (see sidebarRail.tsx) and <main> reclaims the
+  // full width with no padding left over. Sits ahead of the loading branch so
+  // the sidebar stays gone even while sessions/projects are still loading.
   if (rail.value && variant === "desktop") {
     return null
   }

@@ -10,6 +10,7 @@ import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { OrchestrationPanel } from "../features/projects/OrchestrationPanel"
 import { useProjects } from "../features/projects/useProjects"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
+import { SidebarReopenButton } from "../features/sessions/sidebarRail"
 import { useSessions } from "../features/sessions/useSessions"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
 import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "../lib/tabDock"
@@ -131,50 +132,55 @@ function IndexPage() {
       data-testid="dashboard"
       className={`flex flex-col gap-2 ${fillViewport ? "h-screen -my-4 pt-4" : ""}`}
     >
-      <nav
-        data-testid="dashboard-tabs"
-        role="tablist"
-        aria-label="Dashboard sections"
-        className={tabDockNavClass}
-      >
-        {TABS.map((t) => {
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-testid={`dashboard-tab-${t.key}`}
-              data-active={active}
-              onClick={() => setTab(t.key)}
-              className={tabButtonClass(active)}
-            >
-              {ICONS[t.key]}
-              {t.label}
-            </button>
-          )
-        })}
-        {extTabs.map((e) => {
-          const key: TabKey = `ext:${e.name}`
-          const active = tab === key
-          return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-testid={`dashboard-tab-ext-${e.name}`}
-              data-active={active}
-              onClick={() => setTab(key)}
-              className={tabButtonClass(active)}
-            >
-              {EXT_ICON}
-              {e.name}
-            </button>
-          )
-        })}
-      </nav>
+      {/* The reopen chip rides in this row while the sidebar is collapsed, so no
+          page content below has to leave room for it. */}
+      <div className="flex items-center gap-2">
+        <SidebarReopenButton />
+        <nav
+          data-testid="dashboard-tabs"
+          role="tablist"
+          aria-label="Dashboard sections"
+          className={`${tabDockNavClass} flex-1 min-w-0`}
+        >
+          {TABS.map((t) => {
+            const active = tab === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`dashboard-tab-${t.key}`}
+                data-active={active}
+                onClick={() => setTab(t.key)}
+                className={tabButtonClass(active)}
+              >
+                {ICONS[t.key]}
+                {t.label}
+              </button>
+            )
+          })}
+          {extTabs.map((e) => {
+            const key: TabKey = `ext:${e.name}`
+            const active = tab === key
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`dashboard-tab-ext-${e.name}`}
+                data-active={active}
+                onClick={() => setTab(key)}
+                className={tabButtonClass(active)}
+              >
+                {EXT_ICON}
+                {e.name}
+              </button>
+            )
+          })}
+        </nav>
+      </div>
 
       <div
         role="tabpanel"

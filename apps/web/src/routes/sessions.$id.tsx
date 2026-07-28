@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { CanvasTab } from "../features/canvas/CanvasTab"
 import { FileTree } from "../features/projects/FileTree"
 import { ChatComposer } from "../features/sessions/ChatComposer"
+import { SidebarReopenButton } from "../features/sessions/sidebarRail"
 import { TerminalTab } from "../features/sessions/TerminalTab"
 import { parseTranscriptResponse } from "../features/transcripts/loadTranscript"
 import { TranscriptView } from "../features/transcripts/TranscriptView"
@@ -181,6 +182,7 @@ function SessionDrillIn() {
   return (
     <div className="flex flex-col h-screen -my-4">
       <header className="flex flex-wrap items-center gap-3 px-1 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-base-100">
+        <SidebarReopenButton />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <h1
