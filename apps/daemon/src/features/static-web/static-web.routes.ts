@@ -4,8 +4,8 @@ import { resolveStaticRel, staticMime } from "./static-web.core"
 
 // Serves a pre-built SPA from `rootDir` (apps/web's Vite `dist`, bundled into
 // the pid-dashboard CLI package). Mounted at "/" only when a staticDir is
-// passed to buildApp() in api.ts — every other deployment (dev daemon,
-// Electrobun desktop, e2e) never touches this feature.
+// passed to buildApp() in api.ts — every other deployment (dev daemon, e2e)
+// never touches this feature.
 export const buildStaticApp = (rootDir: string) => {
   const baseDir = normalize(rootDir)
   return new Hono().get("*", async (c) => {

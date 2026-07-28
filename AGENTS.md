@@ -45,7 +45,6 @@ pi-browser-dashboard/
 │   ├── daemon/        # Bun + Hono + Effect-TS (thin)
 │   ├── web/           # Vite + React SPA
 │   ├── cli/           # `pid-dashboard` single-binary distribution
-│   ├── desktop/       # Electrobun shell, daemon in-process
 │   └── e2e/           # Playwright suite
 ├── scripts/           # the harness: gate scripts + their co-located tests
 ├── biome-plugins/     # GritQL rules the biome config loads
@@ -60,7 +59,7 @@ pi-browser-dashboard/
 └── .gitignore
 ```
 
-- Package names: `@pid/daemon`, `@pid/web`, `@pid/cli`, `@pid/desktop`, `@pid/e2e`.
+- Package names: `@pid/daemon`, `@pid/web`, `pid-dashboard` (`apps/cli`), `@pid/e2e`.
 - Every `apps/*` workspace carries a `tsconfig.json`; `scripts/typecheck.ts`
   discovers them and treats a missing one as an error, not a skip.
 - Daemon exports `AppType` via `"exports": { "./types" }`; web imports it for `hc<AppType>` client.
@@ -195,7 +194,7 @@ from the manifest-based extension platform (`platform/extensions/`).
 browser — no separate `apps/web`/`apps/daemon` setup.
 
 - `apps/daemon/src/api.ts`'s `buildApp(staticDir?)` composes the final request
-  handler. With no `staticDir` (dev daemon, Electrobun desktop, e2e) it's
+  handler. With no `staticDir` (dev daemon, e2e) it's
   today's shape unchanged: the API at the bare root. With a `staticDir` (the
   CLI), the SPA owns the bare root instead — `features/static-web/` serves it
   with an SPA (history-API) fallback for extensionless paths — and the API
@@ -441,7 +440,6 @@ apps/daemon/src/
   server.ts / main.ts        # composition root (Bun.serve, live Layers)
 apps/web/                    # Vite + React + TanStack Router (UI only) + Query
 apps/cli/                    # `pid-dashboard` single-binary distribution
-apps/desktop/                # Electrobun shell embedding the daemon in-process
 apps/e2e/                    # Playwright end-to-end suite
 scripts/                     # the harness: gate scripts + their co-located tests
 ```

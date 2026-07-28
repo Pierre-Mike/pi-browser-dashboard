@@ -24,8 +24,8 @@ describe("computeApiBase", () => {
     expect(computeApiBase(undefined, null)).toBe("http://localhost:8787")
   })
 
-  it("desktop: from a views:// webview, VITE_API_URL hits the embedded daemon directly (no /__api proxy)", () => {
-    const base = computeApiBase("http://localhost:8787", "views://mainview")
+  it("an explicit VITE_API_URL never picks up the /__api proxy prefix", () => {
+    const base = computeApiBase("http://localhost:8787", "http://localhost:5173")
     expect(base).toBe("http://localhost:8787")
     expect(base).not.toContain(API_PREFIX)
   })

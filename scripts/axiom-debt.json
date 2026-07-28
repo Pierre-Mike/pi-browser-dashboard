@@ -27,7 +27,7 @@
     "apps/daemon/src/features/terminal/terminal.routes.ts": 4
   },
   "env-outside-config": {
-    "apps/daemon/src/api.ts": 2,
+    "apps/daemon/src/api.ts": 1,
     "apps/daemon/src/features/dispatch/pi-sessions.io.ts": 2,
     "apps/daemon/src/features/dispatch/pi.io.ts": 3,
     "apps/daemon/src/features/drops/drops.routes.ts": 1,
@@ -60,7 +60,6 @@
     "apps/web/src/features/projects/useProjectFiles.ts": 3,
     "apps/web/src/features/projects/useProjectGithub.ts": 3,
     "apps/web/src/features/projects/useProjects.ts": 1,
-    "apps/web/src/features/sessions/FilesTab.tsx": 1,
     "apps/web/src/features/sessions/SessionCardActions.tsx": 1,
     "apps/web/src/features/sessions/useSessions.ts": 1,
     "apps/web/src/features/transcripts/loadTranscript.ts": 1,

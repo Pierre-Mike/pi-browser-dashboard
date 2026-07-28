@@ -9,9 +9,9 @@
  *   3. `raw-fetch`           — calling `fetch` outside a `*.io.ts` port.
  *   4. `json-cast`           — casting `.json()` instead of decoding it, which
  *      asserts a wire shape without validating it (contracts decode at the
- *      boundary). Enforced as a hard biome error in apps/daemon, apps/cli,
- *      apps/desktop and scripts/; ratcheted in apps/web, which has ~40 sites
- *      awaiting a shared Schema contract.
+ *      boundary). Enforced as a hard biome error in apps/daemon, apps/cli and
+ *      scripts/; ratcheted in apps/web, which has ~40 sites awaiting a shared
+ *      Schema contract.
  *
  * Turning any of these into a Biome error today would fail CI on ~50 existing
  * sites, so the alternative would be to document them and hope. Instead they
@@ -50,8 +50,7 @@ const ENV_SANCTIONED = [
   /(^|\/)platform\/config-dir\.ts$/,
   /^scripts\//,
   /^apps\/e2e\//,
-  /^apps\/desktop\//,
-  /(^|\/)(vite|playwright|electrobun)\.config\.ts$/,
+  /(^|\/)(vite|playwright)\.config\.ts$/,
 ]
 
 const countMatches = ({ text, re }: { readonly text: string; readonly re: RegExp }): number =>

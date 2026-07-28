@@ -34,7 +34,6 @@ apps/daemon/src/
   server.ts / main.ts        # composition root (Bun.serve, live Layers)
 apps/web/                    # Vite + React + TanStack Router (UI only) + Query
 apps/cli/                    # `pid-dashboard` single-binary distribution
-apps/desktop/                # Electrobun shell embedding the daemon in-process
 apps/e2e/                    # Playwright end-to-end suite
 scripts/                     # the harness: gate scripts + their co-located tests
 ```

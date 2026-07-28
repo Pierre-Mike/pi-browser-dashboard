@@ -140,7 +140,7 @@ describe("auditHarness", () => {
   })
 
   it("catches a workspace with no tsconfig", () => {
-    const snap = { ...healthy(), appDirs: ["apps/daemon", "apps/web", "apps/desktop"] }
+    const snap = { ...healthy(), appDirs: ["apps/daemon", "apps/web", "apps/newapp"] }
     expect(checksFor(snap)).toContain("typecheck")
   })
 

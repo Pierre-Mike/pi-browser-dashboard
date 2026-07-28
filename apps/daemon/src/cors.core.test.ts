@@ -21,19 +21,17 @@ describe("resolveCorsOrigin", () => {
   })
 
   it("echoes an injected PID_CORS_ORIGINS origin", () => {
-    expect(resolveCorsOrigin("views://mainview", { PID_CORS_ORIGINS: "views://mainview" })).toBe(
-      "views://mainview",
-    )
+    expect(
+      resolveCorsOrigin("https://tunnel.test", { PID_CORS_ORIGINS: "https://tunnel.test" }),
+    ).toBe("https://tunnel.test")
   })
 
   it("denies an unknown origin", () => {
     expect(resolveCorsOrigin("https://evil.test", {})).toBeNull()
   })
 
-  it("allows any views:// origin only when PID_ALLOW_VIEWS_ORIGIN=1", () => {
-    expect(resolveCorsOrigin("views://mainview/index.html", { PID_ALLOW_VIEWS_ORIGIN: "1" })).toBe(
-      "views://mainview/index.html",
-    )
+  it("denies a custom-scheme origin — only the explicit allow-list opens the door", () => {
     expect(resolveCorsOrigin("views://mainview", {})).toBeNull()
+    expect(resolveCorsOrigin("app://anything", { PID_CORS_ORIGINS: "https://a.test" })).toBeNull()
   })
 })
