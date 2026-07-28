@@ -1,4 +1,4 @@
-import { Schema as S } from "@effect/schema"
+import { Schema as S } from "effect"
 
 // --- State slug normalization -----------------------------------------------
 

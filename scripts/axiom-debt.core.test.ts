@@ -65,7 +65,7 @@ describe("countEnvReads", () => {
       "apps/daemon/src/server.ts",
       "scripts/typecheck.ts",
       "apps/e2e/global-setup.ts",
-      "apps/desktop/src/main.ts",
+      "apps/cli/src/main.ts",
       "apps/web/vite.config.ts",
     ]) {
       expect(countEnvReads({ path, text })).toBe(0)

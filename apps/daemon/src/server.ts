@@ -10,15 +10,10 @@ export type StartDaemonOptions = {
   // Port to bind. 0 lets the OS pick a free port (handy for tests).
   port?: number
   // Start a Cloudflare quick-tunnel on boot (public reachability). Off for the
-  // embedded desktop daemon and for tests.
+  // CLI distribution and for tests.
   tunnel?: boolean
   // GitHub-issue poll interval in ms. 0 disables the heartbeat.
   issuePollMs?: number
-  // Extra origins to allow through CORS. Applied to process.env before the
-  // first request so the per-request origin callback (cors.core.ts) sees them.
-  corsOrigins?: string[]
-  // Allow any `views://` origin (Electrobun webview). Sets PID_ALLOW_VIEWS_ORIGIN.
-  allowViewsOrigin?: boolean
   // Directory of a pre-built apps/web SPA to serve from "/" (moves the API
   // behind "/__api" — see api.ts's buildApp). Set by the pid-dashboard CLI;
   // every other caller leaves this unset and keeps the API at the bare root.
@@ -47,7 +42,8 @@ const numEnv = (raw: string | undefined, fallback: number): number => Number(raw
 const tunnelFlag = (raw: string | undefined): boolean => (raw ?? "1") !== "0"
 
 // Pure: resolve runtime config from explicit options falling back to env. The
-// CLI passes no options (pure env); the desktop app passes explicit values.
+// dev daemon passes no options (pure env); the pid-dashboard CLI passes explicit
+// values.
 export const resolveDaemonConfig = (
   opts: StartDaemonOptions,
   env: DaemonConfigEnv,
@@ -56,19 +52,6 @@ export const resolveDaemonConfig = (
   issuePollMs: opts.issuePollMs ?? numEnv(env.PID_ISSUE_POLL_MS, 120_000),
   tunnel: opts.tunnel ?? tunnelFlag(env.PID_TUNNEL_AUTOSTART),
 })
-
-// Pure: merge new CORS origins onto an existing PID_CORS_ORIGINS value.
-export const mergeCorsOrigins = (existing: string | undefined, add: string[] | undefined): string =>
-  [existing, ...(add ?? [])].filter(Boolean).join(",")
-
-// Apply CORS overrides to process.env before serving so the per-request origin
-// callback (cors.core.ts) picks them up — the api module is already imported.
-const applyCorsEnv = (opts: StartDaemonOptions): void => {
-  if (opts.corsOrigins?.length) {
-    process.env.PID_CORS_ORIGINS = mergeCorsOrigins(process.env.PID_CORS_ORIGINS, opts.corsOrigins)
-  }
-  if (opts.allowViewsOrigin) process.env.PID_ALLOW_VIEWS_ORIGIN = "1"
-}
 
 // Start the periodic GitHub-issue poll heartbeat. Spawning is gated by
 // globalCap/perRepoCap in the driver itself. Returns the timer (or null).
@@ -93,9 +76,9 @@ const startTunnel = (): void => {
     .catch((err) => console.error("[tunnel] start failed", err))
 }
 
-// Imperative shell: boot the daemon and return a handle. Shared by the CLI
-// entrypoint (main.ts) and the Electrobun desktop main process, which runs it
-// in-process with the tunnel off.
+// Imperative shell: boot the daemon and return a handle. Shared by the dev
+// entrypoint (main.ts) and the pid-dashboard CLI, which runs it in-process with
+// the tunnel off and the SPA served from staticDir.
 export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<DaemonHandle> => {
   // Name the env keys the pure resolver reads instead of handing it the whole
   // ambient environment (typed config at the boundary).
@@ -104,7 +87,6 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
     PID_ISSUE_POLL_MS: process.env.PID_ISSUE_POLL_MS,
     PID_TUNNEL_AUTOSTART: process.env.PID_TUNNEL_AUTOSTART,
   })
-  applyCorsEnv(opts)
 
   // Touch the runtime so SessionRegistryLive is constructed (watchers armed)
   // before the first request arrives.

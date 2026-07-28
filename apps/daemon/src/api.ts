@@ -5,7 +5,6 @@ import { resolveCorsOrigin } from "./cors.core"
 import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
-import * as dropsRoute from "./features/drops/drops.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
@@ -48,16 +47,12 @@ const app = new Hono()
   .use(
     "*",
     cors({
-      // Evaluated per-request so the embedded-daemon path (Electrobun) can inject
-      // PID_CORS_ORIGINS / PID_ALLOW_VIEWS_ORIGIN before serving even though this
-      // module is imported earlier. See cors.core.ts.
-      // The pure core gets exactly the two keys it reads, named at the call
-      // site, rather than the whole ambient environment.
+      // Evaluated per-request so a caller can inject PID_CORS_ORIGINS before
+      // serving even though this module is imported earlier. See cors.core.ts.
+      // The pure core gets exactly the key it reads, named at the call site,
+      // rather than the whole ambient environment.
       origin: (origin) =>
-        resolveCorsOrigin(origin, {
-          PID_CORS_ORIGINS: process.env.PID_CORS_ORIGINS,
-          PID_ALLOW_VIEWS_ORIGIN: process.env.PID_ALLOW_VIEWS_ORIGIN,
-        }),
+        resolveCorsOrigin(origin, { PID_CORS_ORIGINS: process.env.PID_CORS_ORIGINS }),
       allowHeaders: ["Content-Type", "Last-Event-ID"],
       allowMethods: ["GET", "POST", "OPTIONS"],
       credentials: false,
@@ -68,7 +63,6 @@ const app = new Hono()
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
   .route("/dispatch", dispatchRoute.app)
-  .route("/drops", dropsRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
   .route("/tunnel", tunnelRoute.app)
@@ -130,8 +124,8 @@ export const mountExtensions = (appInstance: Hono): void => {
 export type AppType = typeof app
 
 // Compose the final request handler. With no staticDir this preserves today's
-// shape exactly — the API mounted directly at "/" (dev daemon, Electrobun
-// desktop, e2e). Passing staticDir switches to a same-origin layout for the
+// shape exactly — the API mounted directly at "/" (dev daemon, e2e). Passing
+// staticDir switches to a same-origin layout for the
 // pid-dashboard CLI's single-port distribution: the SPA owns "/" (with
 // history-API fallback for client routes like "/sessions/:id" that would
 // otherwise collide with the identically-named API routes below), and the API

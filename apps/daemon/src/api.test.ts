@@ -100,6 +100,21 @@ describe("GET /extensions/:name/* (static assets)", () => {
   })
 })
 
+describe("file-drop surface", () => {
+  // One endpoint saves dropped files, not two. `POST /drops` was the earlier
+  // draft; /uploads is what the SPA calls (DropZone → handleDrop → uploadFile).
+  // Pin it so re-adding a second path has to be a deliberate, reviewed act.
+  it("mounts /uploads and nothing at /drops", async () => {
+    const drops = await app.request("/drops", { method: "POST" })
+    expect(drops.status).toBe(404)
+
+    // /uploads is mounted: it rejects a non-multipart body rather than 404ing.
+    const uploads = await app.request("/uploads", { method: "POST" })
+    expect(uploads.status).toBe(400)
+    expect(await uploads.json()).toEqual({ error: "invalid_body" })
+  })
+})
+
 describe("buildApp", () => {
   it("without a staticDir, mirrors today's shape: API at the bare root AND under /__api", async () => {
     const wrapped = buildApp()

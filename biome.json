@@ -88,7 +88,6 @@
       "includes": [
         "apps/daemon/**/*.ts",
         "apps/cli/**/*.ts",
-        "apps/desktop/**/*.ts",
         "scripts/**/*.ts",
         "!**/*.test.ts",
         "!**/*.spec.ts"
