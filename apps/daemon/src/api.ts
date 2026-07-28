@@ -5,7 +5,6 @@ import { resolveCorsOrigin } from "./cors.core"
 import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
-import * as dropsRoute from "./features/drops/drops.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
@@ -64,7 +63,6 @@ const app = new Hono()
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
   .route("/dispatch", dispatchRoute.app)
-  .route("/drops", dropsRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
   .route("/tunnel", tunnelRoute.app)

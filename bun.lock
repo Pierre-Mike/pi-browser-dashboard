@@ -22,7 +22,6 @@
       "devDependencies": {
         "@pid/daemon": "workspace:*",
         "@types/bun": "^1.3.14",
-        "bun-types": "^1.1.34",
       },
     },
     "apps/daemon": {
@@ -36,7 +35,6 @@
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
-        "bun-types": "^1.1.34",
       },
     },
     "apps/e2e": {

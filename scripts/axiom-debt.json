@@ -30,7 +30,6 @@
     "apps/daemon/src/api.ts": 1,
     "apps/daemon/src/features/dispatch/pi-sessions.io.ts": 2,
     "apps/daemon/src/features/dispatch/pi.io.ts": 3,
-    "apps/daemon/src/features/drops/drops.routes.ts": 1,
     "apps/daemon/src/features/library/library.io.ts": 2,
     "apps/daemon/src/features/projects/git.io.ts": 1,
     "apps/daemon/src/features/terminal/terminal.routes.ts": 6,
