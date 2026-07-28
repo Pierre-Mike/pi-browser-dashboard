@@ -1,0 +1,1382 @@
+// Pure argv parsing, request-body building, response parsing, exit-code
+// mapping and output formatting for `pid` — the agent-facing CLI over the
+// daemon's session-control surface. No I/O — agent/main.ts (the imperative
+// shell) reads argv/env/clock, drives the `hc` client, and calls back into
+// this module with plain data.
+//
+// Why an agent needs this at all: an orchestrating agent composes `pid` in a
+// shell (`pid wait ab12 --until done && pid send cd34 "next step"`), so the
+// process exit code IS the API. Every exit-code decision below is therefore a
+// small total function with exhaustive tests, not a `process.exit` scattered
+// through the shell.
+//
+// Every function here is kept deliberately small (one decision at a time,
+// `Either.all` to combine independent checks into a single branch) so
+// `bun run audit`'s complexity ceiling never sees a long if/else chain — the
+// same discipline apps/daemon/src/features/sessions/sessions-*.core.ts uses.
+
+import { Either } from "effect"
+
+// --- Session state slugs ----------------------------------------------------
+//
+// Mirrors `KNOWN_STATES` in apps/daemon/src/features/sessions/sessions.core.ts.
+// `@pid/daemon`'s package.json `exports` map only publishes ".", "./server"
+// and "./types" (the Hono `AppType` for the `hc` client) — a deep import of a
+// slice-internal module like `sessions.core` does not resolve from apps/cli
+// (verified with `tsc --noEmit`: "Cannot find module
+// '@pid/daemon/features/sessions/sessions.core'"). Keeping a literal copy here
+// is the documented fallback the task calls for.
+const SESSION_STATE_SLUGS = [
+  "done",
+  "working",
+  "blocked",
+  "needs_input",
+  "idle",
+  "failed",
+  "stopped",
+  "unknown",
+] as const
+export type SessionStateSlug = (typeof SESSION_STATE_SLUGS)[number]
+
+export const isSessionStateSlug = (s: string): s is SessionStateSlug =>
+  (SESSION_STATE_SLUGS as readonly string[]).includes(s)
+
+// --- Named key vocabulary ----------------------------------------------------
+//
+// Mirrors `NamedKey` in apps/daemon/src/features/sessions/sessions-keys.core.ts
+// — same deep-import limitation as above.
+const NAMED_KEYS = [
+  "escape",
+  "enter",
+  "tab",
+  "shift-tab",
+  "up",
+  "down",
+  "left",
+  "right",
+  "home",
+  "end",
+  "page-up",
+  "page-down",
+  "backspace",
+  "delete",
+  "space",
+] as const
+export type NamedKeyName = (typeof NAMED_KEYS)[number]
+
+export const isNamedKeyName = (s: string): s is NamedKeyName =>
+  (NAMED_KEYS as readonly string[]).includes(s)
+
+export const NAMED_KEYS_HELP = NAMED_KEYS.join(", ")
+
+// --- Command model -----------------------------------------------------------
+
+export type WaitParams = {
+  readonly until: ReadonlyArray<SessionStateSlug>
+  readonly timeoutMs: number | undefined
+}
+
+export type SessionsCommand = {
+  readonly _tag: "Sessions"
+  readonly state: ReadonlyArray<SessionStateSlug> | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type ExplainCommand = {
+  readonly _tag: "Explain"
+  readonly short: string
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type WaitCommand = {
+  readonly _tag: "Wait"
+  readonly short: string
+  readonly until: ReadonlyArray<SessionStateSlug>
+  readonly timeoutMs: number | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type SendCommand = {
+  readonly _tag: "Send"
+  readonly short: string
+  readonly text: string
+  readonly wait: WaitParams | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type KeysCommand = {
+  readonly _tag: "Keys"
+  readonly short: string
+  readonly names: ReadonlyArray<NamedKeyName>
+  readonly wait: WaitParams | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type SpawnCommand = {
+  readonly _tag: "Spawn"
+  readonly intent: string
+  readonly n: number
+  readonly agent: string | undefined
+  readonly cwd: string | undefined
+  readonly wait: WaitParams | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type StopCommand = {
+  readonly _tag: "Stop"
+  readonly short: string
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type RmCommand = {
+  readonly _tag: "Rm"
+  readonly short: string
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type HelpCommand = {
+  readonly _tag: "Help"
+  readonly url: string | undefined
+}
+
+export type Command =
+  | SessionsCommand
+  | ExplainCommand
+  | WaitCommand
+  | SendCommand
+  | KeysCommand
+  | SpawnCommand
+  | StopCommand
+  | RmCommand
+  | HelpCommand
+
+export type UsageError = {
+  readonly _tag: "UsageError"
+  readonly message: string
+}
+
+const usageError = (message: string): UsageError => ({ _tag: "UsageError", message })
+
+// --- Argv scanning ------------------------------------------------------------
+//
+// A minimal, general-purpose flag/positional splitter shared by every
+// subcommand parser below. Each subcommand declares which flags it accepts
+// (valued or boolean) and gets back the leftover positionals plus a
+// name->value map; an unrecognised flag or a valued flag missing its value is
+// a UsageError, never a silent no-op.
+
+type FlagSpec = { readonly name: string; readonly boolean: boolean }
+
+type ScanResult = {
+  readonly positionals: ReadonlyArray<string>
+  readonly flags: ReadonlyMap<string, string>
+}
+
+// One argv token, classified before any flag-spec lookup happens — kept
+// separate from `resolveFlag` below so neither function juggles more than one
+// kind of decision.
+type FlagToken = { readonly name: string; readonly inlineValue: string | undefined }
+
+const classifyToken = (
+  tok: string,
+): { readonly positional: string } | { readonly flag: FlagToken } => {
+  if (!tok.startsWith("--")) return { positional: tok }
+  const eq = tok.indexOf("=")
+  return eq === -1
+    ? { flag: { name: tok.slice(2), inlineValue: undefined } }
+    : { flag: { name: tok.slice(2, eq), inlineValue: tok.slice(eq + 1) } }
+}
+
+// A resolved flag either sets a value and says how many argv slots it
+// consumed (1 for `--flag=x` / a boolean flag, 2 for `--flag x`), or fails.
+type FlagResolution =
+  | { readonly _tag: "Set"; readonly value: string; readonly advance: 1 | 2 }
+  | { readonly _tag: "Error"; readonly message: string }
+
+const resolveBooleanFlag = ({
+  command,
+  token,
+}: {
+  readonly command: string
+  readonly token: FlagToken
+}): FlagResolution =>
+  token.inlineValue === undefined
+    ? { _tag: "Set", value: "true", advance: 1 }
+    : { _tag: "Error", message: `${command}: --${token.name} does not take a value` }
+
+const resolveValuedFlag = ({
+  command,
+  token,
+  nextToken,
+}: {
+  readonly command: string
+  readonly token: FlagToken
+  readonly nextToken: string | undefined
+}): FlagResolution => {
+  if (token.inlineValue !== undefined) return { _tag: "Set", value: token.inlineValue, advance: 1 }
+  if (nextToken === undefined || nextToken.startsWith("--")) {
+    return { _tag: "Error", message: `${command}: --${token.name} requires a value` }
+  }
+  return { _tag: "Set", value: nextToken, advance: 2 }
+}
+
+const resolveFlag = ({
+  command,
+  token,
+  spec,
+  nextToken,
+}: {
+  readonly command: string
+  readonly token: FlagToken
+  readonly spec: FlagSpec | undefined
+  readonly nextToken: string | undefined
+}): FlagResolution => {
+  if (!spec) return { _tag: "Error", message: `${command}: unknown flag --${token.name}` }
+  return spec.boolean
+    ? resolveBooleanFlag({ command, token })
+    : resolveValuedFlag({ command, token, nextToken })
+}
+
+// The three things one scan step can produce: a positional, a resolved flag
+// (with how many argv slots it consumed), or an error. `index` is always
+// `< argv.length` (the only caller, scanArgv's loop, guarantees it), so the
+// "index out of range" arm below is unreachable in practice — it exists only
+// because `noUncheckedIndexedAccess` types `argv[index]` as possibly
+// `undefined` regardless.
+type ScanStep =
+  | { readonly _tag: "Positional"; readonly value: string }
+  | {
+      readonly _tag: "Flag"
+      readonly name: string
+      readonly value: string
+      readonly advance: 1 | 2
+    }
+  | { readonly _tag: "Error"; readonly message: string }
+
+const scanStep = ({
+  command,
+  argv,
+  index,
+  specByName,
+}: {
+  readonly command: string
+  readonly argv: ReadonlyArray<string>
+  readonly index: number
+  readonly specByName: ReadonlyMap<string, FlagSpec>
+}): ScanStep => {
+  const tok = argv[index]
+  if (tok === undefined) return { _tag: "Error", message: `${command}: internal argv scan error` }
+  const classified = classifyToken(tok)
+  if ("positional" in classified) return { _tag: "Positional", value: classified.positional }
+  const resolution = resolveFlag({
+    command,
+    token: classified.flag,
+    spec: specByName.get(classified.flag.name),
+    nextToken: argv[index + 1],
+  })
+  return resolution._tag === "Error"
+    ? { _tag: "Error", message: resolution.message }
+    : {
+        _tag: "Flag",
+        name: classified.flag.name,
+        value: resolution.value,
+        advance: resolution.advance,
+      }
+}
+
+const scanArgv = ({
+  command,
+  argv,
+  flagSpecs,
+}: {
+  readonly command: string
+  readonly argv: ReadonlyArray<string>
+  readonly flagSpecs: ReadonlyArray<FlagSpec>
+}): Either.Either<ScanResult, UsageError> => {
+  const specByName = new Map(flagSpecs.map((f): readonly [string, FlagSpec] => [f.name, f]))
+  const positionals: string[] = []
+  const flags = new Map<string, string>()
+  let i = 0
+  while (i < argv.length) {
+    const step = scanStep({ command, argv, index: i, specByName })
+    if (step._tag === "Error") return Either.left(usageError(step.message))
+    if (step._tag === "Positional") {
+      positionals.push(step.value)
+      i += 1
+      continue
+    }
+    flags.set(step.name, step.value)
+    i += step.advance
+  }
+  return Either.right({ positionals, flags })
+}
+
+const FLAG_JSON: FlagSpec = { name: "json", boolean: true }
+const FLAG_STATE: FlagSpec = { name: "state", boolean: false }
+const FLAG_UNTIL: FlagSpec = { name: "until", boolean: false }
+const FLAG_TIMEOUT: FlagSpec = { name: "timeout", boolean: false }
+const FLAG_WAIT: FlagSpec = { name: "wait", boolean: false }
+const FLAG_N: FlagSpec = { name: "n", boolean: false }
+const FLAG_AGENT: FlagSpec = { name: "agent", boolean: false }
+const FLAG_CWD: FlagSpec = { name: "cwd", boolean: false }
+
+const parseOneSlug = ({
+  command,
+  flag,
+  item,
+}: {
+  readonly command: string
+  readonly flag: string
+  readonly item: string
+}): Either.Either<SessionStateSlug, UsageError> =>
+  isSessionStateSlug(item)
+    ? Either.right(item)
+    : Either.left(usageError(`${command}: --${flag} contains an unknown state: "${item}"`))
+
+const parseStateSlugList = ({
+  command,
+  flag,
+  raw,
+}: {
+  readonly command: string
+  readonly flag: string
+  readonly raw: string
+}): Either.Either<ReadonlyArray<SessionStateSlug>, UsageError> => {
+  const items = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+  const parsed = Either.all(items.map((item) => parseOneSlug({ command, flag, item })))
+  if (Either.isLeft(parsed)) return Either.left(parsed.left)
+  const slugs = [...new Set(parsed.right)]
+  if (slugs.length === 0) {
+    return Either.left(usageError(`${command}: --${flag} must list at least one session state`))
+  }
+  return Either.right(slugs)
+}
+
+const parsePositiveInt = ({
+  command,
+  flag,
+  raw,
+}: {
+  readonly command: string
+  readonly flag: string
+  readonly raw: string
+}): Either.Either<number, UsageError> => {
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1) {
+    return Either.left(usageError(`${command}: --${flag} must be a positive integer, got "${raw}"`))
+  }
+  return Either.right(n)
+}
+
+// Every subcommand accepts --json uniformly (a deliberate superset of the
+// documented per-command table — see AGENTS.md), so it is folded in here
+// rather than repeated at each call site.
+const withJson = (flagSpecs: ReadonlyArray<FlagSpec>): ReadonlyArray<FlagSpec> => [
+  ...flagSpecs,
+  FLAG_JSON,
+]
+
+// Shared by explain/wait/stop/rm: exactly one positional <short>, nothing more.
+const requireSingleShort = ({
+  command,
+  positionals,
+}: {
+  readonly command: string
+  readonly positionals: ReadonlyArray<string>
+}): Either.Either<string, UsageError> => {
+  const short = positionals[0]
+  if (short === undefined) return Either.left(usageError(`${command}: requires a <short> argument`))
+  const extra = rejectExtraPositionals({ command, positionals, max: 1 })
+  return Either.isLeft(extra) ? Either.left(extra.left) : Either.right(short)
+}
+
+// Shared by send/keys: a <short> plus one or more trailing positionals
+// (`<text...>` / `<name...>`), which the caller interprets its own way.
+const requireShortAndRest = ({
+  command,
+  positionals,
+  restLabel,
+}: {
+  readonly command: string
+  readonly positionals: ReadonlyArray<string>
+  readonly restLabel: string
+}): Either.Either<{ readonly short: string; readonly rest: ReadonlyArray<string> }, UsageError> => {
+  const short = positionals[0]
+  if (short === undefined || positionals.length < 2) {
+    return Either.left(usageError(`${command}: requires <short> and ${restLabel}`))
+  }
+  return Either.right({ short, rest: positionals.slice(1) })
+}
+
+// Shared "no more than `max` positionals" check — `sessions` uses max 0,
+// explain/wait/stop/rm (via requireSingleShort above) use max 1.
+const rejectExtraPositionals = ({
+  command,
+  positionals,
+  max,
+}: {
+  readonly command: string
+  readonly positionals: ReadonlyArray<string>
+  readonly max: number
+}): Either.Either<void, UsageError> => {
+  if (positionals.length <= max) return Either.right(undefined)
+  const extra = positionals.slice(max)
+  return Either.left(
+    usageError(`${command}: unexpected argument${extra.length > 1 ? "s" : ""}: ${extra.join(" ")}`),
+  )
+}
+
+const parseOptionalStateFlag = ({
+  command,
+  flag,
+  flags,
+}: {
+  readonly command: string
+  readonly flag: string
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<ReadonlyArray<SessionStateSlug> | undefined, UsageError> => {
+  const raw = flags.get(flag)
+  return raw === undefined ? Either.right(undefined) : parseStateSlugList({ command, flag, raw })
+}
+
+const parseOptionalTimeout = ({
+  command,
+  flags,
+}: {
+  readonly command: string
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<number | undefined, UsageError> => {
+  const raw = flags.get("timeout")
+  return raw === undefined
+    ? Either.right(undefined)
+    : parsePositiveInt({ command, flag: "timeout", raw })
+}
+
+const parseSessionsCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "sessions", argv: rest, flagSpecs: withJson([FLAG_STATE]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const extra = rejectExtraPositionals({ command: "sessions", positionals, max: 0 })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  const state = parseOptionalStateFlag({ command: "sessions", flag: "state", flags })
+  if (Either.isLeft(state)) return Either.left(state.left)
+  return Either.right({ _tag: "Sessions", state: state.right, json: flags.has("json"), url })
+}
+
+const parseExplainCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "explain", argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const short = requireSingleShort({ command: "explain", positionals: scanned.right.positionals })
+  if (Either.isLeft(short)) return Either.left(short.left)
+  return Either.right({
+    _tag: "Explain",
+    short: short.right,
+    json: scanned.right.flags.has("json"),
+    url,
+  })
+}
+
+const parseWaitCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "wait",
+    argv: rest,
+    flagSpecs: withJson([FLAG_UNTIL, FLAG_TIMEOUT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const untilRaw = flags.get("until")
+  if (untilRaw === undefined) return Either.left(usageError("wait: --until is required"))
+  const combined = Either.all({
+    short: requireSingleShort({ command: "wait", positionals }),
+    until: parseStateSlugList({ command: "wait", flag: "until", raw: untilRaw }),
+    timeoutMs: parseOptionalTimeout({ command: "wait", flags }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ _tag: "Wait", ...combined.right, json: flags.has("json"), url })
+}
+
+// Shared by send/keys/spawn: an optional `--wait <slug,...>` plus an optional
+// `--timeout <ms>` that only makes sense alongside it.
+const parseOptionalWait = ({
+  command,
+  flags,
+}: {
+  readonly command: string
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<WaitParams | undefined, UsageError> => {
+  const raw = flags.get("wait")
+  if (raw === undefined) return Either.right(undefined)
+  const combined = Either.all({
+    until: parseStateSlugList({ command, flag: "wait", raw }),
+    timeoutMs: parseOptionalTimeout({ command, flags }),
+  })
+  return Either.isLeft(combined) ? Either.left(combined.left) : Either.right(combined.right)
+}
+
+const parseSendCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "send",
+    argv: rest,
+    flagSpecs: withJson([FLAG_WAIT, FLAG_TIMEOUT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const shortAndRest = requireShortAndRest({ command: "send", positionals, restLabel: "<text...>" })
+  if (Either.isLeft(shortAndRest)) return Either.left(shortAndRest.left)
+  const wait = parseOptionalWait({ command: "send", flags })
+  if (Either.isLeft(wait)) return Either.left(wait.left)
+  return Either.right({
+    _tag: "Send",
+    short: shortAndRest.right.short,
+    text: shortAndRest.right.rest.join(" "),
+    wait: wait.right,
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parseKeyNames = (
+  names: ReadonlyArray<string>,
+): Either.Either<ReadonlyArray<NamedKeyName>, UsageError> => {
+  for (const raw of names) {
+    if (!isNamedKeyName(raw)) {
+      return Either.left(
+        usageError(`keys: unknown key name "${raw}" — expected one of: ${NAMED_KEYS_HELP}`),
+      )
+    }
+  }
+  return Either.right(names as ReadonlyArray<NamedKeyName>)
+}
+
+const parseKeysCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "keys",
+    argv: rest,
+    flagSpecs: withJson([FLAG_WAIT, FLAG_TIMEOUT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const shortAndRest = requireShortAndRest({
+    command: "keys",
+    positionals,
+    restLabel: "one or more <name>",
+  })
+  if (Either.isLeft(shortAndRest)) return Either.left(shortAndRest.left)
+  const combined = Either.all({
+    names: parseKeyNames(shortAndRest.right.rest),
+    wait: parseOptionalWait({ command: "keys", flags }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    _tag: "Keys",
+    short: shortAndRest.right.short,
+    names: combined.right.names,
+    wait: combined.right.wait,
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parseOptionalCount = ({
+  flags,
+}: {
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<number, UsageError> => {
+  const raw = flags.get("n")
+  return raw === undefined
+    ? Either.right(1)
+    : parsePositiveInt({ command: "spawn", flag: "n", raw })
+}
+
+const parseSpawnCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "spawn",
+    argv: rest,
+    flagSpecs: withJson([FLAG_N, FLAG_AGENT, FLAG_CWD, FLAG_WAIT, FLAG_TIMEOUT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  if (positionals.length === 0)
+    return Either.left(usageError("spawn: requires an <intent> argument"))
+  const combined = Either.all({
+    n: parseOptionalCount({ flags }),
+    wait: parseOptionalWait({ command: "spawn", flags }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    _tag: "Spawn",
+    intent: positionals.join(" "),
+    n: combined.right.n,
+    agent: flags.get("agent"),
+    cwd: flags.get("cwd"),
+    wait: combined.right.wait,
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parseShortOnlyCommand = ({
+  tag,
+  command,
+  rest,
+  url,
+}: {
+  readonly tag: "Stop" | "Rm"
+  readonly command: string
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command, argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const short = requireSingleShort({ command, positionals: scanned.right.positionals })
+  if (Either.isLeft(short)) return Either.left(short.left)
+  return Either.right({ _tag: tag, short: short.right, json: scanned.right.flags.has("json"), url })
+}
+
+// Pulls `--url <base>` / `--url=<base>` out of the full argv regardless of
+// position, so it composes with any subcommand (`pid --url http://h:1 sessions`
+// and `pid sessions --url http://h:1` are equivalent) — the single-port
+// `pid-dashboard` layout and PID_URL both need this to be a global, not a
+// per-subcommand, flag.
+const extractUrlFlag = (
+  argv: ReadonlyArray<string>,
+): { readonly url: string | undefined; readonly rest: ReadonlyArray<string> } => {
+  const inlineIdx = argv.findIndex((t) => t.startsWith("--url="))
+  if (inlineIdx !== -1) {
+    return {
+      url: (argv[inlineIdx] ?? "").slice("--url=".length),
+      rest: [...argv.slice(0, inlineIdx), ...argv.slice(inlineIdx + 1)],
+    }
+  }
+  const flagIdx = argv.indexOf("--url")
+  if (flagIdx === -1) return { url: undefined, rest: argv }
+  return { url: argv[flagIdx + 1], rest: [...argv.slice(0, flagIdx), ...argv.slice(flagIdx + 2)] }
+}
+
+const hasHelpFlag = (argv: ReadonlyArray<string>): boolean =>
+  argv.includes("--help") || argv.includes("-h")
+
+const SUBCOMMAND_PARSERS: Readonly<
+  Record<
+    string,
+    (rest: ReadonlyArray<string>, url: string | undefined) => Either.Either<Command, UsageError>
+  >
+> = {
+  sessions: parseSessionsCommand,
+  explain: parseExplainCommand,
+  wait: parseWaitCommand,
+  send: parseSendCommand,
+  keys: parseKeysCommand,
+  spawn: parseSpawnCommand,
+  stop: (rest, url) => parseShortOnlyCommand({ tag: "Stop", command: "stop", rest, url }),
+  rm: (rest, url) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
+}
+
+// `rest` is always non-empty here (parseAgentArgv only calls this once the
+// empty/help cases are handled), so `sub` is always a real command name —
+// the `sub === undefined` arm exists only to satisfy `noUncheckedIndexedAccess`
+// on the destructure, the same unreachable-in-practice shape as scanStep's
+// "index out of range" arm above.
+const dispatchSubcommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
+  const [sub, ...subRest] = rest
+  if (sub === undefined) return Either.left(usageError("unknown command"))
+  const parser = SUBCOMMAND_PARSERS[sub]
+  return parser ? parser(subRest, url) : Either.left(usageError(`unknown command: ${sub}`))
+}
+
+// Parses `process.argv.slice(2)`. `--url`/`--help`/`-h` are recognised
+// anywhere in the invocation; everything else is dispatched to the named
+// subcommand's own parser (looked up in a table, not a switch, to keep the
+// dispatch step's own branch count low as the command surface grows). An
+// empty invocation, or one carrying --help/-h (anywhere), always resolves to
+// the Help command rather than a UsageError — asking for help is never a
+// mistake.
+export const parseAgentArgv = (argv: ReadonlyArray<string>): Either.Either<Command, UsageError> => {
+  const { url, rest } = extractUrlFlag(argv)
+  if (rest.length === 0 || hasHelpFlag(rest)) return Either.right({ _tag: "Help", url })
+  return dispatchSubcommand({ rest, url })
+}
+
+// --- Base URL resolution ------------------------------------------------------
+
+export const DEFAULT_PID_URL = "http://localhost:8787"
+
+// --flag wins over PID_URL wins over the default. Pure precedence — the shell
+// reads the PID_URL environment variable (main.ts is a sanctioned composition
+// root) and passes it in; this function never touches the environment itself.
+export const resolveBaseUrl = ({
+  flag,
+  env,
+}: {
+  readonly flag: string | undefined
+  readonly env: string | undefined
+}): string => flag ?? env ?? DEFAULT_PID_URL
+
+// The `pid-dashboard` single-port layout moves the API behind `/__api` (see
+// apps/daemon/src/api.ts buildApp); the dev daemon serves it at the bare root.
+// `bareOk` is the shell's probe of `GET <url>/health` — true selects the bare
+// base, false assumes the `/__api` layout (a second probe would only delay
+// the same failure the real request will report anyway).
+const API_SUFFIX = "/__api"
+
+export const resolveApiBase = ({
+  url,
+  bareOk,
+}: {
+  readonly url: string
+  readonly bareOk: boolean
+}): string => (bareOk ? url : `${url}${API_SUFFIX}`)
+
+// --- Exit codes ---------------------------------------------------------------
+
+export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6
+
+export const exitCodeForUsage = (): ExitCode => 2
+
+export type WaitFailureReason = "timeout" | "occupant_changed" | "removed" | "not_found"
+
+export type WaitOutcomeBody =
+  | {
+      readonly ok: true
+      readonly short: string
+      readonly state: SessionStateSlug
+      readonly waitedMs: number
+    }
+  | {
+      readonly ok: false
+      readonly short: string
+      readonly reason: WaitFailureReason
+      readonly waitedMs: number | undefined
+    }
+
+const WAIT_FAILURE_EXIT: Readonly<Record<WaitFailureReason, ExitCode>> = {
+  timeout: 3,
+  occupant_changed: 4,
+  removed: 5,
+  not_found: 6,
+}
+
+export const exitCodeForWaitBody = (body: WaitOutcomeBody): ExitCode =>
+  body.ok ? 0 : WAIT_FAILURE_EXIT[body.reason]
+
+const exitCodeForOk = (wait: WaitOutcomeBody | undefined): ExitCode =>
+  wait === undefined ? 0 : exitCodeForWaitBody(wait)
+
+// The single result shape every request/response cycle below reduces to,
+// after the shell has read the HTTP status and decoded the body: a clean
+// success (possibly carrying a nested wait outcome, for send/keys/wait
+// itself), a 404, or anything else (a non-2xx status, a network failure
+// surfaced upstream, or a body this CLI's parser could not make sense of).
+export type CommandOutcome =
+  | { readonly _tag: "Ok"; readonly wait: WaitOutcomeBody | undefined }
+  | { readonly _tag: "NotFound" }
+  | { readonly _tag: "HttpError" }
+
+export const exitCodeForOutcome = (outcome: CommandOutcome): ExitCode => {
+  switch (outcome._tag) {
+    case "Ok":
+      return exitCodeForOk(outcome.wait)
+    case "NotFound":
+      return 6
+    case "HttpError":
+      return 1
+  }
+}
+
+// Severity order for picking the worst of several outcomes (`spawn --wait`
+// waits on every spawned short and reports the worst). Ranked by how much the
+// caller's picture of what happened is degraded: a plain timeout still means
+// "it's out there, just slow"; a transport/unexpected failure means the
+// caller does not actually know what happened at all, which is worse than any
+// of the wait-specific failures.
+const SEVERITY_RANK: Readonly<Record<ExitCode, number>> = {
+  0: 0,
+  3: 1,
+  4: 2,
+  5: 3,
+  6: 4,
+  1: 5,
+  2: 6,
+}
+
+export const worstExitCode = (codes: ReadonlyArray<ExitCode>): ExitCode => {
+  let worst: ExitCode = 0
+  for (const code of codes) {
+    if (SEVERITY_RANK[code] > SEVERITY_RANK[worst]) worst = code
+  }
+  return worst
+}
+
+// --- Response parsing ---------------------------------------------------------
+//
+// Every daemon response arrives as `unknown`; these turn it into a typed
+// value or a ParseError — never a cast, never a crash. A daemon that returns
+// something this CLI doesn't recognise is a ParseError (exit 1 via
+// HttpError), not a silent best-effort guess.
+
+export type ParseError = { readonly _tag: "ParseError"; readonly message: string }
+
+const parseError = (message: string): ParseError => ({ _tag: "ParseError", message })
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v)
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0
+
+const optionalString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
+
+const optionalNumber = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined)
+
+const optionalBoolean = (v: unknown): boolean | undefined =>
+  typeof v === "boolean" ? v : undefined
+
+// One field validator per shape, each a total function from `unknown` (plus a
+// message) to an Either — combined via `Either.all` by the callers below so
+// validating N required fields costs the caller exactly one branch, not N.
+const requireNonEmptyStringField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<string, ParseError> =>
+  isNonEmptyString(value) ? Either.right(value) : Either.left(parseError(message))
+
+const requireStringField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<string, ParseError> =>
+  typeof value === "string" ? Either.right(value) : Either.left(parseError(message))
+
+const requireBooleanField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<boolean, ParseError> =>
+  typeof value === "boolean" ? Either.right(value) : Either.left(parseError(message))
+
+const requireNumberField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<number, ParseError> =>
+  typeof value === "number" ? Either.right(value) : Either.left(parseError(message))
+
+const requireOkTrue = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<true, ParseError> =>
+  value === true ? Either.right(true) : Either.left(parseError(message))
+
+const requireStateSlugField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<SessionStateSlug, ParseError> =>
+  typeof value === "string" && isSessionStateSlug(value)
+    ? Either.right(value)
+    : Either.left(parseError(message))
+
+const requireStringArrayField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<ReadonlyArray<string>, ParseError> =>
+  Array.isArray(value) && value.every((v) => typeof v === "string")
+    ? Either.right(value)
+    : Either.left(parseError(message))
+
+const WAIT_FAILURE_REASONS: ReadonlyArray<WaitFailureReason> = [
+  "timeout",
+  "occupant_changed",
+  "removed",
+  "not_found",
+]
+
+const isWaitFailureReason = (v: unknown): v is WaitFailureReason =>
+  typeof v === "string" && (WAIT_FAILURE_REASONS as readonly string[]).includes(v)
+
+const requireShortFrom = (
+  raw: unknown,
+): Either.Either<{ readonly obj: Record<string, unknown>; readonly short: string }, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("wait response must be an object"))
+  const short = requireNonEmptyStringField({
+    value: raw.short,
+    message: "wait response is missing short",
+  })
+  return Either.isLeft(short)
+    ? Either.left(short.left)
+    : Either.right({ obj: raw, short: short.right })
+}
+
+const parseSatisfiedWait = (
+  obj: Record<string, unknown>,
+  short: string,
+): Either.Either<WaitOutcomeBody, ParseError> => {
+  const combined = Either.all({
+    state: requireStateSlugField({
+      value: obj.state,
+      message: `wait response has an unrecognized state: ${JSON.stringify(obj.state)}`,
+    }),
+    waitedMs: requireNumberField({
+      value: obj.waitedMs,
+      message: "wait response is missing waitedMs",
+    }),
+  })
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ ok: true, short, ...combined.right })
+}
+
+const parseFailedWait = (
+  obj: Record<string, unknown>,
+  short: string,
+): Either.Either<WaitOutcomeBody, ParseError> => {
+  if (!isWaitFailureReason(obj.reason)) {
+    return Either.left(
+      parseError(`wait response has an unrecognized reason: ${JSON.stringify(obj.reason)}`),
+    )
+  }
+  return Either.right({
+    ok: false,
+    short,
+    reason: obj.reason,
+    waitedMs: optionalNumber(obj.waitedMs),
+  })
+}
+
+export const parseWaitOutcomeBody = (raw: unknown): Either.Either<WaitOutcomeBody, ParseError> => {
+  const base = requireShortFrom(raw)
+  if (Either.isLeft(base)) return Either.left(base.left)
+  const { obj, short } = base.right
+  if (obj.ok === true) return parseSatisfiedWait(obj, short)
+  if (obj.ok === false) return parseFailedWait(obj, short)
+  return Either.left(parseError("wait response is missing ok"))
+}
+
+const parseOptionalWaitField = (
+  value: unknown,
+): Either.Either<WaitOutcomeBody | undefined, ParseError> =>
+  value === undefined ? Either.right(undefined) : parseWaitOutcomeBody(value)
+
+export type SendResult = { readonly short: string; readonly wait: WaitOutcomeBody | undefined }
+
+export const parseSendResponse = (raw: unknown): Either.Either<SendResult, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("send response must be an object"))
+  const combined = Either.all({
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "send response is missing ok/short",
+    }),
+    ok: requireOkTrue({ value: raw.ok, message: "send response is missing ok/short" }),
+    wait: parseOptionalWaitField(raw.wait),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ short: combined.right.short, wait: combined.right.wait })
+}
+
+export type KeysResult = SendResult & {
+  readonly resolved: ReadonlyArray<string>
+  readonly bytes: number
+}
+
+export const parseKeysResponse = (raw: unknown): Either.Either<KeysResult, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("keys response must be an object"))
+  const combined = Either.all({
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "keys response is missing ok/short",
+    }),
+    ok: requireOkTrue({ value: raw.ok, message: "keys response is missing ok/short" }),
+    resolved: requireStringArrayField({
+      value: raw.resolved,
+      message: "keys response is missing resolved",
+    }),
+    bytes: requireNumberField({ value: raw.bytes, message: "keys response is missing bytes" }),
+    wait: parseOptionalWaitField(raw.wait),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    short: combined.right.short,
+    resolved: combined.right.resolved,
+    bytes: combined.right.bytes,
+    wait: combined.right.wait,
+  })
+}
+
+export type OkShortResult = { readonly short: string }
+
+export const parseOkShortResponse = (raw: unknown): Either.Either<OkShortResult, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("response must be an object"))
+  const combined = Either.all({
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "response is missing ok/short",
+    }),
+    ok: requireOkTrue({ value: raw.ok, message: "response is missing ok/short" }),
+  })
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ short: combined.right.short })
+}
+
+export const parseDispatchResponse = (raw: unknown): Either.Either<OkShortResult, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("dispatch response must be an object"))
+  const short = requireNonEmptyStringField({
+    value: raw.short,
+    message: "dispatch response is missing short",
+  })
+  return Either.isLeft(short) ? Either.left(short.left) : Either.right({ short: short.right })
+}
+
+// A session-list entry, as returned by GET /sessions. `createdAt` is kept as
+// the raw ISO string the daemon sends — the core does not read the clock, so
+// converting it to an age is the shell's job (see formatSessions below, which
+// takes an already-resolved `now`).
+export type SessionListEntry = {
+  readonly short: string
+  readonly state: SessionStateSlug
+  readonly intent: string | undefined
+  readonly createdAt: string | undefined
+}
+
+const normalizeListedState = (state: unknown): SessionStateSlug =>
+  typeof state === "string" && isSessionStateSlug(state) ? state : "unknown"
+
+// A single malformed entry degrades to "unknown" state rather than failing
+// the whole list — GET /sessions already normalizes an unrecognized slug the
+// same way (see sessions.core.ts normalizeState). An entry with no `short` at
+// all cannot be shown, so it is dropped instead of aborting the entire list.
+const parseSessionListItem = (item: unknown): SessionListEntry | undefined => {
+  if (!isPlainObject(item)) return undefined
+  const { short, state, intent, createdAt } = item
+  if (!isNonEmptyString(short)) return undefined
+  return {
+    short,
+    state: normalizeListedState(state),
+    intent: optionalString(intent),
+    createdAt: optionalString(createdAt),
+  }
+}
+
+export const parseSessionsResponse = (
+  raw: unknown,
+): Either.Either<ReadonlyArray<SessionListEntry>, ParseError> => {
+  if (!Array.isArray(raw)) return Either.left(parseError("sessions response must be an array"))
+  const entries = raw
+    .map(parseSessionListItem)
+    .filter((e): e is SessionListEntry => e !== undefined)
+  return Either.right(entries)
+}
+
+export type ExplainSummary = {
+  readonly short: string
+  readonly state: SessionStateSlug
+  readonly source: string
+  readonly degradedFrom: string | undefined
+  readonly updatedAtAgeMs: number | undefined
+  readonly lastEventAgeMs: number | undefined
+  readonly pidAlive: boolean | undefined
+  readonly stateFilePresent: boolean
+  readonly stale: boolean
+  readonly reasons: ReadonlyArray<string>
+}
+
+export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("explain response must be an object"))
+  const combined = Either.all({
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "explain response is missing short",
+    }),
+    state: requireStateSlugField({
+      value: raw.state,
+      message: `explain response has an unrecognized state: ${JSON.stringify(raw.state)}`,
+    }),
+    source: requireStringField({
+      value: raw.source,
+      message: "explain response is missing source",
+    }),
+    stateFilePresent: requireBooleanField({
+      value: raw.stateFilePresent,
+      message: "explain response is missing stateFilePresent",
+    }),
+    stale: requireBooleanField({ value: raw.stale, message: "explain response is missing stale" }),
+    reasons: requireStringArrayField({
+      value: raw.reasons,
+      message: "explain response is missing reasons",
+    }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    ...combined.right,
+    degradedFrom: optionalString(raw.degradedFrom),
+    updatedAtAgeMs: optionalNumber(raw.updatedAtAgeMs),
+    lastEventAgeMs: optionalNumber(raw.lastEventAgeMs),
+    pidAlive: optionalBoolean(raw.pidAlive),
+  })
+}
+
+// Best-effort human message out of a daemon error body — every error route in
+// this app responds with some subset of { error, message, detail }.
+export const errorMessageFrom = (raw: unknown): string => {
+  if (!isPlainObject(raw)) return "unknown error"
+  const candidates = [raw.message, raw.detail, raw.error].map((v) =>
+    typeof v === "string" && v.length > 0 ? v : undefined,
+  )
+  return candidates.find((c): c is string => c !== undefined) ?? "unknown error"
+}
+
+// --- Request body building ----------------------------------------------------
+
+export const buildWaitRequestBody = (
+  wait: WaitParams,
+): { readonly until: ReadonlyArray<SessionStateSlug>; readonly timeoutMs?: number } =>
+  wait.timeoutMs === undefined
+    ? { until: wait.until }
+    : { until: wait.until, timeoutMs: wait.timeoutMs }
+
+export const buildSendRequestBody = ({
+  keys,
+  wait,
+}: {
+  readonly keys: string
+  readonly wait: WaitParams | undefined
+}): Record<string, unknown> =>
+  wait === undefined ? { keys } : { keys, wait: buildWaitRequestBody(wait) }
+
+export const buildKeysRequestBody = ({
+  names,
+  wait,
+}: {
+  readonly names: ReadonlyArray<NamedKeyName>
+  readonly wait: WaitParams | undefined
+}): Record<string, unknown> => {
+  const sequence = names.map((named) => ({ named }))
+  return wait === undefined ? { sequence } : { sequence, wait: buildWaitRequestBody(wait) }
+}
+
+export const buildDispatchRequestBody = ({
+  intent,
+  cwd,
+  agent,
+}: {
+  readonly intent: string
+  readonly cwd: string | undefined
+  readonly agent: string | undefined
+}): Record<string, unknown> => {
+  const body: Record<string, unknown> = { intent }
+  if (cwd !== undefined) body.cwd = cwd
+  if (agent !== undefined) body.agent = agent
+  return body
+}
+
+// --- Output formatting ---------------------------------------------------------
+
+const ageMs = ({
+  now,
+  sinceMs,
+}: {
+  readonly now: number
+  readonly sinceMs: number | undefined
+}): number | undefined =>
+  sinceMs === undefined || Number.isNaN(sinceMs) ? undefined : Math.max(0, now - sinceMs)
+
+// A ladder of (limit-in-seconds, divisor, suffix) triples, checked in order —
+// adding a unit later is one new row, not another branch in formatAge itself.
+const AGE_LADDER: ReadonlyArray<{
+  readonly below: number
+  readonly divisor: number
+  readonly suffix: string
+}> = [
+  { below: 60, divisor: 1, suffix: "s" },
+  { below: 60 * 60, divisor: 60, suffix: "m" },
+  { below: 60 * 60 * 24, divisor: 60 * 60, suffix: "h" },
+]
+
+const formatAge = (ms: number | undefined): string => {
+  if (ms === undefined) return "—"
+  const s = Math.floor(ms / 1000)
+  const unit = AGE_LADDER.find((u) => s < u.below)
+  if (unit === undefined) return `${Math.floor(s / (60 * 60 * 24))}d`
+  return `${Math.floor(s / unit.divisor)}${unit.suffix}`
+}
+
+const truncate = ({ text, max }: { readonly text: string; readonly max: number }): string =>
+  text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`
+
+const padEndTo = ({ text, width }: { readonly text: string; readonly width: number }): string =>
+  text.length >= width ? text : text + " ".repeat(width - text.length)
+
+// A session row ready for column formatting: `createdAtMs` is the shell's
+// `Date.parse` of the raw ISO `createdAt` a SessionListEntry carries — the
+// core never touches the clock or a date parser, only the plain number.
+export type SessionRow = {
+  readonly short: string
+  readonly state: SessionStateSlug
+  readonly intent: string | undefined
+  readonly createdAtMs: number | undefined
+}
+
+const INTENT_MAX_WIDTH = 48
+
+const formatSessionRow = ({
+  row,
+  now,
+  shortWidth,
+  stateWidth,
+}: {
+  readonly row: SessionRow
+  readonly now: number
+  readonly shortWidth: number
+  readonly stateWidth: number
+}): string => {
+  const age = formatAge(ageMs({ now, sinceMs: row.createdAtMs }))
+  const intent = truncate({ text: row.intent ?? "", max: INTENT_MAX_WIDTH })
+  return [
+    padEndTo({ text: row.short, width: shortWidth }),
+    padEndTo({ text: row.state, width: stateWidth }),
+    age.padStart(4),
+    intent,
+  ].join("  ")
+}
+
+export const formatSessions = ({
+  sessions,
+  now,
+}: {
+  readonly sessions: ReadonlyArray<SessionRow>
+  readonly now: number
+}): string => {
+  if (sessions.length === 0) return "no sessions"
+  const shortWidth = Math.max(5, ...sessions.map((s) => s.short.length))
+  const stateWidth = Math.max(5, ...sessions.map((s) => s.state.length))
+  return sessions.map((row) => formatSessionRow({ row, now, shortWidth, stateWidth })).join("\n")
+}
+
+export const formatExplain = (explanation: ExplainSummary): string => {
+  const lines = [
+    `${explanation.short}  ${explanation.state}${explanation.stale ? " (stale)" : ""}`,
+    `source: ${explanation.source}`,
+    `updated: ${formatAge(explanation.updatedAtAgeMs)} ago`,
+    `last event: ${formatAge(explanation.lastEventAgeMs)} ago`,
+  ]
+  if (explanation.pidAlive !== undefined) lines.push(`pid alive: ${explanation.pidAlive}`)
+  for (const reason of explanation.reasons) lines.push(`- ${reason}`)
+  return lines.join("\n")
+}
+
+const WAIT_FAILURE_LABEL: Readonly<Record<WaitFailureReason, string>> = {
+  timeout: "timed out waiting",
+  occupant_changed: "occupant changed",
+  removed: "was removed",
+  not_found: "was not found",
+}
+
+export const formatWaitOutcome = (outcome: WaitOutcomeBody): string =>
+  outcome.ok
+    ? `${outcome.short} reached "${outcome.state}" after ${outcome.waitedMs}ms`
+    : `${outcome.short} ${WAIT_FAILURE_LABEL[outcome.reason]}`
+
+export const formatSent = ({
+  short,
+  wait,
+}: {
+  readonly short: string
+  readonly wait: WaitOutcomeBody | undefined
+}): string =>
+  wait === undefined ? `sent to ${short}` : `sent to ${short}; ${formatWaitOutcome(wait)}`
+
+export const formatKeysSent = ({
+  short,
+  resolved,
+  bytes,
+  wait,
+}: {
+  readonly short: string
+  readonly resolved: ReadonlyArray<string>
+  readonly bytes: number
+  readonly wait: WaitOutcomeBody | undefined
+}): string => {
+  const base = `sent [${resolved.join(", ")}] (${bytes} bytes) to ${short}`
+  return wait === undefined ? base : `${base}; ${formatWaitOutcome(wait)}`
+}
+
+export const formatStopped = (short: string): string => `stopped ${short}`
+
+export const formatRemoved = (short: string): string => `removed ${short}`
+
+export const formatSpawned = ({
+  short,
+  intent,
+  wait,
+}: {
+  readonly short: string
+  readonly intent: string
+  readonly wait: WaitOutcomeBody | undefined
+}): string => {
+  const base = `spawned ${short} — ${truncate({ text: intent, max: 60 })}`
+  return wait === undefined ? base : `${base}; ${formatWaitOutcome(wait)}`
+}
+
+// --- Filtering -----------------------------------------------------------------
+
+export const filterByState = <T extends { readonly state: SessionStateSlug }>({
+  items,
+  states,
+}: {
+  readonly items: ReadonlyArray<T>
+  readonly states: ReadonlyArray<SessionStateSlug> | undefined
+}): ReadonlyArray<T> =>
+  states === undefined || states.length === 0
+    ? items
+    : items.filter((i) => states.includes(i.state))

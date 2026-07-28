@@ -273,6 +273,111 @@ browser — no separate `apps/web`/`apps/daemon` setup.
   package's `dependencies` are empty; `@pid/daemon` is a `devDependency` used
   only for monorepo dev/typecheck.
 
+## Agent-facing CLI (`pid`)
+
+`apps/cli` ships a second, independent binary alongside `pid-dashboard`: `pid`
+is a control surface an agent drives itself — a socket API plus (in a
+follow-up PR) a served `SKILL.md` teaching an agent to use it — so an agent
+running inside one pane can spawn helpers, send them input, and wait on them,
+composing `pid` in a shell the same way it composes any other CLI.
+
+- Entry point `apps/cli/src/agent/main.ts`, pure logic in
+  `apps/cli/src/agent/agent.core.ts`. Same layout discipline as the rest of
+  the repo: `parseAgentArgv` and every exit-code/formatting/parsing decision
+  live in the core with co-located tests; `main.ts` only reads argv/env/clock,
+  drives the typed `hc` client against `@pid/daemon`'s `AppType`, prints, and
+  exits with the code the core decided. `bin.pid` in `apps/cli/package.json`
+  points at `dist/agent/main.js`; `bun run build` (in `apps/cli`) now bundles
+  both entrypoints (`bun build ./src/main.ts ./src/agent/main.ts …`), and `bun
+  build` preserves each entry's own subdirectory under `dist/`, which is why
+  the agent binary lands at `dist/agent/main.js` rather than colliding with
+  `dist/main.js`.
+- `SessionStateSlug` (the 8-slug vocabulary) and the named-key vocabulary are
+  **mirrored as literal copies** in `agent.core.ts`, not imported from
+  `@pid/daemon`: the daemon package's `exports` map only publishes `.`,
+  `./server` and `./types` (the Hono `AppType`), and a deep import of a
+  slice-internal module (`sessions.core`, `sessions-keys.core`) does not
+  resolve from `apps/cli` (`tsc --noEmit` fails with "Cannot find module").
+  Keep both mirrors in sync by hand if the daemon's vocabularies change.
+
+### Commands
+
+```
+pid sessions [--state <slug,...>] [--json]
+pid explain <short> [--json]
+pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
+pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
+pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
+pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,...>] [--json]
+pid stop <short>
+pid rm <short>
+pid [--help] [--url <base>]
+```
+
+- `--json` is accepted on **every** command, including `stop`/`rm` (a
+  deliberate superset of the table above, for a uniform machine-readable
+  path) — it prints the daemon's own response verbatim; without it, output is
+  formatted for a human. For `pid sessions`, "verbatim" means the original
+  daemon JSON objects (every field, not just the ones this CLI parses),
+  filtered down to the shorts that matched `--state` — never a re-serialized,
+  trimmed reconstruction.
+- `--url <base>` and `--help`/`-h` are recognised **anywhere** in the
+  invocation (`pid --url http://h:1 sessions` and `pid sessions --url
+  http://h:1` are equivalent), independent of the subcommand grammar below.
+  An empty invocation or one carrying `--help`/`-h` always resolves to help,
+  exit 0 — asking for help is never a usage error.
+- Base URL resolution, in order: `--url` flag, then the `PID_URL` environment
+  variable, then the default `http://localhost:8787`. The CLI then probes
+  `GET <url>/health`: success selects that URL as the API base (the dev
+  daemon's bare-root layout); failure assumes the `pid-dashboard` single-port
+  layout and appends `/__api` (see "Single-package CLI distribution" above)
+  without a second probe — a second probe would only delay the same failure
+  the real request goes on to report.
+- `pid send <short> <text...>` and `pid keys <short> <name...>` join their
+  trailing positional words with a single space / treat each as one named key
+  respectively (`pid keys ab12 down down enter` sends `down`, `down`, `enter`
+  in order — repeat by repeating the name). `pid spawn <intent>` similarly
+  joins every positional word into the intent, so none of the three require
+  quoting a multi-word argument. `--wait` on `send`/`keys`/`spawn` reuses the
+  daemon's pinned-occupant wait (see "Server-owned waits" above) after the
+  action; `pid wait` is the same wait as its own subcommand, `--until`
+  required. `--timeout` is milliseconds; omitted, the daemon's own default
+  (30s, capped at 10 minutes) applies.
+- `pid spawn --n <count>` issues `count` independent `POST /dispatch` calls
+  with the same intent/agent/cwd, each producing its own short; with `--wait`,
+  each spawned short is waited on independently and every attempt's outcome
+  (dispatch failure or wait outcome) is printed.
+- session states: `done`, `working`, `blocked`, `needs_input`, `idle`,
+  `failed`, `stopped`, `unknown`. Key names: `escape`, `enter`, `tab`,
+  `shift-tab`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`,
+  `page-down`, `backspace`, `delete`, `space` (the same deliberately-closed
+  vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
+
+### Exit codes
+
+An orchestrating agent composes `pid` in a shell
+(`pid wait ab12 --until done && pid send cd34 "next step"`), so the exit code
+*is* the API:
+
+| code | meaning |
+|---|---|
+| 0 | success / wait satisfied |
+| 1 | transport failure, 5xx, unreachable daemon, or a response this CLI's parser could not make sense of |
+| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) |
+| 3 | wait timed out |
+| 4 | `occupant_changed` — the session was replaced under the wait |
+| 5 | `removed` — the session went away |
+| 6 | not found (daemon returned 404) |
+
+`pid spawn --n <count> --wait` runs `count` independent spawn+wait attempts
+and reports the **worst** outcome across all of them as the process exit
+code. Worst is ranked by how much the outcome degrades the caller's picture
+of what happened, most severe last: `0` (ok) < `3` (timeout — it's out there,
+just slow) < `4` (occupant changed) < `5` (removed) < `6` (not found) < `1`
+(transport/unexpected failure — the caller does not know what happened at
+all) < `2` (usage error, which in practice never mixes with the others since
+it always short-circuits before any request is made).
+
 ## Frontend skeleton
 
 ```
