@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
-import { CollapsibleRail } from "./CollapsibleRail"
+import { CollapsibleRail, RailExpandButton } from "./CollapsibleRail"
 
 const render = (collapsed: boolean): string =>
   renderToStaticMarkup(
@@ -29,12 +29,23 @@ describe("CollapsibleRail", () => {
     expect(html).not.toContain('data-testid="pidapp-subtabs-expand"')
   })
 
-  test("collapsed: hides the rail + children, leaving only a slim expand control", () => {
-    const html = render(true)
-    // The wide rail and its children are gone, handing the width to the panel.
-    expect(html).not.toContain('data-testid="pidapp-subtabs"')
-    expect(html).not.toContain('data-testid="child-tab"')
-    // Only the affordance to bring the rail back remains, labelled for a11y.
+  // A collapsed rail used to leave a slim vertical bar behind, so the panel
+  // still started ~40px in from the left. It now renders nothing at all and the
+  // reopen chip lives in the project topbar (see RailExpandButton), which is how
+  // the panel gets the whole width.
+  test("collapsed: renders nothing at all — no residual strip beside the panel", () => {
+    expect(render(true)).toBe("")
+  })
+})
+
+describe("RailExpandButton", () => {
+  test("keeps the rail's expand testid + a11y label so it stays one control", () => {
+    const html = renderToStaticMarkup(
+      <RailExpandButton
+        rail={{ kind: "specs", testid: "pidapp-subtabs", ariaLabel: "Specs and apps" }}
+        onToggle={() => {}}
+      />,
+    )
     expect(html).toContain('data-testid="pidapp-subtabs-expand"')
     expect(html).toContain('aria-label="Show Specs and apps"')
   })

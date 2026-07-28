@@ -22,4 +22,11 @@ describe("session drill-in header", () => {
   it("keeps the full cwd path reachable as a hover title even though it's inline now", () => {
     expect(src).toMatch(/title=\{session\.cwd\}/)
   })
+
+  it("hosts the collapsed-sidebar reopen chip in the header row it already renders", () => {
+    // No reserved left column: the chip lives in this row, so the terminal /
+    // chat panes below run flush to the left edge.
+    expect(src).toContain('from "../features/sessions/sidebarRail"')
+    expect(src).toMatch(/<header[^>]*>\s*<SidebarReopenButton\s*\/>/)
+  })
 })

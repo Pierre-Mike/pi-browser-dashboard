@@ -153,6 +153,23 @@ describe("ProjectDashboard collapsible rails", () => {
     expect(src).toMatch(/usePersistedFlag\("pid:specs:rail-collapsed"\)/)
     expect(src).toMatch(/usePersistedFlag\("pid:brainstorm:rail-collapsed"\)/)
   })
+
+  it("reopens a collapsed rail from a topbar chip so the panel keeps the full width", () => {
+    // The rail itself renders nothing when collapsed, so the only way back is
+    // this chip, and it must sit in the topbar — above the panel, not beside it.
+    expect(src).toContain("collapsedRail(")
+    const chipIdx = src.indexOf("<RailExpandButton")
+    const topbarIdx = src.indexOf('data-testid="project-topbar"')
+    const panelIdx = src.indexOf('data-testid="project-tab-panel-pidapps"')
+    expect(chipIdx).toBeGreaterThan(topbarIdx)
+    expect(chipIdx).toBeLessThan(panelIdx)
+  })
+
+  it("wires the chip to the rail it names so one click restores that rail", () => {
+    expect(src).toMatch(
+      /onToggle=\{railChip\.kind === "specs" \? specsRail\.toggle : brainstormRail\.toggle\}/,
+    )
+  })
 })
 
 describe("ProjectDashboard single-line topbar", () => {
@@ -174,6 +191,17 @@ describe("ProjectDashboard single-line topbar", () => {
     expect(navBlock).not.toBeNull()
     expect(navBlock?.[0]).toMatch(/flex-1/)
     expect(navBlock?.[0]).toMatch(/min-w-0/)
+  })
+
+  it("hosts the collapsed-sidebar reopen chip in the topbar it already renders", () => {
+    // The chip belongs to a row that exists anyway, so the tab panels below
+    // (terminal, canvas, spec host) keep the full width down the left edge.
+    expect(src).toContain('from "../sessions/sidebarRail"')
+    const chipIdx = src.indexOf("<SidebarReopenButton />")
+    const topbarIdx = src.indexOf('data-testid="project-topbar"')
+    const tabsIdx = src.indexOf('data-testid="project-tabs"')
+    expect(chipIdx).toBeGreaterThan(topbarIdx)
+    expect(chipIdx).toBeLessThan(tabsIdx)
   })
 
   it("drops the standalone absolute-path row — it was already shown by the sidebar", () => {
