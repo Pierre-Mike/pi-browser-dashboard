@@ -65,6 +65,6 @@
     "apps/web/src/features/sessions/useSessions.ts": 1,
     "apps/web/src/features/transcripts/loadTranscript.ts": 1,
     "apps/web/src/features/tunnel/useTunnel.ts": 3,
-    "apps/web/src/routes/sessions.$id.tsx": 2
+    "apps/web/src/routes/sessions.$id.tsx": 1
   }
 }
