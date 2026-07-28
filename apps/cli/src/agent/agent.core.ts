@@ -152,6 +152,23 @@ export type FleetsCommand = {
   readonly url: string | undefined
 }
 
+export type FleetRunCommand = {
+  readonly _tag: "FleetRun"
+  readonly name: string
+  readonly project: string | undefined
+  readonly dryRun: boolean
+  readonly wait: boolean
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+export type FleetRunsCommand = {
+  readonly _tag: "FleetRuns"
+  readonly project: string | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
 export type HelpCommand = {
   readonly _tag: "Help"
   readonly url: string | undefined
@@ -167,6 +184,8 @@ export type Command =
   | StopCommand
   | RmCommand
   | FleetsCommand
+  | FleetRunCommand
+  | FleetRunsCommand
   | HelpCommand
 
 export type UsageError = {
@@ -339,6 +358,13 @@ const FLAG_N: FlagSpec = { name: "n", boolean: false }
 const FLAG_AGENT: FlagSpec = { name: "agent", boolean: false }
 const FLAG_CWD: FlagSpec = { name: "cwd", boolean: false }
 const FLAG_PROJECT: FlagSpec = { name: "project", boolean: false }
+const FLAG_DRY_RUN: FlagSpec = { name: "dry-run", boolean: true }
+// A boolean --wait for `fleet run` ("follow to completion") — distinct from
+// FLAG_WAIT above (send/keys/spawn's valued `--wait <slug,...>`). Each
+// subcommand's scanArgv call builds its own specByName map from its own
+// flagSpecs list, so the shared flag NAME "wait" meaning different things to
+// different subcommands is not a collision.
+const FLAG_FLEET_WAIT: FlagSpec = { name: "wait", boolean: true }
 
 const parseOneSlug = ({
   command,
@@ -673,6 +699,73 @@ const parseFleetsCommand = (
   })
 }
 
+// `fleet run <name>` — the only fleet subcommand with a positional, so it
+// gets its own scanArgv call rather than sharing parseFleetsCommand's.
+const parseFleetRunCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "fleet run",
+    argv: rest,
+    flagSpecs: withJson([FLAG_PROJECT, FLAG_DRY_RUN, FLAG_FLEET_WAIT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const name = positionals[0]
+  if (name === undefined) return Either.left(usageError("fleet run: requires a <name> argument"))
+  const extra = rejectExtraPositionals({ command: "fleet run", positionals, max: 1 })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  return Either.right({
+    _tag: "FleetRun",
+    name,
+    project: flags.get("project"),
+    dryRun: flags.has("dry-run"),
+    wait: flags.has("wait"),
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parseFleetRunsCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({
+    command: "fleet runs",
+    argv: rest,
+    flagSpecs: withJson([FLAG_PROJECT]),
+  })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const extra = rejectExtraPositionals({ command: "fleet runs", positionals, max: 0 })
+  if (Either.isLeft(extra)) return Either.left(extra.left)
+  return Either.right({
+    _tag: "FleetRuns",
+    project: flags.get("project"),
+    json: flags.has("json"),
+    url,
+  })
+}
+
+// `pid fleet <run|runs> ...` is the only two-level command this CLI has —
+// dispatched by hand (not through SUBCOMMAND_PARSERS, which is flat by every
+// other command's own name) rather than generalizing the table to nested
+// subcommands for a single caller.
+const parseFleetCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const [sub, ...subRest] = rest
+  if (sub === "run") return parseFleetRunCommand(subRest, url)
+  if (sub === "runs") return parseFleetRunsCommand(subRest, url)
+  return Either.left(
+    usageError(
+      `fleet: unknown subcommand${sub === undefined ? " (expected run|runs)" : `: ${sub}`}`,
+    ),
+  )
+}
+
 const parseShortOnlyCommand = ({
   tag,
   command,
@@ -729,6 +822,7 @@ const SUBCOMMAND_PARSERS: Readonly<
   stop: (rest, url) => parseShortOnlyCommand({ tag: "Stop", command: "stop", rest, url }),
   rm: (rest, url) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
   fleets: parseFleetsCommand,
+  fleet: parseFleetCommand,
 }
 
 // `rest` is always non-empty here (parseAgentArgv only calls this once the
@@ -794,7 +888,12 @@ export const resolveApiBase = ({
 
 // --- Exit codes ---------------------------------------------------------------
 
-export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6
+// 7 is `fleet run --wait`'s own outcome: the run finished but at least one
+// step failed or was skipped. None of 3-6 fit — those are single-wait
+// outcomes, and a fleet run's failure can stem from any of them (or a spawn
+// rejection, or a skip cascade) rolled into one run-level verdict — so this
+// is a genuinely new outcome, not a rename of an existing one.
+export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export const exitCodeForUsage = (): ExitCode => 2
 
@@ -860,6 +959,13 @@ const SEVERITY_RANK: Readonly<Record<ExitCode, number>> = {
   4: 2,
   5: 3,
   6: 4,
+  // A fleet run failure is a rolled-up verdict ("something in the run did
+  // not succeed") rather than a specific diagnosis, so it ranks worse than
+  // knowing exactly which single-wait outcome occurred, but better than not
+  // even knowing that much (1) or a plain usage error (2). worstExitCode
+  // itself is not used by any fleet-run command today — this entry exists so
+  // ExitCode's Record stays total.
+  7: 4.5,
   1: 5,
   2: 6,
 }
@@ -1322,6 +1428,332 @@ export const parseFleetsResponse = (raw: unknown): Either.Either<FleetsResponse,
   return combined
 }
 
+// --- Fleet runs (POST .../fleets/:name/run, GET .../fleet-runs[/:runId]) ----
+//
+// The daemon's wave/step wire shape for a run's plan is identical to
+// FleetStepSummary above (the routes layer keys it `id` rather than `stepId`
+// on purpose — see fleet.routes.ts's `toWireStep`), so parseFleetStep is
+// reused rather than duplicated.
+
+export type FleetRunPlanSummary = {
+  readonly fleet: string
+  readonly waves: ReadonlyArray<ReadonlyArray<FleetStepSummary>>
+  readonly totalSessions: number
+  readonly maxConcurrentSpawns: number
+}
+
+const requireStepWaveArrayField = (
+  value: unknown,
+  message: string,
+): Either.Either<ReadonlyArray<ReadonlyArray<FleetStepSummary>>, ParseError> =>
+  Array.isArray(value)
+    ? Either.all(
+        value.map((wave) =>
+          Array.isArray(wave)
+            ? Either.all(wave.map(parseFleetStep))
+            : Either.left(parseError(message)),
+        ),
+      )
+    : Either.left(parseError(message))
+
+// Not exported: only parseFleetDryRunResponse below needs it directly, and an
+// unconsumed export is dead code by `fallow audit`'s own reading.
+const parseFleetRunPlan = (raw: unknown): Either.Either<FleetRunPlanSummary, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet run plan must be an object"))
+  return Either.all({
+    fleet: requireNonEmptyStringField({
+      value: raw.fleet,
+      message: "fleet run plan is missing fleet",
+    }),
+    waves: requireStepWaveArrayField(raw.waves, "fleet run plan has invalid waves"),
+    totalSessions: requireNumberField({
+      value: raw.totalSessions,
+      message: "fleet run plan is missing totalSessions",
+    }),
+    maxConcurrentSpawns: requireNumberField({
+      value: raw.maxConcurrentSpawns,
+      message: "fleet run plan is missing maxConcurrentSpawns",
+    }),
+  })
+}
+
+export type FleetDryRunResult = { readonly plan: FleetRunPlanSummary }
+
+export const parseFleetDryRunResponse = (
+  raw: unknown,
+): Either.Either<FleetDryRunResult, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("dry run response must be an object"))
+  const plan = parseFleetRunPlan(raw.plan)
+  return Either.isLeft(plan) ? Either.left(plan.left) : Either.right({ plan: plan.right })
+}
+
+export type FleetRunStarted = {
+  readonly runId: string
+  readonly waves: ReadonlyArray<ReadonlyArray<FleetStepSummary>>
+  readonly totalSessions: number
+}
+
+export const parseFleetRunStarted = (raw: unknown): Either.Either<FleetRunStarted, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet run response must be an object"))
+  return Either.all({
+    runId: requireNonEmptyStringField({
+      value: raw.runId,
+      message: "fleet run response is missing runId",
+    }),
+    waves: requireStepWaveArrayField(raw.waves, "fleet run response has invalid waves"),
+    totalSessions: requireNumberField({
+      value: raw.totalSessions,
+      message: "fleet run response is missing totalSessions",
+    }),
+  })
+}
+
+// --- Fleet run status (GET .../fleet-runs[/:runId]) --------------------------
+
+export type FleetRunStepStatus = "pending" | "spawning" | "waiting" | "done" | "failed" | "skipped"
+
+const FLEET_RUN_STEP_STATUSES: ReadonlyArray<FleetRunStepStatus> = [
+  "pending",
+  "spawning",
+  "waiting",
+  "done",
+  "failed",
+  "skipped",
+]
+
+const isFleetRunStepStatus = (v: unknown): v is FleetRunStepStatus =>
+  typeof v === "string" && (FLEET_RUN_STEP_STATUSES as readonly string[]).includes(v)
+
+export type FleetRunStatus = "running" | "done" | "failed"
+
+const FLEET_RUN_STATUSES: ReadonlyArray<FleetRunStatus> = ["running", "done", "failed"]
+
+const isFleetRunStatus = (v: unknown): v is FleetRunStatus =>
+  typeof v === "string" && (FLEET_RUN_STATUSES as readonly string[]).includes(v)
+
+// Mirrors WaitOutcomeLike in
+// apps/daemon/src/features/fleet/fleet-run.core.ts on the wire — see that
+// file's own comment for why it is a literal copy rather than an import
+// (apps/cli cannot deep-import a daemon slice-internal module at all, the
+// same limitation SessionStateSlug/NamedKeyName above document).
+export type FleetWaitOutcomeWire =
+  | { readonly _tag: "Satisfied"; readonly state: SessionStateSlug; readonly waitedMs: number }
+  | { readonly _tag: "Timeout"; readonly waitedMs: number }
+  | { readonly _tag: "OccupantChanged" }
+  | { readonly _tag: "Removed" }
+  | { readonly _tag: "NotFound" }
+
+const FLEET_WAIT_TAGS: ReadonlyArray<FleetWaitOutcomeWire["_tag"]> = [
+  "Satisfied",
+  "Timeout",
+  "OccupantChanged",
+  "Removed",
+  "NotFound",
+]
+
+const isFleetWaitTag = (v: unknown): v is FleetWaitOutcomeWire["_tag"] =>
+  typeof v === "string" && (FLEET_WAIT_TAGS as readonly string[]).includes(v)
+
+const parseFleetWaitTimeout = (raw: Record<string, unknown>): Either.Either<number, ParseError> =>
+  requireNumberField({ value: raw.waitedMs, message: "fleet run wait outcome is missing waitedMs" })
+
+const parseFleetWaitSatisfied = (
+  raw: Record<string, unknown>,
+): Either.Either<FleetWaitOutcomeWire, ParseError> => {
+  const combined = Either.all({
+    state: requireStateSlugField({
+      value: raw.state,
+      message: `fleet run wait outcome has an unrecognized state: ${JSON.stringify(raw.state)}`,
+    }),
+    waitedMs: parseFleetWaitTimeout(raw),
+  })
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ _tag: "Satisfied", ...combined.right })
+}
+
+const parseFleetWaitTimeoutOutcome = (
+  raw: Record<string, unknown>,
+): Either.Either<FleetWaitOutcomeWire, ParseError> => {
+  const waitedMs = parseFleetWaitTimeout(raw)
+  return Either.isLeft(waitedMs)
+    ? Either.left(waitedMs.left)
+    : Either.right({ _tag: "Timeout", waitedMs: waitedMs.right })
+}
+
+// Table dispatch (see EVENT_HANDLERS-style precedent in
+// apps/daemon/src/features/fleet/fleet-run.core.ts's own applyEvent) rather
+// than an if-chain per tag — keeps parseFleetWaitOutcome itself down to a
+// single guard clause plus the lookup.
+const FLEET_WAIT_PARSERS: Readonly<
+  Record<
+    FleetWaitOutcomeWire["_tag"],
+    (raw: Record<string, unknown>) => Either.Either<FleetWaitOutcomeWire, ParseError>
+  >
+> = {
+  Satisfied: parseFleetWaitSatisfied,
+  Timeout: parseFleetWaitTimeoutOutcome,
+  OccupantChanged: () => Either.right({ _tag: "OccupantChanged" }),
+  Removed: () => Either.right({ _tag: "Removed" }),
+  NotFound: () => Either.right({ _tag: "NotFound" }),
+}
+
+const parseFleetWaitOutcome = (raw: unknown): Either.Either<FleetWaitOutcomeWire, ParseError> => {
+  if (!isPlainObject(raw) || !isFleetWaitTag(raw._tag)) {
+    return Either.left(parseError("fleet run wait outcome has an unrecognized shape"))
+  }
+  return FLEET_WAIT_PARSERS[raw._tag](raw)
+}
+
+export type FleetRunShortWire = {
+  readonly short: string
+  readonly wait: FleetWaitOutcomeWire | undefined
+}
+
+const parseOptionalFleetWaitOutcome = (
+  value: unknown,
+): Either.Either<FleetWaitOutcomeWire | undefined, ParseError> =>
+  value === undefined ? Either.right(undefined) : parseFleetWaitOutcome(value)
+
+const parseFleetRunShort = (raw: unknown): Either.Either<FleetRunShortWire, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet run short must be an object"))
+  return Either.all({
+    short: requireNonEmptyStringField({
+      value: raw.short,
+      message: "fleet run short is missing short",
+    }),
+    wait: parseOptionalFleetWaitOutcome(raw.wait),
+  })
+}
+
+export type FleetRunStepState = {
+  readonly stepId: string
+  readonly waveIndex: number
+  readonly intent: string
+  readonly n: number
+  readonly status: FleetRunStepStatus
+  readonly shorts: ReadonlyArray<FleetRunShortWire>
+  readonly reason: string | undefined
+}
+
+const requireFleetRunStepStatusField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<FleetRunStepStatus, ParseError> =>
+  isFleetRunStepStatus(value) ? Either.right(value) : Either.left(parseError(message))
+
+const requireFleetRunShortsField = (
+  value: unknown,
+  message: string,
+): Either.Either<ReadonlyArray<FleetRunShortWire>, ParseError> =>
+  Array.isArray(value)
+    ? Either.all(value.map(parseFleetRunShort))
+    : Either.left(parseError(message))
+
+const parseFleetRunStepState = (raw: unknown): Either.Either<FleetRunStepState, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet run step must be an object"))
+  const combined = Either.all({
+    stepId: requireNonEmptyStringField({
+      value: raw.stepId,
+      message: "fleet run step is missing stepId",
+    }),
+    waveIndex: requireNumberField({
+      value: raw.waveIndex,
+      message: "fleet run step is missing waveIndex",
+    }),
+    intent: requireNonEmptyStringField({
+      value: raw.intent,
+      message: "fleet run step is missing intent",
+    }),
+    n: requireNumberField({ value: raw.n, message: "fleet run step is missing n" }),
+    status: requireFleetRunStepStatusField({
+      value: raw.status,
+      message: `fleet run step has an unrecognized status: ${JSON.stringify(raw.status)}`,
+    }),
+    shorts: requireFleetRunShortsField(raw.shorts, "fleet run step is missing shorts"),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ ...combined.right, reason: optionalString(raw.reason) })
+}
+
+export type FleetRunSummaryWire = {
+  readonly id: string
+  readonly projectId: string
+  readonly fleet: string
+  readonly status: FleetRunStatus
+  readonly totalSessions: number
+  readonly startedAt: number
+  readonly finishedAt: number | undefined
+  readonly steps: ReadonlyArray<FleetRunStepState>
+}
+
+const requireFleetRunStatusField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<FleetRunStatus, ParseError> =>
+  isFleetRunStatus(value) ? Either.right(value) : Either.left(parseError(message))
+
+const requireFleetRunStepStateArrayField = (
+  value: unknown,
+  message: string,
+): Either.Either<ReadonlyArray<FleetRunStepState>, ParseError> =>
+  Array.isArray(value)
+    ? Either.all(value.map(parseFleetRunStepState))
+    : Either.left(parseError(message))
+
+export const parseFleetRunSummary = (
+  raw: unknown,
+): Either.Either<FleetRunSummaryWire, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("fleet run summary must be an object"))
+  const combined = Either.all({
+    id: requireNonEmptyStringField({ value: raw.id, message: "fleet run summary is missing id" }),
+    projectId: requireNonEmptyStringField({
+      value: raw.projectId,
+      message: "fleet run summary is missing projectId",
+    }),
+    fleet: requireNonEmptyStringField({
+      value: raw.fleet,
+      message: "fleet run summary is missing fleet",
+    }),
+    status: requireFleetRunStatusField({
+      value: raw.status,
+      message: `fleet run summary has an unrecognized status: ${JSON.stringify(raw.status)}`,
+    }),
+    totalSessions: requireNumberField({
+      value: raw.totalSessions,
+      message: "fleet run summary is missing totalSessions",
+    }),
+    startedAt: requireNumberField({
+      value: raw.startedAt,
+      message: "fleet run summary is missing startedAt",
+    }),
+    steps: requireFleetRunStepStateArrayField(raw.steps, "fleet run summary is missing steps"),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({ ...combined.right, finishedAt: optionalNumber(raw.finishedAt) })
+}
+
+export const parseFleetRunsResponse = (
+  raw: unknown,
+): Either.Either<ReadonlyArray<FleetRunSummaryWire>, ParseError> => {
+  if (!isPlainObject(raw) || !Array.isArray(raw.runs)) {
+    return Either.left(parseError("fleet runs response must have a runs array"))
+  }
+  return Either.all(raw.runs.map(parseFleetRunSummary))
+}
+
+// `fleet run --wait` follows a run to one of these two terminal statuses
+// (GET .../fleet-runs/:runId never reports "running" as a final poll result —
+// main.ts keeps polling until it isn't).
+export const exitCodeForFleetRunStatus = (status: FleetRunStatus): ExitCode =>
+  status === "done" ? 0 : 7
+
 // Best-effort human message out of a daemon error body — every error route in
 // this app responds with some subset of { error, message, detail }.
 export const errorMessageFrom = (raw: unknown): string => {
@@ -1375,6 +1807,12 @@ export const buildDispatchRequestBody = ({
   if (agent !== undefined) body.agent = agent
   return body
 }
+
+export const buildFleetRunRequestBody = ({
+  dryRun,
+}: {
+  readonly dryRun: boolean
+}): Record<string, unknown> => ({ dryRun })
 
 // --- Output formatting ---------------------------------------------------------
 
@@ -1553,6 +1991,52 @@ export const formatFleets = (response: FleetsResponse): string => {
 // anything useful" (see AGENTS.md's exit-code table).
 export const exitCodeForFleets = (response: FleetsResponse): ExitCode =>
   response.errors.length > 0 ? 2 : 0
+
+// --- Fleet run formatting -----------------------------------------------------
+
+const formatFleetRunPlanStep = (step: FleetStepSummary): string =>
+  step.needs.length === 0
+    ? `${step.id} (n=${step.n})`
+    : `${step.id} (n=${step.n}, needs: ${step.needs.join(", ")})`
+
+const formatFleetRunWaves = (waves: ReadonlyArray<ReadonlyArray<FleetStepSummary>>): string =>
+  waves
+    .map((wave, i) => `  wave ${i + 1}: ${wave.map(formatFleetRunPlanStep).join(", ")}`)
+    .join("\n")
+
+export const formatFleetDryRun = (result: FleetDryRunResult): string =>
+  [
+    `dry run — ${result.plan.fleet}: ${result.plan.totalSessions} session(s) across ${result.plan.waves.length} wave(s)`,
+    formatFleetRunWaves(result.plan.waves),
+  ].join("\n")
+
+export const formatFleetRunStarted = (started: FleetRunStarted): string =>
+  [
+    `started ${started.runId} — ${started.totalSessions} session(s) across ${started.waves.length} wave(s)`,
+    formatFleetRunWaves(started.waves),
+  ].join("\n")
+
+const formatFleetRunStepLine = (step: FleetRunStepState): string => {
+  const shorts = step.shorts.map((s) => s.short).join(", ")
+  const suffix = step.reason === undefined ? "" : ` — ${step.reason}`
+  return `  [wave ${step.waveIndex + 1}] ${step.stepId}: ${step.status}${
+    shorts.length > 0 ? ` (${shorts})` : ""
+  }${suffix}`
+}
+
+export const formatFleetRunSummary = (summary: FleetRunSummaryWire): string =>
+  [
+    `${summary.id} — ${summary.fleet}: ${summary.status}`,
+    ...summary.steps.map(formatFleetRunStepLine),
+  ].join("\n")
+
+export const formatFleetRuns = (runs: ReadonlyArray<FleetRunSummaryWire>): string => {
+  if (runs.length === 0) return "no fleet runs"
+  const fleetWidth = Math.max(5, ...runs.map((r) => r.fleet.length))
+  return runs
+    .map((r) => `${r.id}  ${padEndTo({ text: r.fleet, width: fleetWidth })}  ${r.status}`)
+    .join("\n")
+}
 
 // --- Filtering -----------------------------------------------------------------
 

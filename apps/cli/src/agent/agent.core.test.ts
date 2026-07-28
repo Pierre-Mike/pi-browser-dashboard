@@ -2,17 +2,23 @@ import { describe, expect, it } from "bun:test"
 import { Either } from "effect"
 import {
   buildDispatchRequestBody,
+  buildFleetRunRequestBody,
   buildKeysRequestBody,
   buildSendRequestBody,
   buildWaitRequestBody,
   DEFAULT_PID_URL,
   errorMessageFrom,
+  exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForUsage,
   exitCodeForWaitBody,
   filterByState,
   formatExplain,
+  formatFleetDryRun,
+  formatFleetRunStarted,
+  formatFleetRunSummary,
+  formatFleetRuns,
   formatFleets,
   formatKeysSent,
   formatRemoved,
@@ -26,6 +32,10 @@ import {
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
+  parseFleetDryRunResponse,
+  parseFleetRunStarted,
+  parseFleetRunSummary,
+  parseFleetRunsResponse,
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
@@ -450,6 +460,90 @@ describe("parseAgentArgv", () => {
     it("rejects a positional argument", () => {
       expect(left(parseAgentArgv(["fleets", "extra"])).message).toBe(
         "fleets: unexpected argument: extra",
+      )
+    })
+  })
+
+  describe("fleet run / fleet runs", () => {
+    it("parses fleet run <name> with defaults", () => {
+      expect(right(parseAgentArgv(["fleet", "run", "review-and-fix"]))).toEqual({
+        _tag: "FleetRun",
+        name: "review-and-fix",
+        project: undefined,
+        dryRun: false,
+        wait: false,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("parses --project, --dry-run, --wait and --json together", () => {
+      expect(
+        right(
+          parseAgentArgv([
+            "fleet",
+            "run",
+            "review-and-fix",
+            "--project",
+            "demo",
+            "--dry-run",
+            "--wait",
+            "--json",
+          ]),
+        ),
+      ).toEqual({
+        _tag: "FleetRun",
+        name: "review-and-fix",
+        project: "demo",
+        dryRun: true,
+        wait: true,
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("requires a <name> argument", () => {
+      expect(left(parseAgentArgv(["fleet", "run"])).message).toBe(
+        "fleet run: requires a <name> argument",
+      )
+    })
+
+    it("rejects an extra positional argument", () => {
+      expect(left(parseAgentArgv(["fleet", "run", "a", "b"])).message).toBe(
+        "fleet run: unexpected argument: b",
+      )
+    })
+
+    it("parses fleet runs with defaults and with --project/--json", () => {
+      expect(right(parseAgentArgv(["fleet", "runs"]))).toEqual({
+        _tag: "FleetRuns",
+        project: undefined,
+        json: false,
+        url: undefined,
+      })
+      expect(right(parseAgentArgv(["fleet", "runs", "--project", "demo", "--json"]))).toEqual({
+        _tag: "FleetRuns",
+        project: "demo",
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("rejects a positional argument on fleet runs", () => {
+      expect(left(parseAgentArgv(["fleet", "runs", "extra"])).message).toBe(
+        "fleet runs: unexpected argument: extra",
+      )
+    })
+
+    it("rejects an unknown fleet subcommand", () => {
+      expect(left(parseAgentArgv(["fleet", "frobnicate"])).message).toBe(
+        "fleet: unknown subcommand: frobnicate",
+      )
+    })
+
+    it("rejects a bare fleet with no subcommand", () => {
+      expect(left(parseAgentArgv(["fleet"])).message).toBe(
+        "fleet: unknown subcommand (expected run|runs)",
       )
     })
   })
@@ -913,6 +1007,171 @@ describe("parseFleetsResponse", () => {
   })
 })
 
+describe("parseFleetDryRunResponse / parseFleetRunStarted", () => {
+  const wireStep = { id: "review", intent: "review the diff", n: 3, needs: [] }
+  const wirePlan = {
+    fleet: "review-and-fix",
+    waves: [[wireStep]],
+    totalSessions: 3,
+    maxConcurrentSpawns: 5,
+  }
+
+  it("parses a dry run response", () => {
+    expect(right(parseFleetDryRunResponse({ plan: wirePlan }))).toEqual({
+      plan: {
+        fleet: "review-and-fix",
+        totalSessions: 3,
+        maxConcurrentSpawns: 5,
+        waves: [
+          [
+            {
+              id: "review",
+              intent: "review the diff",
+              n: 3,
+              needs: [],
+              agent: undefined,
+              cwd: undefined,
+              until: undefined,
+              timeoutMs: undefined,
+            },
+          ],
+        ],
+      },
+    })
+  })
+
+  it("rejects a dry run response missing its plan", () => {
+    expect(left(parseFleetDryRunResponse({})).message).toBe("fleet run plan must be an object")
+  })
+
+  it("parses a started-run response", () => {
+    expect(
+      right(parseFleetRunStarted({ runId: "run-1", waves: wirePlan.waves, totalSessions: 3 })),
+    ).toEqual({
+      runId: "run-1",
+      totalSessions: 3,
+      waves: [
+        [
+          {
+            id: "review",
+            intent: "review the diff",
+            n: 3,
+            needs: [],
+            agent: undefined,
+            cwd: undefined,
+            until: undefined,
+            timeoutMs: undefined,
+          },
+        ],
+      ],
+    })
+  })
+
+  it("rejects a started-run response missing runId", () => {
+    expect(left(parseFleetRunStarted({ waves: [], totalSessions: 0 })).message).toBe(
+      "fleet run response is missing runId",
+    )
+  })
+})
+
+describe("parseFleetRunSummary / parseFleetRunsResponse", () => {
+  const baseStep = {
+    stepId: "review",
+    waveIndex: 0,
+    intent: "review the diff",
+    n: 1,
+    status: "done" as const,
+    shorts: [
+      { short: "ab12", wait: { _tag: "Satisfied" as const, state: "done" as const, waitedMs: 10 } },
+    ],
+  }
+  const baseSummary = {
+    id: "run-1",
+    projectId: "demo",
+    fleet: "review-and-fix",
+    status: "done" as const,
+    totalSessions: 1,
+    startedAt: 1000,
+    steps: [baseStep],
+  }
+
+  it("parses a well-formed run summary, defaulting finishedAt/reason to undefined", () => {
+    expect(right(parseFleetRunSummary(baseSummary))).toEqual({
+      ...baseSummary,
+      finishedAt: undefined,
+      steps: [{ ...baseStep, reason: undefined }],
+    })
+  })
+
+  it("parses finishedAt and a step reason when present", () => {
+    const withExtras = {
+      ...baseSummary,
+      finishedAt: 2000,
+      steps: [{ ...baseStep, status: "skipped", reason: 'dependency "a" did not complete' }],
+    }
+    const parsed = right(parseFleetRunSummary(withExtras))
+    expect(parsed.finishedAt).toBe(2000)
+    expect(parsed.steps[0]?.reason).toBe('dependency "a" did not complete')
+  })
+
+  it.each([
+    "Timeout",
+    "OccupantChanged",
+    "Removed",
+    "NotFound",
+  ])("parses a %s wait outcome on a short", (tag) => {
+    const outcome = tag === "Timeout" ? { _tag: tag, waitedMs: 5 } : { _tag: tag }
+    const withOutcome = {
+      ...baseSummary,
+      steps: [{ ...baseStep, shorts: [{ short: "ab12", wait: outcome }] }],
+    }
+    expect(right(parseFleetRunSummary(withOutcome)).steps[0]?.shorts[0]?.wait).toEqual(outcome)
+  })
+
+  it("rejects an unrecognized run status", () => {
+    expect(left(parseFleetRunSummary({ ...baseSummary, status: "nope" })).message).toBe(
+      'fleet run summary has an unrecognized status: "nope"',
+    )
+  })
+
+  it("rejects an unrecognized step status", () => {
+    const bad = { ...baseSummary, steps: [{ ...baseStep, status: "nope" }] }
+    expect(left(parseFleetRunSummary(bad)).message).toBe(
+      'fleet run step has an unrecognized status: "nope"',
+    )
+  })
+
+  it("rejects an unrecognized wait outcome shape", () => {
+    const bad = {
+      ...baseSummary,
+      steps: [{ ...baseStep, shorts: [{ short: "ab12", wait: { _tag: "nope" } }] }],
+    }
+    expect(left(parseFleetRunSummary(bad)).message).toBe(
+      "fleet run wait outcome has an unrecognized shape",
+    )
+  })
+
+  it("parses a list of run summaries from parseFleetRunsResponse", () => {
+    expect(right(parseFleetRunsResponse({ runs: [baseSummary] }))).toEqual([
+      { ...baseSummary, finishedAt: undefined, steps: [{ ...baseStep, reason: undefined }] },
+    ])
+  })
+
+  it("rejects a runs response with no runs array", () => {
+    expect(left(parseFleetRunsResponse({})).message).toBe(
+      "fleet runs response must have a runs array",
+    )
+  })
+})
+
+describe("exitCodeForFleetRunStatus", () => {
+  it("is 0 for done and 7 for anything else", () => {
+    expect(exitCodeForFleetRunStatus("done")).toBe(0)
+    expect(exitCodeForFleetRunStatus("failed")).toBe(7)
+    expect(exitCodeForFleetRunStatus("running")).toBe(7)
+  })
+})
+
 describe("errorMessageFrom", () => {
   it("prefers message, then detail, then error", () => {
     expect(errorMessageFrom({ message: "m", detail: "d", error: "e" })).toBe("m")
@@ -977,6 +1236,11 @@ describe("request body building", () => {
       cwd: "/tmp",
       agent: "reviewer",
     })
+  })
+
+  it("buildFleetRunRequestBody carries dryRun through explicitly", () => {
+    expect(buildFleetRunRequestBody({ dryRun: true })).toEqual({ dryRun: true })
+    expect(buildFleetRunRequestBody({ dryRun: false })).toEqual({ dryRun: false })
   })
 })
 
@@ -1191,5 +1455,104 @@ describe("formatFleets / exitCodeForFleets", () => {
       "ok\n  wave 1: a\n\n1 recipe error(s):\n  [bad] fleet name must be a non-empty string",
     )
     expect(exitCodeForFleets(response)).toBe(2)
+  })
+})
+
+describe("fleet run formatting", () => {
+  const wirePlan = {
+    fleet: "review-and-fix",
+    totalSessions: 4,
+    maxConcurrentSpawns: 5,
+    waves: [
+      [
+        {
+          id: "review",
+          intent: "review",
+          n: 3,
+          agent: undefined,
+          cwd: undefined,
+          needs: [],
+          until: undefined,
+          timeoutMs: undefined,
+        },
+      ],
+      [
+        {
+          id: "fix",
+          intent: "fix",
+          n: 1,
+          agent: undefined,
+          cwd: undefined,
+          needs: ["review"],
+          until: undefined,
+          timeoutMs: undefined,
+        },
+      ],
+    ],
+  }
+
+  it("formatFleetDryRun reports the fleet, totals and per-step needs", () => {
+    expect(formatFleetDryRun({ plan: wirePlan })).toBe(
+      "dry run — review-and-fix: 4 session(s) across 2 wave(s)\n" +
+        "  wave 1: review (n=3)\n" +
+        "  wave 2: fix (n=1, needs: review)",
+    )
+  })
+
+  it("formatFleetRunStarted reports the runId in place of the dry-run header", () => {
+    expect(formatFleetRunStarted({ runId: "run-1", ...wirePlan })).toBe(
+      "started run-1 — 4 session(s) across 2 wave(s)\n" +
+        "  wave 1: review (n=3)\n" +
+        "  wave 2: fix (n=1, needs: review)",
+    )
+  })
+
+  it("formatFleetRunSummary reports status, shorts and a skip reason", () => {
+    const summary = {
+      id: "run-1",
+      projectId: "demo",
+      fleet: "review-and-fix",
+      status: "done" as const,
+      totalSessions: 1,
+      startedAt: 0,
+      finishedAt: 5,
+      steps: [
+        {
+          stepId: "review",
+          waveIndex: 0,
+          intent: "review",
+          n: 1,
+          status: "done" as const,
+          shorts: [{ short: "ab12", wait: undefined }],
+          reason: undefined,
+        },
+        {
+          stepId: "fix",
+          waveIndex: 1,
+          intent: "fix",
+          n: 1,
+          status: "skipped" as const,
+          shorts: [],
+          reason: 'dependency "review" did not complete',
+        },
+      ],
+    }
+    expect(formatFleetRunSummary(summary)).toBe(
+      "run-1 — review-and-fix: done\n" +
+        "  [wave 1] review: done (ab12)\n" +
+        '  [wave 2] fix: skipped — dependency "review" did not complete',
+    )
+  })
+
+  it("formatFleetRuns lists id/fleet/status columns, or a placeholder when empty", () => {
+    expect(formatFleetRuns([])).toBe("no fleet runs")
+    const runs = [
+      { id: "run-1", fleet: "review-and-fix", status: "done" as const },
+      { id: "run-2", fleet: "fix", status: "running" as const },
+      // biome-ignore lint/suspicious/noExplicitAny: only id/fleet/status matter to this formatter
+    ] as any
+    expect(formatFleetRuns(runs)).toBe(
+      `run-1  review-and-fix  done\nrun-2  ${"fix".padEnd(14)}  running`,
+    )
   })
 })

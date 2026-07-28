@@ -1,4 +1,5 @@
 import { join, normalize } from "node:path"
+import { Cause, Effect, Option } from "effect"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { resolveCorsOrigin } from "./cors.core"
@@ -9,6 +10,8 @@ import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
 import * as extensionsRoute from "./features/extensions/extensions.routes"
 import * as fleetRoute from "./features/fleet/fleet.routes"
+import type { FleetRunPorts } from "./features/fleet/fleet-run.io"
+import { fleetRunRegistry } from "./features/fleet/fleet-run.io"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
@@ -16,12 +19,46 @@ import * as fileBrowserWriteRoute from "./features/projects/fileBrowserWrite.rou
 import { validateRelPath } from "./features/projects/projects.core"
 import * as projectsRoute from "./features/projects/projects.routes"
 import * as sessionsRoute from "./features/sessions/sessions.routes"
+import { SessionWaitIo } from "./features/sessions/sessions-wait.io"
 import { buildStaticApp } from "./features/static-web/static-web.routes"
 import * as terminalRoute from "./features/terminal/terminal.routes"
 import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
 import { AGENT_SKILL_MD } from "./platform/agent-skill"
 import { extensionRegistry } from "./platform/extensions/registry"
+import { appRuntime } from "./platform/runtime"
+import { ShellIo } from "./platform/shell.io"
+
+// Bridges the fleet run engine's plain-Promise ports (features/fleet/ must not
+// import the sessions slice or platform/shell.io directly — see
+// fleet-run.io.ts's own header) to the real ShellIo/SessionWaitIo Effect
+// services. `spawn` uses runPromiseExit rather than runPromise, the same way
+// dispatchRoute.buildDispatchApp does, so a ShellError's own message (not an
+// Effect FiberFailure dump) becomes the rejection a SpawnFailed event reports.
+const fleetRunPorts: FleetRunPorts = {
+  now: () => Date.now(),
+  newRunId: () => crypto.randomUUID(),
+  spawn: async ({ intent, agent, cwd }) => {
+    const exit = await appRuntime.runPromiseExit(
+      Effect.gen(function* () {
+        const shell = yield* ShellIo
+        return yield* shell.dispatch({ intent, agent, cwd })
+      }),
+    )
+    if (exit._tag === "Failure") {
+      const detail = Option.map(Cause.failureOption(exit.cause), (e) => e.message)
+      throw new Error(Option.getOrElse(detail, () => "dispatch failed"))
+    }
+    return exit.value
+  },
+  wait: ({ short, until, timeoutMs }) =>
+    appRuntime.runPromise(
+      Effect.gen(function* () {
+        const sessionWait = yield* SessionWaitIo
+        return yield* sessionWait.wait({ short, request: { until, timeoutMs } })
+      }),
+    ),
+}
 
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
@@ -78,11 +115,22 @@ const app = new Hono()
   .route("/projects", projectsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
   // Fleet recipes (declarative multi-agent runs in <project>/.pid/fleet.json):
-  // GET /projects/:id/fleets — schema + validation + wave planning only, no
-  // runner yet. Mounted here (not inside projects.routes.ts) so the fleet
-  // slice never imports the projects slice: the root resolver is passed in,
-  // the same pattern brainstormsRoute uses for sessionsRoute above.
-  .route("/projects", fleetRoute.createApp(projectsRoute.resolveProjectRoot))
+  // GET /projects/:id/fleets (schema + validation + wave planning), POST
+  // /projects/:id/fleets/:name/run (dry-run or real execution), GET
+  // /projects/:id/fleet-runs[/:runId] (run status). Mounted here (not inside
+  // projects.routes.ts) so the fleet slice never imports the projects slice:
+  // the root resolver is passed in, the same pattern brainstormsRoute uses
+  // for sessionsRoute above. `registry` and `ports` are this composition
+  // root's bridge from the fleet slice's plain-Promise ports to the real
+  // ShellIo/SessionWaitIo Effect services (see fleetRunPorts above).
+  .route(
+    "/projects",
+    fleetRoute.createApp({
+      resolveRoot: projectsRoute.resolveProjectRoot,
+      registry: fleetRunRegistry,
+      ports: fleetRunPorts,
+    }),
+  )
   .route("/dispatch", dispatchRoute.app)
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)

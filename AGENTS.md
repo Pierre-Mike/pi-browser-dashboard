@@ -151,6 +151,8 @@ session.created      ← id appeared in roster (derived from roster.changed)
 session.removed      ← id left roster   (derived from roster.changed)
 terminal.state       ← a terminal's classified agent state changed; payload =
                         { scope, id, state, matcher, evidence, at }
+fleet.run            ← a fleet run or one of its steps changed status; payload =
+                        the run summary (see "Fleet recipes" below)
 ```
 
 - One SSE stream, server fans roster + per-session deltas.
@@ -165,7 +167,9 @@ terminal.state       ← a terminal's classified agent state changed; payload =
   routes by `apps/daemon/src/platform/agent-skill.test.ts`.
 - `GET /projects/:id/fleets` — a project's `.pid/fleet.json` recipes, parsed,
   validated and grouped into dependency waves (see "Fleet recipes" below).
-  Schema + validation + discovery only; there is no run endpoint yet.
+- `POST /projects/:id/fleets/:name/run` — dry-run or execute a recipe.
+  `GET /projects/:id/fleet-runs[/:runId]` — run status. Daemon + CLI only —
+  no web UI yet (see "Fleet recipes" below).
 
 ### Server-owned waits (`features/sessions/sessions-wait.*`)
 
@@ -403,10 +407,10 @@ tool and deliberately does not cover this; this repo already has every
 ingredient (`/dispatch`, the spawn allow-list, server-owned waits), so a
 recipe is just the missing persisted description tying them together.
 
-**Schema + validation + discovery only — there is no runner yet.** Nothing in
-this feature spawns a session. The follow-up PR adds a run endpoint that walks
-the wave plan below, dispatching each wave and waiting on it before starting
-the next; until then, `GET /projects/:id/fleets` and `pid fleets` are read-only.
+`GET /projects/:id/fleets` and `pid fleets` are read-only (schema + validation
++ discovery). Executing a recipe is a separate, explicit step — see
+"Executing a run" below — so nothing in this feature ever spawns a session as
+a side effect of parsing or discovering one.
 
 ### File format — `<project>/.pid/fleet.json`
 
@@ -496,13 +500,84 @@ for the fleets that DID parse), and `pid fleets` prints every error and exits
 The `review-and-fix` fleet above plans as two waves: `[["review"], ["fix"]]`
 — wave membership comes purely from `fix`'s `needs: ["review"]`; `until` and
 `timeoutMs` never affect the plan. `fix` additionally declares `until:
-["done"]` / `timeoutMs: 600000`: once the runner exists, that is the wait
-applied to `fix`'s own sessions before anything depending on `fix` starts.
-This fleet has nothing downstream of `fix`, so today that pair is inert
-metadata — present because an author reviewing the recipe wants to see the
-intended shape even before a runner reads it. This repo's own root
-`.pid/fleet.json` dogfoods two real recipes in the same shape: a
-`review-diff` fan-out and a `fix-then-verify` chain.
+["done"]` / `timeoutMs: 600000`: that is the wait the runner applies to
+`fix`'s own session before anything depending on `fix` would start. This
+fleet has nothing downstream of `fix`, so that pair is inert for this
+particular recipe — present because an author reviewing it wants to see the
+intended shape regardless. This repo's own root `.pid/fleet.json` dogfoods two
+real recipes in the same shape: a `review-diff` fan-out and a
+`fix-then-verify` chain.
+
+### Executing a run
+
+`POST /projects/:id/fleets/:name/run` walks the wave plan above and actually
+spawns it (`apps/daemon/src/features/fleet/fleet-run.*`). Everything about it
+is designed around one fact: running a fleet spawns real agents against the
+user's own subscription quota, so nothing here is allowed to surprise them.
+
+- **Nothing auto-runs.** Discovery, parsing and daemon boot never spawn a
+  session — only this POST does, and only when asked.
+- **`{ "dryRun": true }` is the easy, safe default to reach for.** It runs the
+  same planning and cap checks a real run would, and returns the resulting
+  plan (waves, per-step session counts, the total) without spawning anything.
+  `pid fleet run <name> --dry-run` is the CLI's own front door to it.
+- **Two hard caps, enforced before a single session spawns**
+  (`apps/daemon/src/features/fleet/fleet-run.core.ts`'s `DEFAULT_RUN_CAPS`):
+  `maxTotalSessions` (50) — the sum of every step's `n` in the recipe, one
+  level up from `MAX_STEP_N`'s per-step ceiling — and `maxConcurrentSpawns`
+  (5) — how many spawn calls the engine allows in flight at once within a
+  wave, chunking a wave's flattened spawn tasks and awaiting one chunk (spawn
+  *and* its wait) before starting the next. A `maxTotalSessions` violation is
+  a `400 { error: "cap_exceeded", violation: { _tag: "TotalSessionsExceeded",
+  requested, max } }` — the plan is rejected outright, not silently truncated.
+- **One active run per fleet per project.** A second `POST` for a fleet that
+  already has a run in progress is refused with `409 { error:
+  "already_active", runId }` naming the run already running, rather than
+  starting a twin that would double-spawn the same recipe.
+- **A failed dependency skips its dependents.** Waves are already ordered so
+  a step's `needs` all live in earlier waves; when a wave starts, any step
+  whose `needs` include a step that ended `failed` or `skipped` becomes
+  `skipped` (recorded with which dependency didn't complete) instead of being
+  spawned against a broken premise. A skip cascades wave by wave: if `a`
+  fails, `b`/`c` (needing `a`) are skipped when their wave starts, then `d`
+  (needing `b`/`c`) is skipped in turn when *its* wave starts.
+- **Every spawned short is recorded before its wait starts.** A step's status
+  moves `pending → spawning → (waiting →) done | failed | skipped`; the short
+  a spawn call returns is appended to the step's own trail immediately, so
+  `GET .../fleet-runs/:runId` shows it even if the daemon dies mid-wait —
+  the underlying session itself also stays visible via `GET /sessions`
+  regardless, since only the run's own bookkeeping is in-memory (this daemon
+  persists nothing — see "4. Persistence — none in daemon" below).
+- **A run's own status** is `running` until every step reaches a terminal
+  status (`done`, `failed` or `skipped`), then `done` if every step succeeded
+  or `failed` if any did not — a rolled-up verdict, not a diagnosis of which
+  step or wait caused it (that detail lives on the individual step).
+
+Endpoints:
+
+- `POST /projects/:id/fleets/:name/run` — body `{ dryRun?: boolean }`
+  (default `false`). Dry run → `200 { dryRun: true, plan }`. Real run → `202
+  { runId, waves, totalSessions }`, execution continuing in the background.
+  Cap violation → `400`. Twin run already active → `409`. Unknown project or
+  fleet name → `404`. An invalid recipe (the same errors `GET .../fleets`
+  would report) → `400 { error: "invalid_recipe", errors }` rather than
+  trying to run something that didn't parse.
+- `GET /projects/:id/fleet-runs` — every run started for that project, most
+  recent first inclusion order, each the same run-summary shape below.
+- `GET /projects/:id/fleet-runs/:runId` — one run's status: `{ id, projectId,
+  fleet, status, totalSessions, startedAt, finishedAt, steps: [{ stepId,
+  waveIndex, intent, n, status, shorts: [{ short, wait }], reason }] }`, where
+  `wait` (once resolved) is the same tagged shape `POST /:id/wait` reports
+  internally (`Satisfied | Timeout | OccupantChanged | Removed | NotFound`)
+  and `reason` explains a `skipped` or `failed` status.
+
+`pid fleet run <name> [--project <id>] [--dry-run] [--wait] [--json]` drives
+this from the CLI; `--wait` polls `GET .../fleet-runs/:runId` to completion
+and exits non-zero (`7`) if the run finished with a failed or skipped step, or
+if the daemon refused to start it as a twin run — see "Exit codes" below.
+`pid fleet runs [--project <id>] [--json]` lists every run for a project. Both
+are daemon + CLI only for now; a dashboard tab is a deliberate follow-up, not
+an oversight.
 
 ## Single-package CLI distribution (`pid-dashboard`)
 
@@ -574,6 +649,8 @@ pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,.
 pid stop <short>
 pid rm <short>
 pid fleets [--project <id>] [--json]
+pid fleet run <name> [--project <id>] [--dry-run] [--wait] [--json]
+pid fleet runs [--project <id>] [--json]
 pid [--help] [--url <base>]
 ```
 
@@ -617,12 +694,22 @@ pid [--help] [--url <base>]
   vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
 - `pid fleets` lists a project's `.pid/fleet.json` recipes (see "Fleet
   recipes" above) via `GET /projects/:id/fleets` — schema + validation +
-  wave planning only, no runner yet. `--project` defaults to the current
-  directory's basename (a project id IS its directory name under the
+  wave planning only, never spawns anything. `--project` defaults to the
+  current directory's basename (a project id IS its directory name under the
   daemon's `projectsRoot`), so the default only resolves correctly when
   `pid` runs on the same machine as the daemon; pass `--project` explicitly
   otherwise. A non-empty `errors` list in the response exits 2, making `pid
-  fleets` a linter an author can run before trusting a recipe.
+  fleets` a linter an author can run before trusting a recipe. The same
+  `--project` default applies to `pid fleet run`/`pid fleet runs` below.
+- `pid fleet run <name>` executes a recipe by name (see "Executing a run"
+  above) via `POST /projects/:id/fleets/:name/run`. `--dry-run` reports the
+  plan without spawning anything — the safe default to reach for before
+  committing real quota to a recipe. Without `--dry-run`, spawning starts in
+  the background and the command returns immediately with the started run's
+  id, unless `--wait` is given, in which case it polls `GET
+  .../fleet-runs/:runId` to completion and prints the final run summary.
+  `pid fleet runs` lists every run started for a project via
+  `GET /projects/:id/fleet-runs`.
 
 ### Exit codes
 
@@ -634,20 +721,25 @@ An orchestrating agent composes `pid` in a shell
 |---|---|
 | 0 | success / wait satisfied |
 | 1 | transport failure, 5xx, unreachable daemon, or a response this CLI's parser could not make sense of |
-| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or, for `pid fleets`, an invalid recipe file |
+| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or an invalid recipe file / a cap-exceeded `pid fleet run` request |
 | 3 | wait timed out |
 | 4 | `occupant_changed` — the session was replaced under the wait |
 | 5 | `removed` — the session went away |
 | 6 | not found (daemon returned 404) |
+| 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |
 
 `pid spawn --n <count> --wait` runs `count` independent spawn+wait attempts
 and reports the **worst** outcome across all of them as the process exit
 code. Worst is ranked by how much the outcome degrades the caller's picture
 of what happened, most severe last: `0` (ok) < `3` (timeout — it's out there,
-just slow) < `4` (occupant changed) < `5` (removed) < `6` (not found) < `1`
-(transport/unexpected failure — the caller does not know what happened at
-all) < `2` (usage error, which in practice never mixes with the others since
-it always short-circuits before any request is made).
+just slow) < `4` (occupant changed) < `5` (removed) < `6` (not found) < `7`
+(a fleet run's own rolled-up "did not run cleanly" verdict — see "Executing a
+run" above) < `1` (transport/unexpected failure — the caller does not know
+what happened at all) < `2` (usage error, which in practice never mixes with
+the others since it always short-circuits before any request is made). `pid
+fleet run` itself never calls `worstExitCode` (each run only has one
+outcome), but 7 sits at this point in the ranking so the severity table
+stays total.
 
 ## Frontend skeleton
 

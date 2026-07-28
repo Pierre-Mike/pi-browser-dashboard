@@ -11,18 +11,26 @@ import { Either } from "effect"
 import { hc } from "hono/client"
 import {
   buildDispatchRequestBody,
+  buildFleetRunRequestBody,
   buildKeysRequestBody,
   buildSendRequestBody,
   buildWaitRequestBody,
   type Command,
   type ExitCode,
   errorMessageFrom,
+  exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForUsage,
   exitCodeForWaitBody,
+  type FleetRunStarted,
+  type FleetRunSummaryWire,
   filterByState,
   formatExplain,
+  formatFleetDryRun,
+  formatFleetRunStarted,
+  formatFleetRunSummary,
+  formatFleetRuns,
   formatFleets,
   formatKeysSent,
   formatRemoved,
@@ -37,6 +45,10 @@ import {
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
+  parseFleetDryRunResponse,
+  parseFleetRunStarted,
+  parseFleetRunSummary,
+  parseFleetRunsResponse,
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
@@ -64,6 +76,8 @@ Usage:
   pid stop <short>
   pid rm <short>
   pid fleets [--project <id>] [--json]
+  pid fleet run <name> [--project <id>] [--dry-run] [--wait] [--json]
+  pid fleet runs [--project <id>] [--json]
   pid [--help] [--url <base>]
 
 --json is accepted on every command (a superset of the table above) and
@@ -75,9 +89,15 @@ session states: done, working, blocked, needs_input, idle, failed, stopped, unkn
 key names: ${NAMED_KEYS_HELP}
 
 pid fleets lists the declarative multi-agent recipes in a project's
-.pid/fleet.json (schema + validation + wave planning only — there is no
-runner yet). --project defaults to the current directory's basename, which
-only works when this CLI runs on the same machine as the daemon.
+.pid/fleet.json (schema + validation + wave planning only). pid fleet run
+executes one by name, wave by wave — --dry-run reports what would be spawned
+without spawning anything (the easy, safe way to check a recipe before
+committing real quota to it); without it, spawning starts in the background
+and the command returns immediately unless --wait is given, in which case it
+polls until the run finishes and exits non-zero if any step failed or was
+skipped. pid fleet runs lists every run started for a project. --project
+defaults to the current directory's basename, which only works when this CLI
+runs on the same machine as the daemon.
 
 Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
   <base>/agent-skill.md
@@ -85,11 +105,13 @@ Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
 Exit codes:
   0  success / wait satisfied
   1  transport failure, 5xx, unreachable daemon, or an unparseable response
-  2  usage error, or (for "pid fleets") an invalid recipe file
+  2  usage error, or an invalid recipe file / cap-exceeded fleet run request
   3  wait timed out
   4  occupant_changed — the session was replaced under the wait
   5  removed — the session went away
   6  not found
+  7  "pid fleet run --wait": the run finished with a failed or skipped step,
+     or refused to start because that fleet already has an active run
 `
 
 // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution (see apps/web/src/lib/api.ts call sites)
@@ -372,6 +394,184 @@ const runFleets = async ({
   })
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+const FLEET_RUN_POLL_MS = 1000
+
+// POST .../fleets/:name/run responds 400/409 for conditions `checkOk`'s
+// generic 404-or-HttpError split does not distinguish: an invalid recipe or a
+// cap violation (400) is a usage-shaped problem (exit 2, matching "pid
+// fleets"'s own invalid-recipe code), and an already-active twin run (409) is
+// the fleet-run family's own rolled-up "did not run cleanly" outcome (7) —
+// see agent.core.ts's ExitCode comment for why 7 exists at all.
+const exitCodeForFleetRunPostStatus = (status: number): ExitCode => {
+  if (status === 404) return 6
+  if (status === 409) return 7
+  if (status === 400) return 2
+  return 1
+}
+
+// One GET .../fleet-runs/:runId poll: resolves the exit code once the daemon
+// or the parser has spoken, or `summary` when the caller still needs to
+// decide (its own status is "running", or a fresh fetch is due).
+const pollFleetRunOnce = async ({
+  client,
+  project,
+  runId,
+}: {
+  readonly client: AnyClient
+  readonly project: string
+  readonly runId: string
+}): Promise<{
+  readonly code: ExitCode
+  readonly body: unknown
+  readonly summary: FleetRunSummaryWire | undefined
+}> => {
+  const res: Response = await client.projects[":id"]["fleet-runs"][":runId"].$get({
+    param: { id: project, runId },
+  })
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "fleet run" })
+  if (notOk !== undefined) return { code: notOk, body, summary: undefined }
+  const parsed = parseFleetRunSummary(body)
+  if (Either.isLeft(parsed)) {
+    console.error(`fleet run: ${parsed.left.message}`)
+    return { code: exitCodeForOutcome({ _tag: "HttpError" }), body, summary: undefined }
+  }
+  return { code: 0, body, summary: parsed.right }
+}
+
+const printFleetRunResult = ({
+  json,
+  body,
+  summary,
+}: {
+  readonly json: boolean
+  readonly body: unknown
+  readonly summary: FleetRunSummaryWire
+}): void => {
+  if (json) console.log(JSON.stringify(body))
+  else console.log(formatFleetRunSummary(summary))
+}
+
+// `--wait`: poll until the run leaves "running", then print and resolve the
+// exit code from its final status. No client-side timeout — the daemon's own
+// per-step `timeoutMs` already bounds how long a run can stay "running".
+const followFleetRun = async ({
+  client,
+  project,
+  runId,
+  json,
+}: {
+  readonly client: AnyClient
+  readonly project: string
+  readonly runId: string
+  readonly json: boolean
+}): Promise<ExitCode> => {
+  while (true) {
+    const polled = await pollFleetRunOnce({ client, project, runId })
+    if (polled.summary === undefined) return polled.code
+    if (polled.summary.status === "running") {
+      await sleep(FLEET_RUN_POLL_MS)
+      continue
+    }
+    printFleetRunResult({ json, body: polled.body, summary: polled.summary })
+    return exitCodeForFleetRunStatus(polled.summary.status)
+  }
+}
+
+const printFleetRunStarted = ({
+  json,
+  body,
+  started,
+}: {
+  readonly json: boolean
+  readonly body: unknown
+  readonly started: FleetRunStarted
+}): void => {
+  if (json) console.log(JSON.stringify(body))
+  else console.log(formatFleetRunStarted(started))
+}
+
+// Everything after a successful POST: dry run, a real run left to poll for
+// itself, or a real run followed to completion via --wait. Split out of
+// runFleetRun so that function's own branch count stays under fallow's
+// cyclomatic ceiling.
+const handleFleetRunResponse = async ({
+  client,
+  command,
+  project,
+  body,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "FleetRun" }>
+  readonly project: string
+  readonly body: unknown
+}): Promise<ExitCode> => {
+  if (command.dryRun) {
+    return printAndExit({
+      body,
+      json: command.json,
+      parsed: parseFleetDryRunResponse(body),
+      label: "fleet run",
+      format: formatFleetDryRun,
+      exitCodeFor: () => 0,
+    })
+  }
+  const started = parseFleetRunStarted(body)
+  if (Either.isLeft(started)) {
+    console.error(`fleet run: ${started.left.message}`)
+    return exitCodeForOutcome({ _tag: "HttpError" })
+  }
+  if (command.wait) {
+    return followFleetRun({ client, project, runId: started.right.runId, json: command.json })
+  }
+  printFleetRunStarted({ json: command.json, body, started: started.right })
+  return 0
+}
+
+const runFleetRun = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "FleetRun" }>
+}): Promise<ExitCode> => {
+  const project = command.project ?? basename(process.cwd())
+  const res: Response = await client.projects[":id"].fleets[":name"].run.$post({
+    param: { id: project, name: command.name },
+    json: buildFleetRunRequestBody({ dryRun: command.dryRun }),
+  })
+  const body = await readJson(res)
+  if (!res.ok) {
+    console.error(`fleet run: ${errorMessageFrom(body)}`)
+    return exitCodeForFleetRunPostStatus(res.status)
+  }
+  return handleFleetRunResponse({ client, command, project, body })
+}
+
+const runFleetRuns = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "FleetRuns" }>
+}): Promise<ExitCode> => {
+  const project = command.project ?? basename(process.cwd())
+  const res: Response = await client.projects[":id"]["fleet-runs"].$get({ param: { id: project } })
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "fleet runs" })
+  if (notOk !== undefined) return notOk
+  return printAndExit({
+    body,
+    json: command.json,
+    parsed: parseFleetRunsResponse(body),
+    label: "fleet runs",
+    format: formatFleetRuns,
+    exitCodeFor: () => 0,
+  })
+}
+
 type DispatchOneResult =
   | { readonly _tag: "Failed"; readonly code: ExitCode; readonly body: unknown }
   | { readonly _tag: "Dispatched"; readonly short: string }
@@ -506,6 +706,8 @@ const HANDLERS: Readonly<Record<NonHelpCommand["_tag"], AnyCommandHandler>> = {
   Stop: (args) => runOkShortCommand({ ...args, path: "stop", format: formatStopped }),
   Rm: (args) => runOkShortCommand({ ...args, path: "rm", format: formatRemoved }),
   Fleets: runFleets,
+  FleetRun: runFleetRun,
+  FleetRuns: runFleetRuns,
 }
 
 const runCommand = ({
