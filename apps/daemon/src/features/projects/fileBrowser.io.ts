@@ -16,6 +16,11 @@ import {
 } from "./projects.core"
 import type { FileError } from "./projects.io"
 
+// The traversal guard belongs to this surface, not just to its callers inside
+// this slice: anything browsing a tree at an arbitrary root needs it, and
+// re-exporting it here keeps that need pointed at one module.
+export { resolveProjectPath }
+
 export type BrowserResult<A> = { ok: true; value: A } | { ok: false; error: FileError }
 
 // Write ops add one failure mode the read paths can't hit — a create/move whose

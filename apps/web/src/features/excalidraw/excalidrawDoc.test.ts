@@ -9,12 +9,15 @@ import {
 } from "./excalidrawDoc"
 
 describe("excalidrawWsPath", () => {
-  it("pins the daemon's excalidraw ws route", () => {
-    expect(excalidrawWsPath({ projectId: "proj", slug: "sketch" })).toBe(
-      "/projects/proj/brainstorms/sketch/excalidraw/ws",
+  it("pins the daemon's session-scoped excalidraw ws route", () => {
+    expect(excalidrawWsPath({ short: "abc", path: "brainstorms/sketch.excalidraw" })).toBe(
+      "/sessions/abc/brainstorms/excalidraw/ws?path=brainstorms%2Fsketch.excalidraw",
     )
-    expect(excalidrawWsPath({ projectId: "a b", slug: "sketch" })).toBe(
-      "/projects/a%20b/brainstorms/sketch/excalidraw/ws",
+  })
+
+  it("escapes a path with separators or spaces so the query survives", () => {
+    expect(excalidrawWsPath({ short: "a b", path: "notes/a b.excalidraw" })).toBe(
+      "/sessions/a%20b/brainstorms/excalidraw/ws?path=notes%2Fa%20b.excalidraw",
     )
   })
 })

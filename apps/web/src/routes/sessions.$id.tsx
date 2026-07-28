@@ -2,16 +2,23 @@ import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { SessionPanel } from "../features/sessions/SessionPanel"
 import { SessionTopbar } from "../features/sessions/SessionTopbar"
-import { SESSION_TABS, type SessionTab } from "../features/sessions/sessionTabs"
+import { BOARD_TAB_PREFIX, SESSION_TABS, type SessionTab } from "../features/sessions/sessionTabs"
 import { useSessionActions } from "../features/sessions/useSessionActions"
 import { api } from "../lib/api"
 import { resolveSessionView } from "../lib/sessionView"
-import { coerceEnumTab } from "../lib/tabParams"
+import { coerceNamespacedTab } from "../lib/tabParams"
 import type { SessionState } from "../lib/types"
 
+// `brainstorm:<encoded path>` selects one board inside the Brainstorm section,
+// so the deep link has to survive validateSearch instead of being dropped.
+type SessionTabParam = SessionTab | `${typeof BOARD_TAB_PREFIX}${string}`
+
 export const Route = createFileRoute("/sessions/$id")({
-  validateSearch: (search: Record<string, unknown>): { tab?: SessionTab } => {
-    const tab = coerceEnumTab(search.tab, SESSION_TABS)
+  validateSearch: (search: Record<string, unknown>): { tab?: SessionTabParam } => {
+    const tab = coerceNamespacedTab(search.tab, {
+      staticKeys: SESSION_TABS,
+      prefixes: [BOARD_TAB_PREFIX],
+    })
     return tab === undefined ? {} : { tab }
   },
   component: SessionDrillIn,
@@ -51,7 +58,7 @@ function SessionDrillIn() {
 
   const { tab = "terminal" } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const setTab = (next: SessionTab) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
+  const setTab = (next: SessionTabParam) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
 
   if (resolveSessionView({ isLoading: sessionQ.isLoading, data: session }) === "not-found") {
     return <SessionNotFound id={id} />
@@ -76,7 +83,12 @@ function SessionDrillIn() {
         </div>
       ) : null}
 
-      <SessionPanel tab={tab} id={id} session={session} />
+      <SessionPanel
+        tab={tab}
+        id={id}
+        session={session}
+        onSelectTab={(next) => setTab(next as SessionTabParam)}
+      />
     </div>
   )
 }

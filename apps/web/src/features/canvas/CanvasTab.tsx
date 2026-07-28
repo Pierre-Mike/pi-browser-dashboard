@@ -21,6 +21,7 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } f
 import { api } from "../../lib/api"
 import type { SessionState } from "../../lib/types"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
+import { briefingMessage, type CanvasFormat } from "./canvasBriefing"
 import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
 import {
   type GroupableNode,
@@ -52,39 +53,30 @@ import { EditableGroupNode } from "./EditableGroupNode"
 import { EditableLinkNode } from "./EditableLinkNode"
 import { type SyncStatus, useCanvasSync } from "./useCanvasSync"
 
-// The document this canvas edits: a per-session scratch canvas (with a
-// "Brief AI" button that messages the session), or a named project brainstorm
-// document (whose AI companions are driven by the Brainstorm tab instead).
+// The document this canvas edits: a session's scratch canvas, or a brainstorm
+// board — a canvas file in that same session's worktree. Both carry a session,
+// so "Brief AI" works on either: the agent that edits the file is the session
+// whose tree the file lives in, which is why a write lands where the browser is
+// already looking.
 type CanvasDocTarget =
   | { readonly kind: "session"; readonly session: SessionState }
   | {
-      readonly kind: "brainstorm"
-      readonly projectId: string
-      readonly slug: string
+      readonly kind: "board"
+      readonly short: string
+      readonly path: string
       readonly file: string
+      readonly format: CanvasFormat
     }
 
 type Props = { readonly target: CanvasDocTarget }
 
-const briefingMessage = (canvasPath: string): string =>
-  [
-    "You have a shared canvas at:",
-    `  ${canvasPath}`,
-    "",
-    "It is a JSON file with React-Flow shape:",
-    "  { version: 1, nodes: [{ id, position:{x,y}, type?, data:{label?},",
-    "                          parentId?, extent?: 'parent', style?:{width,height} }],",
-    "    edges: [{ id, source, target, label? }] }",
-    "",
-    "Nodes with type 'group' act as containers; child nodes set parentId and",
-    "extent:'parent' and use coordinates relative to the group's position.",
-    "Edge labels render as text on the arrow.",
-    "",
-    "Use your Read tool to see what I drew, and your Write tool to update it.",
-    "The browser side syncs live — when you Write, my canvas updates in real time.",
-    "Help me improve the diagram: rename boxes, add arrows with labels,",
-    "group related boxes, propose new nodes. Talk about your changes in chat.",
-  ].join("\n")
+// Export always writes the Obsidian format, so the download keeps the board's
+// own basename but always the `.canvas` extension — a legacy `.canvas.json`
+// board must not download as a file whose name promises React-Flow bytes.
+const downloadName = (path: string): string => {
+  const base = path.slice(path.lastIndexOf("/") + 1)
+  return `${base.replace(/\.canvas\.json$|\.canvas$/, "")}.canvas`
+}
 
 const statusBadge: Record<SyncStatus, { label: string; cls: string }> = {
   connecting: {
@@ -166,12 +158,12 @@ const decoratedEdge = (e: Edge): Edge => {
 
 const CanvasInner = ({ target }: Props) => {
   const qc = useQueryClient()
-  const short = target.kind === "session" ? target.session.short : null
+  const short = target.kind === "session" ? target.session.short : target.short
   const docRef = useMemo(
     () =>
       target.kind === "session"
         ? ({ kind: "session", short: target.session.short } as const)
-        : ({ kind: "brainstorm", projectId: target.projectId, slug: target.slug } as const),
+        : ({ kind: "board", short: target.short, path: target.path } as const),
     [target],
   )
   const { nodes, edges, status, setNodes, setEdges, resetCanvas, lastUpdatedAt } =
@@ -646,7 +638,7 @@ const CanvasInner = ({ target }: Props) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = target.kind === "session" ? `session-${short}.canvas` : `${target.slug}.canvas`
+    a.download = target.kind === "session" ? `session-${short}.canvas` : downloadName(target.path)
     a.click()
     URL.revokeObjectURL(url)
   }, [nodes, edges, short, target])
@@ -750,15 +742,19 @@ const CanvasInner = ({ target }: Props) => {
     [short, target],
   )
 
+  // A `.canvas` board is Obsidian JSON Canvas on disk; everything else the
+  // canvas editor binds to is the React-Flow encoding. The briefing has to name
+  // the right one or the agent writes a file the editor cannot decode.
+  const canvasFormat: CanvasFormat = target.kind === "session" ? "reactFlow" : target.format
+
   const onBriefAi = useCallback(async () => {
-    if (short === null) return
     if (briefing) return
     setBriefing(true)
     setBriefStatus("briefing AI…")
     try {
       // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
       const client = api as any
-      const keys = `${briefingMessage(canvasPath)}\r`
+      const keys = `${briefingMessage({ path: canvasPath, format: canvasFormat })}\r`
       const res = await client.sessions[":id"].send.$post({
         param: { id: short },
         json: { keys },
@@ -775,7 +771,7 @@ const CanvasInner = ({ target }: Props) => {
       setBriefing(false)
       setTimeout(() => setBriefStatus(null), 4_000)
     }
-  }, [briefing, canvasPath, qc, short])
+  }, [briefing, canvasFormat, canvasPath, qc, short])
 
   const badge = statusBadge[status]
 
@@ -1051,18 +1047,19 @@ const CanvasInner = ({ target }: Props) => {
           className="hidden"
           data-testid="canvas-import-input"
         />
-        {target.kind === "session" ? (
-          <button
-            type="button"
-            data-testid="canvas-brief-ai"
-            onClick={() => void onBriefAi()}
-            disabled={briefing}
-            className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
-            title="Send the AI a message telling it where to find this canvas so it can read/write live"
-          >
-            {briefing ? "Briefing…" : "Brief AI"}
-          </button>
-        ) : null}
+        {/* Available for a board too, not just the scratch canvas: the board
+            lives in this session's own worktree, so the session it briefs is
+            the one whose writes land where the browser is looking. */}
+        <button
+          type="button"
+          data-testid="canvas-brief-ai"
+          onClick={() => void onBriefAi()}
+          disabled={briefing}
+          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
+          title="Send the AI a message telling it where to find this drawing so it can read/write live"
+        >
+          {briefing ? "Briefing…" : "Brief AI"}
+        </button>
         <button
           type="button"
           data-testid="canvas-reset"

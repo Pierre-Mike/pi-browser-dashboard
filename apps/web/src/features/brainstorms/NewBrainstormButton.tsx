@@ -1,34 +1,35 @@
 import { type FormEvent, useState } from "react"
-import type { BrainstormKind } from "./brainstorms"
+import type { CreatableBrainstormKind } from "./brainstorms"
 import { useCreateBrainstorm } from "./useBrainstorms"
 
 type Props = {
-  projectId: string
-  // Which document kind this control creates. The rail renders one instance
-  // per kind; canvas keeps the historical testids so nothing downstream moves.
-  kind?: BrainstormKind
-  // Called with the newly created brainstorm's id once the mutation succeeds,
-  // so the caller can switch tabs (e.g. setTab(`brainstorm:${id}`)) — a plain
-  // callback rather than importing ProjectDashboard's TabKey here.
-  onCreated: (id: string) => void
+  short: string
+  // Which document format this control creates. The rail renders one instance
+  // per format; canvas keeps the historical testids so nothing downstream moves.
+  kind?: CreatableBrainstormKind
+  // Called with the new board's worktree-relative path once the mutation
+  // succeeds, so the caller can switch tabs — a plain callback rather than
+  // importing the drill-in's tab type here.
+  onCreated: (path: string) => void
 }
 
-const KIND_UI: Record<BrainstormKind, { face: string; title: string; testid: string }> = {
+const KIND_UI: Record<CreatableBrainstormKind, { face: string; title: string; testid: string }> = {
   canvas: { face: "+", title: "New brainstorm", testid: "brainstorm-new" },
   excalidraw: { face: "✎+", title: "New Excalidraw board", testid: "brainstorm-new-excalidraw" },
 }
 
 /**
- * Per-kind "+" control rendered at the end of the brainstorm left rail.
+ * Per-format "+" control rendered at the end of the brainstorm left rail.
  * Clicking it toggles an inline text input for the new board's name —
  * deliberately not a blocking browser-native dialog, which can't be styled or
- * unit-tested. Submitting creates an empty document of this control's kind
- * and hands its id to `onCreated`.
+ * unit-tested. Submitting creates an empty document at
+ * `brainstorms/<name>.<ext>` in the session's worktree and hands its path to
+ * `onCreated`; the file is free to be moved anywhere afterwards.
  */
-export const NewBrainstormButton = ({ projectId, kind = "canvas", onCreated }: Props) => {
+export const NewBrainstormButton = ({ short, kind = "canvas", onCreated }: Props) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
-  const create = useCreateBrainstorm(projectId)
+  const create = useCreateBrainstorm(short)
   const ui = KIND_UI[kind]
 
   const reset = () => {
@@ -45,7 +46,7 @@ export const NewBrainstormButton = ({ projectId, kind = "canvas", onCreated }: P
       {
         onSuccess: (doc) => {
           reset()
-          onCreated(doc.id)
+          onCreated(doc.path)
         },
       },
     )

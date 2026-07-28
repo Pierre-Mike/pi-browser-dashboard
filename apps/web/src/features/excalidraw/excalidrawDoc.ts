@@ -16,11 +16,11 @@ export const emptyExcalidrawDocument = (): ExcalidrawDocument => ({
   files: {},
 })
 
-// Pins the daemon's excalidraw ws route (see brainstorms.routes.ts).
-export const excalidrawWsPath = (ref: {
-  readonly projectId: string
-  readonly slug: string
-}): string => `/projects/${encodeURIComponent(ref.projectId)}/brainstorms/${ref.slug}/excalidraw/ws`
+// Pins the daemon's excalidraw ws route (see brainstorms.routes.ts). A board is
+// any `*.excalidraw` file in the session's worktree, so it is addressed by its
+// worktree-relative path rather than a slug.
+export const excalidrawWsPath = (ref: { readonly short: string; readonly path: string }): string =>
+  `/sessions/${encodeURIComponent(ref.short)}/brainstorms/excalidraw/ws?path=${encodeURIComponent(ref.path)}`
 
 // The next wire document after a local edit: same non-element keys, new
 // elements. Excalidraw owns appState churn (zoom, scroll, selection) which we
