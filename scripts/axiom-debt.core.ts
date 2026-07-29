@@ -7,31 +7,30 @@
  *   2. `env-outside-config`  — reading `process.env` outside the typed config
  *      funnel (typed config at boot).
  *   3. `raw-fetch`           — calling `fetch` outside a `*.io.ts` port.
- *   4. `json-cast`           — casting `.json()` instead of decoding it, which
- *      asserts a wire shape without validating it (contracts decode at the
- *      boundary). Enforced as a hard biome error in apps/daemon, apps/cli and
- *      scripts/; ratcheted in apps/web, which has ~40 sites awaiting a shared
- *      Schema contract.
  *
- * Turning any of these into a Biome error today would fail CI on ~50 existing
+ * Turning any of these into a Biome error today would fail CI on existing
  * sites, so the alternative would be to document them and hope. Instead they
  * are ratcheted: `scripts/axiom-debt.json` records the exact per-file counts,
  * and any difference — a new violation *or* a fixed one — fails the gate until
  * the baseline is updated. New code therefore cannot add debt silently, and
  * every repayment is a visible line in a diff.
  *
+ * A ratchet is meant to end. `json-cast` — casting `.json()` instead of decoding
+ * it — used to be the fourth class here, with ~40 sites in `apps/web` awaiting a
+ * contract to decode against. Those are gone: `shared/src` now holds the
+ * contracts, `apps/web` has local pure parsers for the shapes that are genuinely
+ * web-only, and `biome-plugins/no-cast-json.grit` is a hard error across every
+ * workspace. That is the shape of a successful ratchet — the count reaches zero
+ * and the class is deleted in favour of a lint rule, because a lint rule cannot
+ * be paid back down.
+ *
  * Pure by construction: paths and file contents in, findings out. The shell
  * (scripts/check-axiom-debt.ts) does the reading, comparing and exiting.
  */
 
-type DebtClass = "cross-slice-import" | "env-outside-config" | "raw-fetch" | "json-cast"
+type DebtClass = "cross-slice-import" | "env-outside-config" | "raw-fetch"
 
-const DEBT_CLASSES: readonly DebtClass[] = [
-  "cross-slice-import",
-  "env-outside-config",
-  "raw-fetch",
-  "json-cast",
-]
+const DEBT_CLASSES: readonly DebtClass[] = ["cross-slice-import", "env-outside-config", "raw-fetch"]
 
 export type SourceFile = { readonly path: string; readonly text: string }
 
@@ -87,16 +86,10 @@ export const countRawFetches = (file: SourceFile): number => {
   return countMatches({ text: file.text, re: /(?<![.\w$])fetch\s*\(/g })
 }
 
-export const countJsonCasts = (file: SourceFile): number => {
-  if (isTest(file.path)) return 0
-  return countMatches({ text: file.text, re: /\.json\(\)\s*\)?\s+as\s/g })
-}
-
 const COUNTERS: Readonly<Record<DebtClass, (file: SourceFile) => number>> = {
   "cross-slice-import": countCrossSliceImports,
   "env-outside-config": countEnvReads,
   "raw-fetch": countRawFetches,
-  "json-cast": countJsonCasts,
 }
 
 /** Scan every file once per class; omit zero counts so the baseline stays terse. */

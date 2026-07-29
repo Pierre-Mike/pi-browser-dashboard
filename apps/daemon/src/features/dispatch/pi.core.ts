@@ -43,9 +43,12 @@ export type PiDispatchArgsInput = {
 // Message for a pi process that died during the launch window. pi reports
 // startup problems ("No API key for provider: …", unknown flags) on stderr;
 // when it exits silently the exit code is all we have.
-export const piLaunchFailureMessage = (exitCode: number, stderr: string): string => {
-  const detail = stderr.trim()
-  return detail.length > 0 ? detail : `pi exited with code ${exitCode} before starting`
+export const piLaunchFailureMessage = (input: {
+  readonly exitCode: number
+  readonly stderr: string
+}): string => {
+  const detail = input.stderr.trim()
+  return detail.length > 0 ? detail : `pi exited with code ${input.exitCode} before starting`
 }
 
 // Build the argv for an INTERACTIVE pi run — the shape the daemon now launches

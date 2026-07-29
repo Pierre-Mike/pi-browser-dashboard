@@ -40,12 +40,13 @@ export const orchestratorRepoDir = (env: Readonly<Record<string, string | undefi
 // daemon. So we verify the repo dir exists up front (dirExists injected for
 // testability) and, when it doesn't, return a reason the route turns into a
 // clean WS close — the orchestrator only makes sense with its repo present.
-export const resolveOrchestratorCwd = (
-  env: Readonly<Record<string, string | undefined>>,
-  dirExists: (path: string) => boolean,
-):
+export const resolveOrchestratorCwd = (input: {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly dirExists: (path: string) => boolean
+}):
   | { readonly ok: true; readonly cwd: string }
   | { readonly ok: false; readonly reason: string } => {
+  const { env, dirExists } = input
   const dir = orchestratorRepoDir(env)
   if (!dirExists(dir)) {
     return {
@@ -632,8 +633,15 @@ export type ParsedClientMessage =
 const MAX_COLS = 400
 const MAX_ROWS = 200
 
-const inBounds = (n: unknown, max: number): n is number =>
-  typeof n === "number" && Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= max
+// Returns the value narrowed to an in-bounds integer, or undefined — a
+// boolean type-guard can't narrow a nested property (`input.n`) the way it
+// narrowed a bare parameter, so this returns the value itself instead.
+const boundedInt = (input: { readonly n: unknown; readonly max: number }): number | undefined => {
+  const { n, max } = input
+  return typeof n === "number" && Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= max
+    ? n
+    : undefined
+}
 
 export const parseClientMessage = (raw: string): ParsedClientMessage => {
   // Cheap rejection before JSON.parse: every keystroke goes through here, so
@@ -648,9 +656,11 @@ export const parseClientMessage = (raw: string): ParsedClientMessage => {
   if (!parsed || typeof parsed !== "object") return { kind: "input" }
   const obj = parsed as Record<string, unknown>
   if (obj.type !== "resize") return { kind: "input" }
-  if (!inBounds(obj.cols, MAX_COLS)) return { kind: "input" }
-  if (!inBounds(obj.rows, MAX_ROWS)) return { kind: "input" }
-  return { kind: "resize", cols: obj.cols, rows: obj.rows }
+  const cols = boundedInt({ n: obj.cols, max: MAX_COLS })
+  if (cols === undefined) return { kind: "input" }
+  const rows = boundedInt({ n: obj.rows, max: MAX_ROWS })
+  if (rows === undefined) return { kind: "input" }
+  return { kind: "resize", cols, rows }
 }
 
 // Server → client control frames. The browser filters these out of xterm.

@@ -1,4 +1,5 @@
 import { api } from "../../lib/api"
+import { isRecord, isString } from "../../lib/guards"
 import type { Project } from "../../lib/types"
 import { normalizeEffort } from "./spawnEffort"
 import { normalizeHarness, type SpawnHarness } from "./spawnHarness"
@@ -63,11 +64,16 @@ export const buildDispatchBody = ({
 // the harness's own stderr as `detail` (e.g. pi's "No API key for provider:
 // …") — prefer that over a bare status code.
 export const dispatchErrorMessage = (status: number, body: unknown): string => {
-  const detail = (body as { detail?: unknown } | null)?.detail
+  const detail = isRecord(body) ? body.detail : undefined
   return typeof detail === "string" && detail.trim().length > 0
     ? detail
     : `dispatch: HTTP ${status}`
 }
+
+// The spawned session's short id from a successful dispatch response, or
+// `null` when the body doesn't carry a usable one.
+export const parseSpawnedShort = (body: unknown): string | null =>
+  isRecord(body) && isString(body.short) ? body.short : null
 
 // POST a spawn intent to the daemon, scoping it to the project's cwd when one
 // is in context. Extracted from SpawnModal so the submit handler stays simple.
@@ -83,8 +89,7 @@ export const dispatchSpawn = async (request: SpawnRequest): Promise<string | nul
     throw new Error(dispatchErrorMessage(res.status, body))
   }
   try {
-    const data = (await res.json()) as { short?: unknown }
-    return typeof data.short === "string" ? data.short : null
+    return parseSpawnedShort(await res.json())
   } catch {
     return null
   }

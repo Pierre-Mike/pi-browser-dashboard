@@ -28,6 +28,7 @@ const proj = (over: Partial<Project> = {}): Project => ({
 const sess = (over: Partial<SessionState> = {}): SessionState => ({
   short: "abc",
   state: "idle",
+  source: "state.json",
   detail: "",
   tempo: "",
   intent: "",

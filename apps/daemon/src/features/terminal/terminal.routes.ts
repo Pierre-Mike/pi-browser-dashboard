@@ -629,7 +629,7 @@ const makeResolveOrchestratorCommand =
     // Bail before spawn if the repo dir is missing — spawning into a nonexistent
     // cwd throws synchronously and crashes the daemon. resolveOrchestratorCwd
     // returns a message the WS surfaces instead.
-    const r = resolveOrchestratorCwd(process.env, (p) => existsSync(p))
+    const r = resolveOrchestratorCwd({ env: process.env, dirExists: (p) => existsSync(p) })
     if (!r.ok) return { ok: false, reason: r.reason }
     const sessionName = prefixedZellijSession({
       prefix: args.zellijPrefix,

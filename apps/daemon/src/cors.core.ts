@@ -27,5 +27,8 @@ export const allowedOriginList = (env: CorsEnv): string[] => [
 
 // Returns the origin to echo back in `Access-Control-Allow-Origin`, or null to
 // deny. Mirrors hono/cors' `origin` callback contract.
-export const resolveCorsOrigin = (requestOrigin: string, env: CorsEnv): string | null =>
-  allowedOriginList(env).includes(requestOrigin) ? requestOrigin : null
+export const resolveCorsOrigin = (input: {
+  readonly requestOrigin: string
+  readonly env: CorsEnv
+}): string | null =>
+  allowedOriginList(input.env).includes(input.requestOrigin) ? input.requestOrigin : null

@@ -1,3 +1,4 @@
+import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
 // Pure argv parsing, request-body building, response parsing, exit-code
 // mapping and output formatting for `pid` — the agent-facing CLI over the
 // daemon's session-control surface. No I/O — agent/main.ts (the imperative
@@ -17,29 +18,16 @@
 
 import { Either } from "effect"
 
+export type { SessionStateSlug }
 // --- Session state slugs ----------------------------------------------------
 //
-// Mirrors `KNOWN_STATES` in apps/daemon/src/features/sessions/sessions.core.ts.
-// `@pid/daemon`'s package.json `exports` map only publishes ".", "./server"
-// and "./types" (the Hono `AppType` for the `hc` client) — a deep import of a
-// slice-internal module like `sessions.core` does not resolve from apps/cli
-// (verified with `tsc --noEmit`: "Cannot find module
-// '@pid/daemon/features/sessions/sessions.core'"). Keeping a literal copy here
-// is the documented fallback the task calls for.
-const SESSION_STATE_SLUGS = [
-  "done",
-  "working",
-  "blocked",
-  "needs_input",
-  "idle",
-  "failed",
-  "stopped",
-  "unknown",
-] as const
-export type SessionStateSlug = (typeof SESSION_STATE_SLUGS)[number]
-
-export const isSessionStateSlug = (s: string): s is SessionStateSlug =>
-  (SESSION_STATE_SLUGS as readonly string[]).includes(s)
+// The vocabulary comes from `@pid/shared`, which exists for exactly this: this
+// file used to keep a literal copy because `@pid/daemon`'s package.json
+// `exports` map only publishes ".", "./server" and "./types", so a deep import
+// of a slice-internal module like `sessions.core` does not resolve from
+// apps/cli. A `shared/` workspace is a published door — importable here, and
+// from a pure core, with no cross-slice debt — so the copy is gone.
+export { isSessionStateSlug }
 
 // --- Named key vocabulary ----------------------------------------------------
 //
@@ -515,10 +503,13 @@ const parseOptionalTimeout = ({
     : parsePositiveInt({ command, flag: "timeout", raw })
 }
 
-const parseSessionsCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseSessionsCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({ command: "sessions", argv: rest, flagSpecs: withJson([FLAG_STATE]) })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const { positionals, flags } = scanned.right
@@ -529,10 +520,13 @@ const parseSessionsCommand = (
   return Either.right({ _tag: "Sessions", state: state.right, json: flags.has("json"), url })
 }
 
-const parseExplainCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseExplainCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({ command: "explain", argv: rest, flagSpecs: withJson([]) })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const short = requireSingleShort({ command: "explain", positionals: scanned.right.positionals })
@@ -545,10 +539,13 @@ const parseExplainCommand = (
   })
 }
 
-const parseWaitCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseWaitCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "wait",
     argv: rest,
@@ -585,10 +582,13 @@ const parseOptionalWait = ({
   return Either.isLeft(combined) ? Either.left(combined.left) : Either.right(combined.right)
 }
 
-const parseSendCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseSendCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "send",
     argv: rest,
@@ -623,10 +623,13 @@ const parseKeyNames = (
   return Either.right(names as ReadonlyArray<NamedKeyName>)
 }
 
-const parseKeysCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseKeysCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "keys",
     argv: rest,
@@ -666,10 +669,13 @@ const parseOptionalCount = ({
     : parsePositiveInt({ command: "spawn", flag: "n", raw })
 }
 
-const parseSpawnCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseSpawnCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "spawn",
     argv: rest,
@@ -696,10 +702,13 @@ const parseSpawnCommand = (
   })
 }
 
-const parseFleetsCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseFleetsCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({ command: "fleets", argv: rest, flagSpecs: withJson([FLAG_PROJECT]) })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const { positionals, flags } = scanned.right
@@ -715,10 +724,13 @@ const parseFleetsCommand = (
 
 // `fleet run <name>` — the only fleet subcommand with a positional, so it
 // gets its own scanArgv call rather than sharing parseFleetsCommand's.
-const parseFleetRunCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseFleetRunCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "fleet run",
     argv: rest,
@@ -741,10 +753,13 @@ const parseFleetRunCommand = (
   })
 }
 
-const parseFleetRunsCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseFleetRunsCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({
     command: "fleet runs",
     argv: rest,
@@ -766,13 +781,16 @@ const parseFleetRunsCommand = (
 // dispatched by hand (not through SUBCOMMAND_PARSERS, which is flat by every
 // other command's own name) rather than generalizing the table to nested
 // subcommands for a single caller.
-const parseFleetCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseFleetCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const [sub, ...subRest] = rest
-  if (sub === "run") return parseFleetRunCommand(subRest, url)
-  if (sub === "runs") return parseFleetRunsCommand(subRest, url)
+  if (sub === "run") return parseFleetRunCommand({ rest: subRest, url })
+  if (sub === "runs") return parseFleetRunsCommand({ rest: subRest, url })
   return Either.left(
     usageError(
       `fleet: unknown subcommand${sub === undefined ? " (expected run|runs)" : `: ${sub}`}`,
@@ -780,10 +798,13 @@ const parseFleetCommand = (
   )
 }
 
-const parseRulesListCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseRulesListCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({ command: "rules", argv: rest, flagSpecs: withJson([]) })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const extra = rejectExtraPositionals({
@@ -795,10 +816,13 @@ const parseRulesListCommand = (
   return Either.right({ _tag: "Rules", json: scanned.right.flags.has("json"), url })
 }
 
-const parseRulesPreviewCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseRulesPreviewCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const scanned = scanArgv({ command: "rules preview", argv: rest, flagSpecs: withJson([]) })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const extra = rejectExtraPositionals({
@@ -813,14 +837,17 @@ const parseRulesPreviewCommand = (
 // `pid rules preview` is the only rules subcommand — dispatched by hand the
 // same way `pid fleet <run|runs>` is above; anything else (including no
 // subcommand at all) is the plain listing.
-const parseRulesCommand = (
-  rest: ReadonlyArray<string>,
-  url: string | undefined,
-): Either.Either<Command, UsageError> => {
+const parseRulesCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
   const [sub, ...subRest] = rest
   return sub === "preview"
-    ? parseRulesPreviewCommand(subRest, url)
-    : parseRulesListCommand(rest, url)
+    ? parseRulesPreviewCommand({ rest: subRest, url })
+    : parseRulesListCommand({ rest, url })
 }
 
 const parseShortOnlyCommand = ({
@@ -867,7 +894,10 @@ const hasHelpFlag = (argv: ReadonlyArray<string>): boolean =>
 const SUBCOMMAND_PARSERS: Readonly<
   Record<
     string,
-    (rest: ReadonlyArray<string>, url: string | undefined) => Either.Either<Command, UsageError>
+    (input: {
+      readonly rest: ReadonlyArray<string>
+      readonly url: string | undefined
+    }) => Either.Either<Command, UsageError>
   >
 > = {
   sessions: parseSessionsCommand,
@@ -876,8 +906,8 @@ const SUBCOMMAND_PARSERS: Readonly<
   send: parseSendCommand,
   keys: parseKeysCommand,
   spawn: parseSpawnCommand,
-  stop: (rest, url) => parseShortOnlyCommand({ tag: "Stop", command: "stop", rest, url }),
-  rm: (rest, url) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
+  stop: ({ rest, url }) => parseShortOnlyCommand({ tag: "Stop", command: "stop", rest, url }),
+  rm: ({ rest, url }) => parseShortOnlyCommand({ tag: "Rm", command: "rm", rest, url }),
   fleets: parseFleetsCommand,
   fleet: parseFleetCommand,
   rules: parseRulesCommand,
@@ -898,7 +928,9 @@ const dispatchSubcommand = ({
   const [sub, ...subRest] = rest
   if (sub === undefined) return Either.left(usageError("unknown command"))
   const parser = SUBCOMMAND_PARSERS[sub]
-  return parser ? parser(subRest, url) : Either.left(usageError(`unknown command: ${sub}`))
+  return parser
+    ? parser({ rest: subRest, url })
+    : Either.left(usageError(`unknown command: ${sub}`))
 }
 
 // Parses `process.argv.slice(2)`. `--url`/`--help`/`-h` are recognised
@@ -1152,10 +1184,13 @@ const requireShortFrom = (
     : Either.right({ obj: raw, short: short.right })
 }
 
-const parseSatisfiedWait = (
-  obj: Record<string, unknown>,
-  short: string,
-): Either.Either<WaitOutcomeBody, ParseError> => {
+const parseSatisfiedWait = ({
+  obj,
+  short,
+}: {
+  readonly obj: Record<string, unknown>
+  readonly short: string
+}): Either.Either<WaitOutcomeBody, ParseError> => {
   const combined = Either.all({
     state: requireStateSlugField({
       value: obj.state,
@@ -1171,10 +1206,13 @@ const parseSatisfiedWait = (
     : Either.right({ ok: true, short, ...combined.right })
 }
 
-const parseFailedWait = (
-  obj: Record<string, unknown>,
-  short: string,
-): Either.Either<WaitOutcomeBody, ParseError> => {
+const parseFailedWait = ({
+  obj,
+  short,
+}: {
+  readonly obj: Record<string, unknown>
+  readonly short: string
+}): Either.Either<WaitOutcomeBody, ParseError> => {
   if (!isWaitFailureReason(obj.reason)) {
     return Either.left(
       parseError(`wait response has an unrecognized reason: ${JSON.stringify(obj.reason)}`),
@@ -1192,8 +1230,8 @@ export const parseWaitOutcomeBody = (raw: unknown): Either.Either<WaitOutcomeBod
   const base = requireShortFrom(raw)
   if (Either.isLeft(base)) return Either.left(base.left)
   const { obj, short } = base.right
-  if (obj.ok === true) return parseSatisfiedWait(obj, short)
-  if (obj.ok === false) return parseFailedWait(obj, short)
+  if (obj.ok === true) return parseSatisfiedWait({ obj, short })
+  if (obj.ok === false) return parseFailedWait({ obj, short })
   return Either.left(parseError("wait response is missing ok"))
 }
 
@@ -1644,10 +1682,13 @@ export type FleetRunPlanSummary = {
   readonly maxConcurrentSpawns: number
 }
 
-const requireStepWaveArrayField = (
-  value: unknown,
-  message: string,
-): Either.Either<ReadonlyArray<ReadonlyArray<FleetStepSummary>>, ParseError> =>
+const requireStepWaveArrayField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<ReadonlyArray<ReadonlyArray<FleetStepSummary>>, ParseError> =>
   Array.isArray(value)
     ? Either.all(
         value.map((wave) =>
@@ -1667,7 +1708,10 @@ const parseFleetRunPlan = (raw: unknown): Either.Either<FleetRunPlanSummary, Par
       value: raw.fleet,
       message: "fleet run plan is missing fleet",
     }),
-    waves: requireStepWaveArrayField(raw.waves, "fleet run plan has invalid waves"),
+    waves: requireStepWaveArrayField({
+      value: raw.waves,
+      message: "fleet run plan has invalid waves",
+    }),
     totalSessions: requireNumberField({
       value: raw.totalSessions,
       message: "fleet run plan is missing totalSessions",
@@ -1702,7 +1746,10 @@ export const parseFleetRunStarted = (raw: unknown): Either.Either<FleetRunStarte
       value: raw.runId,
       message: "fleet run response is missing runId",
     }),
-    waves: requireStepWaveArrayField(raw.waves, "fleet run response has invalid waves"),
+    waves: requireStepWaveArrayField({
+      value: raw.waves,
+      message: "fleet run response has invalid waves",
+    }),
     totalSessions: requireNumberField({
       value: raw.totalSessions,
       message: "fleet run response is missing totalSessions",
@@ -1847,10 +1894,13 @@ const requireFleetRunStepStatusField = ({
 }): Either.Either<FleetRunStepStatus, ParseError> =>
   isFleetRunStepStatus(value) ? Either.right(value) : Either.left(parseError(message))
 
-const requireFleetRunShortsField = (
-  value: unknown,
-  message: string,
-): Either.Either<ReadonlyArray<FleetRunShortWire>, ParseError> =>
+const requireFleetRunShortsField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<ReadonlyArray<FleetRunShortWire>, ParseError> =>
   Array.isArray(value)
     ? Either.all(value.map(parseFleetRunShort))
     : Either.left(parseError(message))
@@ -1875,7 +1925,10 @@ const parseFleetRunStepState = (raw: unknown): Either.Either<FleetRunStepState, 
       value: raw.status,
       message: `fleet run step has an unrecognized status: ${JSON.stringify(raw.status)}`,
     }),
-    shorts: requireFleetRunShortsField(raw.shorts, "fleet run step is missing shorts"),
+    shorts: requireFleetRunShortsField({
+      value: raw.shorts,
+      message: "fleet run step is missing shorts",
+    }),
   })
   if (Either.isLeft(combined)) return Either.left(combined.left)
   return Either.right({ ...combined.right, reason: optionalString(raw.reason) })
@@ -1901,10 +1954,13 @@ const requireFleetRunStatusField = ({
 }): Either.Either<FleetRunStatus, ParseError> =>
   isFleetRunStatus(value) ? Either.right(value) : Either.left(parseError(message))
 
-const requireFleetRunStepStateArrayField = (
-  value: unknown,
-  message: string,
-): Either.Either<ReadonlyArray<FleetRunStepState>, ParseError> =>
+const requireFleetRunStepStateArrayField = ({
+  value,
+  message,
+}: {
+  readonly value: unknown
+  readonly message: string
+}): Either.Either<ReadonlyArray<FleetRunStepState>, ParseError> =>
   Array.isArray(value)
     ? Either.all(value.map(parseFleetRunStepState))
     : Either.left(parseError(message))
@@ -1935,7 +1991,10 @@ export const parseFleetRunSummary = (
       value: raw.startedAt,
       message: "fleet run summary is missing startedAt",
     }),
-    steps: requireFleetRunStepStateArrayField(raw.steps, "fleet run summary is missing steps"),
+    steps: requireFleetRunStepStateArrayField({
+      value: raw.steps,
+      message: "fleet run summary is missing steps",
+    }),
   })
   if (Either.isLeft(combined)) return Either.left(combined.left)
   return Either.right({ ...combined.right, finishedAt: optionalNumber(raw.finishedAt) })

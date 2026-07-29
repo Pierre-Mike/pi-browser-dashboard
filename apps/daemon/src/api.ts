@@ -158,7 +158,10 @@ const app = new Hono()
       // The pure core gets exactly the key it reads, named at the call site,
       // rather than the whole ambient environment.
       origin: (origin) =>
-        resolveCorsOrigin(origin, { PID_CORS_ORIGINS: process.env.PID_CORS_ORIGINS }),
+        resolveCorsOrigin({
+          requestOrigin: origin,
+          env: { PID_CORS_ORIGINS: process.env.PID_CORS_ORIGINS },
+        }),
       allowHeaders: ["Content-Type", "Last-Event-ID"],
       allowMethods: ["GET", "POST", "OPTIONS"],
       credentials: false,

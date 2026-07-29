@@ -1,12 +1,10 @@
+import { WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
 // Pure decision logic for server-owned waits on session state. No I/O — the
 // SSE subscription, clock and timeout live in sessions-wait.io.ts; this file
 // only turns already-decoded values into decisions.
 
+import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
 import { Either } from "effect"
-import { isSessionStateSlug, type SessionStateSlug } from "./sessions.core"
-
-export const WAIT_TIMEOUT_DEFAULT_MS = 30_000
-export const WAIT_TIMEOUT_MAX_MS = 600_000
 
 export type WaitRequest = {
   readonly until: ReadonlyArray<SessionStateSlug>

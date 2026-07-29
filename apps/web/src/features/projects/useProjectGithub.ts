@@ -1,20 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
 import type { GithubProjectSummary } from "../../lib/types"
-
-// `git pull --ff-only` result mirrored from the daemon (git.core.ts).
-type GitPullResult = {
-  readonly alreadyUpToDate: boolean
-  readonly output: string
-}
-
-// The inline PR-diff viewer's payload: a single PR's unified patch, or an empty
-// diff plus a warning when `gh pr diff` could not produce one. Mirrors the
-// daemon's GithubPrDiff (github.core.ts).
-type GithubPrDiff = {
-  readonly diff: string
-  readonly warning?: string
-}
+import {
+  parseGithubPrDiff,
+  parseGithubProjectSummary,
+  parseGitPullResult,
+} from "./projectGithub.parse"
 
 export const useProjectGithub = (projectId: string, enabled: boolean) =>
   useQuery<GithubProjectSummary>({
@@ -27,7 +18,9 @@ export const useProjectGithub = (projectId: string, enabled: boolean) =>
       const client = api as any
       const res = await client.projects[":id"].github.$get({ param: { id: projectId } })
       if (!res.ok) throw new Error(`projects/${projectId}/github: HTTP ${res.status}`)
-      return (await res.json()) as GithubProjectSummary
+      const summary = parseGithubProjectSummary(await res.json())
+      if (!summary) throw new Error(`projects/${projectId}/github: malformed response`)
+      return summary
     },
   })
 
@@ -35,13 +28,15 @@ export const useProjectGithub = (projectId: string, enabled: boolean) =>
 // any git-status overlay so the PR list / file badges reflect the new HEAD.
 export const useProjectGitPull = (projectId: string) => {
   const qc = useQueryClient()
-  return useMutation<GitPullResult>({
+  return useMutation({
     mutationFn: async () => {
       // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
       const client = api as any
       const res = await client.projects[":id"].git.pull.$post({ param: { id: projectId } })
       if (!res.ok) throw new Error(`projects/${projectId}/git/pull: HTTP ${res.status}`)
-      return (await res.json()) as GitPullResult
+      const result = parseGitPullResult(await res.json())
+      if (!result) throw new Error(`projects/${projectId}/git/pull: malformed response`)
+      return result
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects", projectId, "github"] })
@@ -56,7 +51,7 @@ export const useProjectPrDiff = (
   projectId: string,
   { prNumber, enabled }: { prNumber: number; enabled: boolean },
 ) =>
-  useQuery<GithubPrDiff>({
+  useQuery({
     queryKey: ["projects", projectId, "pr-diff", prNumber],
     enabled,
     staleTime: 30_000,
@@ -66,6 +61,8 @@ export const useProjectPrDiff = (
       const params = { param: { id: projectId, prNumber: String(prNumber) } }
       const res = await client.projects[":id"].github.pr[":prNumber"].diff.$get(params)
       if (!res.ok) throw new Error(`pr ${prNumber} diff: HTTP ${res.status}`)
-      return (await res.json()) as GithubPrDiff
+      const diff = parseGithubPrDiff(await res.json())
+      if (!diff) throw new Error(`pr ${prNumber} diff: malformed response`)
+      return diff
     },
   })

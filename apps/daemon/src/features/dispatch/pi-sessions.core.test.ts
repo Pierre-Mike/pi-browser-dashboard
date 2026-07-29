@@ -30,9 +30,11 @@ describe("encodePiSessionDir", () => {
 describe("isPiSessionFile", () => {
   it("matches the <timestamp>_<session-id>.jsonl naming for a given id", () => {
     const id = "044b10c3-550f-4bdb-92ab-ac75e7cb36ea"
-    expect(isPiSessionFile(`2026-07-08T16-49-27-567Z_${id}.jsonl`, id)).toBe(true)
-    expect(isPiSessionFile(`2026-07-08T16-49-27-567Z_${id}.jsonl.bak`, id)).toBe(false)
-    expect(isPiSessionFile("2026-07-08T16-49-27-567Z_other.jsonl", id)).toBe(false)
+    expect(isPiSessionFile({ fileName: `2026-07-08T16-49-27-567Z_${id}.jsonl`, id })).toBe(true)
+    expect(isPiSessionFile({ fileName: `2026-07-08T16-49-27-567Z_${id}.jsonl.bak`, id })).toBe(
+      false,
+    )
+    expect(isPiSessionFile({ fileName: "2026-07-08T16-49-27-567Z_other.jsonl", id })).toBe(false)
   })
 })
 

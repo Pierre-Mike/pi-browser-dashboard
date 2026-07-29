@@ -1,28 +1,17 @@
+import { isSessionStateSlug, SESSION_STATE_SLUGS, type SessionStateSlug } from "@pid/shared"
 import { Schema as S } from "effect"
 
 // --- State slug normalization -----------------------------------------------
 
-// `blocked` is what the current supervisor emits for a session waiting on the
-// user; older CLIs emitted `needs_input`. Keep both so neither version's
-// sessions silently degrade to `idle`.
-// Exported (not just the type) so a doc-drift guard (platform/agent-skill.ts's
-// test) can assert against the real vocabulary instead of a hand-copied list.
-export const KNOWN_STATES = [
-  "done",
-  "working",
-  "blocked",
-  "needs_input",
-  "idle",
-  "failed",
-  "stopped",
-  "unknown",
-] as const
-export type SessionStateSlug = (typeof KNOWN_STATES)[number]
+export type { SessionStateSlug }
 
-// Exported so other slices (sessions-wait) can validate a slug against the
-// same list instead of duplicating it.
-export const isSessionStateSlug = (s: string): s is SessionStateSlug =>
-  (KNOWN_STATES as readonly string[]).includes(s)
+// The state vocabulary is a published contract (`shared/src/session.ts`), not a
+// local constant. It used to live here, which forced three other pure cores
+// (features/fleet, features/rules, apps/cli's agent core) to keep hand-written
+// literal copies of it: importing `../sessions/sessions.core` is a cross-slice
+// reach into another slice's internals, and the axiom-debt ratchet fails on any
+// new one. A `shared/` contract is importable from a pure core at zero debt, so
+// those copies are gone and this is the single declaration.
 
 type NormalizedState = {
   readonly slug: SessionStateSlug
@@ -213,28 +202,41 @@ export const seedFromWorker = (worker: RosterWorker): SessionState => ({
   result: undefined,
 })
 
-const firstDefined = (a: string | undefined, b: string | undefined): string | undefined =>
-  a === undefined ? b : a
+const firstDefined = (input: {
+  readonly a: string | undefined
+  readonly b: string | undefined
+}): string | undefined => (input.a === undefined ? input.b : input.a)
 
 type RosterDerived = Pick<SessionState, "intent" | "sessionId" | "cwd">
 
-const fillRosterDerived = (target: SessionState, fallback: RosterDerived): SessionState => ({
-  ...target,
-  intent: firstDefined(target.intent, fallback.intent),
-  sessionId: firstDefined(target.sessionId, fallback.sessionId),
-  cwd: firstDefined(target.cwd, fallback.cwd),
-})
+const fillRosterDerived = (input: {
+  readonly target: SessionState
+  readonly fallback: RosterDerived
+}): SessionState => {
+  const { target, fallback } = input
+  return {
+    ...target,
+    intent: firstDefined({ a: target.intent, b: fallback.intent }),
+    sessionId: firstDefined({ a: target.sessionId, b: fallback.sessionId }),
+    cwd: firstDefined({ a: target.cwd, b: fallback.cwd }),
+  }
+}
 
-const sameRosterDerived = (a: RosterDerived, b: RosterDerived): boolean =>
-  a.intent === b.intent && a.sessionId === b.sessionId && a.cwd === b.cwd
+const sameRosterDerived = (input: {
+  readonly a: RosterDerived
+  readonly b: RosterDerived
+}): boolean =>
+  input.a.intent === input.b.intent &&
+  input.a.sessionId === input.b.sessionId &&
+  input.a.cwd === input.b.cwd
 
 export type BackfillInput = { readonly existing: SessionState; readonly worker: RosterWorker }
 
 // Roster-only fields a jobs-dir-seeded session couldn't know. Returns the
 // merged session, or null when nothing would change.
 export const backfillRosterFields = ({ existing, worker }: BackfillInput): SessionState | null => {
-  const merged = fillRosterDerived(existing, worker)
-  return sameRosterDerived(merged, existing) ? null : merged
+  const merged = fillRosterDerived({ target: existing, fallback: worker })
+  return sameRosterDerived({ a: merged, b: existing }) ? null : merged
 }
 
 const NO_PRIOR: RosterDerived = { intent: undefined, sessionId: undefined, cwd: undefined }
@@ -246,7 +248,7 @@ export type MergeStateInput = {
 
 // state.json wins, but roster-derived fields survive when it omits them.
 export const mergeStateWithPrior = ({ parsed, prior }: MergeStateInput): SessionState =>
-  fillRosterDerived(parsed, prior ?? NO_PRIOR)
+  fillRosterDerived({ target: parsed, fallback: prior ?? NO_PRIOR })
 
 // --- Derived ---------------------------------------------------------------
 

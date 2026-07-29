@@ -62,7 +62,7 @@ export const GlobalSettingsIoLive: Layer.Layer<GlobalSettingsService, never, Con
           Effect.gen(function* () {
             const path = yield* pathOf
             const text = yield* Effect.promise(() => tryReadText(path))
-            const next = mergeGlobalSettings(parseGlobalSettings(text), patch)
+            const next = mergeGlobalSettings({ current: parseGlobalSettings(text), patch })
             yield* Effect.promise(() => writeAtomic(path, serializeGlobalSettings(next)))
             return next
           }),
@@ -79,7 +79,7 @@ export const GlobalSettingsIoTest = (
     return {
       read: () => Effect.succeed(current),
       update: (patch) => {
-        current = mergeGlobalSettings(current, patch)
+        current = mergeGlobalSettings({ current, patch })
         return Effect.succeed(current)
       },
     }

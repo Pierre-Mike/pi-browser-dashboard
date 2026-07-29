@@ -63,9 +63,12 @@ describe("parseGlobalSettings", () => {
 
 describe("mergeGlobalSettings", () => {
   it("applies a partial patch, leaving other fields untouched", () => {
-    const next = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
-      git: { defaultBranch: "release" },
-      orchestration: { maxParallel: 3 },
+    const next = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: {
+        git: { defaultBranch: "release" },
+        orchestration: { maxParallel: 3 },
+      },
     })
     expect(next.git.defaultBranch).toBe("release")
     expect(next.git.remoteName).toBe(DEFAULT_GLOBAL_SETTINGS.git.remoteName)
@@ -74,17 +77,24 @@ describe("mergeGlobalSettings", () => {
   })
 
   it("drops invalid patch values (current wins), never corrupting state", () => {
-    const next = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
-      git: { defaultBranch: "" },
-      network: { appPort: -5 },
+    const next = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: {
+        git: { defaultBranch: "" },
+        network: { appPort: -5 },
+      },
     })
     expect(next.git.defaultBranch).toBe(DEFAULT_GLOBAL_SETTINGS.git.defaultBranch)
     expect(next.network.appPort).toBe(DEFAULT_GLOBAL_SETTINGS.network.appPort)
   })
 
   it("ignores a null/non-object patch", () => {
-    expect(mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, null)).toEqual(DEFAULT_GLOBAL_SETTINGS)
-    expect(mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, undefined)).toEqual(DEFAULT_GLOBAL_SETTINGS)
+    expect(mergeGlobalSettings({ current: DEFAULT_GLOBAL_SETTINGS, patch: null })).toEqual(
+      DEFAULT_GLOBAL_SETTINGS,
+    )
+    expect(mergeGlobalSettings({ current: DEFAULT_GLOBAL_SETTINGS, patch: undefined })).toEqual(
+      DEFAULT_GLOBAL_SETTINGS,
+    )
   })
 })
 
@@ -172,23 +182,26 @@ describe("skillGroups", () => {
   })
 
   it("merge replaces the whole list when the patch provides skillGroups", () => {
-    const seeded = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
-      skillGroups: [{ name: "a", skills: ["x"] }],
+    const seeded = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: { skillGroups: [{ name: "a", skills: ["x"] }] },
     })
     expect(seeded.skillGroups).toEqual([{ name: "a", skills: ["x"] }])
-    const replaced = mergeGlobalSettings(seeded, {
-      skillGroups: [{ name: "b", skills: ["y"] }],
+    const replaced = mergeGlobalSettings({
+      current: seeded,
+      patch: { skillGroups: [{ name: "b", skills: ["y"] }] },
     })
     expect(replaced.skillGroups).toEqual([{ name: "b", skills: ["y"] }])
-    const cleared = mergeGlobalSettings(replaced, { skillGroups: [] })
+    const cleared = mergeGlobalSettings({ current: replaced, patch: { skillGroups: [] } })
     expect(cleared.skillGroups).toEqual([])
   })
 
   it("merge leaves skillGroups untouched when the patch omits them", () => {
-    const seeded = mergeGlobalSettings(DEFAULT_GLOBAL_SETTINGS, {
-      skillGroups: [{ name: "a", skills: ["x"] }],
+    const seeded = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: { skillGroups: [{ name: "a", skills: ["x"] }] },
     })
-    const next = mergeGlobalSettings(seeded, { git: { defaultBranch: "dev" } })
+    const next = mergeGlobalSettings({ current: seeded, patch: { git: { defaultBranch: "dev" } } })
     expect(next.skillGroups).toEqual([{ name: "a", skills: ["x"] }])
   })
 })

@@ -101,8 +101,11 @@ const validEntry = (v: unknown): string | undefined => {
 
 // One optional manifest field as a spreadable partial — keeps the parser itself
 // branch-free (and under the complexity gate).
-const field = (key: keyof PidAppManifest, value: string | undefined): PidAppManifest =>
-  value === undefined ? {} : ({ [key]: value } as PidAppManifest)
+const field = (input: {
+  readonly key: keyof PidAppManifest
+  readonly value: string | undefined
+}): PidAppManifest =>
+  input.value === undefined ? {} : ({ [input.key]: input.value } as PidAppManifest)
 
 // Tolerant parser: never throws. Malformed JSON, a non-object, or wrong-typed
 // fields degrade field-by-field to "absent" so the zero-config defaults win.
@@ -111,15 +114,19 @@ export const parsePidAppManifest = (text: string | null | undefined): PidAppMani
   const raw = parseJsonObject(text)
   if (!raw) return {}
   return {
-    ...field("title", nonEmptyString(raw.title)),
-    ...field("icon", nonEmptyString(raw.icon)),
-    ...field("entry", validEntry(raw.entry)),
+    ...field({ key: "title", value: nonEmptyString(raw.title) }),
+    ...field({ key: "icon", value: nonEmptyString(raw.icon) }),
+    ...field({ key: "entry", value: validEntry(raw.entry) }),
   }
 }
 
 // Apply a parsed manifest's presentation overrides over a discovered app.
 // Security-relevant fields (id, root) are never touched.
-export const applyPidAppManifest = (app: PidApp, manifest: PidAppManifest): PidApp => {
+export const applyPidAppManifest = (input: {
+  readonly app: PidApp
+  readonly manifest: PidAppManifest
+}): PidApp => {
+  const { app, manifest } = input
   const out: PidApp = {
     ...app,
     label: manifest.title ?? app.label,
@@ -133,10 +140,11 @@ export const applyPidAppManifest = (app: PidApp, manifest: PidAppManifest): PidA
 //   - a bare .pid/index.html        -> the implicit "default" app (root "")
 //   - each subdir with an index.html, a valid name, and a non-reserved name -> an app
 // Deterministic order: "default" first, then subdir apps alphabetical by id.
-export const discoverPidApps = (
-  entries: readonly PidAppDirEntry[],
-  hasRootIndex: boolean,
-): readonly PidApp[] => {
+export const discoverPidApps = (input: {
+  readonly entries: readonly PidAppDirEntry[]
+  readonly hasRootIndex: boolean
+}): readonly PidApp[] => {
+  const { entries, hasRootIndex } = input
   const apps: PidApp[] = []
   if (hasRootIndex) {
     apps.push({
@@ -184,10 +192,11 @@ export const discoverSpecApps = (filenames: readonly string[]): readonly PidApp[
 // "default" app wins over a same-named subdir: locked behavior, not
 // underdetermined. Order: pidApps first (their existing order), then the
 // remaining, non-colliding specApps (already alphabetical).
-export const mergeAppSources = (
-  pidApps: readonly PidApp[],
-  specApps: readonly PidApp[],
-): readonly PidApp[] => {
+export const mergeAppSources = (input: {
+  readonly pidApps: readonly PidApp[]
+  readonly specApps: readonly PidApp[]
+}): readonly PidApp[] => {
+  const { pidApps, specApps } = input
   const pidIds = new Set(pidApps.map((a) => a.id))
   return [...pidApps, ...specApps.filter((a) => !pidIds.has(a.id))]
 }

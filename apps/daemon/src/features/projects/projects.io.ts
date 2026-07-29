@@ -208,7 +208,7 @@ export const ProjectsIoLive: Layer.Layer<ProjectsService, never, ConfigService> 
             { concurrency: 8 },
           )
           const projects = probed.filter((p): p is Project => p !== null)
-          projects.sort(compareProjectsByCommit)
+          projects.sort((a, b) => compareProjectsByCommit({ a, b }))
           return projects
         }),
 
@@ -216,7 +216,7 @@ export const ProjectsIoLive: Layer.Layer<ProjectsService, never, ConfigService> 
         Effect.gen(function* () {
           const root = findProjectPath(config.projectsRoot, id)
           if (!root) return yield* Effect.fail<FileError>("not_found")
-          const resolved = resolveProjectPath(root, relPath)
+          const resolved = resolveProjectPath({ root, input: relPath })
           if (!resolved.ok) return yield* Effect.fail<FileError>("forbidden")
           const s = yield* Effect.tryPromise(() => stat(resolved.absPath)).pipe(
             Effect.mapError<unknown, FileError>(() => "not_found"),
@@ -268,7 +268,7 @@ export const ProjectsIoLive: Layer.Layer<ProjectsService, never, ConfigService> 
 
 export const ProjectsIoTest = (fixtures: readonly Project[]): Layer.Layer<ProjectsService> =>
   Layer.succeed(ProjectsService, {
-    list: () => Effect.succeed([...fixtures].sort(compareProjectsByCommit)),
+    list: () => Effect.succeed([...fixtures].sort((a, b) => compareProjectsByCommit({ a, b }))),
     listDir: () => Effect.fail<FileError>("not_found"),
     listTree: () => Effect.fail<FileError>("not_found"),
     readFile: () => Effect.fail<FileError>("not_found"),

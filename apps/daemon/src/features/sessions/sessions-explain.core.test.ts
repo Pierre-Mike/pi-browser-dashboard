@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { STALE_ACTIVE_MS } from "@pid/shared"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
-import { explainSession, STALE_ACTIVE_MS } from "./sessions-explain.core"
+import { explainSession } from "./sessions-explain.core"
 
 const NOW = 1_000_000
 

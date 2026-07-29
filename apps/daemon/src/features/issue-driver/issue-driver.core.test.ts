@@ -36,21 +36,21 @@ describe("issueKey", () => {
 
 describe("slugify", () => {
   it("lowercases and replaces non-alphanumeric runs with dashes", () => {
-    expect(slugify("Add Login & Signup!")).toBe("add-login-signup")
+    expect(slugify({ title: "Add Login & Signup!" })).toBe("add-login-signup")
   })
 
   it("trims leading and trailing dashes", () => {
-    expect(slugify("  ---hello world---  ")).toBe("hello-world")
+    expect(slugify({ title: "  ---hello world---  " })).toBe("hello-world")
   })
 
   it("collapses long titles to the requested max length on a word boundary", () => {
-    const out = slugify("This is a very long issue title that should be cut", 20)
+    const out = slugify({ title: "This is a very long issue title that should be cut", maxLen: 20 })
     expect(out.length).toBeLessThanOrEqual(20)
     expect(out.endsWith("-")).toBe(false)
   })
 
   it("falls back to 'issue' for fully non-alphanumeric input", () => {
-    expect(slugify("???")).toBe("issue")
+    expect(slugify({ title: "???" })).toBe("issue")
   })
 })
 
@@ -72,7 +72,7 @@ describe("parseIssueListJson", () => {
         repository: { nameWithOwner: "acme/widgets" },
       },
     ])
-    const out = parseIssueListJson(raw)
+    const out = parseIssueListJson({ text: raw })
     expect(out).toEqual([
       {
         number: 7,
@@ -87,17 +87,17 @@ describe("parseIssueListJson", () => {
 
   it("uses fallbackRepo when payload lacks repository", () => {
     const raw = JSON.stringify([{ number: 1, title: "T", body: "", labels: [], url: "u" }])
-    const out = parseIssueListJson(raw, "owner/repo")
+    const out = parseIssueListJson({ text: raw, fallbackRepo: "owner/repo" })
     expect(out[0]?.repo).toBe("owner/repo")
   })
 
   it("returns empty array on invalid JSON", () => {
-    expect(parseIssueListJson("not json", "owner/repo")).toEqual([])
+    expect(parseIssueListJson({ text: "not json", fallbackRepo: "owner/repo" })).toEqual([])
   })
 
   it("skips entries with no number", () => {
     const raw = JSON.stringify([{ title: "no number" }])
-    expect(parseIssueListJson(raw, "owner/repo")).toEqual([])
+    expect(parseIssueListJson({ text: raw, fallbackRepo: "owner/repo" })).toEqual([])
   })
 })
 

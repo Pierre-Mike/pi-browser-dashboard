@@ -54,7 +54,9 @@ describe("getCanvasRoom — publish + subscribe", () => {
   it("persists publish() output to ~/.claude/jobs/<short>/canvas.json", async () => {
     const room = await getCanvasRoom(cfg, "abc")
     await room.publish(fixedSnapshot("Hello"), null)
-    const onDisk = parseCanvas(JSON.parse(fs.readFileSync(canvasPathFor(cfg, "abc"), "utf8")))
+    const onDisk = parseCanvas(
+      JSON.parse(fs.readFileSync(canvasPathFor({ configDir: cfg, short: "abc" }), "utf8")),
+    )
     expect(onDisk.nodes).toHaveLength(1)
     expect(onDisk.nodes[0]?.data).toEqual({ label: "Hello" })
   })
@@ -157,7 +159,7 @@ describe("getCanvasRoomAt — path-keyed rooms (brainstorm documents)", () => {
 
   it("keeps the session-canvas API on the same room store (no forked state)", async () => {
     const viaShort = await getCanvasRoom(cfg, "abc")
-    const viaPath = await getCanvasRoomAt(canvasPathFor(cfg, "abc"))
+    const viaPath = await getCanvasRoomAt(canvasPathFor({ configDir: cfg, short: "abc" }))
     await viaShort.publish(fixedSnapshot("one-store"), null)
     expect(viaPath.snapshot().nodes[0]?.data).toEqual({ label: "one-store" })
   })

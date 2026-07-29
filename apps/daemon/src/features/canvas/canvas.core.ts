@@ -142,15 +142,19 @@ export const emptyCanvas = (): CanvasSnapshot => ({
   edges: [],
 })
 
-export const canvasPathFor = (configDir: string, short: string): string =>
-  path.join(configDir, "jobs", short, "canvas.json")
+export const canvasPathFor = (input: {
+  readonly configDir: string
+  readonly short: string
+}): string => path.join(input.configDir, "jobs", input.short, "canvas.json")
 
 /**
  * Stable structural-equality check. We use this to suppress no-op broadcasts
  * after the file watcher fires for our *own* writes: if the disk content is
  * byte-identical to what's already in the cache, there's nothing new to push.
  */
-export const canvasEqual = (a: CanvasSnapshot, b: CanvasSnapshot): boolean =>
-  serializeCanvas(a) === serializeCanvas(b)
+export const canvasEqual = (input: {
+  readonly a: CanvasSnapshot
+  readonly b: CanvasSnapshot
+}): boolean => serializeCanvas(input.a) === serializeCanvas(input.b)
 
 export const serializeCanvas = (snap: CanvasSnapshot): string => JSON.stringify(snap, null, 2)

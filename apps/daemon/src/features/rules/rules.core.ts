@@ -1,3 +1,11 @@
+import {
+  isNamedKey,
+  isSessionStateSlug,
+  type NamedKey,
+  SESSION_STATE_SLUGS,
+  type SessionStateSlug,
+  STALE_ACTIVE_MS,
+} from "@pid/shared"
 // Pure schema, validation and decision logic for state-change automation
 // rules (<claudeConfigDir>/pid-dashboard/rules.json). No I/O — reading the
 // file, subscribing to the SSE bus, the clock and the in-memory firing
@@ -37,22 +45,12 @@ import { Either } from "effect"
 // the same kind of literal copy — see those files' own comments for the
 // precedent. Kept honest by scripts/mirrored-constants.test.ts, which
 // imports the real values and asserts these copies still match.
-export const SESSION_STATE_SLUGS = [
-  "done",
-  "working",
-  "blocked",
-  "needs_input",
-  "idle",
-  "failed",
-  "stopped",
-  "unknown",
-] as const
-export type SessionStateSlug = (typeof SESSION_STATE_SLUGS)[number]
+// The state vocabulary is a published contract in `@pid/shared`, importable
+// from a pure core at zero cross-slice debt — which is why this file no longer
+// carries a literal copy of it (see the note above).
 
 // Not exported — nothing outside this file needs the predicate itself, only
 // the `SessionStateSlug` type it narrows to (which rules.io.ts does import).
-const isSessionStateSlug = (s: string): s is SessionStateSlug =>
-  (SESSION_STATE_SLUGS as readonly string[]).includes(s)
 
 // The subset of states a rule's `when.state` may target. `working` is
 // excluded — a session actively working needs no automation reacting to it —
@@ -71,34 +69,6 @@ const HARNESS_VALUES = ["claude", "pi"] as const
 export type Harness = (typeof HARNESS_VALUES)[number]
 
 const isHarness = (s: string): s is Harness => (HARNESS_VALUES as readonly string[]).includes(s)
-
-// Mirrors sessions-keys.core.ts's `NAMED_KEYS` — deliberately excludes
-// ctrl-z/ctrl-c for the same reason that file gives: they are the terminal's
-// own escape hatches, not app-facing keys.
-export const NAMED_KEYS = [
-  "escape",
-  "enter",
-  "tab",
-  "shift-tab",
-  "up",
-  "down",
-  "right",
-  "left",
-  "home",
-  "end",
-  "page-up",
-  "page-down",
-  "backspace",
-  "delete",
-  "space",
-] as const
-export type NamedKey = (typeof NAMED_KEYS)[number]
-
-const isNamedKey = (s: string): s is NamedKey => (NAMED_KEYS as readonly string[]).includes(s)
-
-// Mirrors sessions-explain.core.ts's `STALE_ACTIVE_MS` — the threshold a
-// rule's optional `when.stale` condition is judged against.
-export const STALE_ACTIVE_MS = 120_000
 
 const ACTIVE_STATES: ReadonlySet<SessionStateSlug> = new Set(["working", "blocked", "needs_input"])
 

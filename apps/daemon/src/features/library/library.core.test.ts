@@ -124,7 +124,7 @@ describe("parseSource", () => {
   const HOME = "/home/me"
 
   it("expands ~ for local paths", () => {
-    const s = parseSource("~/skills/foo/SKILL.md", HOME)
+    const s = parseSource({ source: "~/skills/foo/SKILL.md", homeDir: HOME })
     expect(s?.kind).toBe("local")
     if (s?.kind === "local") {
       expect(s.absPath).toBe("/home/me/skills/foo/SKILL.md")
@@ -133,10 +133,10 @@ describe("parseSource", () => {
   })
 
   it("parses GitHub blob URLs", () => {
-    const s = parseSource(
-      "https://github.com/Pierre-Mike/agentic/blob/main/skills/align/SKILL.md",
-      HOME,
-    )
+    const s = parseSource({
+      source: "https://github.com/Pierre-Mike/agentic/blob/main/skills/align/SKILL.md",
+      homeDir: HOME,
+    })
     expect(s?.kind).toBe("github")
     if (s?.kind === "github") {
       expect(s.org).toBe("Pierre-Mike")
@@ -149,7 +149,10 @@ describe("parseSource", () => {
   })
 
   it("parses GitHub raw URLs", () => {
-    const s = parseSource("https://raw.githubusercontent.com/org/repo/main/skills/x/SKILL.md", HOME)
+    const s = parseSource({
+      source: "https://raw.githubusercontent.com/org/repo/main/skills/x/SKILL.md",
+      homeDir: HOME,
+    })
     expect(s?.kind).toBe("github")
     if (s?.kind === "github") {
       expect(s.org).toBe("org")
@@ -158,8 +161,8 @@ describe("parseSource", () => {
   })
 
   it("returns null for unrecognised inputs", () => {
-    expect(parseSource("not-a-source", "/h")).toBeNull()
-    expect(parseSource("http://example.com/file", "/h")).toBeNull()
+    expect(parseSource({ source: "not-a-source", homeDir: "/h" })).toBeNull()
+    expect(parseSource({ source: "http://example.com/file", homeDir: "/h" })).toBeNull()
   })
 })
 
@@ -200,14 +203,16 @@ describe("resolveRequires", () => {
 
 describe("expandHome / isSafeSegment", () => {
   it("expands ~ prefix", () => {
-    expect(expandHome("~/.claude/skills/", "/h")).toBe("/h/.claude/skills/")
-    expect(expandHome("/abs/.claude/skills/", "/h")).toBe("/abs/.claude/skills/")
+    expect(expandHome({ p: "~/.claude/skills/", homeDir: "/h" })).toBe("/h/.claude/skills/")
+    expect(expandHome({ p: "/abs/.claude/skills/", homeDir: "/h" })).toBe("/abs/.claude/skills/")
   })
   it("resolveAgenticRepoPath prefers env override", () => {
-    expect(resolveAgenticRepoPath("/custom/agentic", "/h")).toBe("/custom/agentic")
+    expect(resolveAgenticRepoPath({ envPath: "/custom/agentic", homeDir: "/h" })).toBe(
+      "/custom/agentic",
+    )
   })
   it("resolveAgenticRepoPath defaults under the user's home dir", () => {
-    expect(resolveAgenticRepoPath(undefined, "/h")).toBe("/h/Github/agentic")
+    expect(resolveAgenticRepoPath({ envPath: undefined, homeDir: "/h" })).toBe("/h/Github/agentic")
   })
   it("isSafeSegment rejects path-traversal segments", () => {
     expect(isSafeSegment("ok")).toBe(true)

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
 import { type Brainstorm, brainstormsQueryKey, type CreatableBrainstormKind } from "./brainstorms"
+import { parseBrainstorm, parseBrainstorms } from "./brainstorms.parse"
 
 // Every board in this session's worktree — any `*.canvas`, `*.canvas.json` or
 // `*.excalidraw` file, wherever it sits. Short staleTime so a board the session
@@ -15,7 +16,9 @@ export const useBrainstorms = (short: string) =>
       const client = api as any
       const res = await client.sessions[short].brainstorms.$get()
       if (!res.ok) throw new Error(`brainstorms: HTTP ${res.status}`)
-      return (await res.json()) as Brainstorm[]
+      const boards = parseBrainstorms(await res.json())
+      if (!boards) throw new Error("brainstorms: malformed response")
+      return boards
     },
     enabled: short !== "",
     staleTime: 5_000,
@@ -36,7 +39,9 @@ export const useCreateBrainstorm = (short: string) => {
       const client = api as any
       const res = await client.sessions[short].brainstorms.$post({ json: input })
       if (!res.ok) throw new Error(`brainstorms: HTTP ${res.status}`)
-      return (await res.json()) as Brainstorm
+      const board = parseBrainstorm(await res.json())
+      if (!board) throw new Error("brainstorms: malformed response")
+      return board
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: brainstormsQueryKey(short) })

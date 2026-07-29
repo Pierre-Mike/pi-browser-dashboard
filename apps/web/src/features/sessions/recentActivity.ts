@@ -12,7 +12,7 @@ export type RecentItem = {
 }
 
 const recency = (s: SessionState): number => {
-  const t = Date.parse(s.updatedAt)
+  const t = Date.parse(s.updatedAt ?? "")
   return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
 }
 
@@ -35,7 +35,8 @@ export const recentSessions = ({
     .sort((a, b) => recency(b) - recency(a))
     .slice(0, Math.max(0, limit))
     .map((session) => {
-      const project = byPath.get(session.cwd) ?? null
-      return { session, project, projectName: project?.name ?? cwdTail(session.cwd) }
+      const cwd = session.cwd ?? ""
+      const project = byPath.get(cwd) ?? null
+      return { session, project, projectName: project?.name ?? cwdTail(cwd) }
     })
 }

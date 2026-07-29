@@ -45,26 +45,30 @@ describe("mergePidSettings", () => {
   const base = { defaultSkills: ["goal"] }
 
   it("returns current unchanged for nullish / non-object patches", () => {
-    expect(mergePidSettings(base, null)).toEqual(base)
-    expect(mergePidSettings(base, undefined)).toEqual(base)
+    expect(mergePidSettings({ current: base, patch: null })).toEqual(base)
+    expect(mergePidSettings({ current: base, patch: undefined })).toEqual(base)
   })
 
   it("overrides defaultSkills when the patch provides a valid value", () => {
-    expect(mergePidSettings(base, { defaultSkills: ["align"] })).toEqual({
+    expect(mergePidSettings({ current: base, patch: { defaultSkills: ["align"] } })).toEqual({
       defaultSkills: ["align"],
     })
   })
 
   it("keeps current value when the patch omits the field", () => {
-    expect(mergePidSettings(base, {})).toEqual(base)
+    expect(mergePidSettings({ current: base, patch: {} })).toEqual(base)
   })
 
   it("ignores an invalid patch value (current wins)", () => {
-    expect(mergePidSettings(base, { defaultSkills: "nope" as unknown as string[] })).toEqual(base)
+    expect(
+      mergePidSettings({ current: base, patch: { defaultSkills: "nope" as unknown as string[] } }),
+    ).toEqual(base)
   })
 
   it("allows clearing the selection with an empty list", () => {
-    expect(mergePidSettings(base, { defaultSkills: [] })).toEqual({ defaultSkills: [] })
+    expect(mergePidSettings({ current: base, patch: { defaultSkills: [] } })).toEqual({
+      defaultSkills: [],
+    })
   })
 })
 

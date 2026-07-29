@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test"
 import {
   countCrossSliceImports,
   countEnvReads,
-  countJsonCasts,
   countRawFetches,
   diffDebt,
   scanDebt,
@@ -104,26 +103,6 @@ describe("countRawFetches", () => {
   it("sanctions *.io.ts — that is the port where I/O belongs", () => {
     expect(
       countRawFetches({ path: "apps/web/src/features/x/x.io.ts", text: "await fetch(url)" }),
-    ).toBe(0)
-  })
-})
-
-describe("countJsonCasts", () => {
-  it("counts a cast on a decoded response, awaited or not", () => {
-    expect(
-      countJsonCasts({
-        path: "apps/web/src/features/x/useX.ts",
-        text: "const a = (await res.json()) as A\nconst b = res.json() as B",
-      }),
-    ).toBe(2)
-  })
-
-  it("does not count a decoded response left as unknown", () => {
-    expect(
-      countJsonCasts({
-        path: "apps/daemon/src/features/x/x.routes.ts",
-        text: "const body: unknown = await c.req.json()",
-      }),
     ).toBe(0)
   })
 })

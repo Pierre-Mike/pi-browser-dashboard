@@ -15,7 +15,11 @@ export type ResolveResult = ResolveOk | ResolveErr
 // Resolve a user-supplied path against a project root and refuse anything that
 // escapes the root (via "..", absolute paths, or symlink-looking tricks at the
 // string layer). Symlink resolution at the filesystem layer is the repo's job.
-export const resolveProjectPath = (root: string, input: string | undefined): ResolveResult => {
+export const resolveProjectPath = (args: {
+  readonly root: string
+  readonly input: string | undefined
+}): ResolveResult => {
+  const { root, input } = args
   const rel = (input ?? "").trim()
   if (rel === "" || rel === "." || rel === "/") {
     return { ok: true, absPath: root, relPath: "" }
@@ -155,7 +159,11 @@ type ProjectSortKey = {
 // Newest-first comparator. Prefers `lastCommitMs` (HEAD commit time) when
 // available, falling back to filesystem mtime so non-git projects still sort
 // sensibly alongside git ones.
-export const compareProjectsByCommit = (a: ProjectSortKey, b: ProjectSortKey): number => {
+export const compareProjectsByCommit = (input: {
+  readonly a: ProjectSortKey
+  readonly b: ProjectSortKey
+}): number => {
+  const { a, b } = input
   const ka = a.lastCommitMs ?? a.lastModified
   const kb = b.lastCommitMs ?? b.lastModified
   return kb - ka

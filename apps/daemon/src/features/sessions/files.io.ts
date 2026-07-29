@@ -165,12 +165,12 @@ const computeDiff = ({
       cwd: worktreePath,
     })
     const untracked = untrackedOut.code === 0 ? parseUntracked(untrackedOut.stdout) : []
-    const files = mergeChanges(tracked, untracked)
+    const files = mergeChanges({ tracked, untracked })
 
     const diffOut = yield* runGit({ git, args: ["diff", base], cwd: worktreePath })
     const truncatedDiff =
       diffOut.code === 0
-        ? truncateDiff(diffOut.stdout, MAX_DIFF_BYTES)
+        ? truncateDiff({ raw: diffOut.stdout, max: MAX_DIFF_BYTES })
         : { diff: "", truncated: false }
 
     return {

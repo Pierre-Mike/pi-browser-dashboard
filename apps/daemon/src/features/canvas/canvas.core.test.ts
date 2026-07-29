@@ -154,7 +154,7 @@ describe("emptyCanvas", () => {
 
 describe("canvasPathFor", () => {
   it("returns <configDir>/jobs/<short>/canvas.json", () => {
-    expect(canvasPathFor("/home/me/.claude", "abc123")).toBe(
+    expect(canvasPathFor({ configDir: "/home/me/.claude", short: "abc123" })).toBe(
       "/home/me/.claude/jobs/abc123/canvas.json",
     )
   })
@@ -170,7 +170,7 @@ describe("canvasEqual / serializeCanvas", () => {
 
   it("returns true for structurally-identical snapshots", () => {
     const clone = parseCanvas(JSON.parse(serializeCanvas(base)))
-    expect(canvasEqual(base, clone)).toBe(true)
+    expect(canvasEqual({ a: base, b: clone })).toBe(true)
   })
 
   it("returns false when a node moves", () => {
@@ -178,6 +178,6 @@ describe("canvasEqual / serializeCanvas", () => {
       ...base,
       nodes: [{ id: "n1", position: { x: 5, y: 0 } }],
     }
-    expect(canvasEqual(base, moved)).toBe(false)
+    expect(canvasEqual({ a: base, b: moved })).toBe(false)
   })
 })

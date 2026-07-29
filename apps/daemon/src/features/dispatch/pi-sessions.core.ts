@@ -20,8 +20,10 @@ export type PiSpawnRecord = {
 export const encodePiSessionDir = (realCwd: string): string =>
   `--${realCwd.slice(1).replaceAll("/", "-")}--`
 
-export const isPiSessionFile = (fileName: string, id: string): boolean =>
-  fileName.endsWith(`_${id}.jsonl`)
+export const isPiSessionFile = (input: {
+  readonly fileName: string
+  readonly id: string
+}): boolean => input.fileName.endsWith(`_${input.id}.jsonl`)
 
 export type PiTranscriptMeta = {
   // True when the transcript's final message entry is an assistant reply —

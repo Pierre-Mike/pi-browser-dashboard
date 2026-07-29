@@ -69,7 +69,7 @@ describe("mergeChanges", () => {
       { path: "a.ts", status: "untracked" },
       { path: "b.ts", status: "untracked" },
     ]
-    expect(mergeChanges(tracked, untracked)).toEqual([
+    expect(mergeChanges({ tracked, untracked })).toEqual([
       { path: "a.ts", status: "modified" },
       { path: "b.ts", status: "untracked" },
     ])
@@ -80,7 +80,7 @@ describe("mergeChanges", () => {
       { path: "z.ts", status: "modified" },
       { path: "a.ts", status: "added" },
     ]
-    expect(mergeChanges(tracked, [])).toEqual([
+    expect(mergeChanges({ tracked, untracked: [] })).toEqual([
       { path: "a.ts", status: "added" },
       { path: "z.ts", status: "modified" },
     ])
@@ -89,17 +89,17 @@ describe("mergeChanges", () => {
 
 describe("truncateDiff", () => {
   test("passes through small payloads untouched", () => {
-    expect(truncateDiff("short")).toEqual({ diff: "short", truncated: false })
+    expect(truncateDiff({ raw: "short" })).toEqual({ diff: "short", truncated: false })
   })
 
   test("truncates when over the cap and flags it", () => {
     const big = "a".repeat(MAX_DIFF_BYTES + 10)
-    const out = truncateDiff(big)
+    const out = truncateDiff({ raw: big })
     expect(out.truncated).toBe(true)
     expect(out.diff.length).toBe(MAX_DIFF_BYTES)
   })
 
   test("respects a custom max", () => {
-    expect(truncateDiff("hello", 3)).toEqual({ diff: "hel", truncated: true })
+    expect(truncateDiff({ raw: "hello", max: 3 })).toEqual({ diff: "hel", truncated: true })
   })
 })

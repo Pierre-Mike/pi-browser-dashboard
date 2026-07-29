@@ -31,8 +31,11 @@ export const SessionCard = ({ session, terminal }: Props) => {
   // The reply modal drives claude's pty (attach → write keys) — a pi run has
   // no supervisor pty to reply into, so its surface stays inert.
   const canReply = session.harness !== "pi"
+  // `result` is a free-form, harness-varying payload (`unknown` on the wire) —
+  // only preview it when it is actually text.
+  const resultText = typeof session.result === "string" ? session.result : null
   const resultPreview =
-    session.state === "done" && session.result ? session.result.split("\n")[0]?.slice(0, 140) : null
+    session.state === "done" && resultText ? resultText.split("\n")[0]?.slice(0, 140) : null
 
   return (
     <>
@@ -94,14 +97,14 @@ export const SessionCard = ({ session, terminal }: Props) => {
               {session.detail || <span className="text-base-content/60">—</span>}
             </span>
             <span className="shrink-0 whitespace-nowrap text-xs text-base-content/60">
-              <span title={session.cwd}>{cwdTail(session.cwd)}</span>
+              <span title={session.cwd}>{cwdTail(session.cwd ?? "")}</span>
               <span className="mx-1">·</span>
-              <span title={session.updatedAt}>{ageStr(session.updatedAt)}</span>
+              <span title={session.updatedAt}>{ageStr(session.updatedAt ?? "")}</span>
             </span>
           </div>
 
           {resultPreview ? (
-            <div className="text-xs text-success truncate" title={session.result}>
+            <div className="text-xs text-success truncate" title={resultText ?? undefined}>
               {resultPreview}
             </div>
           ) : null}

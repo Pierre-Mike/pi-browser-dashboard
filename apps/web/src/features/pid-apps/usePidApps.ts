@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
 import { type PidApp, pidAppsQueryKey } from "./pidApps"
+import { parsePidApp, parsePidApps } from "./pidApps.parse"
 
 // Per-project list of pid-apps discovered under <project>/.pid/. The short
 // staleTime means an app dropped into .pid/ shows up soon after a tab revisit.
@@ -13,7 +14,9 @@ export const usePidApps = (projectId: string) =>
       const client = api as any
       const res = await client.projects[projectId]["pid-apps"].$get()
       if (!res.ok) throw new Error(`pid-apps: HTTP ${res.status}`)
-      return (await res.json()) as PidApp[]
+      const apps = parsePidApps(await res.json())
+      if (!apps) throw new Error("pid-apps: malformed response")
+      return apps
     },
     enabled: projectId !== "",
     staleTime: 5_000,
@@ -30,7 +33,9 @@ export const useCreatePidApp = (projectId: string) => {
       const client = api as any
       const res = await client.projects[projectId]["pid-apps"].$post({ json: { name } })
       if (!res.ok) throw new Error(`pid-apps: HTTP ${res.status}`)
-      return (await res.json()) as PidApp
+      const app = parsePidApp(await res.json())
+      if (!app) throw new Error("pid-apps: malformed response")
+      return app
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: pidAppsQueryKey(projectId) })

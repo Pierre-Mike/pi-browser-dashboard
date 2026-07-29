@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
 import { Either } from "effect"
 import {
   decideInitial,
@@ -6,8 +7,6 @@ import {
   decodeSessionStateEvent,
   evaluateWaitEvent,
   parseWaitRequest,
-  WAIT_TIMEOUT_DEFAULT_MS,
-  WAIT_TIMEOUT_MAX_MS,
   type WaitRequest,
 } from "./sessions-wait.core"
 

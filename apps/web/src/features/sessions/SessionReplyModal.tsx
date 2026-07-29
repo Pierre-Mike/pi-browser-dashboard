@@ -64,9 +64,9 @@ export const SessionReplyModal = ({ open, session, onClose }: Props) => {
           {tone.label}
         </span>
         <span className="text-[11px] text-base-content/60 truncate">
-          <span title={session.cwd}>{cwdTail(session.cwd)}</span>
+          <span title={session.cwd}>{cwdTail(session.cwd ?? "")}</span>
           <span className="mx-1">·</span>
-          <span title={session.updatedAt}>{ageStr(session.updatedAt)}</span>
+          <span title={session.updatedAt}>{ageStr(session.updatedAt ?? "")}</span>
         </span>
       </div>
 

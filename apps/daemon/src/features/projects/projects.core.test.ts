@@ -51,37 +51,49 @@ describe("contentDispositionAttachment", () => {
 
 describe("resolveProjectPath", () => {
   it("treats empty input as the project root", () => {
-    const r = resolveProjectPath(ROOT, "")
+    const r = resolveProjectPath({ root: ROOT, input: "" })
     expect(r).toEqual({ ok: true, absPath: ROOT, relPath: "" })
   })
 
   it("treats undefined input as the project root", () => {
-    const r = resolveProjectPath(ROOT, undefined)
+    const r = resolveProjectPath({ root: ROOT, input: undefined })
     expect(r).toEqual({ ok: true, absPath: ROOT, relPath: "" })
   })
 
   it("resolves a simple relative path inside the root", () => {
-    const r = resolveProjectPath(ROOT, "src/index.ts")
+    const r = resolveProjectPath({ root: ROOT, input: "src/index.ts" })
     expect(r).toEqual({ ok: true, absPath: "/repos/demo/src/index.ts", relPath: "src/index.ts" })
   })
 
   it("normalizes redundant segments", () => {
-    const r = resolveProjectPath(ROOT, "./src/./lib/")
+    const r = resolveProjectPath({ root: ROOT, input: "./src/./lib/" })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.relPath).toBe("src/lib")
   })
 
   it("rejects parent-directory escapes", () => {
-    expect(resolveProjectPath(ROOT, "../secrets")).toEqual({ ok: false, reason: "escape" })
-    expect(resolveProjectPath(ROOT, "src/../../secrets")).toEqual({ ok: false, reason: "escape" })
+    expect(resolveProjectPath({ root: ROOT, input: "../secrets" })).toEqual({
+      ok: false,
+      reason: "escape",
+    })
+    expect(resolveProjectPath({ root: ROOT, input: "src/../../secrets" })).toEqual({
+      ok: false,
+      reason: "escape",
+    })
   })
 
   it("rejects absolute paths", () => {
-    expect(resolveProjectPath(ROOT, "/etc/passwd")).toEqual({ ok: false, reason: "absolute" })
+    expect(resolveProjectPath({ root: ROOT, input: "/etc/passwd" })).toEqual({
+      ok: false,
+      reason: "absolute",
+    })
   })
 
   it("rejects NUL bytes", () => {
-    expect(resolveProjectPath(ROOT, "src/\0bad")).toEqual({ ok: false, reason: "invalid" })
+    expect(resolveProjectPath({ root: ROOT, input: "src/\0bad" })).toEqual({
+      ok: false,
+      reason: "invalid",
+    })
   })
 })
 
@@ -254,21 +266,21 @@ describe("compareProjectsByCommit", () => {
   test("orders by lastCommitMs descending when both are present", () => {
     const a = { ...base, id: "a", lastModified: 1, lastCommitMs: 100 }
     const b = { ...base, id: "b", lastModified: 1, lastCommitMs: 200 }
-    expect(compareProjectsByCommit(a, b)).toBeGreaterThan(0)
-    expect(compareProjectsByCommit(b, a)).toBeLessThan(0)
+    expect(compareProjectsByCommit({ a, b })).toBeGreaterThan(0)
+    expect(compareProjectsByCommit({ a: b, b: a })).toBeLessThan(0)
   })
 
   test("falls back to lastModified when lastCommitMs is missing", () => {
     const a = { ...base, id: "a", lastModified: 50 }
     const b = { ...base, id: "b", lastModified: 10, lastCommitMs: 100 }
     // a uses 50 (mtime), b uses 100 (commit) → b first
-    expect(compareProjectsByCommit(a, b)).toBeGreaterThan(0)
+    expect(compareProjectsByCommit({ a, b })).toBeGreaterThan(0)
   })
 
   test("ranks commit time above mtime when mixed", () => {
     const gitRecent = { ...base, id: "git", lastModified: 1, lastCommitMs: 1000 }
     const mtimeAhead = { ...base, id: "plain", lastModified: 999 }
-    const sorted = [mtimeAhead, gitRecent].sort(compareProjectsByCommit)
+    const sorted = [mtimeAhead, gitRecent].sort((a, b) => compareProjectsByCommit({ a, b }))
     expect(sorted.map((p) => p.id)).toEqual(["git", "plain"])
   })
 })

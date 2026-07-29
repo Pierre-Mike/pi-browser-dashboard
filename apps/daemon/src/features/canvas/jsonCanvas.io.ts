@@ -19,7 +19,7 @@ import {
 const jsonCanvasCodec: DocCodec<CanvasSnapshot> = {
   parse: parseJsonCanvas,
   serialize: serializeJsonCanvas,
-  equal: jsonCanvasEqual,
+  equal: (a, b) => jsonCanvasEqual({ a, b }),
   empty: emptyJsonCanvas,
   stamp: (snap) => snap,
 }

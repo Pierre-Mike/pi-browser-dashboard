@@ -19,6 +19,7 @@ import {
   scanDebt,
   totalDebt,
 } from "./axiom-debt.core"
+import { parseWorkspacePatterns, workspaceScanRoots } from "./workspaces.core"
 
 const root = join(import.meta.dir, "..")
 const baselineFile = join(import.meta.dir, "axiom-debt.json")
@@ -33,12 +34,28 @@ const SKIP = [
   "routeTree.gen.ts",
 ]
 
+/**
+ * The scanned roots come from root `package.json` `workspaces` plus `scripts`,
+ * not from a hardcoded `{apps,scripts}` glob. A hardcoded glob fails open: when
+ * `shared/` was added as a workspace it would have been exempt from the ratchet
+ * on day one, so the first raw `fetch` written there would have been invisible.
+ * Anything you must declare as a workspace to make it install is scanned.
+ */
+const scanRoots = async (): Promise<readonly string[]> => {
+  const patterns = parseWorkspacePatterns({
+    pkg: await Bun.file(join(root, "package.json")).json(),
+  })
+  return workspaceScanRoots({ patterns, extra: ["scripts"] })
+}
+
 const collect = async (): Promise<readonly SourceFile[]> => {
   const files: SourceFile[] = []
-  for await (const rel of new Glob("{apps,scripts}/**/*.{ts,tsx}").scan({ cwd: root })) {
-    const path = rel.replaceAll("\\", "/")
-    if (SKIP.some((s) => `/${path}`.includes(s))) continue
-    files.push({ path, text: await Bun.file(join(root, path)).text() })
+  for (const dir of await scanRoots()) {
+    for await (const rel of new Glob(`${dir}/**/*.{ts,tsx}`).scan({ cwd: root })) {
+      const path = rel.replaceAll("\\", "/")
+      if (SKIP.some((s) => `/${path}`.includes(s))) continue
+      files.push({ path, text: await Bun.file(join(root, path)).text() })
+    }
   }
   files.sort((a, b) => a.path.localeCompare(b.path))
   return files
