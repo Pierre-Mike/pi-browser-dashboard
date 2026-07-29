@@ -3,10 +3,12 @@ import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
+import { schemeForThemeName } from "../../lib/ui/theme.core"
+import { useTheme } from "../../lib/ui/useTheme"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
 import { TerminalStateChip } from "./TerminalStateChip"
-import { type ColorScheme, schemeForPrefersDark, terminalTheme } from "./terminalTheme"
+import { type ColorScheme, terminalTheme } from "./terminalTheme"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 import { useTerminalState } from "./useTerminalState"
 
@@ -30,31 +32,21 @@ const isControlFrame = (data: string): boolean => data.length > 0 && data.charCo
 const isIdlessKind = (kind: Props["kind"]): kind is "global" | "orchestrator" =>
   kind === "global" || kind === "orchestrator"
 
-const PREFERS_DARK = "(prefers-color-scheme: dark)"
-
-// Tailwind runs in darkMode:"media", so the terminal follows the same OS
-// preference: light xterm palette in light mode, the original dark one in
-// dark mode, switching live when the OS theme flips.
-const usePreferredScheme = (): ColorScheme => {
-  const [scheme, setScheme] = useState<ColorScheme>(() =>
-    schemeForPrefersDark(window.matchMedia(PREFERS_DARK).matches),
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(PREFERS_DARK)
-    const onChange = (ev: MediaQueryListEvent) => setScheme(schemeForPrefersDark(ev.matches))
-    mq.addEventListener("change", onChange)
-    return () => mq.removeEventListener("change", onChange)
-  }, [])
-  return scheme
-}
-
 // fallow-ignore-next-line complexity
 export const TerminalView = (props: Props) => {
   const { kind, reconnectTitle, testId } = props
   const id = "id" in props ? props.id : ""
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
-  const scheme = usePreferredScheme()
+  // The xterm palette follows the *resolved app theme*, not the OS: picking a
+  // dark family while the OS is light must give a dark terminal. In the default
+  // `system` mode the resolved name still tracks prefers-color-scheme, so the
+  // OS-follows-live behaviour is unchanged.
+  const scheme: ColorScheme = schemeForThemeName({ theme: useTheme().resolved })
+  // Read by the mount effect, which must not depend on `scheme` — re-running it
+  // would tear down the WS/pty. The effect below re-themes in place instead.
+  const schemeRef = useRef(scheme)
+  schemeRef.current = scheme
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [_reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
@@ -70,10 +62,10 @@ export const TerminalView = (props: Props) => {
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: 13,
-      // Read the media query directly so this effect doesn't depend on
-      // `scheme` (re-running it would tear down the WS); the effect below
-      // applies live scheme changes via term.options.theme.
-      theme: { ...terminalTheme(schemeForPrefersDark(window.matchMedia(PREFERS_DARK).matches)) },
+      // Read through the ref so this effect doesn't depend on `scheme`
+      // (re-running it would tear down the WS); the effect below applies live
+      // scheme changes via term.options.theme.
+      theme: { ...terminalTheme(schemeRef.current) },
       convertEol: true,
       cursorBlink: true,
       scrollback: 5_000,

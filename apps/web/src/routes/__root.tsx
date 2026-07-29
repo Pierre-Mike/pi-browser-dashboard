@@ -6,6 +6,7 @@ import { Sidebar } from "../features/sessions/Sidebar"
 import { SidebarRailProvider } from "../features/sessions/sidebarRail"
 import { DropZone } from "../features/uploads/DropZone"
 import { usePersistedFlag } from "../lib/collapse"
+import { useTheme } from "../lib/ui/useTheme"
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -16,9 +17,15 @@ function RootLayout() {
   // every page's reopen chip share one instance — two separate usePersistedFlag
   // calls in the same tab don't sync with each other, only across tabs.
   const rail = usePersistedFlag("pid:sidebar:rail-collapsed")
+  // Keeps <html data-theme> in step with the stored choice and the OS
+  // preference. The dropdown in global settings reads the same store.
+  useTheme()
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100">
+    // daisyUI runs with base:false, so this element *is* the page paint. Base
+    // tokens rather than a slate literal: that is what makes a theme change the
+    // background instead of only the components sitting on it.
+    <div className="min-h-screen bg-gradient-to-b from-base-100 to-base-200 text-base-content">
       <SidebarRailProvider rail={rail}>
         <MobileNav>
           <Sidebar variant="drawer" />

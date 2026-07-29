@@ -1,19 +1,71 @@
+import {
+  THEME_FAMILIES,
+  THEME_MODE_LABELS,
+  THEME_MODES,
+  type ThemeMode,
+  type ThemeSelection,
+} from "../../lib/ui/theme.core"
 import { FIELD_GROUPS } from "./fields"
 import { GLOBAL_SETTINGS_REL_PATH, type GlobalSettingsForm } from "./useGlobalSettingsForm"
 
 type Props = {
   form: GlobalSettingsForm
+  theme: ThemeSelection
 }
 
 // Presentational global-settings panel: a pure function of the form state, so it
 // renders and asserts without a query client. The container (GlobalSettingsPanel)
 // wires the live data in.
-export const GlobalSettingsView = ({ form }: Props) => (
+//
+// Appearance is deliberately *not* part of `form`: the theme is a per-browser
+// preference in localStorage, not a field of the managed settings file, so it
+// saves on pick with no Save button and no daemon round-trip.
+export const GlobalSettingsView = ({ form, theme }: Props) => (
   <div data-testid="global-settings-panel" className="flex flex-col gap-4 max-w-3xl">
     <div className="flex flex-col gap-0.5">
       <h2 className="text-sm font-semibold text-base-content/80">Global settings</h2>
       <span className="text-[11px] font-mono text-base-content/60">{GLOBAL_SETTINGS_REL_PATH}</span>
     </div>
+
+    <fieldset data-testid="gs-section-appearance" className="flex flex-col gap-2 text-xs">
+      <legend className="px-0 font-medium text-base-content/80">Appearance</legend>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-base-content/80">Theme</span>
+          <select
+            data-testid="gs-appearance-family"
+            className="select select-bordered select-sm"
+            value={theme.choice.family}
+            onChange={(e) => theme.setFamily(e.target.value)}
+          >
+            {THEME_FAMILIES.map((family) => (
+              <option key={family.id} value={family.id}>
+                {family.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-base-content/80">Light / dark</span>
+          <select
+            data-testid="gs-appearance-mode"
+            className="select select-bordered select-sm"
+            value={theme.choice.mode}
+            onChange={(e) => theme.setMode(e.target.value as ThemeMode)}
+          >
+            {THEME_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {THEME_MODE_LABELS[mode]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <span data-testid="gs-appearance-hint" className="text-[11px] text-base-content/60">
+        Applies to this browser only, and takes effect immediately —{" "}
+        <span className="font-mono">{theme.resolved}</span> is active.
+      </span>
+    </fieldset>
 
     {form.loading ? (
       <p className="text-xs text-base-content/60">Loading settings…</p>

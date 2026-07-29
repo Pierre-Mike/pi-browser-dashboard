@@ -75,11 +75,11 @@ const ProjectsPanel = () => {
   const terminalStates = useTerminalStates()
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
-    return <div className="text-sm text-slate-500">Loading…</div>
+    return <div className="text-sm text-base-content/60">Loading…</div>
   }
   if (sessionsQ.isError) {
     return (
-      <div className="text-sm text-rose-600">
+      <div className="text-sm text-error">
         Failed to load sessions:{" "}
         {sessionsQ.error instanceof Error ? sessionsQ.error.message : "unknown error"}
       </div>
@@ -87,7 +87,7 @@ const ProjectsPanel = () => {
   }
   if (projectsQ.isError) {
     return (
-      <div className="text-sm text-rose-600">
+      <div className="text-sm text-error">
         Failed to load projects:{" "}
         {projectsQ.error instanceof Error ? projectsQ.error.message : "unknown error"}
       </div>
@@ -97,16 +97,16 @@ const ProjectsPanel = () => {
   const projects = projectsQ.data ?? []
   if (sessions.length === 0 && projects.length === 0) {
     return (
-      <div className="card border border-slate-200/80 dark:border-slate-800 bg-base-200/50 shadow-sm">
+      <div className="card border border-base-300 bg-base-200/50 shadow-sm">
         <div className="card-body items-center gap-3 py-10 text-center">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-content text-xl font-black shadow-sm shadow-primary/30">
             π
           </span>
           <h2 className="card-title text-base">Welcome home</h2>
-          <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">
+          <p className="max-w-sm text-sm text-base-content/60">
             No projects or sessions yet. Spawn your first one from{" "}
-            <span className="font-medium text-slate-700 dark:text-slate-200">+ New session</span> in
-            the sidebar, or open the Terminal tab to get going.
+            <span className="font-medium text-base-content/80">+ New session</span> in the sidebar,
+            or open the Terminal tab to get going.
           </p>
         </div>
       </div>

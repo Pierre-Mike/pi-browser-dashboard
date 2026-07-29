@@ -18,15 +18,18 @@ export const drawerBackdropClass = (open: boolean): string =>
 // the full width to <main> and leaving one small reopen chip
 // (sidebarRailOpenBtnClass) in the page's own top row. So there is only one
 // desktop shape left to describe here.
+// Semantic tokens, not a slate literal: the sidebar is the largest surface on
+// the page, and a hard-coded white/slate-950 pair made every non-pid theme look
+// half-applied — a warm-paper shell next to a pure-white rail.
 export const sidebarAsideClass = (variant: SidebarVariant): string =>
   variant === "drawer"
-    ? "flex h-full w-full flex-col bg-white dark:bg-slate-950 overflow-y-auto"
-    : "hidden md:flex shrink-0 flex-col w-72 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 h-screen sticky top-0 overflow-y-auto"
+    ? "flex h-full w-full flex-col bg-base-100 overflow-y-auto"
+    : "hidden md:flex shrink-0 flex-col w-72 border-r border-base-300 bg-base-100 h-screen sticky top-0 overflow-y-auto"
 
 export const sidebarLoadingClass = (variant: SidebarVariant): string =>
   variant === "drawer"
-    ? "block w-full p-3 text-xs text-slate-500"
-    : "hidden md:block w-72 shrink-0 border-r border-slate-200 dark:border-slate-800 p-3 text-xs text-slate-500"
+    ? "block w-full p-3 text-xs text-base-content/60"
+    : "hidden md:block w-72 shrink-0 border-r border-base-300 p-3 text-xs text-base-content/60"
 
 // <main>'s padding — uniform on every side, collapsed or not. An earlier
 // version widened the left side on md+ to clear a *floating* reopen button,
