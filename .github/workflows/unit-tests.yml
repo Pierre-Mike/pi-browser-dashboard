@@ -133,10 +133,17 @@ jobs:
       # .fallow-baselines/ (refresh with `bun run audit:baseline`), so a large
       # rename cannot re-attribute inherited debt to the PR that touched the
       # filenames. Dead code is still judged on the changeset.
+      # `github.base_ref` reaches the shell through `env:`, never through `${{ }}`
+      # inside `run:`. A branch name is attacker-supplied on a fork PR, and inline
+      # expansion splices it into the script *before* the shell sees it — the
+      # template-injection class zizmor flags at high severity. As `$BASE_REF` it
+      # is just a variable the shell quotes.
       - name: Audit changed files for dead code
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
-          bun run audit -- --base "origin/${{ github.base_ref }}"
+          git fetch --no-tags --depth=50 origin "$BASE_REF"
+          bun run audit -- --base "origin/$BASE_REF"
 
   # Build the actual distribution artifact.
   #
@@ -194,6 +201,13 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      # `verify` ends in the fallow audit, which resolves a diff base by looking
+      # for a local `main`. A PR checkout is detached, so without this the audit
+      # exits "could not detect base branch" and the job fails for a reason that
+      # has nothing to do with the generated slice.
+      - name: Give the audit a local base branch
+        run: git branch main origin/main 2>/dev/null || true
+
       - name: Scaffold a slice
         run: bun run scaffold:slice smoke-demo
 
@@ -201,7 +215,15 @@ jobs:
         run: bun run verify
 
   # Workflow lint: flags unpinned actions, credential persistence, injection
-  # risks. Advisory (not a required check) but visible on every PR.
+  # risks. Not a required check, but it does gate on real findings.
+  #
+  # `min-severity: high` on purpose. zizmor's medium tier here is almost entirely
+  # `artipacked` — a checkout that leaves its credential in `.git/config` — which
+  # matters when a later step uploads the workspace as an artifact, and none of
+  # these do. Failing on the whole medium tier would make this job permanently
+  # red, and a permanently red advisory check teaches people to ignore it, which
+  # is worse than not having it. High severity (template injection, and the
+  # like) fails the job and gets fixed.
   zizmor:
     name: zizmor (workflow security)
     runs-on: ubuntu-latest
@@ -210,8 +232,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: zizmor
         uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
         with:
           advanced-security: false
+          min-severity: high
