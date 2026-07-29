@@ -24,7 +24,7 @@ const statusTone = (status: ExcalidrawSyncStatus): string =>
 const StatusBadge = ({ status }: { readonly status: ExcalidrawSyncStatus }) => (
   <span
     data-testid="excalidraw-status"
-    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusTone(status)}`}
+    className={`shrink-0 rounded-badge px-2 py-0.5 text-[10px] font-medium ${statusTone(status)}`}
   >
     {STATUS_LABEL[status]}
   </span>

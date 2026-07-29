@@ -71,17 +71,17 @@ const toolPreview = (name: string, input: unknown): string => {
 const StatusBadge = ({ result }: { result?: ToolResultInfo }) => {
   if (!result) {
     return (
-      <span className="shrink-0 rounded-full bg-base-300 text-base-content/60 px-1.5 py-px text-[9px] uppercase tracking-wide">
+      <span className="shrink-0 rounded-badge bg-base-300 text-base-content/60 px-1.5 py-px text-[9px] uppercase tracking-wide">
         pending
       </span>
     )
   }
   return result.isError ? (
-    <span className="shrink-0 rounded-full bg-error/15 text-error px-1.5 py-px text-[9px] uppercase tracking-wide">
+    <span className="shrink-0 rounded-badge bg-error/15 text-error px-1.5 py-px text-[9px] uppercase tracking-wide">
       error
     </span>
   ) : (
-    <span className="shrink-0 rounded-full bg-success/15 text-success px-1.5 py-px text-[9px] uppercase tracking-wide">
+    <span className="shrink-0 rounded-badge bg-success/15 text-success px-1.5 py-px text-[9px] uppercase tracking-wide">
       ok
     </span>
   )

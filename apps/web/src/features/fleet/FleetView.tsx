@@ -54,7 +54,7 @@ const WaveChips = ({ fleet }: { readonly fleet: FleetWire }) => (
     {fleet.waves.map((wave, i) => (
       <span
         key={wave.join(",") || `wave-${i}`}
-        className="inline-flex items-center gap-1 rounded-full bg-base-200 px-2 py-0.5 text-[11px] text-base-content/70"
+        className="inline-flex items-center gap-1 rounded-badge bg-base-200 px-2 py-0.5 text-[11px] text-base-content/70"
       >
         <span className="font-mono">wave {i + 1}</span>
         <span className="opacity-70">{wave.join(", ")}</span>

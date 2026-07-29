@@ -16,11 +16,28 @@ import { join } from "node:path"
 // square theme renders round anyway.
 //
 // Two literals stay allowed because neither is a theme decision:
-//   `rounded-full`  — a circle (avatar, dot, icon button) is a circle in every
-//                     family; making it square would break the geometry, not
-//                     restyle it.
+//   `rounded-full`  — a circle (avatar, dot, toggle knob, colour swatch) is a
+//                     circle in every family; squaring it would break the
+//                     geometry, not restyle it.
 //   `rounded-none`  — a deliberate hard square, usually where a child must sit
 //                     flush inside a rounded parent.
+//
+// `rounded-full` was, however, a loophole worth closing. A *padded* element with
+// `rounded-full` is not a circle — it is a **pill**, and "pill vs rectangle" is
+// exactly the theme decision this file exists to enforce. The square-theme
+// screenshot proved it: the spawn modal was fully square except for its skill
+// chips and its send button, all three of which were `rounded-full` with
+// horizontal padding, and all three of which also carried `btn` (so the literal
+// was overriding the very var the theme had just set).
+//
+// Horizontal padding is the discriminator, and a sharp one: a circle sizes
+// itself with a matched `w-N h-N` (or `h-full w-2` for a rail) and needs no
+// `px-*`, whereas a chip is padded because its width follows its text. A
+// genuinely circular counter that pads for two-digit values takes the escape
+// hatch and says so.
+const PILL_NOT_CIRCLE = "rounded-full on a padded element is a pill — use rounded-badge/btn"
+const HAS_X_PADDING = /\bpx-/
+const IS_FULL = /\brounded-full\b/
 //
 // Scope is the palette ratchet's (`features/`, `routes/`, `.ts` as well as
 // `.tsx`) plus **`lib/`**, which the palette ratchet does not yet cover. That
@@ -130,6 +147,7 @@ const offendersIn = (source: string): string[] => {
     .forEach((line, i) => {
       if (ESCAPE_HATCH.test(raw[i] ?? "")) return
       const hits = (line.match(RADIUS_UTIL) ?? []).filter((util) => !isThemeable(util))
+      if (IS_FULL.test(line) && HAS_X_PADDING.test(line)) hits.push(PILL_NOT_CIRCLE)
       if (hits.length > 0) offenders.push(`  L${i + 1}: ${hits.join(", ")}`)
     })
   return offenders
@@ -217,7 +235,31 @@ describe("the ratchet itself", () => {
     ])
   })
 
+  it("allows rounded-full where it means a circle", () => {
+    for (const cls of [
+      "w-7 h-7 rounded-full",
+      "inline-block w-2 h-2 rounded-full",
+      "h-5 w-9 items-center rounded-full",
+      "h-full w-2 rounded-full p-0",
+    ]) {
+      expect(offendersIn(`<div className="${cls}" />`), cls).toEqual([])
+    }
+  })
+
+  it("rejects rounded-full where padding makes it a pill", () => {
+    for (const cls of [
+      "rounded-full px-2 py-0.5 text-[11px]",
+      "btn btn-xs gap-1 rounded-full px-2.5 py-1",
+      "rounded-full bg-primary px-3.5 py-1.5",
+    ]) {
+      expect(offendersIn(`<div className="${cls}" />`), cls).toEqual([`  L1: ${PILL_NOT_CIRCLE}`])
+    }
+  })
+
   it("honours the escape hatch", () => {
     expect(offendersIn(`<div className="rounded-sm" /> // design-allow: reason`)).toEqual([])
+    expect(
+      offendersIn(`<div className="px-1 rounded-full" /> // design-allow: circular counter`),
+    ).toEqual([])
   })
 })
