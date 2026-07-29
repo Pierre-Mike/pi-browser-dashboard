@@ -2580,9 +2580,117 @@ describe("parseRulesStatusResponse", () => {
       enabled: true,
       paused: false,
       errors: [],
-      rules: [{ name: "r", enabled: true }],
+      rules: [{ name: "r", enabled: true, trigger: undefined }],
       log: [{ tag: "Fired", rule: "r", short: "ab12", at: 100 }],
     })
+  })
+
+  // The two trigger sources a rule can watch, as the daemon publishes them:
+  // `when.state` is the supervisor's reading, `when.screen` the classifier's.
+  it("carries a supervisor trigger's state and dwell", () => {
+    expect(
+      right(
+        parseRulesStatusResponse({
+          enabled: true,
+          paused: false,
+          errors: [],
+          rules: [
+            {
+              name: "r",
+              enabled: true,
+              when: { source: "supervisor", state: "blocked", forMs: 300_000 },
+            },
+          ],
+          log: [],
+        }),
+      ).rules[0]?.trigger,
+    ).toEqual({ source: "supervisor", slug: "blocked", matcher: undefined, forMs: 300_000 })
+  })
+
+  it("carries a screen trigger's slug, matcher and dwell", () => {
+    expect(
+      right(
+        parseRulesStatusResponse({
+          enabled: true,
+          paused: false,
+          errors: [],
+          rules: [
+            {
+              name: "r",
+              enabled: true,
+              when: {
+                source: "screen",
+                screen: "blocked",
+                matcher: "permission-prompt",
+                forMs: 120_000,
+              },
+            },
+          ],
+          log: [],
+        }),
+      ).rules[0]?.trigger,
+    ).toEqual({
+      source: "screen",
+      slug: "blocked",
+      matcher: "permission-prompt",
+      forMs: 120_000,
+    })
+  })
+
+  // `when.source` is derived by the daemon, so a daemon predating the screen
+  // trigger sends a `when` with no `source` at all. Re-derive it from the key
+  // the rule set rather than showing a rule with no source.
+  it("derives the source from the trigger key when the daemon sends none", () => {
+    const parsed = right(
+      parseRulesStatusResponse({
+        enabled: true,
+        paused: false,
+        errors: [],
+        rules: [
+          { name: "old", enabled: true, when: { state: "done" } },
+          { name: "newer", enabled: true, when: { screen: "idle" } },
+        ],
+        log: [],
+      }),
+    )
+    expect(parsed.rules[0]?.trigger?.source).toBe("supervisor")
+    expect(parsed.rules[1]?.trigger?.source).toBe("screen")
+  })
+
+  // A daemon newer than this CLI must not make `pid rules` fail: an
+  // unreadable `when` costs the trigger columns, never the listing.
+  it.each([
+    ["a missing when", undefined],
+    ["a non-object when", "blocked"],
+    ["a when with no recognized trigger key", { forMs: 1000 }],
+  ])("leaves the trigger undefined for %s", (_label, when) => {
+    const parsed = right(
+      parseRulesStatusResponse({
+        enabled: true,
+        paused: false,
+        errors: [],
+        rules: [{ name: "r", enabled: true, when }],
+        log: [],
+      }),
+    )
+    expect(parsed.rules[0]).toEqual({ name: "r", enabled: true, trigger: undefined })
+  })
+
+  // A source this CLI does not know is still the daemon's own answer about
+  // which reading fires the rule — printed, not rejected, exactly as
+  // `formatExplain` prints an unknown `source`.
+  it("keeps an unrecognized source verbatim", () => {
+    expect(
+      right(
+        parseRulesStatusResponse({
+          enabled: true,
+          paused: false,
+          errors: [],
+          rules: [{ name: "r", enabled: true, when: { source: "webhook" } }],
+          log: [],
+        }),
+      ).rules[0]?.trigger,
+    ).toEqual({ source: "webhook", slug: undefined, matcher: undefined, forMs: undefined })
   })
 
   it("rejects a non-object response", () => {
@@ -2678,12 +2786,100 @@ describe("formatRulesStatus / exitCodeForRulesErrors", () => {
         paused: true,
         errors: [],
         rules: [
-          { name: "notify-on-blocked", enabled: true },
-          { name: "old-rule", enabled: false },
+          { name: "notify-on-blocked", enabled: true, trigger: undefined },
+          { name: "old-rule", enabled: false, trigger: undefined },
         ],
         log: [],
       }),
     ).toBe("state-change rules: enabled (paused)\n\n  notify-on-blocked\n  old-rule (disabled)")
+  })
+
+  // The gap this listing had: a rule that answers a permission prompt and a
+  // rule that reacts to a stale supervisor state printed as two bare names.
+  // Every line now says which reading fires it and on what.
+  it("tells a screen trigger apart from a supervisor one on one line each", () => {
+    expect(
+      formatRulesStatus({
+        enabled: true,
+        paused: false,
+        errors: [],
+        rules: [
+          {
+            name: "answer-permission",
+            enabled: true,
+            trigger: {
+              source: "screen",
+              slug: "blocked",
+              matcher: "permission-prompt",
+              forMs: 120_000,
+            },
+          },
+          {
+            name: "nudge-stale",
+            enabled: true,
+            trigger: {
+              source: "supervisor",
+              slug: "blocked",
+              matcher: undefined,
+              forMs: 300_000,
+            },
+          },
+        ],
+        log: [],
+      }),
+    ).toBe(
+      "state-change rules: enabled\n\n" +
+        "  answer-permission  screen      blocked  permission-prompt  for 2m\n" +
+        "  nudge-stale        supervisor  blocked  for 5m",
+    )
+  })
+
+  // A transition rule ("just entered this") has no dwell to print, and a
+  // state-only screen rule names no matcher — each part is dropped rather
+  // than printed as a placeholder, the same way a terminal row drops a
+  // missing matcher.
+  it("drops the matcher and the dwell when the rule has neither", () => {
+    expect(
+      formatRulesStatus({
+        enabled: true,
+        paused: false,
+        errors: [],
+        rules: [
+          {
+            name: "wake",
+            enabled: true,
+            trigger: { source: "screen", slug: "idle", matcher: undefined, forMs: undefined },
+          },
+        ],
+        log: [],
+      }),
+    ).toBe("state-change rules: enabled\n\n  wake  screen  idle")
+  })
+
+  // The tolerance the parser buys, seen from the output side: a `when` this
+  // CLI could not read leaves the rule listed with no trailing whitespace,
+  // which is exactly what `pid rules` printed before triggers existed.
+  it("prints a rule with an unreadable trigger as a bare name", () => {
+    expect(
+      formatRulesStatus({
+        enabled: false,
+        paused: false,
+        errors: [],
+        rules: [
+          { name: "mystery", enabled: false, trigger: undefined },
+          {
+            name: "known",
+            enabled: true,
+            trigger: { source: "supervisor", slug: "failed", matcher: undefined, forMs: undefined },
+          },
+        ],
+        log: [],
+      }),
+    ).toBe(
+      "state-change rules: disabled\n\n" +
+        "  mystery (disabled)\n" +
+        `  ${"known".padEnd(18)}  supervisor  failed`,
+    )
   })
 
   it("lists validation errors and recent activity, and exits 2 on any error", () => {
@@ -2703,7 +2899,7 @@ describe("formatRulesStatus / exitCodeForRulesErrors", () => {
       enabled: true,
       paused: false,
       errors: [],
-      rules: [{ name: "r", enabled: true }],
+      rules: [{ name: "r", enabled: true, trigger: undefined }],
       log: [{ tag: "Fired", rule: "r", short: "ab12", at: 1 }],
     }
     expect(formatRulesStatus(withLog)).toContain("recent activity:\n  Fired r → ab12")

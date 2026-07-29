@@ -2328,17 +2328,79 @@ const parseRuleErrors = (
     ? Either.all(raw.map(parseRuleErrorSummary))
     : Either.left(parseError("rules response is missing errors"))
 
+// The `when` half of a rule, flattened to what a one-line listing needs.
+//
+// A rule watches ONE of two independent readings of a session — the
+// supervisor's (`when.state`) or the screen classifier's (`when.screen`) — and
+// the daemon publishes which as a derived `when.source`. Two rules that differ
+// only in that are two genuinely different automations (one answers a
+// permission prompt, the other reacts to a stale state.json), so the source is
+// the first thing a reader needs.
+//
+// `slug` folds `when.state` and `when.screen` into one field on purpose: it is
+// whichever reading `source` already named, so keeping them apart would only
+// buy a branch in the formatter. Every field is a plain `string`/`number`, not
+// a narrowed slug: the daemon owns both vocabularies and a value newer than
+// this CLI should be shown, not rejected — the same policy
+// ExplainTerminalFacts and TerminalStateEntry apply to a classifier slug, and
+// the same one `formatExplain` applies to an unrecognized `source`.
+export type RuleTrigger = {
+  readonly source: string
+  // Absent only for a `when` shape this CLI cannot read past `source`.
+  readonly slug: string | undefined
+  // Which classifier row the rule names, when it names one — what separates a
+  // tool-permission dialog from a folder-trust dialog inside `blocked`.
+  readonly matcher: string | undefined
+  // Present: a dwell condition ("held for at least this long"). Absent: a
+  // transition condition ("just entered this").
+  readonly forMs: number | undefined
+}
+
+// `when.source` is DERIVED daemon-side, so a daemon that predates the screen
+// trigger sends a `when` carrying no `source` at all. Re-derive it the way the
+// daemon does — from which key the rule's author set — rather than listing a
+// rule with a blank source column.
+const impliedRuleSource = (raw: Record<string, unknown>): string | undefined => {
+  if (optionalString(raw.screen) !== undefined) return "screen"
+  if (optionalString(raw.state) !== undefined) return "supervisor"
+  return undefined
+}
+
+const ruleTriggerSlug = (raw: Record<string, unknown>): string | undefined =>
+  optionalString(raw.screen) ?? optionalString(raw.state)
+
+// `undefined` — never a ParseError — for a `when` this CLI cannot make sense
+// of. A daemon newer than the CLI must not make `pid rules` fail: an
+// unreadable trigger costs the trigger columns on that one line, not the
+// listing an agent is reading to decide what to do next.
+const parseRuleTrigger = (raw: unknown): RuleTrigger | undefined => {
+  if (!isPlainObject(raw)) return undefined
+  const source = optionalString(raw.source) ?? impliedRuleSource(raw)
+  return source === undefined
+    ? undefined
+    : {
+        source,
+        slug: ruleTriggerSlug(raw),
+        matcher: optionalString(raw.matcher),
+        forMs: optionalNumber(raw.forMs),
+      }
+}
+
 export type RuleSummary = {
   readonly name: string
   readonly enabled: boolean
+  readonly trigger: RuleTrigger | undefined
 }
 
 const parseRuleSummary = (raw: unknown): Either.Either<RuleSummary, ParseError> => {
   if (!isPlainObject(raw)) return Either.left(parseError("rule must be an object"))
-  return Either.all({
+  const combined = Either.all({
     name: requireNonEmptyStringField({ value: raw.name, message: "rule is missing name" }),
     enabled: requireBooleanField({ value: raw.enabled, message: "rule is missing enabled" }),
   })
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ ...combined.right, trigger: parseRuleTrigger(raw.when) })
 }
 
 export type RuleFiringLogEntry = {
@@ -3153,10 +3215,54 @@ const RULE_LOG_TAIL = 10
 const formatRulesHeader = (s: RulesStatusSummary): string =>
   `state-change rules: ${s.enabled ? "enabled" : "disabled"}${s.paused ? " (paused)" : ""}`
 
-const formatRulesList = (rules: ReadonlyArray<RuleSummary>): string =>
-  rules.length === 0
-    ? "no rules configured"
-    : rules.map((r) => `  ${r.name}${r.enabled ? "" : " (disabled)"}`).join("\n")
+// The disabled marker stays glued to the name (it is a fact about the rule,
+// not about its trigger) and is padded WITH it, so the trigger columns line up
+// whether or not a file has a disabled rule in it.
+const ruleNameCell = (rule: RuleSummary): string =>
+  `${rule.name}${rule.enabled ? "" : " (disabled)"}`
+
+const ruleSourceCell = (rule: RuleSummary): string => rule.trigger?.source ?? ""
+
+const ruleDwellPart = (forMs: number | undefined): string | undefined =>
+  forMs === undefined ? undefined : `for ${formatAge(forMs)}`
+
+// Same shape as formatTerminalDetail: the parts that exist, two spaces apart,
+// and nothing where a part is absent.
+const ruleTriggerDetail = (trigger: RuleTrigger | undefined): string =>
+  trigger === undefined
+    ? ""
+    : [trigger.slug, trigger.matcher, ruleDwellPart(trigger.forMs)]
+        .filter((part): part is string => part !== undefined)
+        .join("  ")
+
+// `trimEnd` so a rule with nothing to say past its name prints exactly the
+// bare `  <name>` this listing printed before triggers existed.
+const formatRuleRow = ({
+  rule,
+  nameWidth,
+  sourceWidth,
+}: {
+  readonly rule: RuleSummary
+  readonly nameWidth: number
+  readonly sourceWidth: number
+}): string =>
+  [
+    padEndTo({ text: ruleNameCell(rule), width: nameWidth }),
+    padEndTo({ text: ruleSourceCell(rule), width: sourceWidth }),
+    ruleTriggerDetail(rule.trigger),
+  ]
+    .join("  ")
+    .trimEnd()
+
+// Column discipline borrowed from formatSessions/formatTerminalStates, in the
+// file's own order — no re-sorting, so re-running `pid rules` renders stably.
+// The source floor is `"screen".length`, the shortest source there is.
+const formatRulesList = (rules: ReadonlyArray<RuleSummary>): string => {
+  if (rules.length === 0) return "no rules configured"
+  const nameWidth = Math.max(4, ...rules.map((rule) => ruleNameCell(rule).length))
+  const sourceWidth = Math.max(6, ...rules.map((rule) => ruleSourceCell(rule).length))
+  return rules.map((rule) => `  ${formatRuleRow({ rule, nameWidth, sourceWidth })}`).join("\n")
+}
 
 const formatRulesErrorsSection = (errors: ReadonlyArray<RuleErrorSummary>): string | undefined =>
   errors.length === 0

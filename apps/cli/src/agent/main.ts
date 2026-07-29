@@ -172,9 +172,12 @@ runs on the same machine as the daemon.
 pid rules lists the state-change automation rules in
 <claudeConfigDir>/pid-dashboard/rules.json — off by default (both a missing
 file and enabled: false, or absent, mean nothing fires), plus any validation
-errors, whether the engine is paused, and recent firing activity. pid rules
-preview evaluates every currently-known session against those rules and
-reports what would happen — it fires nothing.
+errors, whether the engine is paused, and recent firing activity. Each rule
+prints as "name  source  <trigger>", where source is which reading fires it
+(supervisor or screen) and the trigger is the state or screen slug, the matcher
+if the rule names one, and the dwell if it has one. pid rules preview
+evaluates every currently-known session against those rules and reports what
+would happen — it fires nothing.
 
 Full agent guide (this CLI, the HTTP endpoints, wait/explain/spawn recipes):
   <base>/agent-skill.md
