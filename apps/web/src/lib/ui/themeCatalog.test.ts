@@ -69,12 +69,15 @@ const REQUIRED_TOKENS = [
 // failure, it just fails against its own row rather than against pidlight's.
 //
 // The table is the design decision, in one place:
-//   pid       — frozen. It is the default, and the point of tokenizing shape was
-//               to make the OTHER families expressible, not to restyle this
-//               one. Do not touch these three numbers. (Frozen *tokens*, not
-//               frozen pixels: individual elements did move, because the
-//               migration mapped each one by role — panel / control / chip —
-//               and Tailwind's `rounded-lg` never equalled `--rounded-btn`.)
+//   pid       — shape frozen. It is the default, and the point of tokenizing
+//               shape was to make the OTHER families expressible, not to
+//               restyle this one. Do not touch these three numbers. (Frozen
+//               *tokens*, not frozen pixels: individual elements did move,
+//               because the migration mapped each one by role — panel /
+//               control / chip — and Tailwind's `rounded-lg` never equalled
+//               `--rounded-btn`.) Its *colour* freeze is over — the accent had
+//               to move to clear WCAG AA — but its geometry has no
+//               accessibility argument pulling on it, so it stays put.
 //   mono      — tight and technical.
 //   terminal  — fully square, including a 0s button transition.
 //   sunset    — soft, with fully-pill badges.
@@ -112,11 +115,43 @@ const SHAPE_TOKENS = Object.keys(SHAPE_BY_FAMILY.pid) as ReadonlyArray<
   keyof (typeof SHAPE_BY_FAMILY)["pid"]
 >
 
-// pidlight pairs slate-50 text with sky-500 (2.65:1). It predates this gate and
-// is byte-frozen by design (its hex values are asserted by the terminal e2e and
-// referenced across the design docs), so it is exempted by name rather than
-// silently lowering the bar for every family added after it.
-const PRIMARY_CONTRAST_EXEMPT = new Set(["pidlight"])
+// There is no primary-contrast exemption any more. `pidlight` used to be named
+// here — slate-50 on sky-500, 2.65:1 — because `pid` was held byte-frozen while
+// the seven newer themes were built. Every one of those seven cleared the bar,
+// which left the machine-wide *default* as the only theme that did not, so the
+// accent was darkened to sky-700 and the exemption deleted. Both directions are
+// asserted below, because `primary` is read both ways.
+
+// Tokens the app paints as **ink** with `text-<token>`, and must therefore be
+// legible on the page the shell paints. `base-100` is the top of the shell
+// gradient; the deeper surfaces are not asserted because `sunsetlight` sits at
+// 4.14 on `base-200`, and widening the bar to the whole gradient is a change to
+// three families rather than a floor they already meet.
+const INK_TOKENS = [
+  "primary",
+  "secondary",
+  "accent",
+  "info",
+  "success",
+  "warning",
+  "error",
+] as const
+
+// Measured misses, deliberately deferred — not "frozen hex", which is no longer
+// true of anything in this repo. `pidlight`'s three *status* hues carry meaning
+// (a "blocked" pill has to read differently from a "failed" one at a glance in
+// the sidebar), so darkening them changes what the app communicates and wants
+// its own reviewable before/after rather than riding along on an accent fix.
+// `sunsetlight.accent` is that family's own call, with a single `text-accent`
+// site behind it. Every ratio below is measured, and the list is a ratchet: it
+// cannot grow without someone writing the number down.
+const INK_CONTRAST_EXEMPT = new Set([
+  "pidlight.accent", // #f59e0b amber-500 on #ffffff — 2.15:1 (also `warning`)
+  "pidlight.warning", // #f59e0b amber-500 on #ffffff — 2.15:1
+  "pidlight.success", // #10b981 emerald-500 on #ffffff — 2.54:1
+  "pidlight.error", // #f43f5e rose-500 on #ffffff — 3.67:1
+  "sunsetlight.accent", // #ea580c orange-600 on #fffaf6 — 3.43:1
+])
 
 describe("tailwind.config.js matches the theme catalog", () => {
   test("every catalogued theme name is defined in the config, and vice versa", async () => {
@@ -233,7 +268,6 @@ describe("every theme is complete and legible", () => {
   test("primary-content clears 4.5:1 on primary", async () => {
     const { themes } = await loadConfig()
     for (const [name, tokens] of Object.entries(themes)) {
-      if (PRIMARY_CONTRAST_EXEMPT.has(name)) continue
       const ratio = contrast({
         a: tokens["primary-content"] as string,
         b: tokens.primary as string,
@@ -241,6 +275,46 @@ describe("every theme is complete and legible", () => {
       expect(ratio, `${name}: primary-content on primary is ${ratio.toFixed(2)}:1`).toBeGreaterThan(
         4.5,
       )
+    }
+  })
+
+  test("every ink token clears 4.5:1 on base-100", async () => {
+    // The other half of the same token. `primary` is a *surface* under
+    // primary-content in a button and *ink* via text-primary in a link, an
+    // active tab, a focus ring and a count pill — 38 sites — so passing the
+    // test above proves only that the button is readable. pidlight passed it by
+    // exemption and failed this one at 2.77:1, which is how the default theme
+    // ended up the least legible one shipped.
+    const { themes } = await loadConfig()
+    for (const [name, tokens] of Object.entries(themes)) {
+      for (const token of INK_TOKENS) {
+        if (INK_CONTRAST_EXEMPT.has(`${name}.${token}`)) continue
+        const ratio = contrast({ a: tokens[token] as string, b: tokens["base-100"] as string })
+        expect(
+          ratio,
+          `${name}: text-${token} on base-100 is ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  test("every ink exemption names a token that exists, and misses the bar", async () => {
+    // A stale exemption is worse than none: it reads as a documented decision
+    // while quietly covering nothing. So each entry has to still be a real
+    // failure — the day one is repaid, this test says so and the line goes.
+    const { themes } = await loadConfig()
+    for (const entry of INK_CONTRAST_EXEMPT) {
+      const [name = "", token = ""] = entry.split(".")
+      const tokens = themes[name]
+      expect(tokens, `${entry} names a theme that does not exist`).toBeDefined()
+      const ratio = contrast({
+        a: (tokens as Theme)[token] as string,
+        b: (tokens as Theme)["base-100"] as string,
+      })
+      expect(
+        ratio,
+        `${entry} now clears 4.5:1 (${ratio.toFixed(2)}) — delete the exemption`,
+      ).toBeLessThan(4.5)
     }
   })
 })

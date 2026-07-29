@@ -46,24 +46,24 @@ const FOREGROUND_FLOOR = 4.5
 // merely visible rather than legible.
 const ANSI_FLOOR = 3
 
-// `pid` is byte-frozen: it is the default, both of its backgrounds are asserted
-// by the e2e suite, and the point of keying the palette by theme name was to
-// make the OTHER families expressible, not to restyle this one. Two of its light
-// slots predate this gate and miss the floor, so they are exempted by name with
-// the measured ratio recorded — the same pattern themeCatalog.test.ts uses for
-// pidlight's primary — rather than lowering the bar for every family added
-// after it.
-const ANSI_CONTRAST_EXEMPT = new Set([
-  "pidlight.brightYellow", // #ca8a04 on #f8fafc — 2.81:1
-  // A light theme's "bright white" is a gray by construction (white on white is
-  // invisible); slate-400 is as dark as it can go and still read as the bright
-  // end of the ramp.
-  "pidlight.brightWhite", // #94a3b8 on #f8fafc — 2.45:1
-])
+// There is no ANSI contrast exemption list any more, and that is the point:
+// `pidlight.brightYellow` (2.81:1) and `pidlight.brightWhite` (2.45:1) used to
+// be named here because `pid` was held byte-frozen while the other seven
+// palettes were built. The freeze has served its purpose, so both slots were
+// darkened along their own hue until they cleared the floor and the list went
+// away. Every ink slot in every palette is now measured against the same 3:1,
+// with no name-based escape — if a slot misses, this file fails.
 
-// piddark declares no ANSI slots at all: xterm's defaults already assume a dark
-// background, and the frozen palette shipped without them. Every other theme
-// must declare all sixteen — mandatory for a light pane, where the defaults
+// piddark declares no ANSI slots and inherits xterm's dark defaults. The reason
+// on record used to be "the frozen palette shipped without them", which stopped
+// being true when the freeze ended; the reason now is a measured trade-off.
+// xterm's defaults are legible on #0b1220 — brightBlack #666666 is the worst ink
+// slot at 3.26:1, ANSI red #cd3131 next at 3.64:1, everything else above 3.8 —
+// so there is no accessibility debt here, and declaring sixteen slate/sky
+// replacements would repaint every character of the app's *default dark
+// terminal* for zero legibility gain. That is a palette design decision with its
+// own before/after, not a rider on an accessibility pass. Every other theme must
+// declare all sixteen: mandatory for a light pane, where the defaults
 // (brightYellow #ffff55, white #ffffff) vanish, and deliberate for a dark one,
 // where the point is that the slots belong to the family.
 const ANSI_OPTIONAL = new Set(["piddark"])
@@ -134,11 +134,13 @@ describe("every theme gets its own terminal palette", () => {
   })
 })
 
-describe("pid's palette is byte-frozen", () => {
-  // The two backgrounds below are asserted verbatim by
-  // apps/e2e/tests/terminal-light-mode.spec.ts and theme-switch.spec.ts. Freeze
-  // the whole object, not just the background: pid is the default, and the
-  // per-family work must be visible as a change to the OTHER seven palettes.
+describe("pid's palette is pinned", () => {
+  // Still pinned whole-object, not just the background: pid is the default and
+  // the most-seen pane in the app, so every hex in it should be a reviewable
+  // diff rather than something that drifts a shade at a time. The two
+  // backgrounds are additionally asserted verbatim by
+  // apps/e2e/tests/terminal-light-mode.spec.ts and theme-switch.spec.ts, so
+  // those two lines cannot move without an e2e failure either.
   it("keeps piddark exactly as it shipped", () => {
     expect(terminalTheme({ theme: "piddark" })).toEqual({
       background: "#0b1220",
@@ -147,11 +149,14 @@ describe("pid's palette is byte-frozen", () => {
     })
   })
 
-  it("keeps pidlight exactly as it shipped", () => {
+  it("pins pidlight, with its three accessibility repairs", () => {
+    // cursor #0284c7 → #0369a1 (now == primary, 3.91 → 5.67 on the pane),
+    // brightYellow #ca8a04 → #b67c04 (2.81 → 3.42),
+    // brightWhite  #94a3b8 → #7c8ca2 (2.45 → 3.27).
     expect(terminalTheme({ theme: "pidlight" })).toEqual({
       background: "#f8fafc",
       foreground: "#0f172a",
-      cursor: "#0284c7",
+      cursor: "#0369a1",
       black: "#0f172a",
       red: "#dc2626",
       green: "#15803d",
@@ -163,11 +168,11 @@ describe("pid's palette is byte-frozen", () => {
       brightBlack: "#475569",
       brightRed: "#ef4444",
       brightGreen: "#16a34a",
-      brightYellow: "#ca8a04",
+      brightYellow: "#b67c04",
       brightBlue: "#2563eb",
       brightMagenta: "#9333ea",
       brightCyan: "#0891b2",
-      brightWhite: "#94a3b8",
+      brightWhite: "#7c8ca2",
     })
   })
 })
@@ -211,7 +216,6 @@ describe("every palette is legible", () => {
       for (const key of INK_KEYS) {
         const colour = palette[key]
         if (colour === undefined) continue
-        if (ANSI_CONTRAST_EXEMPT.has(`${name}.${key}`)) continue
         const ratio = contrast({ a: colour, b: palette.background })
         expect(
           ratio,
@@ -229,11 +233,28 @@ describe("every palette is legible", () => {
     }
   })
 
-  it("exempts nothing outside pid, and names every exemption it does grant", () => {
-    // An exemption is a recorded decision about frozen hex, not a way to ship a
-    // new palette that misses the floor.
-    for (const entry of ANSI_CONTRAST_EXEMPT) expect(entry.startsWith("pidlight.")).toBe(true)
-    for (const entry of ANSI_OPTIONAL) expect(entry).toBe("piddark")
+  it("grants exactly one exemption, and it is piddark's absent ANSI slots", () => {
+    // The contrast floors above now apply to every slot of every palette with no
+    // escape hatch at all — the two pidlight slots that used to be named were
+    // repaired instead. This is the only exemption left in the file, so it stays
+    // a single deliberate line rather than a list that can quietly grow.
+    expect([...ANSI_OPTIONAL]).toEqual(["piddark"])
+  })
+
+  it("paints the cursor in the theme's own primary", async () => {
+    // Seven of the eight palettes already did this; pidlight was the exception,
+    // with a sky-600 caret under a sky-500 primary because the primary was too
+    // light to sit on the pane. Fixing the primary removed the reason, so the
+    // coincidence becomes an invariant: the caret is the app's accent, in the
+    // pane as everywhere else, and a new family cannot forget to pick one.
+    const themes = await loadThemes()
+    for (const name of THEME_NAMES) {
+      const tokens = themes[name]
+      if (!tokens) throw new Error(`tailwind.config.js has no theme ${name}`)
+      expect(terminalTheme({ theme: name }).cursor, `${name}: cursor is not its primary`).toBe(
+        tokens.primary as string,
+      )
+    }
   })
 })
 

@@ -3,8 +3,9 @@ import { PALETTE_INPUT, PALETTE_MODAL_SHELL } from "./paletteModalLayout"
 
 describe("paletteModalLayout", () => {
   // The palette portals into document.body, outside the themed root div, so
-  // it must carry a semantic text-base-content class that the daisyUI theme resolves
-  // correctly in both pidlight and piddark without hand-written light/dark pairs.
+  // it must carry a semantic text-base-content class that the daisyUI theme
+  // resolves correctly in all eight themes — four families, light and dark each
+  // — without hand-written light/dark pairs.
   it("sets semantic text color on the shell", () => {
     expect(PALETTE_MODAL_SHELL).toContain("text-base-content")
   })

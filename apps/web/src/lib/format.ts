@@ -22,8 +22,9 @@ export const cwdTail = (cwd: string, n = 2): string => {
 
 type Tone = { bg: string; text: string; dot: string; ring: string; label: string }
 
-// Status tones ride daisyUI semantic state tokens so they adapt across the
-// pidlight/piddark themes with no hand-written `dark:` pairs:
+// Status tones ride daisyUI semantic state tokens so they adapt across all eight
+// themes — four families, light and dark each — with no hand-written `dark:`
+// pairs:
 //   blocked / needs_input → warning   working → info
 //   done → success                    failed → error
 //   idle / stopped        → base / neutral (muted, non-alarming)

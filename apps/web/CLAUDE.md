@@ -73,7 +73,7 @@ The module stays pure (no DOM, unit-testable under bun) and the lookup is
 suffix the CSS `dark:` variant keys on, so it paints rather than handing xterm an
 undefined theme.
 
-Three rules hold every palette together, all asserted by
+Four rules hold every palette together, all asserted by
 `terminalTheme.test.ts`:
 
 - **The pane sits between its theme's `base-100` and `base-200`, per channel.**
@@ -85,15 +85,25 @@ Three rules hold every palette together, all asserted by
 - **Foreground clears 4.5:1 on background; every ANSI *ink* slot clears 3:1.**
   ANSI `black` is exempt by construction — it is a background slot (xterm's own
   default is `#000000`, 1:1 against any dark pane) and is only required to
-  differ from the pane. `pidlight.brightYellow` (2.81:1) and
-  `pidlight.brightWhite` (2.45:1) are exempted **by name**, with the ratio
-  recorded, because `pid` is byte-frozen — the same pattern
-  `themeCatalog.test.ts` uses for `pidlight`'s primary.
+  differ from the pane. **There is no by-name exemption list any more.**
+  `pidlight.brightYellow` (2.81:1) and `pidlight.brightWhite` (2.45:1) used to
+  be on one, because `pid` was byte-frozen; both were darkened along their own
+  hue instead (`#b67c04`, 3.42:1 and `#7c8ca2`, 3.27:1) and the list was deleted.
+- **The cursor is the theme's `primary`**, asserted against
+  `tailwind.config.js`. Seven palettes already did this; `pidlight` was the
+  exception, carrying a sky-600 caret under a sky-500 primary because the primary
+  was too light to sit on the pane. Fixing the primary removed the reason, so the
+  coincidence became an invariant a new family cannot forget.
 - **Every light palette overrides all sixteen slots**, `white`/`brightWhite`
   as grays: xterm's defaults assume a dark background, and white-on-light is
-  invisible. `piddark` is the one theme allowed to declare none (it shipped that
-  way, and the defaults already suit a dark pane); every other theme declares all
-  sixteen so no slot inherits a stock colour.
+  invisible. `piddark` is the one theme allowed to declare none, and it is the
+  file's only remaining exemption. The reason is no longer "it shipped that way"
+  — that expired with the freeze — but a measured trade-off: xterm's dark
+  defaults are legible on `#0b1220` (worst ink slot `brightBlack` `#666666` at
+  3.26:1, then ANSI red `#cd3131` at 3.64:1, everything else above 3.8), so there
+  is no accessibility debt, and declaring sixteen slate/sky replacements would
+  repaint every character of the app's **default dark terminal** for zero
+  legibility gain. That is a palette redesign with its own before/after.
 
 A family's palette also has to *read* as that family, so the test pins the
 character too: `terminal`'s ink is green-dominant and its `blue`/`brightBlue`
@@ -117,7 +127,7 @@ blocks), `--rounded-btn` (buttons, inputs, selects, tabs, small controls),
 
 | family | `box` | `btn` | `badge` | `animation-btn` |
 |---|---|---|---|---|
-| `pid` (default, **frozen**) | `0.75rem` | `0.5rem` | `1rem` | `0.2s` |
+| `pid` (default, shape **frozen**) | `0.75rem` | `0.5rem` | `1rem` | `0.2s` |
 | `mono` | `0.25rem` | `0.125rem` | `0.25rem` | `0.1s` |
 | `terminal` | `0` | `0` | `0` | `0s` |
 | `sunset` | `1rem` | `0.75rem` | `2rem` | `0.3s` |
@@ -125,7 +135,7 @@ blocks), `--rounded-btn` (buttons, inputs, selects, tabs, small controls),
 Both variants of a family share one shape. Changing a family's form is a change
 to those four lines and **nothing else** — no component edits.
 
-`pid`'s *tokens* are frozen; its *pixels* are not. The migration mapped each
+`pid`'s *shape tokens* are frozen; its *pixels* are not. The migration mapped each
 element by **role** (panel → `box`, control → `btn`, chip → `badge`), and
 Tailwind's scale never lined up with daisyUI's tokens — `rounded-lg` is `0.5rem`
 where `--rounded-btn` is also `0.5rem`, but `--rounded-box` is `0.75rem`. So a
@@ -211,7 +221,8 @@ same eight themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 a
 that `darkMode` is still the suffix selector, that the three `borderRadius`
 aliases are present, that every theme carries the full token set **and its
 family's shape row**, that no two families are shaped alike (else one is
-colour-only again), and that `base-content` clears 7:1 on `base-100/200/300`.
+colour-only again), that `base-content` clears 7:1 on `base-100/200/300`, and
+the two contrast floors below.
 
 `apps/e2e/tests/theme-switch.spec.ts` closes it end to end: choosing `terminal`
 through the real Appearance picker drives the terminal pane's *computed*
@@ -223,3 +234,47 @@ a trailing `// design-allow: <reason>` comment. Reserved for colour **data**,
 not styling. Wholesale-allow-listed files (xterm / Obsidian-canvas colour data):
 `features/terminal/terminalTheme.ts`, `features/canvas/canvasObsidian.ts`,
 `features/projects/canvasParse.ts`.
+
+### Contrast is a gate, not a review note
+
+A token is legible in **both directions** or it is not legible. `primary` is a
+*surface* under `primary-content` in a button and *ink* via `text-primary` in a
+link, an active tab, a focus ring and a count pill — 38 sites — so two tests,
+both in `themeCatalog.test.ts`:
+
+- `primary-content` clears 4.5:1 on `primary`, every theme, **no exemptions**.
+- every ink token (`primary`, `secondary`, `accent`, `info`, `success`,
+  `warning`, `error`) clears 4.5:1 on `base-100`.
+
+`base-100` and not the whole shell gradient, because `sunsetlight` sits at 4.14
+on `base-200` — widening the bar is a change to three families, not a floor they
+already meet.
+
+**`pid`'s colour freeze is over.** It was real and it was useful: holding the
+default byte-identical while the seven newer themes were built meant a palette
+regression could never be blamed on the machinery. But all seven then cleared AA
+on their accent while the machine-wide default did not, at 2.77:1 for
+`text-primary` on white — and the machine-default work made that worse by
+propagating `pid`/`light` to every device instead of one browser. The accent trio
+was darkened along its own hue, nothing else moved:
+
+| token | before | after | on `base-100` | on `primary` |
+|---|---|---|---|---|
+| `primary` / `info` | `#0ea5e9` sky-500 | `#0369a1` sky-700 | 2.77 → **5.93** | 2.65 → **5.67** |
+| `secondary` | `#6366f1` indigo-500 | `#4f46e5` indigo-600 | 4.47 → **6.29** | — |
+
+sky-600 (`#0284c7`) is **not** enough — 4.10 on white, 3.91 under
+`primary-content`. Verify the ratio; do not assume a Tailwind step clears the bar.
+
+The xterm pane moved with it: `cursor` `#0284c7` → `#0369a1` (3.91 → 5.67),
+`brightYellow` `#ca8a04` → `#b67c04` (2.81 → 3.42), `brightWhite` `#94a3b8` →
+`#7c8ca2` (2.45 → 3.27). Both **backgrounds** stay frozen.
+
+Four measured misses remain, named in `INK_CONTRAST_EXEMPT` with their ratios:
+`pidlight`'s three status hues (`accent`/`warning` `#f59e0b` at 2.15,
+`success` `#10b981` at 2.54, `error` `#f43f5e` at 3.67) and `sunsetlight.accent`
+(`#ea580c` at 3.43). Deferred, not waived: a status colour carries meaning — a
+"blocked" pill has to read differently from a "failed" one at a glance in the
+sidebar — so darkening the set changes what the app *communicates* and wants its
+own before/after. A companion test asserts each entry **still misses** the bar, so
+a repaid exemption fails the build instead of lingering as a stale comment.
