@@ -253,6 +253,18 @@ rolling tail, stripped of ANSI first. States: `working`, `blocked`, `idle`,
 `unknown` — `unknown` is the honest default when nothing matches, not a
 guessed `idle`.
 
+`prompt-resting` (an empty `❯` input line) is the one row whose correctness
+depends entirely on **ordering**, and it is last for that reason. The prompt box
+is on screen during a turn as well — a dump of a working session showed that
+exact empty line six rows under a live `Recombobulating…` spinner — so the row
+means "the UI is up and nothing above matched", not "a prompt exists". It earns
+its place because a finished session whose `"<PastVerb> for <N>s"` line has
+scrolled out of the viewport is the most common screen on a long-lived box: 19
+of 25 polled terminals read `unknown` before it existed. Two costs are accepted
+knowingly — a bare shell whose own prompt is `❯` also reads `idle` (defensible;
+an empty shell is idle), and a working frame that carries no spinner would read
+`idle` for one poll interval before the next pass corrects it.
+
 - `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
   evidence, at } }` for every terminal classified so far, so a client that
   connects late can render a chip immediately.

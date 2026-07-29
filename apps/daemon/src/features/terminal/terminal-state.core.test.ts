@@ -51,6 +51,35 @@ const PI_WORKING_FIXTURE =
 // evidence trail. Plain strings (no ANSI) because that's exactly what
 // `strings` extracts — the CLI never rendered this text to a live terminal
 // during this investigation (auto-approved past the dialog every time).
+// A real `zellij action dump-screen` of a Claude Code session RESTING at its
+// prompt: no turn in flight, and its last "…ed for Ns" line long since scrolled
+// out of the viewport. Captured 2026-07-29 from an unattended session on the dev
+// box (session 4d76edc1, Claude Code 2.1.220). Before this frame classified,
+// this was the single most common screen on the machine and every one of them
+// read `unknown`.
+const PROMPT_RESTING_DUMP = [
+  "  Ran 3 shell commands",
+  "❯ ",
+  "──────────────────────────────────────────────────────",
+  "    [Opus 5 (1M context)] 22% | $14.88 | 🌿 main | 📬 30 PRs | 🧠 default",
+  "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 85 agents · PR #403",
+].join("\n")
+
+// The same prompt box, on a session that is very much WORKING: captured from
+// session f7199556 mid-turn, with the spinner line six lines above the box. The
+// prompt box is drawn identically whether or not a turn is in flight, which is
+// exactly why the resting matcher has to sit BELOW every working matcher.
+const PROMPT_WORKING_DUMP = [
+  "  Ran 2 shell commands",
+  "✢ Recombobulating… (9m 14s · ↓ 24.4k tokens)",
+  "  ⎿  Tip: Control this session from the Claude mobile app · run /remote-control",
+  "──────────────────────────── herd codebase structure review ──",
+  "❯ ",
+  "──────────────────────────────────────────────────────",
+  "    [Opus 5 (1M context)] 25% | $274.42 | 🌿 feat/session-card-terminal-chip",
+  "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 85 agents · PR #430",
+].join("\n")
+
 const PERMISSION_PROMPT_LITERAL = "Do you want to proceed?"
 const PERMISSION_REJECT_OPTION_LITERAL = "No, and tell Claude what to do differently"
 
@@ -127,6 +156,34 @@ describe("classifyTail", () => {
     expect(result.state).toBe("idle")
     expect(result.matcher).toBe("turn-complete")
     expect(result.evidence).toBe("Churned for 6s")
+  })
+
+  it("classifies a session resting at its prompt as idle (prompt-resting)", () => {
+    const result = classifyTail({ tail: PROMPT_RESTING_DUMP })
+    expect(result.state).toBe("idle")
+    expect(result.matcher).toBe("prompt-resting")
+  })
+
+  // The prompt box is on screen during a turn too, so ordering is the only thing
+  // keeping this from reporting a busy agent as idle. Assert the order, not just
+  // the rows.
+  it("still reports working when the prompt box shares the frame with a spinner", () => {
+    const result = classifyTail({ tail: PROMPT_WORKING_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("thinking-gerund")
+  })
+
+  it("still reports blocked when the prompt box shares the frame with a permission dialog", () => {
+    const result = classifyTail({ tail: `${PERMISSION_PROMPT_LITERAL}\n${PROMPT_RESTING_DUMP}` })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("permission-prompt")
+  })
+
+  // A half-typed prompt is not a resting one: the user is mid-thought, and
+  // claiming "idle" would be a guess. Unknown stays the honest answer.
+  it("does not treat a prompt with typed text as resting", () => {
+    const result = classifyTail({ tail: "❯ what is the plan\n────────────────" })
+    expect(result.state).toBe("unknown")
   })
 
   it("classifies a real pi spinner frame as working (pi-working)", () => {

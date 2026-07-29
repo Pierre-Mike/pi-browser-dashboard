@@ -160,6 +160,30 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // randomized-verb shape as thinking-gerund, past tense.
     pattern: /\b[A-Z][a-z]+ed for \d+s\b/,
   },
+  {
+    name: "prompt-resting",
+    state: "idle",
+    // Verified: `zellij action dump-screen` of real unattended sessions on
+    // 2026-07-29 — an empty input line, `❯` followed only by the box's padding
+    // spaces. This is what a finished session looks like once its "…ed for Ns"
+    // line has scrolled out of the viewport, which on a long-lived box is most
+    // of them: before this row, 19 of 25 polled terminals classified `unknown`.
+    //
+    // MUST STAY LAST. The prompt box is drawn during a turn as well — the same
+    // dump on a working session showed this exact empty `❯` line six lines
+    // below a live "Recombobulating…" spinner — so this row is only correct
+    // because first-match-wins puts every `blocked` and `working` matcher ahead
+    // of it. It reads as "the UI is up and nothing else matched".
+    //
+    // Two known costs, both accepted deliberately: a bare shell whose own
+    // prompt is `❯` (starship, zsh) also matches, which is defensible — an
+    // empty shell IS idle; and a working frame that happens to carry no spinner
+    // would read idle for one poll interval before the next pass corrects it.
+    // A Claude Code version that draws a left border inside the box
+    // (`│ ❯`) would stop matching, and would need this pattern widened against
+    // a fresh capture rather than on speculation.
+    pattern: /^❯[ \t]*$/m,
+  },
 ]
 
 export type Classification = {
