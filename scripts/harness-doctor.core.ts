@@ -24,7 +24,6 @@ export type HarnessSnapshot = {
   readonly biome: string
   readonly lefthook: string
   readonly packageJson: string
-  readonly unitTestsWorkflow: string
   readonly claudeMd: string
   readonly agentsMd: string
   readonly gritPlugins: readonly string[]
@@ -43,10 +42,33 @@ export type HarnessSnapshot = {
 // silently makes every PR unmergeable ("base branch policy prohibits the
 // merge") even when all visible checks are green. Asserting the names here
 // turns that trap into a failing gate at authoring time.
+//
+// This list has to move whenever the ruleset does. Promoting a check to
+// required without adding it here re-opens the exact trap the list exists to
+// close: `fallow audit (dead code)` and `Playwright` were promoted in the
+// ruleset and went unguarded until this commit.
 export const REQUIRED_CI_CONTEXTS: readonly string[] = [
   "biome ci (lint + format)",
   "bun test (daemon + web)",
+  "fallow audit (dead code)",
+  "Playwright",
 ]
+
+/**
+ * Does some workflow declare a job whose display name is exactly `context`?
+ *
+ * A `name:` line, not a bare substring: "Playwright" also appears in step names
+ * ("Install Playwright browsers"), so a substring test would keep passing after
+ * the job itself was renamed — reporting green on the one thing it guards.
+ */
+const declaresJobNamed = (input: {
+  readonly workflows: readonly Workflow[]
+  readonly context: string
+}): boolean => {
+  const escaped = input.context.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const line = new RegExp(`^\\s*name:\\s*(['"]?)${escaped}\\1\\s*$`, "m")
+  return input.workflows.some((workflow) => line.test(workflow.text))
+}
 
 export const REQUIRED_GRIT_PLUGINS: readonly string[] = [
   "no-throw-in-core.grit",
@@ -287,8 +309,12 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   }
 
   // --- CI: required contexts intact, actions pinned -----------------------
+  // Searched across EVERY workflow, discovered from disk — same reasoning as
+  // pinning below. `Playwright` is a required context declared in pr-e2e.yml,
+  // and the next check someone promotes could live in a file that does not
+  // exist yet; scanning one hardcoded workflow would miss both.
   for (const context of REQUIRED_CI_CONTEXTS) {
-    if (!snap.unitTestsWorkflow.includes(context)) {
+    if (!declaresJobNamed({ workflows: snap.workflows, context })) {
       miss({
         check: "ci-contexts",
         detail: `no CI job named "${context}" — the branch ruleset requires that exact context, so PRs would never become mergeable`,
