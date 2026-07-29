@@ -1,10 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import type { GlobalSettings, GlobalSettingsPatch } from "@pid/shared"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
 import {
-  type GlobalSettings,
-  type GlobalSettingsPatch,
   mergeGlobalSettings,
   parseGlobalSettings,
   serializeGlobalSettings,

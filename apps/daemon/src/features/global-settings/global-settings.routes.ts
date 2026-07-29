@@ -1,7 +1,7 @@
+import type { GlobalSettings, GlobalSettingsPatch } from "@pid/shared"
 import { Effect } from "effect"
 import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import type { GlobalSettings, GlobalSettingsPatch } from "./global-settings.core"
 import { GlobalSettingsService } from "./global-settings.io"
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

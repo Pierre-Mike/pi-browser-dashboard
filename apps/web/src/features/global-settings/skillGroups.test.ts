@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import type { SkillGroup } from "@pid/shared"
 import { removeSkillGroup } from "./skillGroups"
-import type { SkillGroup } from "./types"
 
 const groups: readonly SkillGroup[] = [
   { name: "A", skills: ["x"] },

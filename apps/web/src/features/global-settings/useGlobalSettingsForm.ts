@@ -1,7 +1,7 @@
+import type { GlobalSettings, SkillGroup } from "@pid/shared"
 import { useEffect, useState } from "react"
 import { type Section, setField, settingsEqual } from "./fields"
 import { removeSkillGroup } from "./skillGroups"
-import type { GlobalSettings, SkillGroup } from "./types"
 import { useGlobalSettings, useUpdateGlobalSettings } from "./useGlobalSettings"
 
 // The on-disk location this form edits, relative to the resolved Claude config
