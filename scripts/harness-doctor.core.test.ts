@@ -77,6 +77,7 @@ const healthy = (): HarnessSnapshot => ({
       "test:cli": "cd apps/cli && bun test",
       "test:shared": "cd shared && bun test",
       "test:mutation": "bunx stryker run",
+      "build:cli": "bun run build:web:cli && cd apps/cli && bun run build",
       audit: "fallow audit",
       doctor: "bun run scripts/check-harness.ts",
       "axiom-debt": "bun run scripts/check-axiom-debt.ts",

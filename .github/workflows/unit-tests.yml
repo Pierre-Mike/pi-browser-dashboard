@@ -138,6 +138,35 @@ jobs:
           git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
           bun run audit -- --base "origin/${{ github.base_ref }}"
 
+  # Build the actual distribution artifact.
+  #
+  # `bun run verify` type-checks and tests, but never asks a *bundler* to resolve
+  # the import graph — and those are different questions. `apps/web` imports
+  # `@pid/shared` at runtime; tsc is happy with a workspace symlink that Vite
+  # might not be, and nothing here would have noticed until someone cut a CLI
+  # release. Not a required check, but it runs on every PR.
+  build:
+    name: build:cli (bundle resolves)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build the web bundle and the single-binary CLI
+        run: bun run build:cli
+
   # Generate a throwaway slice and put it through the same gates a contributor
   # would run. `bun run scaffold:slice` is the canonical "add a feature" path for
   # humans and agents alike, and a generator that silently stops producing a

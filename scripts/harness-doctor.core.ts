@@ -86,6 +86,7 @@ const REQUIRED_SCRIPTS: readonly string[] = [
   "test:cli",
   "test:shared",
   "test:mutation",
+  "build:cli",
   "audit",
   "doctor",
   "axiom-debt",

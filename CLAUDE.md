@@ -157,6 +157,12 @@ Biome enforces this by file shape: in `**/*.core.ts` the imports
 - **Mutation tests grade the assertions.** `bun run test:mutation` mutates every
   `*.core.ts`; line coverage says a line ran, a surviving mutant says nothing
   asserted its behaviour. Weekly in CI, not per-PR — it costs minutes.
+- **The bundle is built in CI, not only type-checked.** `verify` asks `tsc`
+  whether the import graph type-checks; it never asks a *bundler* to resolve it,
+  and those are different questions — `apps/web` imports `@pid/shared` at
+  runtime, and tsc is happy with a workspace symlink a bundler might not be. The
+  `build:cli (bundle resolves)` job builds the real distribution artifact on
+  every PR, so a resolution failure surfaces there rather than at release time.
 - **The supply chain is pinned and scanned.** Every `uses:` in every workflow is
   pinned to a full commit SHA — a tag is mutable, and whoever controls it
   controls what runs inside a job that already holds a token. `bun run doctor`
