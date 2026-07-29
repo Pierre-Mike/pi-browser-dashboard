@@ -3,7 +3,6 @@ import { type RefObject, useEffect, useRef } from "react"
 import { api } from "../../lib/api"
 import type { SessionState, TranscriptMessage } from "../../lib/types"
 import { SessionBrainstormTab } from "../brainstorms/SessionBrainstormTab"
-import { CanvasTab } from "../canvas/CanvasTab"
 import { FileTree } from "../projects/FileTree"
 import { parseTranscriptResponse } from "../transcripts/loadTranscript"
 import { TranscriptView } from "../transcripts/TranscriptView"
@@ -79,8 +78,8 @@ const ChatPanel = ({ short }: { readonly short: string }) => {
   )
 }
 
-// Canvas, Brainstorm and Terminal all need the resolved session, so they share
-// the not-yet-loaded fallback.
+// Brainstorm and Terminal both need the resolved session, so they share the
+// not-yet-loaded fallback.
 const LivePanel = ({
   tab,
   session,
@@ -96,11 +95,7 @@ const LivePanel = ({
   }
   return (
     <div className="flex-1 min-h-0">
-      {tab === "canvas" ? (
-        <CanvasTab target={{ kind: "session", session }} />
-      ) : (
-        <TerminalTab session={session} />
-      )}
+      <TerminalTab session={session} />
     </div>
   )
 }

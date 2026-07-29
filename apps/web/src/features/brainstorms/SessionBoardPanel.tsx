@@ -22,7 +22,6 @@ const Editor = ({ session, board }: Props) =>
   ) : (
     <CanvasTab
       target={{
-        kind: "board",
         short: session.short,
         path: board.path,
         file: board.file,

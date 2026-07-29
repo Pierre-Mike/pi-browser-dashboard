@@ -1,16 +1,13 @@
 // Build the ws:// URL for the daemon canvas bridge. Pure so the tests pin the
-// exact paths the daemon expects: `/canvas/<short>/ws` for a session's scratch
-// canvas, `/sessions/<short>/brainstorms/canvas/ws?path=<rel>` for a brainstorm
-// board — any canvas file in that session's worktree, addressed by its path.
+// exact path the daemon expects:
+// `/sessions/<short>/brainstorms/canvas/ws?path=<rel>` — every document this
+// editor binds to is a brainstorm board, i.e. a canvas file in that session's
+// worktree, addressed by its path.
 
-export type CanvasDocRef =
-  | { readonly kind: "session"; readonly short: string }
-  | { readonly kind: "board"; readonly short: string; readonly path: string }
+export type CanvasDocRef = { readonly short: string; readonly path: string }
 
 export const canvasWsPath = (ref: CanvasDocRef): string =>
-  ref.kind === "session"
-    ? `/canvas/${ref.short}/ws`
-    : `/sessions/${encodeURIComponent(ref.short)}/brainstorms/canvas/ws?path=${encodeURIComponent(ref.path)}`
+  `/sessions/${encodeURIComponent(ref.short)}/brainstorms/canvas/ws?path=${encodeURIComponent(ref.path)}`
 
 export type CanvasWsUrlFromPathInput = {
   readonly baseUrl: string

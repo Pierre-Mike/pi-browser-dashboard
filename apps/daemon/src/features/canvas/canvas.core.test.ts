@@ -3,7 +3,6 @@ import { Either } from "effect"
 import {
   type CanvasSnapshot,
   canvasEqual,
-  canvasPathFor,
   parseCanvas as decodeCanvas,
   emptyCanvas,
   serializeCanvas,
@@ -149,14 +148,6 @@ describe("emptyCanvas", () => {
     expect(empty.nodes).toEqual([])
     expect(empty.edges).toEqual([])
     expect(parseCanvas(empty)).toEqual(empty)
-  })
-})
-
-describe("canvasPathFor", () => {
-  it("returns <configDir>/jobs/<short>/canvas.json", () => {
-    expect(canvasPathFor({ configDir: "/home/me/.claude", short: "abc123" })).toBe(
-      "/home/me/.claude/jobs/abc123/canvas.json",
-    )
   })
 })
 

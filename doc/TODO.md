@@ -6,7 +6,7 @@ errors, failed requests, and screenshots. Each item has a file:line anchor and a
 sketch so a future AI can pick it up cold. Ordered by severity.
 
 Probe matrix: home tabs (Activity/Terminal/Claude/Library/Extensions/Tunnel), spawn
-modal, session `/sessions/$id` (chat/canvas/terminal/files), project `/projects/$id`
+modal, session `/sessions/$id` (chat/brainstorm/terminal/files), project `/projects/$id`
 (GitHub/Terminal/Files/Claude/Library), plus invalid `/sessions/deadbeef` and
 `/projects/does-not-exist`.
 

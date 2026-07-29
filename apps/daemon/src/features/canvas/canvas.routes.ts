@@ -1,10 +1,11 @@
+// The live-sync websocket shell for document rooms. It mounts no routes of its
+// own any more — the only canvas documents are brainstorm boards, so
+// `brainstorms.routes.ts` owns the paths and instantiates the handlers below
+// per format.
 import { Either } from "effect"
 import type { Context } from "hono"
-import { Hono } from "hono"
-import { resolveConfigDir } from "../../platform/config-dir"
 import { upgradeWebSocket } from "../../platform/ws"
-import { type CanvasSnapshot, parseCanvas, serializeCanvas } from "./canvas.core"
-import { getCanvasRoom } from "./canvas.io"
+import { type CanvasSnapshot, parseCanvas } from "./canvas.core"
 import type { DocParse, DocRoom } from "./docRoom.io"
 
 const MAX_FRAME_BYTES = 256 * 1024
@@ -146,36 +147,3 @@ export type CanvasRoomResolver = DocRoomResolver<CanvasSnapshot>
 
 export const makeCanvasWsHandler = (resolveRoom: CanvasRoomResolver) =>
   makeDocWsHandler({ resolveRoom, parse: parseCanvas, maxFrameBytes: MAX_FRAME_BYTES })
-
-// The session-canvas resolver: room is the per-session canvas.json. An empty
-// id (unreachable through normal routing) is refused like any resolver error.
-const sessionRoom: CanvasRoomResolver = (c) => {
-  const short = c.req.param("id") ?? ""
-  if (!short) return Promise.reject(new Error("missing session id"))
-  return getCanvasRoom(resolveConfigDir(), short)
-}
-
-const app = new Hono()
-  .get("/:id", async (c) => {
-    const short = c.req.param("id")
-    const room = await getCanvasRoom(resolveConfigDir(), short)
-    return c.json(room.snapshot())
-  })
-  .get("/:id/ws", makeCanvasWsHandler(sessionRoom))
-  .put("/:id", async (c) => {
-    const short = c.req.param("id")
-    const raw = await c.req.text()
-    // impure read -> pure decode -> impure write: a Left is a 400, never a throw.
-    const parsed = Either.try({
-      try: () => JSON.parse(raw) as unknown,
-      catch: () => "invalid JSON",
-    }).pipe(Either.flatMap(parseCanvas))
-    if (Either.isLeft(parsed)) {
-      return c.json({ error: "bad_canvas", message: parsed.left }, 400)
-    }
-    const room = await getCanvasRoom(resolveConfigDir(), short)
-    const stamped = await room.publish(parsed.right, null)
-    return c.body(serializeCanvas(stamped), 200, { "Content-Type": "application/json" })
-  })
-
-export { app }

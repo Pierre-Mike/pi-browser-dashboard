@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import { openSeededBoard, rmSession } from "./helpers"
 
 // The user story this file guards: "I create a link between two boxes, I have
 // a line, and I want to put a name on it." Double-clicking the line must open
@@ -8,16 +8,10 @@ import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helper
 // round-trip). Before the inline editor existed, a double-click on the line
 // selected it silently and typing went nowhere — hence the focus assertion.
 
-const openCanvasTab = async (page: Page): Promise<string> => {
-  await page.goto("/")
-  const { short } = await dispatchDirect()
-  await waitForCard({ page, short, timeout: 20_000 })
-  await waitForSettled({ page, short })
-  await page.goto(`/sessions/${short}`)
-  await page.getByTestId("tab-canvas").click()
-  await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
-  return short
-}
+// Brainstorm is the only surface the shared canvas editor renders on now, so the
+// board this spec draws on is a seeded `.canvas` file in the session's tree.
+const openCanvasTab = (page: Page): Promise<string> =>
+  openSeededBoard({ page, project: "canvas-edge-label" })
 
 const boxByName = (page: Page, name: string): Locator =>
   page.locator(".react-flow__node", { hasText: name })
@@ -25,6 +19,13 @@ const boxByName = (page: Page, name: string): Locator =>
 // Drop a named box by double-clicking empty canvas, then drag it to a spot
 // given as fractions of the pane so the layout is deterministic regardless of
 // the zoom level fitView picked (it zooms onto the first box created).
+//
+// Keep every fraction out of the pane's bottom corners: React Flow parks the
+// MiniMap bottom-right and the Controls bottom-left, and both intercept pointer
+// events, so a dblclick there never reaches the pane. On the Brainstorm surface
+// the boards rail and the session terminal take width from the board column, so
+// those overlays cover a much larger fraction of the pane than they did on the
+// old full-width Canvas tab.
 const placeBox = async (args: {
   page: Page
   name: string
@@ -83,14 +84,16 @@ const edgeMidpoint = async (args: {
   }
 }
 
-test("canvas tab — double-click a connection line, type, and the name sticks", async ({ page }) => {
+test("brainstorm board — double-click a connection line, type, and the name sticks", async ({
+  page,
+}) => {
   const short = await openCanvasTab(page)
   try {
     await expect(page.getByTestId("canvas-status")).toHaveText(/live/i, { timeout: 10_000 })
 
     // Two boxes with real distance between them.
-    await placeBox({ page, name: "Web app", at: { fx: 0.2, fy: 0.25 } })
-    await placeBox({ page, name: "Database", at: { fx: 0.75, fy: 0.7 } })
+    await placeBox({ page, name: "Web app", at: { fx: 0.18, fy: 0.22 } })
+    await placeBox({ page, name: "Database", at: { fx: 0.72, fy: 0.5 } })
     await expect(page.getByTestId("canvas-node-box")).toHaveCount(2)
 
     // Connect them with a drag — the user's "I have a line".
@@ -109,7 +112,7 @@ test("canvas tab — double-click a connection line, type, and the name sticks",
     // The name renders on the line itself.
     await expect(page.getByTestId("canvas-edge-label-text")).toHaveText("depends on")
 
-    // And it survives a daemon round-trip: reload, reopen the canvas tab.
+    // And it survives a daemon round-trip: reload back onto the board.
     await page.waitForTimeout(800)
     await page.reload()
     await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
@@ -121,13 +124,13 @@ test("canvas tab — double-click a connection line, type, and the name sticks",
   }
 })
 
-test("canvas tab — renaming via the line's label chip", async ({ page }) => {
+test("brainstorm board — renaming via the line's label chip", async ({ page }) => {
   const short = await openCanvasTab(page)
   try {
     await expect(page.getByTestId("canvas-status")).toHaveText(/live/i, { timeout: 10_000 })
 
-    await placeBox({ page, name: "Alpha", at: { fx: 0.2, fy: 0.25 } })
-    await placeBox({ page, name: "Beta", at: { fx: 0.75, fy: 0.7 } })
+    await placeBox({ page, name: "Alpha", at: { fx: 0.18, fy: 0.22 } })
+    await placeBox({ page, name: "Beta", at: { fx: 0.72, fy: 0.5 } })
     await connectBoxes({ page, from: "Alpha", to: "Beta" })
 
     const mid = await edgeMidpoint({ page, from: "Alpha", to: "Beta" })

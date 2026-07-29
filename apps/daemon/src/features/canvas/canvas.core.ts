@@ -1,4 +1,3 @@
-import path from "node:path"
 import { Either } from "effect"
 
 // Wire format of the canvas snapshot. Mirrors the React Flow shape so the
@@ -141,11 +140,6 @@ export const emptyCanvas = (): CanvasSnapshot => ({
   nodes: [],
   edges: [],
 })
-
-export const canvasPathFor = (input: {
-  readonly configDir: string
-  readonly short: string
-}): string => path.join(input.configDir, "jobs", input.short, "canvas.json")
 
 /**
  * Stable structural-equality check. We use this to suppress no-op broadcasts

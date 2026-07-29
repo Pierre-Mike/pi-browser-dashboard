@@ -19,7 +19,6 @@ import {
 import "@xyflow/react/dist/style.css"
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../../lib/api"
-import type { SessionState } from "../../lib/types"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
 import { briefingMessage, type CanvasFormat } from "./canvasBriefing"
 import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
@@ -53,20 +52,16 @@ import { EditableGroupNode } from "./EditableGroupNode"
 import { EditableLinkNode } from "./EditableLinkNode"
 import { type SyncStatus, useCanvasSync } from "./useCanvasSync"
 
-// The document this canvas edits: a session's scratch canvas, or a brainstorm
-// board — a canvas file in that same session's worktree. Both carry a session,
-// so "Brief AI" works on either: the agent that edits the file is the session
-// whose tree the file lives in, which is why a write lands where the browser is
-// already looking.
-type CanvasDocTarget =
-  | { readonly kind: "session"; readonly session: SessionState }
-  | {
-      readonly kind: "board"
-      readonly short: string
-      readonly path: string
-      readonly file: string
-      readonly format: CanvasFormat
-    }
+// The document this canvas edits: a brainstorm board, i.e. a canvas file in a
+// session's worktree. The board carries its session, so "Brief AI" always
+// works: the agent that edits the file is the session whose tree the file lives
+// in, which is why a write lands where the browser is already looking.
+type CanvasDocTarget = {
+  readonly short: string
+  readonly path: string
+  readonly file: string
+  readonly format: CanvasFormat
+}
 
 type Props = { readonly target: CanvasDocTarget }
 
@@ -158,13 +153,10 @@ const decoratedEdge = (e: Edge): Edge => {
 
 const CanvasInner = ({ target }: Props) => {
   const qc = useQueryClient()
-  const short = target.kind === "session" ? target.session.short : target.short
+  const short = target.short
   const docRef = useMemo(
-    () =>
-      target.kind === "session"
-        ? ({ kind: "session", short: target.session.short } as const)
-        : ({ kind: "board", short: target.short, path: target.path } as const),
-    [target],
+    () => ({ short: target.short, path: target.path }),
+    [target.short, target.path],
   )
   const { nodes, edges, status, setNodes, setEdges, resetCanvas, lastUpdatedAt } =
     useCanvasSync(docRef)
@@ -638,10 +630,10 @@ const CanvasInner = ({ target }: Props) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = target.kind === "session" ? `session-${short}.canvas` : downloadName(target.path)
+    a.download = downloadName(target.path)
     a.click()
     URL.revokeObjectURL(url)
-  }, [nodes, edges, short, target])
+  }, [nodes, edges, target.path])
 
   const onImportClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -737,15 +729,12 @@ const CanvasInner = ({ target }: Props) => {
     return normalizeArrow((e?.data as Record<string, unknown> | undefined)?.arrow)
   }, [edges, selectedEdgeId])
 
-  const canvasPath = useMemo(
-    () => (target.kind === "session" ? `~/.claude/jobs/${short}/canvas.json` : target.file),
-    [short, target],
-  )
+  const canvasPath = target.file
 
-  // A `.canvas` board is Obsidian JSON Canvas on disk; everything else the
-  // canvas editor binds to is the React-Flow encoding. The briefing has to name
-  // the right one or the agent writes a file the editor cannot decode.
-  const canvasFormat: CanvasFormat = target.kind === "session" ? "reactFlow" : target.format
+  // A `.canvas` board is Obsidian JSON Canvas on disk; a legacy `.canvas.json`
+  // one is the React-Flow encoding. The briefing has to name the right one or
+  // the agent writes a file the editor cannot decode.
+  const canvasFormat: CanvasFormat = target.format
 
   const onBriefAi = useCallback(async () => {
     if (briefing) return

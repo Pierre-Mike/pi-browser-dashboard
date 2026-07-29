@@ -650,6 +650,16 @@ Brainstorm tab therefore docks the board beside that session's own terminal, and
 write (`canvasBriefing.ts` — naming the wrong shape produces a file the editor
 then refuses to decode).
 
+**Brainstorm is the only drawing section.** The drill-in used to dock a *Canvas*
+tab as well, editing one scratch file per job dir
+(`~/.claude/jobs/<short>/canvas.json`) over a `/canvas/:id` route. That file sat
+outside the tree its session works in, so it hit exactly the miss described
+above, and a board covers the same need with a file the agent can see. The tab,
+the route, `getCanvasRoom` and `canvasPathFor` are all gone; `features/canvas`
+now contributes only the editor, the codecs and the codec-generic doc-room
+socket that `brainstorms.routes.ts` mounts. Do not re-add a session-scratch
+drawing — create a board.
+
 ## Per-project pid-apps (`.pid/` HTML)
 
 Drop any static HTML site into a project's `<project>/.pid/` directory and the
@@ -1620,7 +1630,7 @@ The auto-PR `Stop` hook (`.claude/settings.local.json`) enforces (3) for every c
 
 - [apps/daemon/src/features/global-settings](apps/daemon/src/features/global-settings/CLAUDE.md) — Global settings file + UI: git/library/orchestration/network params formerly hard-coded; field→consumer wiring map.
 - [apps/daemon/src/features/dispatch](apps/daemon/src/features/dispatch/CLAUDE.md) — Dual-harness spawn (claude --bg / pi -p): pi launch-failure modes, detached-spawn stderr handling, pi session visibility.
-- [apps/web/src/features/canvas](apps/web/src/features/canvas/CLAUDE.md) — Shared React Flow canvas: sync field-dropping trap, edge-label editing, fitView/bezier e2e geometry.
+- [apps/web/src/features/canvas](apps/web/src/features/canvas/CLAUDE.md) — Shared React Flow canvas, board-only (no session scratch canvas): sync field-dropping trap, edge-label editing, fitView/bezier e2e geometry.
 - [apps/daemon/src/features/brainstorms](apps/daemon/src/features/brainstorms/CLAUDE.md) — Session-scoped board discovery: path-as-identity, three on-disk formats, why the surface hangs off the session and not the project.
 - [apps/web/src/features/excalidraw](apps/web/src/features/excalidraw/CLAUDE.md) — Excalidraw boards: 0.18 ESM integration, restoreElements boundary, element-key sync dedupe, canvas-text-not-in-DOM e2e.
 - [apps/web/src/features/sessions](apps/web/src/features/sessions/CLAUDE.md) — App-shell nav chrome: collapsed sidebar/rails must reserve zero width, reopen chips ride in existing rows, verify reclaimed space in pixels.
