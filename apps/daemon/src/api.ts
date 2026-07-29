@@ -67,11 +67,19 @@ const fleetRunPorts: FleetRunPorts = {
       }),
       fallbackMessage: "dispatch failed",
     }),
+  // `via: "supervisor"` keeps a fleet step's wait meaning exactly what it
+  // meant before the screen became a wait source: a fleet recipe has no `via`
+  // field yet, and inferring one from the pane would change every existing
+  // recipe's semantics silently.
   wait: ({ short, until, timeoutMs }) =>
     appRuntime.runPromise(
       Effect.gen(function* () {
         const sessionWait = yield* SessionWaitIo
-        return yield* sessionWait.wait({ short, request: { until, timeoutMs } })
+        return yield* sessionWait.wait({
+          short,
+          request: { until, timeoutMs, via: "supervisor" },
+          readTerminalState: terminalRoute.readTerminalState,
+        })
       }),
     ),
 }
@@ -172,7 +180,19 @@ const app = new Hono()
   .get("/agent-skill.md", (c) =>
     c.text(AGENT_SKILL_MD, 200, { "Content-Type": "text/markdown; charset=utf-8" }),
   )
-  .route("/sessions", sessionsRoute.app)
+  // The sessions router is built here, not in its own module, because it needs
+  // a port only a composition root can hand it: `readTerminalState`, the
+  // terminal slice's published door onto the polled screen classifications.
+  // That is what lets a wait resolve on what the pane actually shows
+  // (`via: "screen"`/`"either"`) and lets `GET /sessions/:id/explain` cite the
+  // screen — without the sessions slice importing the terminal slice.
+  .route(
+    "/sessions",
+    sessionsRoute.buildSessionsApp({
+      runtime: appRuntime,
+      readTerminalState: terminalRoute.readTerminalState,
+    }),
+  )
   // Brainstorm boards are the canvas files in the session's own worktree, so
   // they hang off the session — an agent editing one writes inside the tree it
   // already owns. Mounted here rather than inside the sessions router so the

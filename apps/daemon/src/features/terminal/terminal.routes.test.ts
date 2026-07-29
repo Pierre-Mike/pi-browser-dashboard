@@ -3,6 +3,7 @@ import {
   app,
   type ChildBridgeForTest,
   closeChildBridge,
+  readTerminalState,
   resolveClaudeSession,
   resolvePiSession,
 } from "./terminal.routes"
@@ -79,6 +80,27 @@ describe("GET /terminal/states", () => {
     // Hono's fetch() would 500 on, not 200 with a plain JSON body).
     const res = await app.request("/states")
     expect(res.headers.get("content-type")).toContain("application/json")
+  })
+})
+
+// The published door other slices read the polled screen state through — the
+// sessions slice's waits and `explain` receive it as an injected port from
+// api.ts rather than importing this module. It must never throw or invent a
+// record for a terminal nothing has classified.
+describe("readTerminalState", () => {
+  it("returns undefined for a terminal that has never been classified", () => {
+    expect(readTerminalState({ scope: "session", id: "no-such-short" })).toBeUndefined()
+  })
+
+  it("returns undefined for an unknown scope rather than falling back", () => {
+    expect(readTerminalState({ scope: "not-a-scope", id: "global" })).toBeUndefined()
+  })
+
+  it("keys by scope AND id — the same id under another scope is a different terminal", () => {
+    // Both are unclassified here; the point is that the lookup is keyed on the
+    // pair, so neither can answer for the other.
+    expect(readTerminalState({ scope: "session", id: "global" })).toBeUndefined()
+    expect(readTerminalState({ scope: "global", id: "global" })).toBeUndefined()
   })
 })
 

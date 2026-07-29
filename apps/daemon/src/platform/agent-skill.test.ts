@@ -24,6 +24,7 @@ import { NAMED_KEYS } from "../features/sessions/sessions-keys.core"
 import {
   WAIT_TIMEOUT_DEFAULT_MS,
   WAIT_TIMEOUT_MAX_MS,
+  WAIT_VIA_VALUES,
 } from "../features/sessions/sessions-wait.core"
 import { AGENT_SKILL_MD } from "./agent-skill"
 
@@ -91,6 +92,16 @@ describe("agent-skill.md: wait constants", () => {
   it("quotes the real default and max timeout, in milliseconds", () => {
     expect(AGENT_SKILL_MD).toContain(String(WAIT_TIMEOUT_DEFAULT_MS))
     expect(AGENT_SKILL_MD).toContain(String(WAIT_TIMEOUT_MAX_MS))
+  })
+
+  // Same guard as the key/state vocabularies: a `via` this daemon does not
+  // accept must not be advertised, and one it does accept must not be hidden.
+  it("documents exactly the real via vocabulary — no more, no less", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "### Which observation settles it",
+    })
+    expect(backtickTokensInTableRows(section)).toEqual(new Set(WAIT_VIA_VALUES))
   })
 })
 

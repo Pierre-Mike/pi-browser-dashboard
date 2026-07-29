@@ -134,7 +134,8 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/{stop,respawn,rm,rename,tag}
                         /sessions/:id/send   (raw keys string; optional `wait` → submit-and-wait)
                         /sessions/:id/keys   (named key vocabulary; optional `wait`)
-                        /sessions/:id/wait   (server-owned wait on session state)
+                        /sessions/:id/wait   (server-owned wait on session state,
+                                              `via` supervisor | screen | either)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why)
                         /terminal/states  (current agent-state per known terminal,
@@ -186,12 +187,13 @@ notification         ← a `notify` rule action's own message, for a future
 `POST /sessions/:id/wait` and the optional `wait` object on `POST
 /sessions/:id/send` let a caller block on a session reaching one of a set of
 states instead of polling `GET /sessions` — the daemon already publishes
-`session.state` / `session.removed` on the SSE bus, so the wait is
-event-driven, not a poll loop.
+`session.state` / `session.removed` / `terminal.state` on the SSE bus, so the
+wait is event-driven, not a poll loop.
 
-- Body: `{ until: SessionStateSlug[], timeoutMs? }` — `until` non-empty,
-  `timeoutMs` defaults to 30s, capped at 10 minutes.
-- `POST /:id/wait` responses: `200 { ok: true, short, state, waitedMs }`
+- Body: `{ until: SessionStateSlug[], timeoutMs?, via? }` — `until` non-empty,
+  `timeoutMs` defaults to 30s, capped at 10 minutes, `via` defaults to
+  `"supervisor"`.
+- `POST /:id/wait` responses: `200 { ok: true, short, state, via, waitedMs }`
   (satisfied), `200 { ok: false, reason: "timeout" | "occupant_changed" |
   "removed", short, waitedMs? }`, or `404 { error: "not_found", short }`.
 - `POST /:id/send` with a `wait` object sends the keys first, then waits, and
@@ -203,6 +205,44 @@ event-driven, not a poll loop.
   send-with-wait, closing the race between the two calls), and reports
   `occupant_changed` rather than a false `Satisfied` if a different
   `sessionId` takes over the same `short` while waiting.
+
+#### `via`: which observation settles the wait
+
+A session has two independent readings, and they disagree in exactly the case
+that matters. `state.json` is what the supervisor last wrote; the screen
+classification (`features/terminal/terminal-state.*`, polled every 15s for
+every unattended pane) is what the terminal actually shows. Session `4d76edc1`
+sat at `working` in `state.json` for 24 hours while its pane showed an empty
+prompt — no supervisor-sourced wait could ever have noticed, which is why
+`via` exists.
+
+- `"supervisor"` (default) — `session.state` only. Every caller written before
+  this field existed keeps precisely its old semantics.
+- `"screen"` — `terminal.state` only, `scope === "session"` records only.
+- `"either"` — whichever arrives first.
+- `Satisfied` carries `via: "supervisor" | "screen"` (never `"either"` — that
+  is a request, not an answer), threaded through `WaitOutcome` onto the wire.
+  A screen-satisfied wait is the weaker claim of the two: the pane looks like
+  that state, the agent did not report it.
+- The screen vocabulary is a **subset**: `working` → `working`, `blocked` →
+  `blocked`, `idle` → `idle`, and `unknown` maps to nothing at all, so it can
+  never satisfy a wait. There is no screen evidence for `done` / `failed` /
+  `stopped` / `needs_input`, so a `via: "screen"` wait naming only those times
+  out by construction.
+- `decideInitial` consults the **current** screen too, not just later
+  transitions: a pane already `blocked` when the wait starts satisfies
+  immediately rather than hanging for the full timeout.
+- `session.removed` settles `Removed` under every `via` — a deleted session is
+  not an observation about state, it is the end of the thing observed.
+- **How the screen reaches this slice.** The terminal slice publishes one door,
+  `readTerminalState({ scope, id })` over its own `terminalStates` map;
+  `api.ts` passes it as an injected port into `buildSessionsApp` and into the
+  fleet run ports. `sessions-wait.core.ts` only ever sees plain data (a
+  `SessionStateSlug | undefined`), and neither the core nor
+  `sessions-wait.io.ts` imports the terminal slice. It is a port rather than a
+  `Context.Tag` for a concrete reason: `terminal.routes.ts` imports
+  `platform/runtime.ts`, so a Layer dependency would close an import cycle
+  through the very runtime that provides it.
 
 ### Named key vocabulary (`features/sessions/sessions-keys.*`)
 
