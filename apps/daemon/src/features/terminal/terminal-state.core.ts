@@ -332,6 +332,61 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     pattern: /(?:^[^\S\n]*|[^\S\n]{2})(?:✻[^\S\n]*)?\p{Lu}[\p{Ll}'-]*ed for \d+s(?=[^\S\n]|$)/mu,
   },
   {
+    name: "pi-prompt-resting",
+    state: "idle",
+    // pi's equivalent of the row below, and it needs its own because pi draws NO
+    // prompt glyph: `❯` appears nowhere in its shipped `dist/`, and its editor is
+    // two full-width U+2500 rules with an EMPTY row between them. So the row below
+    // could never fire on pi, and a resting pi pane classified `unknown` with no
+    // screen evidence at all.
+    //
+    // That gap costs more for pi than the same gap did for claude. pi writes no
+    // `state.json`, so the daemon reads state off the shape of pi's transcript, and
+    // there `done` plus a live pid has two causes — resting at the prompt, or
+    // mid-tool-call, because the assistant's tool-use message stays the last entry
+    // until the result returns. Only the screen separates those, so this row is the
+    // only thing that ever corroborates a pi `done`.
+    //
+    // ANCHORED ON THE CONTEXT READING, which is the one part of pi's footer that is
+    // always drawn. Verified live at rest (dump + raw redraw bytes) and read out of
+    // the shipped source, which is what picked it: every stats field is conditional
+    // on a non-zero counter — `if (totalInput)`, `if (totalOutput)`,
+    // `if (totalCacheRead)`, `if (totalCacheWrite)`, cost, cache-hit rate, all in
+    // pi-coding-agent/dist/modes/interactive/components/footer.js:114-127 — while
+    // `statsParts.push(contextPercentStr)` at footer.js:147 has no condition. A pi
+    // that has answered nothing yet therefore shows NONE of the arrows, and that is
+    // exactly the pane the daemon most needs to read: a freshly dispatched pi
+    // sitting at its prompt. A row anchored on the arrows would have passed a
+    // capture and missed the case that matters.
+    //
+    // Both rendered forms are covered: `<pct>%/<window>` and the `?/<window>` pi
+    // draws before it knows the percentage. The window always carries a `k`/`M`
+    // suffix because `formatTokens` (footer.js:19-29) only omits it below 1000
+    // tokens, and no model's context window is that small — requiring the suffix is
+    // what keeps this off an ordinary percentage that happens to precede a slash.
+    //
+    // MUST STAY BELOW `pi-working`, for the same reason the row below sits last:
+    // the footer is on screen throughout a turn, so a mid-tool-call pi carries it
+    // too. A live capture of that exact frame — spinner and footer together — is in
+    // the co-located test, asserting the order rather than the pattern. This row
+    // reads as "a pi TUI is up and nothing above matched".
+    //
+    // KNOWN COST, captured rather than inferred: pi draws this footer UNDERNEATH
+    // its modal overlays, where claude's prompt box disappears behind its dialogs.
+    // So a pi parked on a selector that is waiting for a keypress — `/trust` was
+    // captured live doing exactly this — now reads `idle` where it used to read
+    // `unknown`. Two reasons that is still the better trade: a pi at rest is the
+    // common case and had NO evidence at all before, while the modal case needs a
+    // human to have opened a modal and walked away; and `unknown` was not honest
+    // either, it was just vague. The real fix is a `blocked` row for pi's modals,
+    // above this one, and it is deliberately NOT bolted on here: the three
+    // components that share the `↑↓ navigate` hint (trust-selector,
+    // extension-selector, first-time-setup) are three of 56 selector components in
+    // pi's `dist/`, so a row anchored on that hint would swap one wrong answer for
+    // an unknown number of them. It wants its own change and its own captures.
+    pattern: /(?:^|[^\S\n])(?:\d+(?:\.\d+)?%|\?)\/\d+(?:\.\d+)?[kM](?=[^\S\n]|$)/m,
+  },
+  {
     name: "prompt-resting",
     state: "idle",
     // Verified by HEXDUMP, not by eye: the empty input line in a real
@@ -344,6 +399,10 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     //
     // This is what a finished session looks like once its "…ed for Ns" line has
     // scrolled out of the viewport, which on a long-lived box is most of them.
+    //
+    // CLAUDE ONLY, by construction: this is claude's prompt glyph. pi draws no
+    // glyph at all, so its rest is the row above; the two are disjoint and both
+    // are last-resort.
     //
     // MUST STAY LAST. The prompt box is drawn during a turn as well — the same
     // dump on a working session showed this exact empty `❯` line six lines

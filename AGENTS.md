@@ -332,9 +332,10 @@ tool's pending marker mid-tool-call, a finished turn's `<PastVerb> for <N>s`,
 a permission dialog's question line *together with its option list* while
 blocked on a permission decision, the workspace-trust dialog's own option line
 while blocked before the session has started at all; pi's braille spinner plus
-its working literal — against a per-connection rolling tail, stripped of ANSI
-first. States: `working`, `blocked`, `idle`, `unknown` — `unknown` is the
-honest default when nothing matches, not a guessed `idle`.
+its working literal while generating, and pi's own footer reading while resting
+— against a per-connection rolling tail, stripped of ANSI first. States:
+`working`, `blocked`, `idle`, `unknown` — `unknown` is the honest default when
+nothing matches, not a guessed `idle`.
 
 **Every shape above is described here with placeholders, deliberately.** These
 matchers read screens, and this file gets displayed on screens: paste a complete
@@ -441,6 +442,39 @@ of 25 polled terminals read `unknown` before it existed. Two costs are accepted
 knowingly — a bare shell whose own prompt is `❯` also reads `idle` (defensible;
 an empty shell is idle), and a working frame that carries no spinner would read
 `idle` for one poll interval before the next pass corrects it.
+
+That row is **claude's** prompt, though, and `pi-prompt-resting` above it is pi's.
+They are disjoint by construction: pi draws no prompt glyph at all — `❯` appears
+nowhere in its shipped `dist/` — and its editor is two full-width rules with an
+empty row between them, so claude's row could never fire on a resting pi and one
+classified `unknown` with no screen evidence. **The gap costs more for pi than it
+did for claude**: pi writes no `state.json`, so state comes from the shape of its
+transcript, where `done` plus a live pid means *either* resting at the prompt *or*
+mid-tool-call (the tool-use message stays the last entry until the result
+returns). Only the screen separates those, which makes this row the only thing
+that ever corroborates a pi `done`.
+
+The anchor is pi's **context reading**, and reading the shipped source is what
+picked it: every stats field in pi's footer is conditional on a non-zero counter,
+so a pi that has answered nothing shows no arrows, no cost, no cache-hit rate —
+and that is precisely the pane the daemon most needs to read, a freshly dispatched
+one sitting at its prompt. The context reading is the one part pushed
+unconditionally. A row anchored on the arrows would have passed a capture of a
+used session and missed every fresh one. Both rendered forms are covered, including
+the `?/<window>` pi draws before it knows the percentage; the window's `k`/`M`
+suffix is required, since pi only omits it below 1000 tokens and no model's context
+window is that small.
+
+One cost is accepted knowingly and was captured rather than inferred: **pi draws
+its footer underneath its modal overlays**, where claude's prompt box disappears
+behind its dialogs. A pi parked on a selector waiting for a keypress — `/trust` was
+captured doing exactly this — reads `idle` where it used to read `unknown`. The
+trade holds because a resting pi is the common case and had no evidence at all,
+while the modal case needs a human to open a modal and walk away. The real fix is a
+`blocked` row for pi's modals above this one, and it is deliberately not bolted on:
+the three components sharing the `↑↓ navigate` hint are three of 56 selector
+components in pi's `dist/`, so anchoring on that hint would swap one wrong answer
+for an unknown number of them. Own change, own captures.
 
 - `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
   evidence, at } }` for every terminal classified so far, so a client that
@@ -605,10 +639,11 @@ was needed.
 - **Self-reference is a live failure mode of screen scraping, not a curiosity.**
   Any matcher keyed on a bare sentence fires on a terminal that is merely
   *discussing* that sentence — an agent editing this table, reviewing its diff or
-  displaying this file. **All eight rows are anchored against it now**: the three
+  displaying this file. **All nine rows are anchored against it now**: the three
   `blocked` rows (question + option list, option label + list number, own-row trust
   option), the three `working` rows (elapsed-time reading, own-line pending marker,
-  braille spinner), `turn-complete` (own row behind an optional glyph) and
+  braille spinner), `turn-complete` (own row behind an optional glyph),
+  `pi-prompt-resting` (a context reading with a token-suffixed window) and
   `prompt-resting`, which is a whole-line pattern to begin with. Two habits keep it
   from coming back: **anchor on a rendered shape, never a bare sentence**, and
   **write placeholders in comments and docs, never a complete rendered line**. A
@@ -620,6 +655,16 @@ was needed.
   claims to match, and that is what caught `turn-complete` not matching an accented
   verb and `permission-prompt` not matching a Write approval — two silent false
   negatives that no amount of anti-self-reference work would have surfaced.
+- **Which CLI a row covers is part of its claim.** Every row is one CLI's UI copy:
+  the three `blocked` rows, `tool-call-waiting`, `thinking-gerund`, `turn-complete`
+  and `prompt-resting` are claude's; `pi-working` and `pi-prompt-resting` are pi's.
+  Audited row by row against live captures of both CLIs, and the audit is worth
+  repeating whenever a row is added, because "pi is covered" was true of the working
+  state and false of the resting one for as long as nobody checked. pi has no
+  automatic `blocked` screen to miss in the default flow — a captured pi ran a bash
+  tool call with no approval step, and its `Project trust` selector only opens on an
+  explicit `/trust` — but see `pi-prompt-resting` for the modal-overlay cost that
+  follows from it.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 

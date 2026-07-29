@@ -98,6 +98,69 @@ const PI_WORKING_DUMP = " ⠸ Working..."
 const PI_WORKING_WS_BYTES =
   "\x1b[?25l\x1b[37;1H\x1b[?25l\x1b[34;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;138;190;183m⠏\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;128;128;128mWorking...\x1b[m\x1b]8;;\x1b\\"
 
+// ---- live pi resting captures (2026-07-29) ------------------------------
+//
+// pi at rest, verbatim from `polltest-pi30c`: an editor box drawn as two
+// full-width U+2500 rules with an EMPTY row between them, the cwd, then the
+// footer. pi draws no prompt glyph at all — `❯` does not appear anywhere in its
+// shipped `dist/` — so claude's `prompt-resting` row could never fire here and a
+// resting pi pane classified `unknown`.
+//
+// This capture is the ZERO-TOKEN case on purpose, and it is what picked the
+// anchor. Every stats field in pi's footer is conditional on a non-zero counter
+// (`if (totalInput)`, `if (totalOutput)`, `if (totalCacheRead)`, … in
+// pi-coding-agent/dist/modes/interactive/components/footer.js:114-127), so a pi
+// that has not answered anything yet — a freshly dispatched one, the case the
+// daemon most needs to read — shows none of them. The context reading is the one
+// part pushed unconditionally (footer.js:147). Hexdump of that line:
+// `30 2e 30 25 2f 32 30 30 6b 20 28 61 75 74 6f 29` — ordinary spaces, no U+00A0
+// this time, checked rather than assumed.
+const PI_RESTING_DUMP = [
+  "──────────────────────────────────────────────────",
+  "",
+  "──────────────────────────────────────────────────",
+  "/private/tmp/piprobe30c",
+  "0.0%/200k (auto)           (zai) glm-5.2 • minimal",
+].join("\n")
+
+// The same screen once the session HAS produced tokens, so every conditional
+// stats field is present and the context reading is no longer at the line start.
+// Captured from `polltest-pi30`. A row anchored on the arrows would read this one
+// and miss the fresh one above.
+const PI_RESTING_WITH_STATS_DUMP = [
+  "──────────────────────────────────────────────────",
+  "",
+  "──────────────────────────────────────────────────",
+  "/private/tmp/piprobe30",
+  "↑24 ↓83 R7.9k CH99.7% $0.000 4.0%/200k (auto)      (zai) glm-5.2 • minimal",
+].join("\n")
+
+// The fresh footer as raw redraw bytes: verbatim except that the padding run in
+// front was truncated from 97 spaces to 10. pi writes the whole footer in one go
+// rather than word by word, but zellij still moves to the row with an absolute
+// cursor CSI, so after stripAnsi there is no `\n` anywhere near it.
+const PI_RESTING_WS_BYTES =
+  "                    \x1b[29;1H\x1b[m\x1b[38;2;102;102;102m\x1b[49m\x1b[59m\x1b[29m\x1b[28m\x1b[27m\x1b[25m\x1b[25m\x1b[22m\x1b[24m\x1b[22m\x1b[23m\x1b]8;;\x1b\\0.0%/200k (auto)                                                                                 (zai) glm-5.2 • minimal"
+
+// pi WITH A TOOL CALL IN FLIGHT, captured from `polltest-pi22` while a bash
+// command ran. The reason ordering carries this row: the footer below is on
+// screen the whole time, so the resting row would claim `idle` for a pi that is
+// mid-tool-call — which is exactly the `done`-with-a-live-pid ambiguity the
+// screen is supposed to resolve. The spinner is what tells them apart, and it
+// only wins because `pi-working` sits above.
+const PI_MID_TOOL_CALL_DUMP = [
+  " $ sleep 30 (timeout 60s)",
+  "",
+  " Elapsed 11.0s",
+  "",
+  " ⠸ Working...",
+  "──────────────────────────────────────────────────",
+  "",
+  "──────────────────────────────────────────────────",
+  "/private/tmp/permprobe19",
+  "↑7.8k ↓41 R128 CH1.6% $0.011 4.0%/200k (auto)  glm",
+].join("\n")
+
 // The screen that produced the live false positive: three lines of the AGENTS.md
 // paragraph that documents this very table, quoting the literals it matches on.
 // Verbatim from the file as it read before this change.
@@ -570,6 +633,60 @@ describe("classifyTail", () => {
   it("classifies a live-captured pi spinner line as working, dump and raw alike", () => {
     expect(classifyTail({ tail: PI_WORKING_DUMP }).matcher).toBe("pi-working")
     expect(classifyTail({ tail: PI_WORKING_WS_BYTES }).matcher).toBe("pi-working")
+  })
+
+  it("classifies a live-captured pi session at rest as idle (pi-prompt-resting)", () => {
+    const result = classifyTail({ tail: PI_RESTING_DUMP })
+    expect(result.state).toBe("idle")
+    expect(result.matcher).toBe("pi-prompt-resting")
+    expect(result.evidence).toBe("0.0%/200k")
+  })
+
+  it("reads a resting pi the same whether or not its optional stats are on screen", () => {
+    // Every stats field is conditional on a non-zero counter, so a pi that has
+    // answered nothing shows none of them. Anchoring on the arrows would have
+    // matched the second screen and missed the first — the freshly dispatched one.
+    expect(classifyTail({ tail: PI_RESTING_WITH_STATS_DUMP }).matcher).toBe("pi-prompt-resting")
+    expect(classifyTail({ tail: PI_RESTING_DUMP }).matcher).toBe("pi-prompt-resting")
+  })
+
+  it("classifies a resting pi from raw redraw bytes, where the screen is one line", () => {
+    const result = classifyTail({ tail: PI_RESTING_WS_BYTES })
+    expect(result.state).toBe("idle")
+    expect(result.matcher).toBe("pi-prompt-resting")
+  })
+
+  // The whole point of the row: pi writes no state.json, so `done` plus a live pid
+  // means either "resting at the prompt" or "mid-tool-call", and only the screen
+  // can say which. The footer is on screen for both, so ordering is what separates
+  // them — this asserts the order, not the pattern.
+  it("reports a pi mid-tool-call as working, not resting, though the footer is up", () => {
+    expect(PI_MID_TOOL_CALL_DUMP).toContain("0%/200k")
+    const result = classifyTail({ tail: PI_MID_TOOL_CALL_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("pi-working")
+  })
+
+  it("keeps pi's resting row above claude's, and claude's last", () => {
+    // Disjoint by construction — pi draws no `❯`, claude draws no context reading
+    // — but the order still has to hold, because `prompt-resting` is the row of
+    // last resort for every UI and must stay the last thing tried.
+    expect(classifyTail({ tail: PROMPT_RESTING_DUMP }).matcher).toBe("prompt-resting")
+    expect(classifyTail({ tail: `${PI_RESTING_DUMP}\n${PROMPT_LINE}` }).matcher).toBe(
+      "pi-prompt-resting",
+    )
+  })
+
+  it("does not report idle for a screen that merely quotes pi's footer shape", () => {
+    // The placeholder form this repo's own docs use, and a quoted reading behind a
+    // delimiter. Neither is a rendered footer.
+    expect(
+      classifyTail({ tail: "pi's footer ends with `<pct>%/<window>` and the model id" }).state,
+    ).toBe("unknown")
+    expect(classifyTail({ tail: 'the reading was "0.0%/200k" at the time' }).state).toBe("unknown")
+    // A percentage that is not a context reading: no token-suffixed window after
+    // the slash.
+    expect(classifyTail({ tail: "coverage 4.0%/50 lines" }).state).toBe("unknown")
   })
 
   // The same defect the blocked rows had, on the working side: a screen that
