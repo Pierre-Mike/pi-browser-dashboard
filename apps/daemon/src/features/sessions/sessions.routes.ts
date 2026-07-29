@@ -119,7 +119,11 @@ const screenFactsFor = ({
     state: record.state,
     matcher: record.matcher,
     evidence: record.evidence,
-    atMs: Date.parse(record.at),
+    // Both stamps, parsed here and never conflated: the record knows when its
+    // screen was last READ and when its classification last CHANGED, and explain
+    // reports the two separately because they routinely differ by hours.
+    screenReadAtMs: Date.parse(record.screenReadAt),
+    stateChangedAtMs: Date.parse(record.stateChangedAt),
   }
 }
 

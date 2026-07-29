@@ -52,6 +52,7 @@ import {
   appendTail,
   classifyTail,
   decideTransition,
+  freshenScreenRead,
   type TerminalStateSlug,
   terminalPaneRowId,
   terminalStateKey,
@@ -120,7 +121,28 @@ export type TerminalStateRecord = {
   readonly state: TerminalStateSlug
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  readonly at: string
+  // TWO timestamps, because a reading has two ages and they are routinely hours
+  // apart. Both are ISO strings stamped by this module (the poller's pure fold
+  // has no clock).
+  //
+  // `screenReadAt` — when this row's screen was last actually read: the last
+  // `dump-screen` the poller took of that pane, or the last classification pass
+  // of the WS tap while a browser is attached. This is the freshness of the
+  // EVIDENCE, and it is what "how much should I trust this?" is asking.
+  //
+  // `stateChangedAt` — when the classification last CHANGED. A pane resting at
+  // its prompt since this morning keeps this morning's stamp all day. This is
+  // dwell: how long the terminal has looked like this.
+  //
+  // They exist as two fields because one field could only ever answer one of
+  // those questions while looking like it answered both. The single `at` this
+  // pair replaced held the change time, and `explain` rendered it as
+  // "observed <age> ago": measured live, 38 of 51 rows claimed a 105-minute-old
+  // observation while a `wait --until-output` against the same panes matched in
+  // under 7s off a dump the poller had just taken. Anything that reads either
+  // field must name which one it means.
+  readonly screenReadAt: string
+  readonly stateChangedAt: string
   // Which zellij pane the reading came off, when the producer knows. The poller
   // always does — on a pane row (where `id` carries it too) and on a
   // session-level row, where it names the pane whose screen the session's state
@@ -229,10 +251,15 @@ const releaseAttachedSession = (name: string | null): void => {
   else attachedSessions.delete(name)
 }
 
-// The single writer for terminalStates + the terminal.state SSE event. Shared
-// by the WS classifier tap and the unattended poller so the two producers can
-// never drift on the record shape or forget to publish. `at` is stamped here —
-// the poller's own pure fold has no clock.
+// The single writer of a CHANGED classification: it replaces the record and puts
+// the terminal.state SSE event on the bus. Shared by the WS classifier tap and
+// the unattended poller so the two producers can never drift on the record shape
+// or forget to publish. Both timestamps are stamped here — a change is also a
+// read, and it is the freshest one there can be.
+//
+// Callers must have decided the reading actually moved (`decideTransition`).
+// A re-read that found the same thing goes through markTerminalScreenRead below
+// instead, which touches no event.
 const publishTerminalState = (input: {
   readonly scope: TerminalScope
   readonly id: string
@@ -241,13 +268,42 @@ const publishTerminalState = (input: {
   readonly evidence: string | undefined
   readonly paneId?: string | undefined
 }): void => {
+  const at = new Date().toISOString()
   const record: TerminalStateRecord = {
     ...input,
     paneId: input.paneId,
-    at: new Date().toISOString(),
+    screenReadAt: at,
+    stateChangedAt: at,
   }
   terminalStates.set(terminalStateKey({ scope: input.scope, id: input.id }), record)
   sseBus.publish({ type: "terminal.state", data: record })
+}
+
+// The second writer, and the only one that is deliberately SILENT: the screen was
+// read again and said the same thing, so `screenReadAt` moves and nothing else
+// does — no SSE event, because there is no news.
+//
+// That silence is a choice with a cost worth naming: a client that only listens
+// to `terminal.state` never learns that a reading it already has was re-confirmed,
+// so its idea of freshness ages until the classification changes. The alternative
+// is ~50 identical rows on the bus every poll interval, to every connected
+// browser, and a client that needs freshness can read it from
+// `GET /terminal/states` (which also kicks a refresh-on-read pass) or
+// `GET /sessions/:id/explain`, both of which serve the stamp this writer keeps
+// current.
+export const markTerminalScreenRead = (input: {
+  readonly scope: TerminalScope
+  readonly id: string
+}): void => {
+  const key = terminalStateKey({ scope: input.scope, id: input.id })
+  const freshened = freshenScreenRead({
+    record: terminalStates.get(key),
+    readAt: new Date().toISOString(),
+  })
+  // `undefined` means nothing has ever classified this terminal. A read with no
+  // classification is not a row — inventing one would make `readTerminalState`,
+  // `explain` and `pid terminals` all claim a reading that does not exist.
+  if (freshened !== undefined) terminalStates.set(key, freshened)
 }
 
 // Drop the rows of panes that are gone, so a pane the user closed cannot leave a
@@ -304,7 +360,14 @@ const makeClassifierTap = (args: { readonly scope: TerminalScope; readonly id: s
   const publish = (): void => {
     throttleTimer = undefined
     const next = classifyTail({ tail })
-    if (!decideTransition({ prior: priorState, next }).publish) return
+    if (!decideTransition({ prior: priorState, next }).publish) {
+      // An attended terminal is the freshest reading the daemon has — bytes
+      // arrived and were just classified. Saying so costs one map write per
+      // throttle window and stops an attached pane from looking as stale as an
+      // unpolled one.
+      markTerminalScreenRead({ scope: args.scope, id: args.id })
+      return
+    }
     priorState = next.state
     publishTerminalState({
       scope: args.scope,
@@ -947,6 +1010,7 @@ export const terminalPoller = createTerminalPoller({
     attachedSessionNames: () => [...attachedSessions.keys()],
     priorState: ({ key }) => terminalStates.get(key)?.state,
     publish: publishTerminalState,
+    noteRead: markTerminalScreenRead,
     noteScreen: noteTerminalScreen,
     forgetPaneStates,
     now: () => Date.now(),

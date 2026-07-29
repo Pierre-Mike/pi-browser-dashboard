@@ -79,6 +79,19 @@ export type TerminalPollPorts = {
   // Separate from `publish` because that one lands on the SSE bus, which every
   // connected browser is subscribed to: screen text must never go there.
   readonly noteScreen: (input: ScreenText) => void
+  // "This row's screen was read just now." Called for every row that was
+  // actually dumped this pass — each pane row, plus the session-level row folded
+  // out of them — whether or not the reading moved, and deliberately NOT paired
+  // with an SSE event: ~50 rows every interval, each carrying a classification
+  // nobody has changed, is noise on a stream every connected browser reads.
+  //
+  // Separate from `publish` because the two answer different questions.
+  // `publish` is "the pane now says something else" (a transition, worth an
+  // event); this is "the evidence is this old" (freshness, worth a stamp). One
+  // timestamp cannot mean both, which is exactly the bug this port exists to
+  // fix — `explain` rendered the change-time as "observed <age> ago" and
+  // understated the reading's own freshness by hours.
+  readonly noteRead: (input: { readonly scope: TerminalScope; readonly id: string }) => void
   // Drop the stored rows of panes that are no longer there. Called once per
   // successfully listed session with the pane ids that SHOULD still have a row —
   // empty for a single-pane session, which has no pane rows at all. Never called
@@ -172,15 +185,22 @@ export const createTerminalPoller = (input: {
     } catch {
       // An observer that throws is its own problem, not this pass's.
     }
-    if (input.ownRow && folded.publish) {
-      ports.publish({
-        scope: target.scope,
-        id: rowId,
-        state: folded.classification.state,
-        matcher: folded.classification.matcher,
-        evidence: folded.classification.evidence,
-        paneId,
-      })
+    // A pane row's freshness, stamped from the pane that owns it. The
+    // session-level row is stamped by the caller instead, once per pass, off the
+    // fold — so a single-pane session (which has no pane row at all) is not
+    // stamped twice for one dump.
+    if (input.ownRow) {
+      ports.noteRead({ scope: target.scope, id: rowId })
+      if (folded.publish) {
+        ports.publish({
+          scope: target.scope,
+          id: rowId,
+          state: folded.classification.state,
+          matcher: folded.classification.matcher,
+          evidence: folded.classification.evidence,
+          paneId,
+        })
+      }
     }
     return {
       paneId,
@@ -224,6 +244,10 @@ export const createTerminalPoller = (input: {
     }
     const session = foldPaneReadings({ panes: readings })
     if (session === undefined) return panes.length
+    // The session's screen WAS read this pass — that is what a fold over at least
+    // one pane means — so stamp it before the transition gate below decides
+    // whether anything changed. Nothing published is not the same as nothing read.
+    ports.noteRead({ scope: target.scope, id: target.id })
     const priorSession = ports.priorState({ key: `${target.scope}:${target.id}` })
     if (priorSession !== session.state) {
       ports.publish({ scope: target.scope, id: target.id, ...session })

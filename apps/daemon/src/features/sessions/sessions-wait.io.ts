@@ -29,7 +29,12 @@ export type TerminalStateFacts = {
   readonly state: string
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  readonly at: string
+  // The record's two ISO stamps: when the pane's screen was last read, and when
+  // the classification last changed. A wait reads neither — `decideInitial` asks
+  // only what the screen says — but they are part of the door's shape, and the
+  // same reader serves `GET /sessions/:id/explain`, which reports both.
+  readonly screenReadAt: string
+  readonly stateChangedAt: string
 }
 
 // Injected port, not a Tag: the terminal slice's state map is written by the

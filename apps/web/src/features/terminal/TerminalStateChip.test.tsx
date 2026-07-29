@@ -19,7 +19,8 @@ describe("TerminalStateChip", () => {
       state: "working",
       matcher: "thinking-gerund",
       evidence: "Burrowing…(3s · ↓4 tokens)",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(html).toContain('data-testid="terminal-state-chip"')
     expect(html).toContain("Working")
@@ -33,7 +34,8 @@ describe("TerminalStateChip", () => {
       id: "pi-browser-dashboard",
       state: "blocked",
       matcher: "permission-prompt",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(html).toContain("Blocked")
     expect(html).toContain("bg-warning/15")
@@ -44,7 +46,8 @@ describe("TerminalStateChip", () => {
       scope: "global",
       id: "global",
       state: "unknown",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(html).toContain("Unknown")
     expect(html).toContain('title="unknown — no matcher has fired yet"')

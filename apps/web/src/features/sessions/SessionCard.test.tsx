@@ -104,7 +104,8 @@ describe("SessionCard markup", () => {
         state: "working",
         matcher: "thinking-gerund",
         evidence: "Burrowing…",
-        at: "2026-07-29T00:00:00.000Z",
+        screenReadAt: "2026-07-29T00:00:00.000Z",
+        stateChangedAt: "2026-07-29T00:00:00.000Z",
       },
     })
     expect(html).toContain('data-testid="session-card-terminal-state"')
@@ -121,7 +122,8 @@ describe("SessionCard markup", () => {
         id: sampleSession.short,
         state: "working",
         matcher: "pi-working",
-        at: "2026-07-29T00:00:00.000Z",
+        screenReadAt: "2026-07-29T00:00:00.000Z",
+        stateChangedAt: "2026-07-29T00:00:00.000Z",
       },
     })
     expect(agreeing).not.toContain('data-testid="session-card-terminal-state"')

@@ -2,9 +2,26 @@ import { describe, expect, test } from "bun:test"
 import { STALE_ACTIVE_MS } from "@pid/shared"
 import type { SessionStateSlug } from "./sessions.core"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
-import { explainSession } from "./sessions-explain.core"
+import { explainSession, type ScreenFacts } from "./sessions-explain.core"
 
 const NOW = 1_000_000
+
+// A polled reading, with both of its stamps defaulted to "read just now, and it
+// has been saying this for a while" — the ordinary shape of a resting pane, and
+// the one that used to be reported as a two-hour-old observation.
+const screenFacts = ({
+  state,
+  matcher,
+  evidence,
+  screenReadAtMs = NOW - 100,
+  stateChangedAtMs = NOW - 7_200_000,
+}: {
+  readonly state: string
+  readonly matcher?: string | undefined
+  readonly evidence?: string | undefined
+  readonly screenReadAtMs?: number | undefined
+  readonly stateChangedAtMs?: number | undefined
+}): ScreenFacts => ({ state, matcher, evidence, screenReadAtMs, stateChangedAtMs })
 
 describe("explainSession — ordinary case", () => {
   test("a live, fresh, state.json-sourced working session gets exactly one reason", () => {
@@ -89,7 +106,7 @@ describe("explainSession — pi-spawn-log source", () => {
       pidAlive: true,
       stateFilePresent: false,
       piTranscriptPresent: true,
-      terminal: { state: "working", matcher: "pi-working", evidence: "⠇", atMs: NOW - 100 },
+      terminal: screenFacts({ state: "working", matcher: "pi-working", evidence: "⠇" }),
     })
     const limits = out.reasons.find((r) => r.includes("needs_input"))
     expect(limits).toBeDefined()
@@ -196,7 +213,7 @@ describe("explainSession — pi-spawn-log source", () => {
       pidAlive: true,
       stateFilePresent: false,
       piTranscriptPresent: true,
-      terminal: { state: "unknown", matcher: undefined, evidence: undefined, atMs: NOW - 100 },
+      terminal: screenFacts({ state: "unknown" }),
     })
     const reason = out.reasons.find((r) => r.includes("no independent observation"))
     expect(reason).toBeDefined()
@@ -214,7 +231,7 @@ describe("explainSession — pi-spawn-log source", () => {
       pidAlive: false,
       stateFilePresent: false,
       piTranscriptPresent: true,
-      terminal: { state: "idle", matcher: "prompt-resting", evidence: "❯", atMs: NOW - 100 },
+      terminal: screenFacts({ state: "idle", matcher: "prompt-resting", evidence: "❯" }),
     })
     expect(out.reasons.some((r) => r.includes("no independent observation"))).toBe(false)
   })
@@ -488,11 +505,13 @@ describe("explainSession — screen facts", () => {
   const withScreen = ({
     state,
     screen,
-    atMs = NOW - 30_000,
+    screenReadAtMs = NOW - 30_000,
+    stateChangedAtMs = NOW - 30_000,
   }: {
     state: SessionStateSlug
     screen: string
-    atMs?: number | undefined
+    screenReadAtMs?: number | undefined
+    stateChangedAtMs?: number | undefined
   }) =>
     explainSession({
       session: makeSession({ state }),
@@ -501,22 +520,39 @@ describe("explainSession — screen facts", () => {
       lastEventAtMs: undefined,
       pidAlive: true,
       stateFilePresent: true,
-      terminal: {
+      terminal: screenFacts({
         state: screen,
         matcher: "prompt-resting",
         evidence: "❯",
-        atMs,
-      },
+        screenReadAtMs,
+        stateChangedAtMs,
+      }),
     })
 
-  test("echoes the polled screen facts, with the observation's age", () => {
+  test("echoes the polled screen facts, with both of the reading's ages", () => {
     const out = withScreen({ state: "working", screen: "idle" })
     expect(out.terminal).toEqual({
       state: "idle",
       matcher: "prompt-resting",
       evidence: "❯",
-      ageMs: 30_000,
+      readAgeMs: 30_000,
+      unchangedForMs: 30_000,
     })
+  })
+
+  // The measured bug: 38 of 51 rows on the live daemon reported a 105-minute-old
+  // observation while `wait --until-output` matched off a dump of the same pane
+  // taken 7s earlier. Both numbers were true — of different questions — and only
+  // the dwell one was ever reported.
+  test("reports a seconds-old read of a pane that has been resting for hours", () => {
+    const out = withScreen({
+      state: "done",
+      screen: "idle",
+      screenReadAtMs: NOW - 7_000,
+      stateChangedAtMs: NOW - 7_200_000,
+    })
+    expect(out.terminal?.readAgeMs).toBe(7_000)
+    expect(out.terminal?.unchangedForMs).toBe(7_200_000)
   })
 
   test("omits the screen section entirely when nothing has classified the pane", () => {
@@ -535,11 +571,29 @@ describe("explainSession — screen facts", () => {
 
   test("clamps a future screen timestamp to a zero age, and drops an unparseable one", () => {
     expect(
-      withScreen({ state: "working", screen: "idle", atMs: NOW + 5_000 }).terminal?.ageMs,
+      withScreen({ state: "working", screen: "idle", screenReadAtMs: NOW + 5_000 }).terminal
+        ?.readAgeMs,
     ).toBe(0)
     expect(
-      withScreen({ state: "working", screen: "idle", atMs: Date.parse("nope") }).terminal?.ageMs,
+      withScreen({ state: "working", screen: "idle", screenReadAtMs: Date.parse("nope") }).terminal
+        ?.readAgeMs,
     ).toBeUndefined()
+  })
+
+  // The reason sentence is where a reader forms their opinion of the evidence, so
+  // it has to name which age is which — "observed <dwell> ago" is what made a
+  // current reading look abandoned.
+  test("names both ages in the conflict sentence, and calls neither 'observed'", () => {
+    const out = withScreen({
+      state: "working",
+      screen: "idle",
+      screenReadAtMs: NOW - 7_000,
+      stateChangedAtMs: NOW - 7_200_000,
+    })
+    const reason = out.reasons.find((r) => r.toLowerCase().includes("screen"))
+    expect(reason).toContain("read 7000ms ago")
+    expect(reason).toContain("unchanged for 7200000ms")
+    expect(reason).not.toContain("observed")
   })
 
   // The 4d76edc1 case exactly.
@@ -619,7 +673,11 @@ describe("explainSession — screen facts", () => {
       lastEventAtMs: undefined,
       pidAlive: true,
       stateFilePresent: true,
-      terminal: { state: "idle", matcher: undefined, evidence: undefined, atMs: undefined },
+      terminal: screenFacts({
+        state: "idle",
+        screenReadAtMs: undefined,
+        stateChangedAtMs: undefined,
+      }),
     })
     expect(out.screenDisagrees).toBe(true)
     const reason = out.reasons.find((r) => r.toLowerCase().includes("screen"))
@@ -637,7 +695,13 @@ describe("explainSession — screen facts", () => {
       lastEventAtMs: undefined,
       pidAlive: true,
       stateFilePresent: true,
-      terminal: { state: "idle", matcher: "prompt-resting", evidence: "❯", atMs: NOW - 1_000 },
+      terminal: screenFacts({
+        state: "idle",
+        matcher: "prompt-resting",
+        evidence: "❯",
+        screenReadAtMs: NOW - 1_000,
+        stateChangedAtMs: NOW - 1_000,
+      }),
     })
     expect(out.reasons.some((r) => r.includes("state.json, the session's own status file"))).toBe(
       true,
