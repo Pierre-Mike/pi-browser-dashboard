@@ -137,7 +137,9 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/wait   (server-owned wait on session state,
                                               `via` supervisor | screen | either)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
-                        /sessions/:id/explain  (state provenance: source, staleness, why)
+                        /sessions/:id/explain  (state provenance: source, staleness, why,
+                                                + the screen's own reading and whether
+                                                  it contradicts the supervisor)
                         /terminal/states  (current agent-state per known terminal,
                                            attached WS or polled screen dump)
                         /sessions/:id/brainstorms  (drawings in the session's worktree)
@@ -1211,6 +1213,37 @@ provenance surface for all of this: it reports where a session's `state` came
 from (its own state.json vs a roster-only seed ahead of the first read), how
 stale that read is, whether the worker's pid is still alive, and — when the
 slug is `unknown` — what the raw value actually was.
+
+#### `explain` cites the screen (`features/sessions/sessions-explain.*`)
+
+Provenance from `state.json` alone can only ever report what the supervisor
+said about itself. The polled screen classification is a second, independent
+observation, and `explain` now reports it alongside:
+
+- `terminal: { state, matcher, evidence, ageMs } | undefined` — the pane's last
+  classification, which rule fired, the exact line it matched, and how long ago
+  it was sampled. `undefined` when the poller has never classified this
+  session's terminal.
+- `screenDisagrees: boolean` — whether that reading actually contradicts
+  `state`, plus a `reasons[]` sentence naming both slugs and the matcher when
+  it does. This is the `4d76edc1` case: `state.json` said `working` for 24
+  hours while the pane sat at an empty prompt.
+
+Agreement is decided by `SCREEN_AGREES_WITH`, a **mirror** of the web chip's
+`AGREES_WITH` (`apps/web/src/features/terminal/terminalState.ts`), held to it
+by `scripts/mirrored-constants.test.ts` — the two make the same judgement and
+were tuned together against the live daemon, and neither app may import the
+other. Its two load-bearing rows: a resting pane agrees with every not-running
+state (`idle`/`done`/`stopped`/`failed`), because a finished session naturally
+sits at its prompt; and `blocked` agrees with `needs_input`. An empty row —
+`unknown` — asserts nothing and so can never disagree, which is why no matcher
+firing is never grounds for calling the supervisor wrong.
+
+Purity: `sessions-explain.core.ts` takes the screen as **plain input fields**
+(`ScreenFacts`, whose `state` is a bare `string`), never importing
+`../terminal/*`. The route reads the record through the same injected
+`readTerminalState` port the waits use, and does the `Date.parse` itself so the
+core keeps its no-clock rule.
 
 ### 2. Orchestrator role — dispatcher via `claude --bg`
 

@@ -463,6 +463,75 @@ describe("GET /sessions/:id/explain", () => {
   // a pi short 404s here even though it lists and GETs fine. Documented gap;
   // a pi-aware explain (reading its own spawn log's "pi-spawn-log" source) is
   // a follow-up, not something this test should silently mask.
+  // The screen facts reach explain through the same injected reader the waits
+  // use, so this route is where "state.json says X, the pane says Y" becomes
+  // something an agent can read.
+  it("cites the screen when it contradicts the supervisor slug", async () => {
+    const sessions = oneSession({ state: "working", updatedAt: new Date().toISOString() })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      screenDisagrees: boolean
+      terminal: { state: string; matcher: string; evidence: string; ageMs: number }
+      reasons: string[]
+    }
+    expect(body.screenDisagrees).toBe(true)
+    expect(body.terminal.state).toBe("idle")
+    expect(body.terminal.matcher).toBe("prompt-resting")
+    expect(body.terminal.evidence).toBe("❯")
+    // Age is computed from the record's own `at`, so it must be a real number.
+    expect(typeof body.terminal.ageMs).toBe("number")
+    expect(body.reasons.some((r) => r.toLowerCase().includes("screen"))).toBe(true)
+  })
+
+  it("stays silent about the screen when it confirms the supervisor", async () => {
+    const sessions = oneSession({ state: "done" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    const body = (await res.json()) as { screenDisagrees: boolean; reasons: string[] }
+    expect(body.screenDisagrees).toBe(false)
+    expect(body.reasons.some((r) => r.toLowerCase().includes("screen"))).toBe(false)
+  })
+
+  it("omits the screen section when nothing has classified this session's pane", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:cd34": "idle" }),
+    })
+    const body = (await res.json()) as { terminal?: unknown; screenDisagrees: boolean }
+    expect(body.terminal).toBeUndefined()
+    expect(body.screenDisagrees).toBe(false)
+  })
+
+  it("reads the session scope, not a same-named terminal in another scope", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "project:ab12": "idle" }),
+    })
+    const body = (await res.json()) as { terminal?: unknown }
+    expect(body.terminal).toBeUndefined()
+  })
+
+  it("explains exactly as before when the composition root injected no reader", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({ path: "/ab12/explain", sessions })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { terminal?: unknown; screenDisagrees: boolean }
+    expect(body.terminal).toBeUndefined()
+    expect(body.screenDisagrees).toBe(false)
+  })
+
   it("404s for a pi session — diagnostics has no pi-registry fallback (documented gap)", async () => {
     const piStub = newPiStub()
     piStub.sessions.set(
