@@ -23,9 +23,21 @@ apps/e2e/playwright-report/
 # (.pid/fleet.json), which the dashboard renders/lists when pi-browser-dashboard
 # is opened as a project (see the pid-apps and fleet-recipes features in
 # AGENTS.md). Local `.pid/extensions/` and everything else stays ignored.
-.pid/*
-!.pid/index.html
-!.pid/fleet.json
+#
+# Every `.pid/` at any depth, not just the repo root's. A slash inside a pattern
+# anchors it, so the previous `.pid/*` covered ONLY the root — and `bun run dev`
+# starts the daemon with cwd `apps/daemon`, where it writes its own
+# `.pid/extensions-state.json`. That left a runtime artifact both untracked and
+# LINTED: biome sets `vcs.useIgnoreFile`, so an unignored generated file failed
+# `lint:ci`, and every developer running the dev daemon got a red `bun run
+# verify` from a file they never wrote. Ignore all of them, then carve the root
+# back out — a re-include cannot resurrect a file whose parent directory is
+# excluded, hence `!/.pid/` before the root's own rules.
+**/.pid/
+!/.pid/
+/.pid/*
+!/.pid/index.html
+!/.pid/fleet.json
 .fallow/
 
 # Stale Lefthook stubs — hooks install to .git/hooks (see lefthook.yml, #136)
