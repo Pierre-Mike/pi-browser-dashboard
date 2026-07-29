@@ -18,21 +18,26 @@
 import {
   DEFAULT_OUTPUT_ANCHOR,
   DEFAULT_WAIT_VIA,
+  isNamedKey,
   isOutputAnchor,
   isSessionStateSlug,
+  isTerminalStateSlug,
   isWaitSatisfiedVia,
   isWaitVia,
+  NAMED_KEYS,
+  type NamedKey,
   OUTPUT_ANCHORS,
   OUTPUT_PATTERN_MAX_CHARS,
   type OutputPattern,
   type SessionStateSlug,
+  type TerminalStateSlug,
   WAIT_VIA_VALUES,
   type WaitSatisfiedVia,
   type WaitVia,
 } from "@pid/shared"
 import { Either } from "effect"
 
-export type { OutputPattern, SessionStateSlug, WaitVia }
+export type { OutputPattern, SessionStateSlug, TerminalStateSlug, WaitVia }
 // --- Session state slugs ----------------------------------------------------
 //
 // The vocabulary comes from `@pid/shared`, which exists for exactly this: this
@@ -45,47 +50,24 @@ export { isSessionStateSlug }
 
 // --- Named key vocabulary ----------------------------------------------------
 //
-// Mirrors `NamedKey` in apps/daemon/src/features/sessions/sessions-keys.core.ts
-// — same deep-import limitation as above.
-const NAMED_KEYS = [
-  "escape",
-  "enter",
-  "tab",
-  "shift-tab",
-  "up",
-  "down",
-  "left",
-  "right",
-  "home",
-  "end",
-  "page-up",
-  "page-down",
-  "backspace",
-  "delete",
-  "space",
-] as const
-export type NamedKeyName = (typeof NAMED_KEYS)[number]
-
-export const isNamedKeyName = (s: string): s is NamedKeyName =>
-  (NAMED_KEYS as readonly string[]).includes(s)
+// `NamedKey` from `@pid/shared` — the one declaration `POST /sessions/:id/keys`
+// validates against, so a literal copy here could accept a key the daemon
+// rejects, or reject one it accepts, and neither compiler would notice. The
+// `…Name` aliases are this module's older public surface, kept so call sites and
+// tests read unchanged.
+export type NamedKeyName = NamedKey
+export const isNamedKeyName = isNamedKey
 
 export const NAMED_KEYS_HELP = NAMED_KEYS.join(", ")
 
 // --- Terminal screen-state vocabulary ----------------------------------------
 //
-// A *terminal* state is not a session state: it is what the daemon read off a
-// terminal's screen (`TerminalStateSlug` in
-// apps/daemon/src/features/terminal/terminal-state.core.ts), four slugs deep,
-// where a session state is the 8-slug roster vocabulary above. Two separate
-// unions on purpose — `done`/`needs_input` are roster facts no screen matcher
-// can produce, and `unknown` means "nothing matched", not "no idea who this
-// is". Mirrored as a literal copy for the same reason the two lists above are
-// (apps/cli cannot deep-import a daemon slice-internal module).
-const TERMINAL_STATE_SLUGS = ["working", "blocked", "idle", "unknown"] as const
-export type TerminalStateSlug = (typeof TERMINAL_STATE_SLUGS)[number]
-
-export const isTerminalStateSlug = (s: string): s is TerminalStateSlug =>
-  (TERMINAL_STATE_SLUGS as readonly string[]).includes(s)
+// Also `@pid/shared`'s. A *terminal* state is not a session state: it is what the
+// daemon read off a terminal's screen, four slugs deep, where a session state is
+// the 8-slug roster vocabulary. Two separate unions on purpose — `done` /
+// `needs_input` are roster facts no screen matcher can produce, and `unknown`
+// means "nothing matched", not "no idea who this is".
+export { isTerminalStateSlug }
 
 // The `scope` half of a `terminalStateKey` — mirrors `TerminalScope` in
 // apps/daemon/src/features/terminal/terminal-poll.core.ts. "global" and
@@ -2617,9 +2599,12 @@ const isFleetRunStatus = (v: unknown): v is FleetRunStatus =>
 
 // Mirrors WaitOutcomeLike in
 // apps/daemon/src/features/fleet/fleet-run.core.ts on the wire — see that
-// file's own comment for why it is a literal copy rather than an import
-// (apps/cli cannot deep-import a daemon slice-internal module at all, the
-// same limitation SessionStateSlug/NamedKeyName above document).
+// file's own comment for why it is a literal copy rather than an import:
+// apps/cli cannot deep-import a daemon slice-internal module, and this shape has
+// not been promoted to `@pid/shared`. Unlike the session-state, named-key and
+// terminal-slug vocabularies above — which WERE promoted and are now imported —
+// this one is still a copy that nothing can catch drifting. Promote it the next
+// time it changes.
 export type FleetWaitOutcomeWire =
   | { readonly _tag: "Satisfied"; readonly state: SessionStateSlug; readonly waitedMs: number }
   | { readonly _tag: "Timeout"; readonly waitedMs: number }

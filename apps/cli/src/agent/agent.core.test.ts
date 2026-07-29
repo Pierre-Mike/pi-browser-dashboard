@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { NAMED_KEYS, TERMINAL_STATE_SLUGS } from "@pid/shared"
 import { Either } from "effect"
 import {
   buildDispatchRequestBody,
@@ -42,6 +43,7 @@ import {
   isNamedKeyName,
   isSessionStateSlug,
   isTerminalStateSlug,
+  NAMED_KEYS_HELP,
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
@@ -95,6 +97,29 @@ describe("isSessionStateSlug / isNamedKeyName", () => {
     expect(isNamedKeyName("page-down")).toBe(true)
     expect(isNamedKeyName("ctrl-c")).toBe(false)
     expect(isNamedKeyName("ctrl-z")).toBe(false)
+  })
+})
+
+// These two vocabularies used to be literal copies in agent.core.ts, carrying a
+// comment that apps/cli could not deep-import them — true before `@pid/shared`
+// existed, stale afterwards. The copies are gone; these assertions are what makes
+// their absence permanent, by failing if the CLI ever stops agreeing with the one
+// declaration the daemon validates against.
+describe("CLI vocabularies come from @pid/shared", () => {
+  it("accepts every shared named key, and the help text lists all of them", () => {
+    for (const key of NAMED_KEYS) expect(isNamedKeyName(key)).toBe(true)
+    expect(NAMED_KEYS_HELP.split(", ")).toEqual([...NAMED_KEYS])
+  })
+
+  it("accepts every shared terminal slug", () => {
+    for (const slug of TERMINAL_STATE_SLUGS) expect(isTerminalStateSlug(slug)).toBe(true)
+  })
+
+  // The guards are the same values, not lookalikes — a re-export cannot drift,
+  // a second copy can.
+  it("rejects a session-only slug, so the two unions stay distinct", () => {
+    expect(isTerminalStateSlug("done")).toBe(false)
+    expect(isTerminalStateSlug("needs_input")).toBe(false)
   })
 })
 
