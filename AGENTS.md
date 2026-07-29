@@ -1123,7 +1123,8 @@ vocabulary, wait semantics, `explain`, and a fan-out/join `spawn` recipe (see
 pid sessions [--state <slug,...>] [--json]
 pid explain <short> [--json]
 pid terminals [<scope>:<id>] [--json]
-pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
+pid wait <short> [--until <slug,...>] [--until-output <text> [--anchor <where>]]
+         [--via supervisor|screen|either] [--timeout <ms>] [--json]
 pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
 pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
 pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,...>] [--json]
@@ -1163,9 +1164,39 @@ pid [--help] [--url <base>]
   joins every positional word into the intent, so none of the three require
   quoting a multi-word argument. `--wait` on `send`/`keys`/`spawn` reuses the
   daemon's pinned-occupant wait (see "Server-owned waits" above) after the
-  action; `pid wait` is the same wait as its own subcommand, `--until`
-  required. `--timeout` is milliseconds; omitted, the daemon's own default
-  (30s, capped at 10 minutes) applies.
+  action; `pid wait` is the same wait as its own subcommand. `--timeout` is
+  milliseconds; omitted, the daemon's own default (30s, capped at 10 minutes)
+  applies. The `--wait` on `send`/`keys`/`spawn` takes slugs only and stays the
+  supervisor wait it has always been — `--via` / `--until-output` live on
+  `pid wait`, where the condition is the whole point of the command.
+- `pid wait` needs **at least one** condition and accepts both; supplying both
+  means "first to fire wins", the daemon's own composition rule.
+  - `--until <slug,...>` — the session-state condition, as before.
+  - `--via supervisor|screen|either` — which reading may settle an `--until`
+    wait (see "`via`: which observation settles the wait" above). Default
+    `supervisor`, matching the daemon, so an existing invocation is unchanged
+    on the wire: the CLI omits `via` entirely at the default. A satisfied wait
+    **prints which observation settled it** (`ab12 reached "idle" via screen
+    after 1234ms`), because "the pane looks idle" is a weaker claim than "the
+    agent reported idle" and a caller acting on the answer needs to know which
+    it got. Only `working`/`blocked`/`idle` have screen evidence at all, so a
+    `--via screen` wait naming only `done`/`failed`/`stopped`/`needs_input`
+    times out by construction.
+  - `--until-output <text> [--anchor anywhere|line-start|line-end|line]` — the
+    screen-text condition, a **literal** substring capped at 200 characters
+    (never a regex — see "`untilOutput`" above for the ReDoS argument). Both
+    the cap and the anchor vocabulary come from `@pid/shared`, the same
+    declaration the daemon parses the request body with, so a pattern this CLI
+    accepts is one the daemon accepts; rejecting here as well is not a second
+    opinion, it is an earlier one (exit 2 instead of a round-trip and a 400).
+    `--anchor` without `--until-output` is a usage error rather than a flag
+    that silently does nothing. A pattern match prints and returns the line it
+    appeared on (`matched`), and carries no state — there is none to report.
+  - On a daemon with the screen poller off (`PID_TERMINAL_POLL_MS=0`) an
+    `--until-output` wait exits **8** immediately off the daemon's own
+    `409 screen_polling_disabled`, never 3. That distinction is the reason 8
+    exists: an agent that reads "misconfigured daemon" as "the pattern has not
+    appeared yet" retries until its own deadline.
 - `pid spawn --n <count>` issues `count` independent `POST /dispatch` calls
   with the same intent/agent/cwd, each producing its own short; with `--wait`,
   each spawned short is waited on independently and every attempt's outcome
@@ -1175,6 +1206,20 @@ pid [--help] [--url <base>]
   `shift-tab`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`,
   `page-down`, `backspace`, `delete`, `space` (the same deliberately-closed
   vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
+- `pid explain <short>` prints the screen's own reading as its second block,
+  not only in `--json`: a `screen:` line carrying the classification, the
+  matcher that fired, the line it matched and how old the observation is
+  (`screen: not classified` when the poller has never seen the pane — itself a
+  diagnosis, since a `--via screen` wait on that session has nothing to resolve
+  against). When the daemon reports `screenDisagrees`, a `!! screen disagrees:`
+  line sits directly under the header, above everything else: it is the
+  strongest evidence the command has, and it used to be reachable only by
+  reading to the end of the reason list or parsing `--json`. The daemon still
+  spells the contradiction out in full among `reasons` — that line is the
+  headline, the reason is the argument. `screenDisagrees` is never recomputed
+  here: the daemon owns the table of which screen state agrees with which
+  session state (`SCREEN_AGREES_WITH`), and a second implementation would be a
+  second answer.
 - `pid terminals` reads `GET /terminal/states` — the screen classification
   ("Terminal agent-state detection" above) for every terminal the daemon has
   looked at, whether over an attached WS bridge or the unattended poller. It
@@ -1243,6 +1288,7 @@ An orchestrating agent composes `pid` in a shell
 | 5 | `removed` — the session went away |
 | 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key |
 | 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |
+| 8 | `screen_polling_disabled` — `pid wait --until-output` against a daemon whose screen poller is off (`PID_TERMINAL_POLL_MS=0`), off its own `409`. Deterministic: retrying cannot help until the daemon is reconfigured, which is exactly why it is not 3 |
 
 `pid spawn --n <count> --wait` runs `count` independent spawn+wait attempts
 and reports the **worst** outcome across all of them as the process exit
@@ -1251,9 +1297,11 @@ of what happened, most severe last: `0` (ok) < `3` (timeout — it's out there,
 just slow) < `4` (occupant changed) < `5` (removed) < `6` (not found) < `7`
 (a fleet run's own rolled-up "did not run cleanly" verdict — see "Executing a
 run" above) < `1` (transport/unexpected failure — the caller does not know
-what happened at all) < `2` (usage error, which in practice never mixes with
-the others since it always short-circuits before any request is made). `pid
-fleet run` itself never calls `worstExitCode` (each run only has one
+what happened at all) < `8` (a disabled poller: the one outcome here that
+retrying cannot change, so when several attempts disagree it is the finding
+the caller has to act on) < `2` (usage error, which in practice never mixes
+with the others since it always short-circuits before any request is made).
+`pid fleet run` itself never calls `worstExitCode` (each run only has one
 outcome), but 7 sits at this point in the ranking so the severity table
 stays total.
 

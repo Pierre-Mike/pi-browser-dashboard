@@ -23,9 +23,9 @@ import {
   NAMED_KEYS,
   WAIT_TIMEOUT_DEFAULT_MS,
   WAIT_TIMEOUT_MAX_MS,
+  WAIT_VIA_VALUES,
 } from "@pid/shared"
 import { app } from "../api"
-import { WAIT_VIA_VALUES } from "../features/sessions/sessions-wait.core"
 import { buildDiscovery } from "./agent-discovery.core"
 import { AGENT_SKILL_MD } from "./agent-skill"
 

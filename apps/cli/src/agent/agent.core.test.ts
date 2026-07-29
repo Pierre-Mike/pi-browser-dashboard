@@ -15,6 +15,7 @@ import {
   exitCodeForTerminalLookup,
   exitCodeForUsage,
   exitCodeForWaitBody,
+  exitCodeForWaitPostStatus,
   filterByState,
   filterTerminalsByKey,
   formatExplain,
@@ -230,8 +231,10 @@ describe("parseAgentArgv", () => {
       )
     })
 
-    it("requires --until", () => {
-      expect(left(parseAgentArgv(["wait", "ab12"])).message).toBe("wait: --until is required")
+    it("requires --until or --until-output", () => {
+      expect(left(parseAgentArgv(["wait", "ab12"])).message).toBe(
+        "wait: --until or --until-output is required",
+      )
     })
 
     it("parses <short> --until <list> [--timeout] [--json]", () => {
@@ -243,21 +246,126 @@ describe("parseAgentArgv", () => {
         _tag: "Wait",
         short: "ab12",
         until: ["done", "failed"],
+        untilOutput: undefined,
+        via: "supervisor",
         timeoutMs: 2000,
         json: true,
         url: undefined,
       })
     })
 
-    it("defaults timeoutMs to undefined when --timeout is absent", () => {
+    it("defaults timeoutMs to undefined and via to supervisor", () => {
       expect(right(parseAgentArgv(["wait", "ab12", "--until", "done"]))).toEqual({
         _tag: "Wait",
         short: "ab12",
         until: ["done"],
+        untilOutput: undefined,
+        via: "supervisor",
         timeoutMs: undefined,
         json: false,
         url: undefined,
       })
+    })
+
+    it("parses every --via value", () => {
+      for (const via of ["supervisor", "screen", "either"] as const) {
+        expect(right(parseAgentArgv(["wait", "ab12", "--until", "done", "--via", via]))).toEqual({
+          _tag: "Wait",
+          short: "ab12",
+          until: ["done"],
+          untilOutput: undefined,
+          via,
+          timeoutMs: undefined,
+          json: false,
+          url: undefined,
+        })
+      }
+    })
+
+    it("rejects an unknown --via", () => {
+      expect(
+        left(parseAgentArgv(["wait", "ab12", "--until", "done", "--via", "vibes"])).message,
+      ).toBe('wait: --via must be one of supervisor, screen, either, got "vibes"')
+    })
+
+    it("accepts --until-output on its own, defaulting the anchor to anywhere", () => {
+      expect(right(parseAgentArgv(["wait", "ab12", "--until-output", "Do you want"]))).toEqual({
+        _tag: "Wait",
+        short: "ab12",
+        until: [],
+        untilOutput: { text: "Do you want", anchor: "anywhere" },
+        via: "supervisor",
+        timeoutMs: undefined,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("parses every --anchor value alongside --until-output", () => {
+      for (const anchor of ["anywhere", "line-start", "line-end", "line"] as const) {
+        expect(
+          right(parseAgentArgv(["wait", "ab12", "--until-output", "ok", "--anchor", anchor])),
+        ).toEqual({
+          _tag: "Wait",
+          short: "ab12",
+          until: [],
+          untilOutput: { text: "ok", anchor },
+          via: "supervisor",
+          timeoutMs: undefined,
+          json: false,
+          url: undefined,
+        })
+      }
+    })
+
+    it("accepts --until and --until-output together — first to fire wins", () => {
+      expect(
+        right(parseAgentArgv(["wait", "ab12", "--until", "failed", "--until-output", "PASS"])),
+      ).toEqual({
+        _tag: "Wait",
+        short: "ab12",
+        until: ["failed"],
+        untilOutput: { text: "PASS", anchor: "anywhere" },
+        via: "supervisor",
+        timeoutMs: undefined,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("rejects an empty --until-output", () => {
+      expect(left(parseAgentArgv(["wait", "ab12", "--until-output", ""])).message).toBe(
+        "wait: --until-output must be a non-empty string",
+      )
+    })
+
+    it("rejects an --until-output past the daemon's 200-character cap", () => {
+      expect(right(parseAgentArgv(["wait", "ab12", "--until-output", "x".repeat(200)]))).toEqual({
+        _tag: "Wait",
+        short: "ab12",
+        until: [],
+        untilOutput: { text: "x".repeat(200), anchor: "anywhere" },
+        via: "supervisor",
+        timeoutMs: undefined,
+        json: false,
+        url: undefined,
+      })
+      expect(
+        left(parseAgentArgv(["wait", "ab12", "--until-output", "x".repeat(201)])).message,
+      ).toBe("wait: --until-output is capped at 200 characters, got 201")
+    })
+
+    it("rejects an unknown --anchor", () => {
+      expect(
+        left(parseAgentArgv(["wait", "ab12", "--until-output", "ok", "--anchor", "middle"]))
+          .message,
+      ).toBe('wait: --anchor must be one of anywhere, line-start, line-end, line, got "middle"')
+    })
+
+    it("rejects --anchor without --until-output — it would silently do nothing", () => {
+      expect(
+        left(parseAgentArgv(["wait", "ab12", "--until", "done", "--anchor", "line"])).message,
+      ).toBe("wait: --anchor only applies with --until-output")
     })
 
     it("rejects a bad --until slug", () => {
@@ -311,7 +419,12 @@ describe("parseAgentArgv", () => {
         _tag: "Send",
         short: "ab12",
         text: "go",
-        wait: { until: ["done", "idle"], timeoutMs: 5000 },
+        wait: {
+          until: ["done", "idle"],
+          untilOutput: undefined,
+          via: "supervisor",
+          timeoutMs: 5000,
+        },
         json: false,
         url: undefined,
       })
@@ -355,7 +468,12 @@ describe("parseAgentArgv", () => {
         _tag: "Keys",
         short: "ab12",
         names: ["enter"],
-        wait: { until: ["working"], timeoutMs: undefined },
+        wait: {
+          until: ["working"],
+          untilOutput: undefined,
+          via: "supervisor",
+          timeoutMs: undefined,
+        },
         json: false,
         url: undefined,
       })
@@ -404,7 +522,12 @@ describe("parseAgentArgv", () => {
         n: 3,
         agent: "reviewer",
         cwd: "/tmp/x",
-        wait: { until: ["done"], timeoutMs: undefined },
+        wait: {
+          until: ["done"],
+          untilOutput: undefined,
+          via: "supervisor",
+          timeoutMs: undefined,
+        },
         json: true,
         url: undefined,
       })
@@ -713,6 +836,28 @@ describe("exit codes", () => {
     ).toBe(6)
   })
 
+  it("exitCodeForWaitBody gives screen_polling_disabled its own code, never a timeout", () => {
+    expect(
+      exitCodeForWaitBody({
+        ok: false,
+        short: "ab12",
+        reason: "screen_polling_disabled",
+        waitedMs: undefined,
+      }),
+    ).toBe(8)
+  })
+
+  it("exitCodeForWaitBody maps a pattern match to 0", () => {
+    expect(exitCodeForWaitBody({ ok: true, short: "ab12", matched: "PASS", waitedMs: 3 })).toBe(0)
+  })
+
+  it("exitCodeForWaitPostStatus separates 409 from 404 and from anything else", () => {
+    expect(exitCodeForWaitPostStatus(409)).toBe(8)
+    expect(exitCodeForWaitPostStatus(404)).toBe(6)
+    expect(exitCodeForWaitPostStatus(400)).toBe(1)
+    expect(exitCodeForWaitPostStatus(500)).toBe(1)
+  })
+
   it("exitCodeForOutcome maps Ok/NotFound/HttpError, delegating a nested wait", () => {
     expect(exitCodeForOutcome({ _tag: "Ok", wait: undefined })).toBe(0)
     expect(
@@ -748,6 +893,14 @@ describe("exit codes", () => {
   it("worstExitCode ranks a usage error (2) above every other code", () => {
     expect(worstExitCode([1, 2])).toBe(2)
   })
+
+  // A disabled poller is a deterministic daemon-configuration fault: retrying
+  // cannot change it, so it must out-rank the outcomes that might be transient.
+  it("worstExitCode ranks screen_polling_disabled (8) above a transport failure", () => {
+    expect(worstExitCode([1, 8])).toBe(8)
+    expect(worstExitCode([8, 6])).toBe(8)
+    expect(worstExitCode([8, 2])).toBe(2)
+  })
 })
 
 describe("parseWaitOutcomeBody", () => {
@@ -770,6 +923,42 @@ describe("parseWaitOutcomeBody", () => {
     })
   })
 
+  it("parses the via that says which observation settled the wait", () => {
+    for (const via of ["supervisor", "screen"] as const) {
+      expect(
+        right(parseWaitOutcomeBody({ ok: true, short: "ab12", state: "idle", via, waitedMs: 42 })),
+      ).toEqual({ ok: true, short: "ab12", state: "idle", via, waitedMs: 42 })
+    }
+  })
+
+  it("leaves via undefined when the daemon predates the field", () => {
+    expect(
+      right(parseWaitOutcomeBody({ ok: true, short: "ab12", state: "done", waitedMs: 42 })),
+    ).toEqual({ ok: true, short: "ab12", state: "done", via: undefined, waitedMs: 42 })
+  })
+
+  it("rejects a via that is neither supervisor nor screen — 'either' is a request, not an answer", () => {
+    expect(
+      left(
+        parseWaitOutcomeBody({
+          ok: true,
+          short: "ab12",
+          state: "done",
+          via: "either",
+          waitedMs: 1,
+        }),
+      ).message,
+    ).toBe('wait response has an unrecognized via: "either"')
+  })
+
+  it("parses an output match, which carries no state", () => {
+    expect(
+      right(
+        parseWaitOutcomeBody({ ok: true, short: "ab12", matched: "tests passed", waitedMs: 7 }),
+      ),
+    ).toEqual({ ok: true, short: "ab12", matched: "tests passed", waitedMs: 7 })
+  })
+
   it("rejects an unrecognized state on a satisfied outcome", () => {
     expect(
       left(parseWaitOutcomeBody({ ok: true, short: "ab12", state: "bogus", waitedMs: 1 })).message,
@@ -783,7 +972,13 @@ describe("parseWaitOutcomeBody", () => {
   })
 
   it("parses every failure reason", () => {
-    for (const reason of ["timeout", "occupant_changed", "removed", "not_found"] as const) {
+    for (const reason of [
+      "timeout",
+      "occupant_changed",
+      "removed",
+      "not_found",
+      "screen_polling_disabled",
+    ] as const) {
       expect(
         right(parseWaitOutcomeBody({ ok: false, short: "ab12", reason, waitedMs: 9 })),
       ).toEqual({
@@ -962,11 +1157,53 @@ describe("parseExplainResponse", () => {
     pidAlive: false,
     stateFilePresent: true,
     stale: true,
+    terminal: {
+      state: "blocked",
+      matcher: "permission-prompt",
+      evidence: "Do you want to proceed?",
+      ageMs: 1_500,
+    },
+    screenDisagrees: false,
     reasons: ["a", "b"],
   }
 
   it("parses every field of a full response", () => {
     expect(right(parseExplainResponse(full))).toEqual(full)
+  })
+
+  it("carries screenDisagrees through", () => {
+    expect(right(parseExplainResponse({ ...full, screenDisagrees: true })).screenDisagrees).toBe(
+      true,
+    )
+  })
+
+  // The two screen fields are newer than the endpoint, and this CLI is often
+  // pointed at a daemon that has been running for days.
+  it("treats an absent terminal / screenDisagrees as 'no screen evidence'", () => {
+    const { terminal: _terminal, screenDisagrees: _disagrees, ...withoutScreen } = full
+    expect(right(parseExplainResponse(withoutScreen))).toEqual({
+      ...withoutScreen,
+      terminal: undefined,
+      screenDisagrees: false,
+    })
+  })
+
+  it("defaults each optional terminal field to undefined", () => {
+    expect(right(parseExplainResponse({ ...full, terminal: { state: "idle" } })).terminal).toEqual({
+      state: "idle",
+      matcher: undefined,
+      evidence: undefined,
+      ageMs: undefined,
+    })
+  })
+
+  it("rejects a terminal block that is present but malformed", () => {
+    expect(left(parseExplainResponse({ ...full, terminal: "idle" })).message).toBe(
+      "explain response terminal must be an object",
+    )
+    expect(left(parseExplainResponse({ ...full, terminal: {} })).message).toBe(
+      "explain response terminal is missing state",
+    )
   })
 
   it("defaults every optional field to undefined when absent", () => {
@@ -991,6 +1228,8 @@ describe("parseExplainResponse", () => {
       pidAlive: undefined,
       stateFilePresent: false,
       stale: false,
+      terminal: undefined,
+      screenDisagrees: false,
       reasons: [],
     })
   })
@@ -1488,20 +1727,72 @@ describe("errorMessageFrom", () => {
 })
 
 describe("request body building", () => {
+  const supervisorWait = {
+    untilOutput: undefined,
+    via: "supervisor",
+  } as const
+
   it("buildWaitRequestBody omits timeoutMs when absent", () => {
-    expect(buildWaitRequestBody({ until: ["done"], timeoutMs: undefined })).toEqual({
-      until: ["done"],
-    })
-    expect(buildWaitRequestBody({ until: ["done"], timeoutMs: 500 })).toEqual({
+    expect(
+      buildWaitRequestBody({ until: ["done"], timeoutMs: undefined, ...supervisorWait }),
+    ).toEqual({ until: ["done"] })
+    expect(buildWaitRequestBody({ until: ["done"], timeoutMs: 500, ...supervisorWait })).toEqual({
       until: ["done"],
       timeoutMs: 500,
     })
   })
 
+  it("buildWaitRequestBody omits via when it is the daemon's own default", () => {
+    expect(
+      buildWaitRequestBody({ until: ["done"], timeoutMs: undefined, ...supervisorWait }),
+    ).toEqual({ until: ["done"] })
+    expect(
+      buildWaitRequestBody({
+        until: ["done"],
+        timeoutMs: undefined,
+        untilOutput: undefined,
+        via: "screen",
+      }),
+    ).toEqual({ until: ["done"], via: "screen" })
+    expect(
+      buildWaitRequestBody({
+        until: ["done"],
+        timeoutMs: undefined,
+        untilOutput: undefined,
+        via: "either",
+      }),
+    ).toEqual({ until: ["done"], via: "either" })
+  })
+
+  it("buildWaitRequestBody sends untilOutput as the explicit object form", () => {
+    expect(
+      buildWaitRequestBody({
+        until: [],
+        timeoutMs: undefined,
+        untilOutput: { text: "PASS", anchor: "line-end" },
+        via: "supervisor",
+      }),
+    ).toEqual({ untilOutput: { text: "PASS", anchor: "line-end" } })
+  })
+
+  it("buildWaitRequestBody omits an empty until — the daemon rejects []", () => {
+    expect(
+      buildWaitRequestBody({
+        until: [],
+        timeoutMs: 5,
+        untilOutput: { text: "PASS", anchor: "anywhere" },
+        via: "supervisor",
+      }),
+    ).toEqual({ untilOutput: { text: "PASS", anchor: "anywhere" }, timeoutMs: 5 })
+  })
+
   it("buildSendRequestBody omits wait when absent", () => {
     expect(buildSendRequestBody({ keys: "hi", wait: undefined })).toEqual({ keys: "hi" })
     expect(
-      buildSendRequestBody({ keys: "hi", wait: { until: ["done"], timeoutMs: undefined } }),
+      buildSendRequestBody({
+        keys: "hi",
+        wait: { until: ["done"], timeoutMs: undefined, ...supervisorWait },
+      }),
     ).toEqual({
       keys: "hi",
       wait: { until: ["done"] },
@@ -1513,7 +1804,10 @@ describe("request body building", () => {
       sequence: [{ named: "down" }, { named: "down" }, { named: "enter" }],
     })
     expect(
-      buildKeysRequestBody({ names: ["enter"], wait: { until: ["idle"], timeoutMs: 10 } }),
+      buildKeysRequestBody({
+        names: ["enter"],
+        wait: { until: ["idle"], timeoutMs: 10, ...supervisorWait },
+      }),
     ).toEqual({
       sequence: [{ named: "enter" }],
       wait: { until: ["idle"], timeoutMs: 10 },
@@ -1587,10 +1881,12 @@ describe("formatExplain", () => {
         pidAlive: true,
         stateFilePresent: true,
         stale: true,
+        terminal: undefined,
+        screenDisagrees: false,
         reasons: ["reason one", "reason two"],
       }),
     ).toBe(
-      "ab12  blocked (stale)\nsource: state.json\nupdated: 2h ago\nlast event: 5s ago\npid alive: true\n- reason one\n- reason two",
+      "ab12  blocked (stale)\nscreen: not classified\nsource: state.json\nupdated: 2h ago\nlast event: 5s ago\npid alive: true\n- reason one\n- reason two",
     )
   })
 
@@ -1606,9 +1902,85 @@ describe("formatExplain", () => {
         pidAlive: undefined,
         stateFilePresent: false,
         stale: false,
+        terminal: undefined,
+        screenDisagrees: false,
         reasons: [],
       }),
-    ).toBe("cd34  idle\nsource: roster-seed\nupdated: — ago\nlast event: — ago")
+    ).toBe(
+      "cd34  idle\nscreen: not classified\nsource: roster-seed\nupdated: — ago\nlast event: — ago",
+    )
+  })
+
+  it("cites the screen with its matcher, evidence and age when they agree", () => {
+    expect(
+      formatExplain({
+        short: "cd34",
+        state: "blocked",
+        source: "state.json",
+        degradedFrom: undefined,
+        updatedAtAgeMs: 1_000,
+        lastEventAgeMs: 1_000,
+        pidAlive: undefined,
+        stateFilePresent: true,
+        stale: false,
+        terminal: {
+          state: "blocked",
+          matcher: "permission-prompt",
+          evidence: "Do you want to proceed?",
+          ageMs: 1_000,
+        },
+        screenDisagrees: false,
+        reasons: [],
+      }),
+    ).toBe(
+      'cd34  blocked\nscreen: blocked  matcher "permission-prompt"  matched "Do you want to proceed?"  1s ago\nsource: state.json\nupdated: 1s ago\nlast event: 1s ago',
+    )
+  })
+
+  // The contradiction is the strongest evidence this command has, so it goes
+  // directly under the header rather than at the bottom of the reason list.
+  it("puts a screen/state contradiction on its own line right under the header", () => {
+    const lines = formatExplain({
+      short: "ab12",
+      state: "working",
+      source: "state.json",
+      degradedFrom: undefined,
+      updatedAtAgeMs: 86_400_000,
+      lastEventAgeMs: 86_400_000,
+      pidAlive: true,
+      stateFilePresent: true,
+      stale: true,
+      terminal: {
+        state: "idle",
+        matcher: "prompt-resting",
+        evidence: "❯",
+        ageMs: 3_000,
+      },
+      screenDisagrees: true,
+      reasons: ["State came from state.json, the session's own status file."],
+    }).split("\n")
+    expect(lines[0]).toBe("ab12  working (stale)")
+    expect(lines[1]).toBe('!! screen disagrees: state.json says "working", the screen reads "idle"')
+    expect(lines[2]).toBe('screen: idle  matcher "prompt-resting"  matched "❯"  3s ago')
+  })
+
+  it("drops the matcher, evidence and age from the screen line when absent", () => {
+    expect(
+      formatExplain({
+        short: "cd34",
+        state: "idle",
+        source: "state.json",
+        degradedFrom: undefined,
+        updatedAtAgeMs: undefined,
+        lastEventAgeMs: undefined,
+        pidAlive: undefined,
+        stateFilePresent: true,
+        stale: false,
+        terminal: { state: "unknown", matcher: undefined, evidence: undefined, ageMs: undefined },
+        screenDisagrees: false,
+        reasons: [],
+      }),
+    ).toBe("cd34  idle\nscreen: unknown\nsource: state.json\nupdated: — ago\nlast event: — ago")
   })
 })
 
@@ -1634,6 +2006,42 @@ describe("one-line confirmations", () => {
     expect(
       formatWaitOutcome({ ok: false, short: "ab12", reason: "not_found", waitedMs: undefined }),
     ).toBe("ab12 was not found")
+  })
+
+  // "resolved off the screen" and "resolved off state.json" are different
+  // facts about how much the answer can be trusted, so the line says which.
+  it("formatWaitOutcome names the observation that settled the wait", () => {
+    expect(
+      formatWaitOutcome({ ok: true, short: "ab12", state: "idle", via: "screen", waitedMs: 1234 }),
+    ).toBe('ab12 reached "idle" via screen after 1234ms')
+    expect(
+      formatWaitOutcome({
+        ok: true,
+        short: "ab12",
+        state: "done",
+        via: "supervisor",
+        waitedMs: 12,
+      }),
+    ).toBe('ab12 reached "done" via supervisor after 12ms')
+  })
+
+  it("formatWaitOutcome quotes the line an output pattern matched", () => {
+    expect(
+      formatWaitOutcome({ ok: true, short: "ab12", matched: "42 passed, 0 failed", waitedMs: 900 }),
+    ).toBe('ab12 matched "42 passed, 0 failed" after 900ms')
+  })
+
+  it("formatWaitOutcome says a disabled poller is a daemon setting, not a timeout", () => {
+    expect(
+      formatWaitOutcome({
+        ok: false,
+        short: "ab12",
+        reason: "screen_polling_disabled",
+        waitedMs: undefined,
+      }),
+    ).toBe(
+      "ab12 could not be watched: screen polling is disabled on this daemon (set PID_TERMINAL_POLL_MS)",
+    )
   })
 
   it("formatSent appends the wait outcome only when present", () => {

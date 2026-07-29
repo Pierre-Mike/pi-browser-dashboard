@@ -1,4 +1,3 @@
-import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
 // Pure argv parsing, request-body building, response parsing, exit-code
 // mapping and output formatting for `pid` — the agent-facing CLI over the
 // daemon's session-control surface. No I/O — agent/main.ts (the imperative
@@ -16,9 +15,24 @@ import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
 // `bun run audit`'s complexity ceiling never sees a long if/else chain — the
 // same discipline apps/daemon/src/features/sessions/sessions-*.core.ts uses.
 
+import {
+  DEFAULT_OUTPUT_ANCHOR,
+  DEFAULT_WAIT_VIA,
+  isOutputAnchor,
+  isSessionStateSlug,
+  isWaitSatisfiedVia,
+  isWaitVia,
+  OUTPUT_ANCHORS,
+  OUTPUT_PATTERN_MAX_CHARS,
+  type OutputPattern,
+  type SessionStateSlug,
+  WAIT_VIA_VALUES,
+  type WaitSatisfiedVia,
+  type WaitVia,
+} from "@pid/shared"
 import { Either } from "effect"
 
-export type { SessionStateSlug }
+export type { OutputPattern, SessionStateSlug, WaitVia }
 // --- Session state slugs ----------------------------------------------------
 //
 // The vocabulary comes from `@pid/shared`, which exists for exactly this: this
@@ -85,10 +99,25 @@ const isTerminalScope = (s: string): s is TerminalScope =>
 
 const TERMINAL_SCOPES_HELP = TERMINAL_SCOPES.join(", ")
 
+// --- Wait vocabulary ----------------------------------------------------------
+//
+// `--via` and `--until-output`'s `--anchor` validate against the SAME lists the
+// daemon parses an untrusted body with (`@pid/shared`'s wait contract), so a
+// value this CLI accepts is one the daemon accepts by construction. Rejecting
+// here as well is not a second opinion, it is an earlier one: a bad flag costs
+// exit 2 instead of a round-trip and a 400.
+export const WAIT_VIA_HELP = WAIT_VIA_VALUES.join(", ")
+
+export const OUTPUT_ANCHORS_HELP = OUTPUT_ANCHORS.join(", ")
+
 // --- Command model -----------------------------------------------------------
 
 export type WaitParams = {
+  // May be EMPTY when `untilOutput` carries the condition instead — the daemon
+  // accepts a wait with either one, and rejects a request with neither.
   readonly until: ReadonlyArray<SessionStateSlug>
+  readonly untilOutput: OutputPattern | undefined
+  readonly via: WaitVia
   readonly timeoutMs: number | undefined
 }
 
@@ -110,6 +139,8 @@ export type WaitCommand = {
   readonly _tag: "Wait"
   readonly short: string
   readonly until: ReadonlyArray<SessionStateSlug>
+  readonly untilOutput: OutputPattern | undefined
+  readonly via: WaitVia
   readonly timeoutMs: number | undefined
   readonly json: boolean
   readonly url: string | undefined
@@ -406,6 +437,9 @@ const FLAG_DRY_RUN: FlagSpec = { name: "dry-run", boolean: true }
 // flagSpecs list, so the shared flag NAME "wait" meaning different things to
 // different subcommands is not a collision.
 const FLAG_FLEET_WAIT: FlagSpec = { name: "wait", boolean: true }
+const FLAG_VIA: FlagSpec = { name: "via", boolean: false }
+const FLAG_UNTIL_OUTPUT: FlagSpec = { name: "until-output", boolean: false }
+const FLAG_ANCHOR: FlagSpec = { name: "anchor", boolean: false }
 
 const parseOneSlug = ({
   command,
@@ -578,6 +612,137 @@ const parseExplainCommand = ({
   })
 }
 
+// `--via` is validated against the shared vocabulary, so this CLI never sends a
+// value the daemon would 400 on.
+const parseOptionalVia = ({
+  command,
+  flags,
+}: {
+  readonly command: string
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<WaitVia, UsageError> => {
+  const raw = flags.get("via")
+  if (raw === undefined) return Either.right(DEFAULT_WAIT_VIA)
+  if (!isWaitVia(raw)) {
+    return Either.left(
+      usageError(`${command}: --via must be one of ${WAIT_VIA_HELP}, got "${raw}"`),
+    )
+  }
+  return Either.right(raw)
+}
+
+// The anchor half of `--until-output`. Split out so parseOptionalUntilOutput
+// itself stays a short chain of guard clauses.
+const parseAnchorFlag = ({
+  command,
+  raw,
+}: {
+  readonly command: string
+  readonly raw: string | undefined
+}): Either.Either<OutputPattern["anchor"], UsageError> => {
+  if (raw === undefined) return Either.right(DEFAULT_OUTPUT_ANCHOR)
+  if (!isOutputAnchor(raw)) {
+    return Either.left(
+      usageError(`${command}: --anchor must be one of ${OUTPUT_ANCHORS_HELP}, got "${raw}"`),
+    )
+  }
+  return Either.right(raw)
+}
+
+// The text half. Both bounds are the daemon's own (`@pid/shared`), quoted back
+// in the message so a caller sees the real cap rather than a rounded number.
+const parsePatternText = ({
+  command,
+  raw,
+}: {
+  readonly command: string
+  readonly raw: string
+}): Either.Either<string, UsageError> => {
+  if (raw.length === 0) {
+    return Either.left(usageError(`${command}: --until-output must be a non-empty string`))
+  }
+  if (raw.length > OUTPUT_PATTERN_MAX_CHARS) {
+    return Either.left(
+      usageError(
+        `${command}: --until-output is capped at ${OUTPUT_PATTERN_MAX_CHARS} characters, got ${raw.length}`,
+      ),
+    )
+  }
+  return Either.right(raw)
+}
+
+// An anchor with nothing to anchor would be dropped silently on the wire, which
+// reads as "the wait is broken" rather than "you forgot the pattern".
+const rejectDanglingAnchor = ({
+  command,
+  raw,
+  anchorRaw,
+}: {
+  readonly command: string
+  readonly raw: string | undefined
+  readonly anchorRaw: string | undefined
+}): UsageError | undefined =>
+  raw === undefined && anchorRaw !== undefined
+    ? usageError(`${command}: --anchor only applies with --until-output`)
+    : undefined
+
+const parseOptionalUntilOutput = ({
+  command,
+  flags,
+}: {
+  readonly command: string
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<OutputPattern | undefined, UsageError> => {
+  const raw = flags.get("until-output")
+  const anchorRaw = flags.get("anchor")
+  const dangling = rejectDanglingAnchor({ command, raw, anchorRaw })
+  if (dangling !== undefined) return Either.left(dangling)
+  if (raw === undefined) return Either.right(undefined)
+  const combined = Either.all({
+    text: parsePatternText({ command, raw }),
+    anchor: parseAnchorFlag({ command, raw: anchorRaw }),
+  })
+  return Either.isLeft(combined) ? Either.left(combined.left) : Either.right(combined.right)
+}
+
+// `--until` is optional only because `--until-output` can carry the condition
+// instead; a wait with neither has nothing to wait for. Mirrors the daemon's own
+// "a wait needs until or untilOutput" 400 as a usage error, before the request.
+// Absent `--until` resolves to an EMPTY list, which buildWaitRequestBody then
+// omits from the body — the daemon rejects `until: []`.
+const requireSomeWaitCondition = ({
+  until,
+  untilOutput,
+}: {
+  readonly until: ReadonlyArray<SessionStateSlug> | undefined
+  readonly untilOutput: OutputPattern | undefined
+}): Either.Either<ReadonlyArray<SessionStateSlug>, UsageError> =>
+  until === undefined && untilOutput === undefined
+    ? Either.left(usageError("wait: --until or --until-output is required"))
+    : Either.right(until ?? [])
+
+const parseWaitConditions = ({
+  flags,
+}: {
+  readonly flags: ReadonlyMap<string, string>
+}): Either.Either<
+  {
+    readonly until: ReadonlyArray<SessionStateSlug>
+    readonly untilOutput: OutputPattern | undefined
+  },
+  UsageError
+> => {
+  const combined = Either.all({
+    until: parseOptionalStateFlag({ command: "wait", flag: "until", flags }),
+    untilOutput: parseOptionalUntilOutput({ command: "wait", flags }),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  const { until, untilOutput } = combined.right
+  const resolved = requireSomeWaitCondition({ until, untilOutput })
+  if (Either.isLeft(resolved)) return Either.left(resolved.left)
+  return Either.right({ until: resolved.right, untilOutput })
+}
+
 const parseWaitCommand = ({
   rest,
   url,
@@ -588,19 +753,28 @@ const parseWaitCommand = ({
   const scanned = scanArgv({
     command: "wait",
     argv: rest,
-    flagSpecs: withJson([FLAG_UNTIL, FLAG_TIMEOUT]),
+    flagSpecs: withJson([FLAG_UNTIL, FLAG_UNTIL_OUTPUT, FLAG_ANCHOR, FLAG_VIA, FLAG_TIMEOUT]),
   })
   if (Either.isLeft(scanned)) return Either.left(scanned.left)
   const { positionals, flags } = scanned.right
-  const untilRaw = flags.get("until")
-  if (untilRaw === undefined) return Either.left(usageError("wait: --until is required"))
   const combined = Either.all({
     short: requireSingleShort({ command: "wait", positionals }),
-    until: parseStateSlugList({ command: "wait", flag: "until", raw: untilRaw }),
+    conditions: parseWaitConditions({ flags }),
+    via: parseOptionalVia({ command: "wait", flags }),
     timeoutMs: parseOptionalTimeout({ command: "wait", flags }),
   })
   if (Either.isLeft(combined)) return Either.left(combined.left)
-  return Either.right({ _tag: "Wait", ...combined.right, json: flags.has("json"), url })
+  const { short, conditions, via, timeoutMs } = combined.right
+  return Either.right({
+    _tag: "Wait",
+    short,
+    until: conditions.until,
+    untilOutput: conditions.untilOutput,
+    via,
+    timeoutMs,
+    json: flags.has("json"),
+    url,
+  })
 }
 
 // Shared by send/keys/spawn: an optional `--wait <slug,...>` plus an optional
@@ -618,7 +792,12 @@ const parseOptionalWait = ({
     until: parseStateSlugList({ command, flag: "wait", raw }),
     timeoutMs: parseOptionalTimeout({ command, flags }),
   })
-  return Either.isLeft(combined) ? Either.left(combined.left) : Either.right(combined.right)
+  // `send`/`keys`/`spawn` take slugs only: their `--wait` is a convenience on
+  // top of the action, so it stays the supervisor wait it has always been.
+  // `pid wait` is where `--via` / `--until-output` live.
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ ...combined.right, untilOutput: undefined, via: DEFAULT_WAIT_VIA })
 }
 
 const parseSendCommand = ({
@@ -1089,17 +1268,49 @@ export const resolveApiBase = ({
 // outcomes, and a fleet run's failure can stem from any of them (or a spawn
 // rejection, or a skip cascade) rolled into one run-level verdict — so this
 // is a genuinely new outcome, not a rename of an existing one.
-export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+//
+// 8 is `screen_polling_disabled`, and it exists because every alternative
+// misleads an agent into the wrong retry:
+//   - 3 (timeout) would say "the pattern has not appeared yet", so a caller
+//     loops forever on a daemon that can never watch a screen. This is the
+//     specific confusion the code is here to prevent.
+//   - 2 (usage) would say "fix your command line", but the request is
+//     well-formed — the daemon itself answers 409, not 400, precisely because
+//     the same request is valid on a daemon with the poller armed.
+//   - 1 (transport/unparseable) would say "something went wrong, unclear
+//     what", when in fact the daemon stated the problem plainly and this CLI
+//     understood it.
+// 8 means "this daemon cannot serve this request as configured": deterministic,
+// so the correct response is to stop and report rather than retry.
+export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 
 export const exitCodeForUsage = (): ExitCode => 2
 
-export type WaitFailureReason = "timeout" | "occupant_changed" | "removed" | "not_found"
+export type WaitFailureReason =
+  | "timeout"
+  | "occupant_changed"
+  | "removed"
+  | "not_found"
+  | "screen_polling_disabled"
 
+// Two shapes of success, distinguished by which field is present (the daemon's
+// own convention): a state was reached, or a pattern appeared on screen. A
+// pattern match has no state to report — nothing about the supervisor's view
+// changed — so `matched` is the discriminator, as it is on the wire.
 export type WaitOutcomeBody =
   | {
       readonly ok: true
       readonly short: string
       readonly state: SessionStateSlug
+      // Which observation settled it. Optional because a daemon that predates
+      // the field simply omits it, and "satisfied" is still the whole answer.
+      readonly via?: WaitSatisfiedVia
+      readonly waitedMs: number
+    }
+  | {
+      readonly ok: true
+      readonly short: string
+      readonly matched: string
       readonly waitedMs: number
     }
   | {
@@ -1114,10 +1325,23 @@ const WAIT_FAILURE_EXIT: Readonly<Record<WaitFailureReason, ExitCode>> = {
   occupant_changed: 4,
   removed: 5,
   not_found: 6,
+  screen_polling_disabled: 8,
 }
 
 export const exitCodeForWaitBody = (body: WaitOutcomeBody): ExitCode =>
   body.ok ? 0 : WAIT_FAILURE_EXIT[body.reason]
+
+// `POST /:id/wait` answers 409 for a condition no other command produces: the
+// request is fine, this daemon's poller is off. A table rather than a chain so
+// adding a status later is one row (see exitCodeForFleetRunPostStatus in
+// main.ts for the same shape on the fleet-run POST).
+const WAIT_POST_STATUS_EXIT: Readonly<Record<number, ExitCode>> = {
+  404: 6,
+  409: 8,
+}
+
+export const exitCodeForWaitPostStatus = (status: number): ExitCode =>
+  WAIT_POST_STATUS_EXIT[status] ?? 1
 
 const exitCodeForOk = (wait: WaitOutcomeBody | undefined): ExitCode =>
   wait === undefined ? 0 : exitCodeForWaitBody(wait)
@@ -1163,6 +1387,11 @@ const SEVERITY_RANK: Readonly<Record<ExitCode, number>> = {
   // ExitCode's Record stays total.
   7: 4.5,
   1: 5,
+  // A disabled poller out-ranks a transport failure on purpose: it is the one
+  // outcome here that retrying cannot change, so when several spawn+wait
+  // attempts disagree it is the finding the caller has to act on. Still below a
+  // usage error, which short-circuits before any request is made.
+  8: 5.5,
   2: 6,
 }
 
@@ -1272,6 +1501,7 @@ const WAIT_FAILURE_REASONS: ReadonlyArray<WaitFailureReason> = [
   "occupant_changed",
   "removed",
   "not_found",
+  "screen_polling_disabled",
 ]
 
 const isWaitFailureReason = (v: unknown): v is WaitFailureReason =>
@@ -1290,6 +1520,18 @@ const requireShortFrom = (
     : Either.right({ obj: raw, short: short.right })
 }
 
+// `via` is absent on a daemon that predates it, and strictly one of the two
+// observations otherwise — "either" is a request, never an answer, so a daemon
+// echoing it back is drift worth failing on rather than displaying.
+const parseOptionalSatisfiedVia = (
+  value: unknown,
+): Either.Either<WaitSatisfiedVia | undefined, ParseError> => {
+  if (value === undefined) return Either.right(undefined)
+  return isWaitSatisfiedVia(value)
+    ? Either.right(value)
+    : Either.left(parseError(`wait response has an unrecognized via: ${JSON.stringify(value)}`))
+}
+
 const parseSatisfiedWait = ({
   obj,
   short,
@@ -1301,6 +1543,31 @@ const parseSatisfiedWait = ({
     state: requireStateSlugField({
       value: obj.state,
       message: `wait response has an unrecognized state: ${JSON.stringify(obj.state)}`,
+    }),
+    via: parseOptionalSatisfiedVia(obj.via),
+    waitedMs: requireNumberField({
+      value: obj.waitedMs,
+      message: "wait response is missing waitedMs",
+    }),
+  })
+  return Either.isLeft(combined)
+    ? Either.left(combined.left)
+    : Either.right({ ok: true, short, ...combined.right })
+}
+
+// The other success: an `untilOutput` pattern appeared. Carries the line it
+// appeared on and no state at all.
+const parseOutputMatchedWait = ({
+  obj,
+  short,
+}: {
+  readonly obj: Record<string, unknown>
+  readonly short: string
+}): Either.Either<WaitOutcomeBody, ParseError> => {
+  const combined = Either.all({
+    matched: requireStringField({
+      value: obj.matched,
+      message: "wait response is missing matched",
     }),
     waitedMs: requireNumberField({
       value: obj.waitedMs,
@@ -1332,11 +1599,24 @@ const parseFailedWait = ({
   })
 }
 
+// A satisfied wait and a pattern match are both `ok: true`; `matched` is what
+// tells them apart, so it is checked before the state shape.
+const parseSucceededWait = ({
+  obj,
+  short,
+}: {
+  readonly obj: Record<string, unknown>
+  readonly short: string
+}): Either.Either<WaitOutcomeBody, ParseError> =>
+  obj.matched === undefined
+    ? parseSatisfiedWait({ obj, short })
+    : parseOutputMatchedWait({ obj, short })
+
 export const parseWaitOutcomeBody = (raw: unknown): Either.Either<WaitOutcomeBody, ParseError> => {
   const base = requireShortFrom(raw)
   if (Either.isLeft(base)) return Either.left(base.left)
   const { obj, short } = base.right
-  if (obj.ok === true) return parseSatisfiedWait({ obj, short })
+  if (obj.ok === true) return parseSucceededWait({ obj, short })
   if (obj.ok === false) return parseFailedWait({ obj, short })
   return Either.left(parseError("wait response is missing ok"))
 }
@@ -1456,6 +1736,16 @@ export const parseSessionsResponse = (
   return Either.right(entries)
 }
 
+// What the pane itself last showed. `state` is a plain string, not a
+// TerminalStateSlug: the daemon types this field as `string` so a classifier
+// slug newer than this CLI is displayed rather than rejected.
+export type ExplainTerminalFacts = {
+  readonly state: string
+  readonly matcher: string | undefined
+  readonly evidence: string | undefined
+  readonly ageMs: number | undefined
+}
+
 export type ExplainSummary = {
   readonly short: string
   readonly state: SessionStateSlug
@@ -1466,7 +1756,37 @@ export type ExplainSummary = {
   readonly pidAlive: boolean | undefined
   readonly stateFilePresent: boolean
   readonly stale: boolean
+  // Absent when nothing has classified this session's pane.
+  readonly terminal: ExplainTerminalFacts | undefined
+  // Whether that reading contradicts `state` — the daemon's own verdict, not
+  // recomputed here: it owns the table of which screen state agrees with which
+  // session state, and a second implementation would be a second answer.
+  readonly screenDisagrees: boolean
   readonly reasons: ReadonlyArray<string>
+}
+
+// Absent is a real answer ("no screen evidence"), so it decodes to `undefined`
+// rather than failing — this CLI is routinely pointed at a daemon that has been
+// running since before these two fields existed. Present but malformed is drift,
+// and fails loudly.
+const parseExplainTerminal = (
+  value: unknown,
+): Either.Either<ExplainTerminalFacts | undefined, ParseError> => {
+  if (value === undefined) return Either.right(undefined)
+  if (!isPlainObject(value)) {
+    return Either.left(parseError("explain response terminal must be an object"))
+  }
+  const state = requireNonEmptyStringField({
+    value: value.state,
+    message: "explain response terminal is missing state",
+  })
+  if (Either.isLeft(state)) return Either.left(state.left)
+  return Either.right({
+    state: state.right,
+    matcher: optionalString(value.matcher),
+    evidence: optionalString(value.evidence),
+    ageMs: optionalNumber(value.ageMs),
+  })
 }
 
 export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary, ParseError> => {
@@ -1489,6 +1809,7 @@ export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary
       message: "explain response is missing stateFilePresent",
     }),
     stale: requireBooleanField({ value: raw.stale, message: "explain response is missing stale" }),
+    terminal: parseExplainTerminal(raw.terminal),
     reasons: requireStringArrayField({
       value: raw.reasons,
       message: "explain response is missing reasons",
@@ -1501,6 +1822,9 @@ export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary
     updatedAtAgeMs: optionalNumber(raw.updatedAtAgeMs),
     lastEventAgeMs: optionalNumber(raw.lastEventAgeMs),
     pidAlive: optionalBoolean(raw.pidAlive),
+    // A daemon that never sends this field never disagrees, which is exactly
+    // what it meant before the field existed.
+    screenDisagrees: optionalBoolean(raw.screenDisagrees) ?? false,
   })
 }
 
@@ -2214,12 +2538,32 @@ export const errorMessageFrom = (raw: unknown): string => {
 
 // --- Request body building ----------------------------------------------------
 
-export const buildWaitRequestBody = (
-  wait: WaitParams,
-): { readonly until: ReadonlyArray<SessionStateSlug>; readonly timeoutMs?: number } =>
-  wait.timeoutMs === undefined
-    ? { until: wait.until }
-    : { until: wait.until, timeoutMs: wait.timeoutMs }
+export type WaitRequestBody = {
+  readonly until?: ReadonlyArray<SessionStateSlug>
+  readonly untilOutput?: OutputPattern
+  readonly via?: WaitVia
+  readonly timeoutMs?: number
+}
+
+// What the wait is waiting FOR. An empty `until` never reaches the daemon,
+// which rejects `[]` — in that case the condition lives in `untilOutput`.
+const waitConditionFields = (wait: WaitParams): WaitRequestBody => ({
+  ...(wait.until.length > 0 ? { until: wait.until } : {}),
+  ...(wait.untilOutput === undefined ? {} : { untilOutput: wait.untilOutput }),
+})
+
+// How it waits. Both are omitted at their default so the body a plain
+// `--until` wait sends is byte-identical to what this CLI sent before `via`
+// existed, which keeps it acceptable to a daemon that predates the field.
+const waitOptionFields = (wait: WaitParams): WaitRequestBody => ({
+  ...(wait.via === DEFAULT_WAIT_VIA ? {} : { via: wait.via }),
+  ...(wait.timeoutMs === undefined ? {} : { timeoutMs: wait.timeoutMs }),
+})
+
+export const buildWaitRequestBody = (wait: WaitParams): WaitRequestBody => ({
+  ...waitConditionFields(wait),
+  ...waitOptionFields(wait),
+})
 
 export const buildSendRequestBody = ({
   keys,
@@ -2402,9 +2746,49 @@ export const formatTerminalStates = ({
   return terminals.map((row) => formatTerminalRow({ row, now, keyWidth, stateWidth })).join("\n")
 }
 
+// The screen's own reading, with the provenance that lets a reader check the
+// claim instead of taking it: which matcher fired, the line it matched, and how
+// old the observation is. Each part is dropped when absent rather than printed
+// as "undefined".
+const screenFactParts = (terminal: ExplainTerminalFacts): ReadonlyArray<string> =>
+  [
+    terminal.state,
+    terminal.matcher === undefined ? undefined : `matcher "${terminal.matcher}"`,
+    terminal.evidence === undefined ? undefined : `matched "${terminal.evidence}"`,
+    terminal.ageMs === undefined ? undefined : `${formatAge(terminal.ageMs)} ago`,
+  ].filter((part): part is string => part !== undefined)
+
+// Unlike the `pid alive` line below, this one is printed even when there is
+// nothing to report: "no classification" is itself a diagnosis — it says a
+// `--via screen` wait on this session has nothing to resolve against.
+const formatExplainScreen = (terminal: ExplainTerminalFacts | undefined): string =>
+  terminal === undefined
+    ? "screen: not classified"
+    : `screen: ${screenFactParts(terminal).join("  ")}`
+
+// The strongest thing this command can say, so it goes directly under the
+// header rather than at the end of the reason list. The daemon also spells the
+// contradiction out in full among `reasons` (with provenance and what to
+// distrust); this is the headline, that is the argument.
+const formatExplainConflict = (explanation: ExplainSummary): string | undefined =>
+  explanation.screenDisagrees && explanation.terminal !== undefined
+    ? `!! screen disagrees: state.json says "${explanation.state}", the screen reads "${explanation.terminal.state}"`
+    : undefined
+
+// Identity, then the contradiction if there is one, then what the screen says —
+// the three lines a reader should not have to scroll for.
+const explainHeaderLines = (explanation: ExplainSummary): ReadonlyArray<string> => {
+  const conflict = formatExplainConflict(explanation)
+  return [
+    `${explanation.short}  ${explanation.state}${explanation.stale ? " (stale)" : ""}`,
+    ...(conflict === undefined ? [] : [conflict]),
+    formatExplainScreen(explanation.terminal),
+  ]
+}
+
 export const formatExplain = (explanation: ExplainSummary): string => {
   const lines = [
-    `${explanation.short}  ${explanation.state}${explanation.stale ? " (stale)" : ""}`,
+    ...explainHeaderLines(explanation),
     `source: ${explanation.source}`,
     `updated: ${formatAge(explanation.updatedAtAgeMs)} ago`,
     `last event: ${formatAge(explanation.lastEventAgeMs)} ago`,
@@ -2419,11 +2803,33 @@ const WAIT_FAILURE_LABEL: Readonly<Record<WaitFailureReason, string>> = {
   occupant_changed: "occupant changed",
   removed: "was removed",
   not_found: "was not found",
+  // Says what to change, and deliberately avoids the word "timeout": the wait
+  // never started, so reading this as "not yet" would be exactly wrong.
+  screen_polling_disabled:
+    "could not be watched: screen polling is disabled on this daemon (set PID_TERMINAL_POLL_MS)",
 }
+
+// "reached done via screen" and "reached done via supervisor" are different
+// claims — the first says the pane looks finished, the second that the agent
+// reported it — so the line names the observation whenever the daemon sent one.
+const formatSatisfiedWait = (outcome: {
+  readonly short: string
+  readonly state: SessionStateSlug
+  readonly via?: WaitSatisfiedVia
+  readonly waitedMs: number
+}): string => {
+  const via = outcome.via === undefined ? "" : ` via ${outcome.via}`
+  return `${outcome.short} reached "${outcome.state}"${via} after ${outcome.waitedMs}ms`
+}
+
+const formatSucceededWait = (outcome: Extract<WaitOutcomeBody, { readonly ok: true }>): string =>
+  "matched" in outcome
+    ? `${outcome.short} matched "${outcome.matched}" after ${outcome.waitedMs}ms`
+    : formatSatisfiedWait(outcome)
 
 export const formatWaitOutcome = (outcome: WaitOutcomeBody): string =>
   outcome.ok
-    ? `${outcome.short} reached "${outcome.state}" after ${outcome.waitedMs}ms`
+    ? formatSucceededWait(outcome)
     : `${outcome.short} ${WAIT_FAILURE_LABEL[outcome.reason]}`
 
 export const formatSent = ({

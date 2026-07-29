@@ -1,24 +1,30 @@
-import { WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
 // Pure decision logic for server-owned waits on session state. No I/O — the
 // SSE subscription, clock and timeout live in sessions-wait.io.ts; this file
 // only turns already-decoded values into decisions.
-
-import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
-import { Either } from "effect"
-
-// Which observation of the session is allowed to settle the wait.
 //
-// `supervisor` is what a wait has always meant: the state.json the supervisor
-// writes, republished as `session.state`. `screen` is the terminal classifier's
-// reading of the actual pane (see features/terminal/terminal-state.core.ts) —
-// the state that cannot lie about a session whose state.json went quiet hours
-// ago. `either` settles on whichever arrives first, and says which one did.
-export type WaitVia = "supervisor" | "screen" | "either"
+// The two request vocabularies this file validates — `via` (which observation
+// may settle the wait) and an output pattern's `anchor`/length cap — live in
+// `@pid/shared`, because `apps/cli` validates a `--via` / `--until-output` flag
+// against exactly the same rules before making a request. See shared/src/wait.ts
+// for what each value means; a second declaration here is the drift that
+// workspace exists to prevent.
 
-// Exported as the single authority on the `via` vocabulary: the request
-// parser validates against it, and platform/agent-skill.test.ts asserts the
-// served agent doc documents exactly these three and no others.
-export const WAIT_VIA_VALUES: ReadonlyArray<WaitVia> = ["supervisor", "screen", "either"]
+import {
+  DEFAULT_OUTPUT_ANCHOR,
+  DEFAULT_WAIT_VIA,
+  isOutputAnchor,
+  isSessionStateSlug,
+  isWaitVia,
+  OUTPUT_ANCHORS,
+  OUTPUT_PATTERN_MAX_CHARS,
+  type OutputPattern,
+  type SessionStateSlug,
+  WAIT_TIMEOUT_DEFAULT_MS,
+  WAIT_TIMEOUT_MAX_MS,
+  WAIT_VIA_VALUES,
+  type WaitVia,
+} from "@pid/shared"
+import { Either } from "effect"
 
 export type WaitRequest = {
   readonly until: ReadonlyArray<SessionStateSlug>
@@ -49,13 +55,10 @@ const badUntil = (message: string): WaitRequestError => ({ _tag: "BadUntil", mes
 
 const badTimeout = (message: string): WaitRequestError => ({ _tag: "BadTimeout", message })
 
-const isWaitVia = (raw: unknown): raw is WaitVia =>
-  typeof raw === "string" && (WAIT_VIA_VALUES as ReadonlyArray<string>).includes(raw)
-
 // Absent means `supervisor`: every caller written before the screen became a
 // wait source keeps exactly the semantics it was written against.
 const parseVia = (raw: unknown): Either.Either<WaitVia, WaitRequestError> => {
-  if (raw === undefined) return Either.right("supervisor")
+  if (raw === undefined) return Either.right(DEFAULT_WAIT_VIA)
   if (!isWaitVia(raw)) {
     return Either.left({
       _tag: "BadVia",
@@ -114,31 +117,11 @@ const parseTimeoutMs = (raw: unknown): Either.Either<number, WaitRequestError> =
 
 // --- Output patterns ---------------------------------------------------------
 
-// Deliberately NOT a regex.
-//
-// A wait pattern is attacker-adjacent input on an unauthenticated local
-// endpoint, and it would be matched inside the daemon's own event path against
-// up to `tailMaxChars` of terminal output. Compiling a user regex once at parse
-// time bounds the compile cost but not backtracking, and JS offers no way to
-// time-bound a match: a twenty-character nested quantifier over an 8,000-char
-// screen is still catastrophic. A capped literal cannot backtrack at all, and
-// `anchor` covers the one thing a regex was actually wanted for here — pinning
-// the match to a whole line rather than any substring of one.
-export const OUTPUT_PATTERN_MAX_CHARS = 200
-
-export type OutputAnchor = "anywhere" | "line-start" | "line-end" | "line"
-
-const OUTPUT_ANCHORS: ReadonlyArray<OutputAnchor> = ["anywhere", "line-start", "line-end", "line"]
-
-export type OutputPattern = {
-  readonly text: string
-  readonly anchor: OutputAnchor
-}
+// Deliberately NOT a regex — see `OUTPUT_PATTERN_MAX_CHARS` in
+// shared/src/wait.ts for the ReDoS argument the cap and the literal-only rule
+// rest on, and why `anchor` covers what a regex was wanted for here.
 
 const badPattern = (message: string): WaitRequestError => ({ _tag: "BadPattern", message })
-
-const isOutputAnchor = (raw: unknown): raw is OutputAnchor =>
-  typeof raw === "string" && (OUTPUT_ANCHORS as ReadonlyArray<string>).includes(raw)
 
 // Accepts either the shorthand — a bare string, meaning "this substring
 // anywhere" — or the explicit `{ text, anchor? }` object.
@@ -162,7 +145,7 @@ const parseUntilOutput = (
   if (anchor !== undefined && !isOutputAnchor(anchor)) {
     return Either.left(badPattern(`untilOutput anchor must be one of ${OUTPUT_ANCHORS.join(", ")}`))
   }
-  return Either.right({ text, anchor: anchor ?? "anywhere" })
+  return Either.right({ text, anchor: anchor ?? DEFAULT_OUTPUT_ANCHOR })
 }
 
 const lineMatches = ({
