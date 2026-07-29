@@ -1,14 +1,12 @@
 import { describe, expect, it } from "bun:test"
 import {
   buildChildArgv,
-  cleanZellijEnv,
   FAST_CRASH_MS,
   formatSizeFileContent,
   GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
   HEARTBEAT_PAYLOAD,
   ORCHESTRATOR_ZELLIJ_SESSION,
-  orchestratorRepoDir,
   orchestratorZellijCommand,
   parseClientMessage,
   piBackgroundLayoutKdl,
@@ -58,47 +56,6 @@ describe("zellijSessionName", () => {
     const out = zellijSessionName(long)
     expect(out).not.toBeNull()
     if (out !== null) expect(out.length).toBeLessThanOrEqual(64)
-  })
-})
-
-describe("cleanZellijEnv", () => {
-  it("drops the per-session markers that trigger self-attach detection", () => {
-    const out = cleanZellijEnv({
-      PATH: "/usr/bin",
-      ZELLIJ: "0",
-      ZELLIJ_SESSION_NAME: "pi-browser-dashboard",
-      ZELLIJ_PANE_ID: "12",
-    })
-    expect(out.PATH).toBe("/usr/bin")
-    expect(out.ZELLIJ).toBeUndefined()
-    expect(out.ZELLIJ_SESSION_NAME).toBeUndefined()
-    expect(out.ZELLIJ_PANE_ID).toBeUndefined()
-  })
-
-  it("KEEPS ZELLIJ_SOCKET_DIR — the child needs it to find the zellij daemon", () => {
-    const out = cleanZellijEnv({ ZELLIJ_SOCKET_DIR: "/var/z", ZELLIJ_SESSION_NAME: "x" })
-    expect(out.ZELLIJ_SOCKET_DIR).toBe("/var/z")
-    expect(out.ZELLIJ_SESSION_NAME).toBeUndefined()
-  })
-
-  it("keeps ZELLIJ_CONFIG_DIR / ZELLIJ_CONFIG_FILE (custom config paths)", () => {
-    const out = cleanZellijEnv({
-      ZELLIJ_CONFIG_DIR: "/cfg",
-      ZELLIJ_CONFIG_FILE: "/cfg/config.kdl",
-    })
-    expect(out.ZELLIJ_CONFIG_DIR).toBe("/cfg")
-    expect(out.ZELLIJ_CONFIG_FILE).toBe("/cfg/config.kdl")
-  })
-
-  it("drops undefined values (Node's env-shaped Record allows them)", () => {
-    const out = cleanZellijEnv({ HOME: "/h", MISSING: undefined })
-    expect(out.HOME).toBe("/h")
-    expect("MISSING" in out).toBe(false)
-  })
-
-  it("keeps unrelated vars untouched", () => {
-    const out = cleanZellijEnv({ FOO: "bar", BAZ: "qux" })
-    expect(out).toEqual({ FOO: "bar", BAZ: "qux" })
   })
 })
 
@@ -463,41 +420,29 @@ describe("ORCHESTRATOR_ZELLIJ_SESSION", () => {
   })
 })
 
-describe("orchestratorRepoDir", () => {
-  it("honours an explicit PID_ORCHESTRATOR_DIR override", () => {
-    expect(orchestratorRepoDir({ PID_ORCHESTRATOR_DIR: "/opt/orc" })).toBe("/opt/orc")
-  })
-
-  it("defaults to ~/Github/Orchestrator under HOME — the repo whose CLAUDE.md carries the orchestrator instructions", () => {
-    expect(orchestratorRepoDir({ HOME: "/Users/me" })).toBe("/Users/me/Github/Orchestrator")
-  })
-
-  it("falls back to '/' when neither override nor HOME is set (daemon must always spawn somewhere)", () => {
-    expect(orchestratorRepoDir({})).toBe("/")
-    expect(orchestratorRepoDir({ HOME: "" })).toBe("/")
-    expect(orchestratorRepoDir({ PID_ORCHESTRATOR_DIR: "" })).toBe("/")
-  })
-})
-
+// `orchestratorRepoDir` moved into platform/config.io.ts: picking a default from
+// PID_ORCHESTRATOR_DIR and the home directory is a config decision, and the
+// environment is read in exactly one place. What is still this slice's business —
+// refusing to spawn into a directory that is not there — is below.
 describe("resolveOrchestratorCwd", () => {
   it("returns the repo dir when it exists on disk", () => {
     const r = resolveOrchestratorCwd({
-      env: { HOME: "/Users/me" },
+      dir: "/Users/me/Github/Orchestrator",
       dirExists: (p) => p === "/Users/me/Github/Orchestrator",
     })
     expect(r).toEqual({ ok: true, cwd: "/Users/me/Github/Orchestrator" })
   })
 
-  it("honours the PID_ORCHESTRATOR_DIR override when it exists", () => {
-    const r = resolveOrchestratorCwd({
-      env: { PID_ORCHESTRATOR_DIR: "/opt/orc" },
-      dirExists: (p) => p === "/opt/orc",
-    })
+  it("checks whatever dir the config funnel resolved, override or default", () => {
+    const r = resolveOrchestratorCwd({ dir: "/opt/orc", dirExists: (p) => p === "/opt/orc" })
     expect(r).toEqual({ ok: true, cwd: "/opt/orc" })
   })
 
   it("fails cleanly (no spawn into a missing cwd → no daemon crash) when the repo is absent, naming the path and the override", () => {
-    const r = resolveOrchestratorCwd({ env: { HOME: "/Users/me" }, dirExists: () => false })
+    const r = resolveOrchestratorCwd({
+      dir: "/Users/me/Github/Orchestrator",
+      dirExists: () => false,
+    })
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.reason).toContain("/Users/me/Github/Orchestrator")
@@ -540,17 +485,14 @@ describe("orchestratorZellijCommand", () => {
 })
 
 describe("globalTerminalCwd", () => {
-  it("returns HOME when set", () => {
-    expect(globalTerminalCwd({ HOME: "/Users/me" })).toBe("/Users/me")
+  it("returns the home directory the config funnel resolved", () => {
+    expect(globalTerminalCwd({ homeDir: "/Users/me" })).toBe("/Users/me")
   })
 
-  it("falls back to '/' when HOME is unset (daemon must always spawn somewhere)", () => {
-    expect(globalTerminalCwd({})).toBe("/")
-    expect(globalTerminalCwd({ HOME: undefined })).toBe("/")
-  })
-
-  it("falls back to '/' when HOME is empty — empty cwd would crash bash", () => {
-    expect(globalTerminalCwd({ HOME: "" })).toBe("/")
+  // A home directory the OS could not name at all. The daemon must still spawn
+  // somewhere, and an empty cwd crashes bash.
+  it("falls back to '/' for an empty home directory", () => {
+    expect(globalTerminalCwd({ homeDir: "" })).toBe("/")
   })
 })
 

@@ -15,24 +15,17 @@ export const ORCHESTRATOR_ZELLIJ_SESSION = "Orchestrator"
 // Pick the cwd the global terminal child should spawn in. HOME when present
 // (where the user's prompt expects to start), '/' otherwise — Bun.spawn rejects
 // an empty cwd.
-export const globalTerminalCwd = (env: Readonly<Record<string, string | undefined>>): string => {
-  const home = env.HOME
-  if (home && home.length > 0) return home
-  return "/"
-}
+// Takes the home directory as a VALUE, not an env map: an env-shaped parameter is
+// I/O wearing a plain-object costume, and an env map is what this slice used to
+// reach for the environment with. The config funnel resolves it now.
+export const globalTerminalCwd = (input: { readonly homeDir: string }): string =>
+  input.homeDir.length > 0 ? input.homeDir : "/"
 
-// Resolve the Orchestrator repo dir — the cwd the supervisor boots in. Starting
-// there is what makes the session an orchestrator: the repo's CLAUDE.md is the
-// supervisor instruction set, and the bootstrap's `scripts/tts_daemon.sh` is
-// repo-relative. PID_ORCHESTRATOR_DIR overrides; default ~/Github/Orchestrator;
-// '/' only when nothing is known (Bun.spawn rejects an empty cwd).
-export const orchestratorRepoDir = (env: Readonly<Record<string, string | undefined>>): string => {
-  const explicit = env.PID_ORCHESTRATOR_DIR
-  if (explicit && explicit.length > 0) return explicit
-  const home = env.HOME
-  if (home && home.length > 0) return `${home}/Github/Orchestrator`
-  return "/"
-}
+// Where the Orchestrator repo lives — the cwd the supervisor boots in — now
+// resolves in `platform/config.io.ts` (`orchestratorDir`), because picking a
+// default from PID_ORCHESTRATOR_DIR and the home directory is precisely a config
+// decision. What stayed here is the part that is not: whether that directory
+// exists right now.
 
 // Resolve the orchestrator cwd, or fail with a message instead of spawning into
 // a missing directory. `Bun.spawn({ cwd })` throws synchronously on a
@@ -41,13 +34,14 @@ export const orchestratorRepoDir = (env: Readonly<Record<string, string | undefi
 // testability) and, when it doesn't, return a reason the route turns into a
 // clean WS close — the orchestrator only makes sense with its repo present.
 export const resolveOrchestratorCwd = (input: {
-  readonly env: Readonly<Record<string, string | undefined>>
+  // Already resolved by the config funnel; this function's job is the check, not
+  // the lookup.
+  readonly dir: string
   readonly dirExists: (path: string) => boolean
 }):
   | { readonly ok: true; readonly cwd: string }
   | { readonly ok: false; readonly reason: string } => {
-  const { env, dirExists } = input
-  const dir = orchestratorRepoDir(env)
+  const { dir, dirExists } = input
   if (!dirExists(dir)) {
     return {
       ok: false,
@@ -137,27 +131,9 @@ export const prefixedZellijSession = (args: {
   return `${head}${tail}`
 }
 
-// Drop the per-session markers ZELLIJ / ZELLIJ_SESSION_NAME / ZELLIJ_PANE_ID
-// before forwarding env to a child. If the daemon runs inside a zellij pane
-// (common in dev) those vars leak and `zellij attach <same-name>` panics with
-// "trying to attach to the current session".
-//
-// Keep ZELLIJ_SOCKET_DIR (and any other ZELLIJ_* config paths) untouched — the
-// child needs them to talk to the user's zellij daemon. Stripping them sends
-// the child to a different socket dir where it sees zero sessions.
-const ZELLIJ_SESSION_KEYS = new Set(["ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID"])
-
-export const cleanZellijEnv = (
-  env: Readonly<Record<string, string | undefined>>,
-): Record<string, string> => {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(env)) {
-    if (v === undefined) continue
-    if (ZELLIJ_SESSION_KEYS.has(k)) continue
-    out[k] = v
-  }
-  return out
-}
+// The child-environment scrub that used to live here is now
+// `platform/child-env.ts`: the config funnel needs it to build the `childEnv` it
+// hands out, and a helper the funnel depends on cannot sit inside a slice.
 
 // Bash-single-quote escape: wrap in single quotes, replace embedded ' with
 // '\''. Safe for any byte string in a POSIX shell.

@@ -32,7 +32,6 @@
     "apps/daemon/src/features/dispatch/pi.io.ts": 3,
     "apps/daemon/src/features/library/library.io.ts": 2,
     "apps/daemon/src/features/projects/git.io.ts": 1,
-    "apps/daemon/src/features/terminal/terminal.routes.ts": 6,
     "apps/daemon/src/platform/extensions/loader.ts": 2,
     "apps/daemon/src/platform/extensions/state.ts": 1,
     "apps/daemon/src/platform/shell.io.ts": 2

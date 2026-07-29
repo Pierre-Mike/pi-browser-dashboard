@@ -4,11 +4,11 @@ import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { discoveryChildEnv } from "../../platform/agent-discovery.core"
 import { agentDiscovery } from "../../platform/agent-discovery.io"
+import { cleanZellijEnv } from "../../platform/child-env"
 import { resolveSpawnCwd, runCommand, ShellError } from "../../platform/shell.io"
 import { sseBus } from "../../platform/sse-bus"
 import { readZellijPrefix } from "../../platform/zellij-prefix"
 import {
-  cleanZellijEnv,
   piBackgroundLayoutKdl,
   piZellijSessionName,
   prefixedZellijSession,

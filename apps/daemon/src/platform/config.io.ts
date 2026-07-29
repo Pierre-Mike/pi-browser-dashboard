@@ -1,6 +1,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
+import { cleanZellijEnv } from "./child-env"
 
 export type PidConfig = {
   readonly projectsRoot: string
@@ -45,6 +46,34 @@ export type PidConfig = {
    * affects the claude path.
    */
   readonly agentPointer: boolean
+  /**
+   * The OS user's home directory, as `node:os` reports it. Handed out so a slice
+   * that needs a fallback cwd (a session whose roster entry carries none, the
+   * global terminal) receives a value instead of reaching for `HOME` itself.
+   */
+  readonly homeDir: string
+  /**
+   * Where the Orchestrator repo is — the cwd the supervisor boots in. Starting
+   * there is what makes that session an orchestrator (the repo's CLAUDE.md is
+   * the supervisor instruction set, and its bootstrap script is repo-relative).
+   * PID_ORCHESTRATOR_DIR overrides; the default is `<home>/Github/Orchestrator`,
+   * and `/` only when nothing is known, because `Bun.spawn` rejects an empty cwd.
+   *
+   * Resolved here, but NOT checked here: whether the directory exists is a
+   * request-time question (it can appear or vanish while the daemon runs), so
+   * the terminal slice still verifies it before spawning — see
+   * `resolveOrchestratorCwd`.
+   */
+  readonly orchestratorDir: string
+  /**
+   * The environment to hand a child process this daemon spawns: the daemon's own
+   * environment with zellij's per-session markers scrubbed (see
+   * platform/child-env.ts for why those three and not the ZELLIJ_* config paths).
+   *
+   * Handed out as a value so the slices that spawn — the terminal WS bridge, the
+   * pane write surface, a `zellij` read — never read the environment themselves.
+   */
+  readonly childEnv: Readonly<Record<string, string>>
 }
 
 // See `terminalPollMs`. 15s is slower than a human notices a chip change but
@@ -60,9 +89,20 @@ export class ConfigService extends Context.Tag("ConfigService")<
   ConfigServiceApi
 >() {}
 
+const orchestratorDirOf = (input: {
+  readonly configured: string | undefined
+  readonly home: string
+}): string => {
+  if (input.configured !== undefined && input.configured.length > 0) return input.configured
+  return input.home.length > 0 ? join(input.home, "Github", "Orchestrator") : "/"
+}
+
 const buildConfig = (): PidConfig => {
   const home = homedir()
   return {
+    homeDir: home,
+    orchestratorDir: orchestratorDirOf({ configured: process.env.PID_ORCHESTRATOR_DIR, home }),
+    childEnv: cleanZellijEnv(process.env),
     projectsRoot: process.env.PID_PROJECTS_ROOT ?? join(home, "Github"),
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
     appPort: Number(process.env.PORT ?? 8787),

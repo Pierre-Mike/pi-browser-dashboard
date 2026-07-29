@@ -1056,14 +1056,47 @@ daemon derived and owns, and `POST /terminal/panes/close`
   record (retryable) and answers 502 with only the FIRST LINE of zellij's output,
   bounded to 200 chars — an unknown session makes `zellij action` print its whole
   session list, 60KB of it on the box this was written on.
-- The write spawn scrubs the environment through `cleanZellijEnv`, unlike the
-  read path. Not because `action` attaches (it does not) but because a write is
-  where an ambient `ZELLIJ_SESSION_NAME` would be dangerous: if `--session` were
-  ever dropped from an argv, a scrubbed environment makes that a loud failure
-  instead of a pane opened in whatever session the daemon itself runs inside.
+- The write spawn hands the child the scrubbed environment (`childEnv` from the
+  config funnel), unlike the read path. Not because `action` attaches (it does
+  not) but because a write is where an ambient `ZELLIJ_SESSION_NAME` would be
+  dangerous: if `--session` were ever dropped from an argv, a scrubbed
+  environment makes that a loud failure instead of a pane opened in whatever
+  session the daemon itself runs inside. It shipped without the scrub for exactly
+  one reason — the value was not available without a seventh environment read in
+  a file the axiom ratchet pins — and that is what the funnel change below fixed
+  rather than waived.
 - A created pane is classified like any other: its screen appears under
   `<scope>:<id>#<paneId>` (see the poller section above), and the create response
   hands that key back so a caller does not have to build it.
+
+### The terminal slice reads no environment at all
+
+`terminal.routes.ts` used to read the environment six times — the scrubbed child
+env twice, `HOME` three times, `PID_ORCHESTRATOR_DIR` once — which is why it
+carried the largest `env-outside-config` entry in `scripts/axiom-debt.json`. All
+six are gone, and the ratchet's baseline dropped from 76 to 70 in a diff of its
+own rather than as a drive-by:
+
+- `platform/config.io.ts` gained `homeDir`, `orchestratorDir` and `childEnv`.
+  Picking the Orchestrator repo path out of `PID_ORCHESTRATOR_DIR` and a home
+  directory is a config decision; deciding whether that directory exists is not,
+  so `resolveOrchestratorCwd` kept the check and now takes the resolved `dir`.
+- `platform/child-env.ts` holds the zellij marker scrub, moved out of
+  `terminal.core.ts`. The config funnel needs it to build `childEnv`, and a
+  helper the funnel depends on cannot live inside a feature slice — that would
+  point platform at a feature, and it made `features/dispatch/pi.io.ts` reach
+  through the terminal slice's internals for an env helper.
+- `platform/spawn-config.ts` hands the three values to the slice, read once at
+  module load. Same shape and same reasons as `zellij-prefix.ts` beside it: the
+  slice receives values, not a config dependency.
+- Two pure helpers stopped taking env maps. `globalTerminalCwd({ homeDir })` and
+  `resolveOrchestratorCwd({ dir, dirExists })` take the values they actually use,
+  because an env-shaped parameter is I/O wearing a plain-object costume — it is
+  what let a pure core be handed the whole environment in the first place.
+
+The payoff beyond the ratchet: the pane write surface can now scrub the child
+environment (see the bullet above), which it shipped without because the value
+was unavailable at an acceptable price.
 
 ## State-change rules (`<claudeConfigDir>/pid-dashboard/rules.json`)
 
