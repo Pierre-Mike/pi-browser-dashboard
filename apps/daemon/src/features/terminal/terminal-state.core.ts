@@ -163,11 +163,16 @@ const MATCHERS: ReadonlyArray<Matcher> = [
   {
     name: "prompt-resting",
     state: "idle",
-    // Verified: `zellij action dump-screen` of real unattended sessions on
-    // 2026-07-29 — an empty input line, `❯` followed only by the box's padding
-    // spaces. This is what a finished session looks like once its "…ed for Ns"
-    // line has scrolled out of the viewport, which on a long-lived box is most
-    // of them: before this row, 19 of 25 polled terminals classified `unknown`.
+    // Verified by HEXDUMP, not by eye: the empty input line in a real
+    // `zellij action dump-screen` is `e2 9d af c2 a0 0a` — `❯` (U+276F) followed
+    // by a NO-BREAK SPACE (U+00A0), not an ordinary space. The first version of
+    // this row matched `[ \t]*`, passed a hand-typed fixture, and then fired on
+    // exactly 1 of 27 live screens. `[^\S\n]*` covers every horizontal
+    // whitespace character including U+00A0 while still refusing to run past the
+    // line end.
+    //
+    // This is what a finished session looks like once its "…ed for Ns" line has
+    // scrolled out of the viewport, which on a long-lived box is most of them.
     //
     // MUST STAY LAST. The prompt box is drawn during a turn as well — the same
     // dump on a working session showed this exact empty `❯` line six lines
@@ -182,7 +187,7 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // A Claude Code version that draws a left border inside the box
     // (`│ ❯`) would stop matching, and would need this pattern widened against
     // a fresh capture rather than on speculation.
-    pattern: /^❯[ \t]*$/m,
+    pattern: /^❯[^\S\n]*$/m,
   },
 ]
 

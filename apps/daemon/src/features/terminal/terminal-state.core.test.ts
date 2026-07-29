@@ -51,15 +51,26 @@ const PI_WORKING_FIXTURE =
 // evidence trail. Plain strings (no ANSI) because that's exactly what
 // `strings` extracts — the CLI never rendered this text to a live terminal
 // during this investigation (auto-approved past the dialog every time).
+const PERMISSION_PROMPT_LITERAL = "Do you want to proceed?"
+const PERMISSION_REJECT_OPTION_LITERAL = "No, and tell Claude what to do differently"
+
 // A real `zellij action dump-screen` of a Claude Code session RESTING at its
 // prompt: no turn in flight, and its last "…ed for Ns" line long since scrolled
 // out of the viewport. Captured 2026-07-29 from an unattended session on the dev
 // box (session 4d76edc1, Claude Code 2.1.220). Before this frame classified,
 // this was the single most common screen on the machine and every one of them
 // read `unknown`.
+//
+// The pad is written as an ESCAPE on purpose. Hexdumping a real dump shows the
+// input line is `e2 9d af c2 a0 0a` — `❯` followed by U+00A0 NO-BREAK SPACE,
+// which is indistinguishable from an ordinary space in source. The first
+// version of this fixture hand-typed a plain space, passed, and shipped a
+// matcher that then fired on exactly 1 of 27 live screens.
+const PROMPT_LINE = "❯\u00a0"
+
 const PROMPT_RESTING_DUMP = [
   "  Ran 3 shell commands",
-  "❯ ",
+  PROMPT_LINE,
   "──────────────────────────────────────────────────────",
   "    [Opus 5 (1M context)] 22% | $14.88 | 🌿 main | 📬 30 PRs | 🧠 default",
   "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 85 agents · PR #403",
@@ -74,14 +85,11 @@ const PROMPT_WORKING_DUMP = [
   "✢ Recombobulating… (9m 14s · ↓ 24.4k tokens)",
   "  ⎿  Tip: Control this session from the Claude mobile app · run /remote-control",
   "──────────────────────────── herd codebase structure review ──",
-  "❯ ",
+  PROMPT_LINE,
   "──────────────────────────────────────────────────────",
   "    [Opus 5 (1M context)] 25% | $274.42 | 🌿 feat/session-card-terminal-chip",
   "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 85 agents · PR #430",
 ].join("\n")
-
-const PERMISSION_PROMPT_LITERAL = "Do you want to proceed?"
-const PERMISSION_REJECT_OPTION_LITERAL = "No, and tell Claude what to do differently"
 
 describe("stripAnsi", () => {
   it("drops OSC title sequences (BEL-terminated) and CSI true-colour/cursor codes", () => {
@@ -162,6 +170,19 @@ describe("classifyTail", () => {
     const result = classifyTail({ tail: PROMPT_RESTING_DUMP })
     expect(result.state).toBe("idle")
     expect(result.matcher).toBe("prompt-resting")
+  })
+
+  it("matches the prompt line whichever horizontal whitespace pads it", () => {
+    // The pad Claude Code actually emits is U+00A0 (see PROMPT_LINE); a pattern
+    // written against an ordinary space silently matches almost nothing on a real
+    // box. Every horizontal form must classify, and the NBSP one is the one that
+    // occurs in practice.
+    expect(classifyTail({ tail: PROMPT_LINE }).matcher).toBe("prompt-resting")
+    expect(classifyTail({ tail: "❯\u00a0\u00a0\u00a0" }).matcher).toBe("prompt-resting")
+    expect(classifyTail({ tail: "❯   " }).matcher).toBe("prompt-resting")
+    expect(classifyTail({ tail: "❯\t" }).matcher).toBe("prompt-resting")
+    // Bare, no pad at all.
+    expect(classifyTail({ tail: "❯" }).matcher).toBe("prompt-resting")
   })
 
   // The prompt box is on screen during a turn too, so ordering is the only thing
