@@ -99,7 +99,7 @@ const ProjectsPanel = () => {
     return (
       <div className="card border border-base-300 bg-base-200/50 shadow-sm">
         <div className="card-body items-center gap-3 py-10 text-center">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-content text-xl font-black shadow-sm shadow-primary/30">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-box bg-primary text-primary-content text-xl font-black shadow-sm shadow-primary/30">
             π
           </span>
           <h2 className="card-title text-base">Welcome home</h2>

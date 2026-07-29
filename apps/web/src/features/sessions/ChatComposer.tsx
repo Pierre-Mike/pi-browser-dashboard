@@ -74,7 +74,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
 
   return (
     <div data-testid="chat-composer" className="pt-2 pb-4 px-1">
-      <div className="relative rounded-2xl border border-base-300 bg-base-100 shadow-sm focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-shadow">
+      <div className="relative rounded-box border border-base-300 bg-base-100 shadow-sm focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-shadow">
         <textarea
           ref={taRef}
           data-testid="chat-textarea"
@@ -84,7 +84,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
           disabled={disabled}
           placeholder="Message the session…"
           rows={1}
-          className="block w-full resize-none rounded-2xl bg-transparent px-4 pt-3 pb-12 text-sm focus:outline-none disabled:opacity-50 max-h-48 overflow-y-auto"
+          className="block w-full resize-none rounded-box bg-transparent px-4 pt-3 pb-12 text-sm focus:outline-none disabled:opacity-50 max-h-48 overflow-y-auto"
           style={{ minHeight: "3.25rem" }}
         />
         <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between gap-2 pointer-events-none">

@@ -43,4 +43,4 @@ export const mainClass = "flex-1 min-w-0 px-4 py-4"
 // width and nothing below it. Desktop-only (md:) — phones use the MobileNav
 // drawer's hamburger instead.
 export const sidebarRailOpenBtnClass =
-  "hidden md:inline-flex shrink-0 h-6 w-6 items-center justify-center rounded-md border border-base-300 bg-base-100 text-base-content/60 shadow-sm hover:bg-base-200 hover:text-base-content"
+  "hidden md:inline-flex shrink-0 h-6 w-6 items-center justify-center rounded-btn border border-base-300 bg-base-100 text-base-content/60 shadow-sm hover:bg-base-200 hover:text-base-content"

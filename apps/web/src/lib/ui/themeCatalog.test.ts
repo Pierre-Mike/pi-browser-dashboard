@@ -62,15 +62,52 @@ const REQUIRED_TOKENS = [
   "error",
 ] as const
 
-// Phase 0 holds shape constant across families so a palette regression is never
-// mistaken for a radius one. Tokenizing radius per family is a later change —
-// when it happens, this assertion is the thing to relax deliberately.
-const SHAPE_TOKENS = [
-  "--rounded-box",
-  "--rounded-btn",
-  "--rounded-badge",
-  "--animation-btn",
-] as const
+// Shape is a family's property, not a constant. Phase 0 pinned all eight themes
+// to one set of radii deliberately, so that a palette regression could never be
+// mistaken for a radius one; this is the deliberate relaxation of that — but
+// *not* a deletion. A family that loses or drifts its shape tokens is still a
+// failure, it just fails against its own row rather than against pidlight's.
+//
+// The table is the design decision, in one place:
+//   pid       — byte-frozen. It is the default, and the point of tokenizing
+//               shape was to make the OTHER families expressible, not to
+//               restyle this one. Do not touch these three numbers.
+//   mono      — tight and technical.
+//   terminal  — fully square, including a 0s button transition.
+//   sunset    — soft, with fully-pill badges.
+//
+// Both variants of a family share one shape: light and dark are the same design
+// in two lightings.
+const SHAPE_BY_FAMILY = {
+  pid: {
+    "--rounded-box": "0.75rem",
+    "--rounded-btn": "0.5rem",
+    "--rounded-badge": "1rem",
+    "--animation-btn": "0.2s",
+  },
+  mono: {
+    "--rounded-box": "0.25rem",
+    "--rounded-btn": "0.125rem",
+    "--rounded-badge": "0.25rem",
+    "--animation-btn": "0.1s",
+  },
+  terminal: {
+    "--rounded-box": "0",
+    "--rounded-btn": "0",
+    "--rounded-badge": "0",
+    "--animation-btn": "0s",
+  },
+  sunset: {
+    "--rounded-box": "1rem",
+    "--rounded-btn": "0.75rem",
+    "--rounded-badge": "2rem",
+    "--animation-btn": "0.3s",
+  },
+} as const
+
+const SHAPE_TOKENS = Object.keys(SHAPE_BY_FAMILY.pid) as ReadonlyArray<
+  keyof (typeof SHAPE_BY_FAMILY)["pid"]
+>
 
 // pidlight pairs slate-50 text with sky-500 (2.65:1). It predates this gate and
 // is byte-frozen by design (its hex values are asserted by the terminal e2e and
@@ -95,6 +132,21 @@ describe("tailwind.config.js matches the theme catalog", () => {
     const { config } = await loadConfig()
     // base:false is what lets routes/__root.tsx own the shell paint.
     expect(config.daisyui.base).toBe(false)
+  })
+
+  test("the radius scale aliases the theme vars, so corner utilities are themeable", async () => {
+    // Without these three entries in Tailwind's own borderRadius scale, only
+    // daisyUI's whole-element `.rounded-box` exists and `rounded-t-box` /
+    // `rounded-tr-btn` silently do nothing — the class name is simply unknown,
+    // so the element renders with square corners and no error anywhere.
+    // semanticRadius.test.ts would still pass, because the class *name* is
+    // spelled correctly. This is the test that notices.
+    const { config } = await loadConfig()
+    expect(config.theme.extend.borderRadius).toEqual({
+      box: "var(--rounded-box, 1rem)",
+      btn: "var(--rounded-btn, 0.5rem)",
+      badge: "var(--rounded-badge, 1.9rem)",
+    })
   })
 
   test("darkMode is driven by the resolved theme name, not by the media query", async () => {
@@ -122,12 +174,40 @@ describe("every theme is complete and legible", () => {
     }
   })
 
-  test("shares one set of shape tokens across all families", async () => {
+  test("carries the shape its family declares", async () => {
     const { themes } = await loadConfig()
-    const shape = (tokens: Theme) => SHAPE_TOKENS.map((t) => `${t}=${tokens[t]}`).join(" ")
-    const reference = shape(themes.pidlight as Theme)
-    for (const [name, tokens] of Object.entries(themes)) {
-      expect(shape(tokens), `${name} deviates on radius/animation`).toBe(reference)
+    for (const family of THEME_FAMILIES) {
+      const expected = SHAPE_BY_FAMILY[family.id as keyof typeof SHAPE_BY_FAMILY]
+      expect(expected, `${family.id} has no row in SHAPE_BY_FAMILY`).toBeDefined()
+      for (const name of [family.light, family.dark]) {
+        for (const token of SHAPE_TOKENS) {
+          expect((themes[name] as Theme)[token], `${name} deviates on ${token}`).toBe(
+            expected[token],
+          )
+        }
+      }
+    }
+  })
+
+  test("every family is shaped, and no two families are shaped alike", async () => {
+    // The whole point: picking a family changes the component form. If two
+    // families resolved to the same radii, one of them would be colour-only
+    // again — which is the state this replaced.
+    const { themes } = await loadConfig()
+    const shapes = THEME_FAMILIES.map((f) =>
+      SHAPE_TOKENS.map((t) => `${t}=${(themes[f.light] as Theme)[t]}`).join(" "),
+    )
+    expect(new Set(shapes).size).toBe(THEME_FAMILIES.length)
+  })
+
+  test("a family's light and dark variants share one shape", async () => {
+    const { themes } = await loadConfig()
+    const shape = (name: string) =>
+      SHAPE_TOKENS.map((t) => `${t}=${(themes[name] as Theme)[t]}`).join(" ")
+    for (const family of THEME_FAMILIES) {
+      expect(shape(family.dark), `${family.id} light/dark shapes disagree`).toBe(
+        shape(family.light),
+      )
     }
   })
 

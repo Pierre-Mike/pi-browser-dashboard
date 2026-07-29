@@ -58,7 +58,7 @@ export const Modal = ({ open, title, onClose, children, testId }: Props) => {
             type="button"
             onClick={onClose}
             data-testid="library-modal-close"
-            className="text-xs rounded px-2 py-1 hover:bg-base-200"
+            className="text-xs rounded-btn px-2 py-1 hover:bg-base-200"
           >
             Close
           </button>

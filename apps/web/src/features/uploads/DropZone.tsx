@@ -91,7 +91,7 @@ export const DropZone = () => {
           data-testid="dropzone-overlay"
           className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-primary/10 border-4 border-dashed border-primary/30"
         >
-          <div className="rounded-md bg-primary/90 px-4 py-2 text-white text-sm font-medium shadow-xl">
+          <div className="rounded-box bg-primary/90 px-4 py-2 text-white text-sm font-medium shadow-xl">
             Drop to upload — path will be copied and inserted
           </div>
         </div>
@@ -103,7 +103,7 @@ export const DropZone = () => {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`rounded-md shadow-lg px-3 py-2 text-xs font-medium text-white ${
+            className={`rounded-box shadow-lg px-3 py-2 text-xs font-medium text-white ${
               t.kind === "ok" ? "bg-success" : "bg-error"
             }`}
           >

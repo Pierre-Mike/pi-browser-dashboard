@@ -69,7 +69,7 @@ export const LibraryPanel = (props: Props) => {
           >
             + Add entry
           </button>
-          <span className="inline-flex items-center rounded-lg border border-base-300 overflow-hidden bg-base-100">
+          <span className="inline-flex items-center rounded-btn border border-base-300 overflow-hidden bg-base-100">
             <select
               value={syncScope}
               onChange={(e) => setSyncScope(e.target.value as "all" | InstallScope)}
@@ -222,7 +222,7 @@ const CountChip = ({ n, label }: { n: number; label: string }) => (
 )
 
 const HooksPlaceholder = () => (
-  <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg bg-base-200/40">
+  <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-box bg-base-200/40">
     Hooks editor lands in a follow-up. Until then, view configured hooks under the{" "}
     <span className="font-mono">Claude</span> tab.
   </div>

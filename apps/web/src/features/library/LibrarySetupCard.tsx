@@ -12,7 +12,7 @@ export const LibrarySetupCard = () => {
   return (
     <div
       data-testid="library-catalog-missing"
-      className="flex flex-col gap-3 text-sm text-base-content/80 py-6 px-5 border border-dashed border-base-300 rounded-lg max-w-xl mx-auto"
+      className="flex flex-col gap-3 text-sm text-base-content/80 py-6 px-5 border border-dashed border-base-300 rounded-box max-w-xl mx-auto"
     >
       <div>
         <p className="font-medium text-base-content">Set up your library</p>

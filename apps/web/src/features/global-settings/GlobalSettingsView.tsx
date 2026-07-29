@@ -123,7 +123,7 @@ export const GlobalSettingsView = ({ form, theme }: Props) => (
                   key={g.name}
                   data-testid="gs-skill-group"
                   data-group={g.name}
-                  className="flex items-center justify-between gap-2 rounded-md border border-base-300 px-2 py-1"
+                  className="flex items-center justify-between gap-2 rounded-btn border border-base-300 px-2 py-1"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="font-medium text-base-content/80">{g.name}</span>
@@ -137,7 +137,7 @@ export const GlobalSettingsView = ({ form, theme }: Props) => (
                     data-group={g.name}
                     onClick={() => form.removeSkillGroup(g.name)}
                     disabled={form.saving}
-                    className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 rounded-md border border-base-300 px-2 py-0.5 text-[11px] normal-case text-base-content/80 hover:border-base-300"
+                    className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 border border-base-300 px-2 py-0.5 text-[11px] normal-case text-base-content/80 hover:border-base-300"
                   >
                     Delete
                   </button>

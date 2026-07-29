@@ -20,7 +20,7 @@ export const errMsg = (e: unknown, fallback: string): string =>
 const RecipeErrors = ({ errors }: { readonly errors: readonly FleetErrorWire[] }) => (
   <div
     data-testid="fleet-recipe-errors"
-    className="flex flex-col gap-1 rounded-lg border border-error/30 bg-error/10 p-3"
+    className="flex flex-col gap-1 rounded-box border border-error/30 bg-error/10 p-3"
   >
     <div className="text-xs font-semibold text-error">
       .pid/fleet.json has {errors.length} problem{errors.length === 1 ? "" : "s"} — fix these before
@@ -69,7 +69,7 @@ const WaveChips = ({ fleet }: { readonly fleet: FleetWire }) => (
 const DryRunPlan = ({ plan }: { readonly plan: RunPlanWire }) => (
   <div
     data-testid="fleet-dry-run-plan"
-    className="flex flex-col gap-1 rounded-lg border border-base-300 bg-base-200/40 p-2 text-xs"
+    className="flex flex-col gap-1 rounded-box border border-base-300 bg-base-200/40 p-2 text-xs"
   >
     <div className="font-semibold text-base-content/80">
       Plan: {plan.totalSessions} session{plan.totalSessions === 1 ? "" : "s"} across{" "}

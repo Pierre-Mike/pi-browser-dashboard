@@ -49,7 +49,7 @@ const MenuButton = ({
     role="menuitem"
     onClick={onClick}
     data-testid={testId}
-    className={`w-full text-left px-3 py-1.5 text-xs rounded hover:bg-base-200 ${
+    className={`w-full text-left px-3 py-1.5 text-xs rounded-btn hover:bg-base-200 ${
       tone === "danger" ? "text-error" : "text-base-content"
     }`}
   >

@@ -771,7 +771,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-add-box"
           onClick={addBox}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
         >
           + Box
         </button>
@@ -779,7 +779,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-add-link"
           onClick={addLink}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Add a link node"
         >
           + Link
@@ -788,7 +788,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-add-file"
           onClick={addFile}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Add a file reference node"
         >
           + File
@@ -798,7 +798,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-group"
           onClick={groupSelection}
           disabled={selectedCount < 2 || aGroupIsSelected}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Wrap the selected boxes under one group (select 2+ first)"
         >
           Group ({selectedCount})
@@ -808,7 +808,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-ungroup"
           onClick={ungroupSelection}
           disabled={!aGroupIsSelected}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Remove the selected group (its children stay)"
         >
           Ungroup
@@ -835,7 +835,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-duplicate"
           onClick={onDuplicate}
           disabled={selectedCount === 0}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Duplicate selection (Cmd/Ctrl+D)"
         >
           Duplicate
@@ -845,7 +845,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-undo"
           onClick={onUndo}
           disabled={!canUndo}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Undo (Cmd/Ctrl+Z)"
         >
           Undo
@@ -855,7 +855,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-redo"
           onClick={onRedo}
           disabled={!canRedo}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Redo (Cmd/Ctrl+Shift+Z)"
         >
           Redo
@@ -864,7 +864,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-fit"
           onClick={onFit}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Fit to selection / content"
         >
           Fit
@@ -873,7 +873,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-readonly"
           onClick={() => setReadOnly((v) => !v)}
-          className={`rounded border border-base-300 px-2 py-0.5 ${
+          className={`rounded-btn border border-base-300 px-2 py-0.5 ${
             readOnly ? "bg-warning/15 text-warning" : "hover:bg-base-200"
           }`}
           title="Toggle read-only mode (no dragging or connecting)"
@@ -884,7 +884,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-snap"
           onClick={() => setSnap((v) => !v)}
-          className={`rounded border border-base-300 px-2 py-0.5 ${
+          className={`rounded-btn border border-base-300 px-2 py-0.5 ${
             snap ? "bg-primary/15 text-primary" : "hover:bg-base-200"
           }`}
           title="Snap to grid while dragging"
@@ -896,12 +896,12 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-lock"
           onClick={onToggleLock}
           disabled={selectedCount === 0}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200 disabled:opacity-40"
           title="Pin / unpin selected nodes"
         >
           Lock
         </button>
-        <span className="inline-flex border border-base-300 rounded overflow-hidden">
+        <span className="inline-flex border border-base-300 rounded-btn overflow-hidden">
           {(
             [
               { key: "left", label: "L" },
@@ -925,7 +925,7 @@ const CanvasInner = ({ target }: Props) => {
             </button>
           ))}
         </span>
-        <span className="inline-flex border border-base-300 rounded overflow-hidden">
+        <span className="inline-flex border border-base-300 rounded-btn overflow-hidden">
           <button
             type="button"
             data-testid="canvas-distribute-h"
@@ -959,7 +959,7 @@ const CanvasInner = ({ target }: Props) => {
             e.stopPropagation()
           }}
           placeholder="search…"
-          className="border border-base-300 rounded px-1.5 py-0.5 bg-base-100 w-32"
+          className="border border-base-300 rounded-btn px-1.5 py-0.5 bg-base-100 w-32"
         />
         {selectedEdgeId ? (
           <span className="flex items-center gap-1" data-testid="canvas-edge-toolbar">
@@ -976,7 +976,7 @@ const CanvasInner = ({ target }: Props) => {
                 e.stopPropagation()
               }}
               placeholder="arrow label"
-              className="border border-base-300 rounded px-1.5 py-0.5 bg-base-100 w-32"
+              className="border border-base-300 rounded-btn px-1.5 py-0.5 bg-base-100 w-32"
             />
             <button
               type="button"
@@ -987,12 +987,12 @@ const CanvasInner = ({ target }: Props) => {
                   prev.map((e) => (e.id === selectedEdgeId ? { ...e, label: undefined } : e)),
                 )
               }}
-              className="rounded border border-base-300 px-1.5 py-0.5 hover:bg-base-200"
+              className="rounded-btn border border-base-300 px-1.5 py-0.5 hover:bg-base-200"
               title="Clear arrow label"
             >
               clear
             </button>
-            <span className="inline-flex border border-base-300 rounded overflow-hidden">
+            <span className="inline-flex border border-base-300 rounded-btn overflow-hidden">
               {(["none", "forward", "both"] as ArrowDirection[]).map((a) => (
                 <button
                   key={a}
@@ -1014,7 +1014,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-export"
           onClick={onExport}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Export as Obsidian .canvas"
         >
           Export
@@ -1023,7 +1023,7 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-import"
           onClick={onImportClick}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Import a .canvas file"
         >
           Import
@@ -1044,7 +1044,7 @@ const CanvasInner = ({ target }: Props) => {
           data-testid="canvas-brief-ai"
           onClick={() => void onBriefAi()}
           disabled={briefing}
-          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
+          className="rounded-btn border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
           title="Send the AI a message telling it where to find this drawing so it can read/write live"
         >
           {briefing ? "Briefing…" : "Brief AI"}
@@ -1053,14 +1053,14 @@ const CanvasInner = ({ target }: Props) => {
           type="button"
           data-testid="canvas-reset"
           onClick={resetCanvas}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title="Clear all nodes and edges"
         >
           Clear
         </button>
         <span
           data-testid="canvas-status"
-          className={`px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold ${badge.cls}`}
+          className={`px-1.5 py-0.5 rounded-badge uppercase tracking-wide font-semibold ${badge.cls}`}
         >
           {badge.label}
         </span>
@@ -1083,7 +1083,7 @@ const CanvasInner = ({ target }: Props) => {
         </span>
       </div>
       <div
-        className="flex-1 min-h-0 rounded-lg border border-base-300 bg-base-100"
+        className="flex-1 min-h-0 rounded-box border border-base-300 bg-base-100"
         onDrop={onDrop}
         onDragOver={onDragOver}
       >

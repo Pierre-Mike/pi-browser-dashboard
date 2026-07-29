@@ -33,7 +33,7 @@ export const GlobalSearch = ({ bundle, onPick }: Props) => {
       {query.trim() !== "" ? (
         <div
           data-testid="library-global-results"
-          className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-md border border-base-300 bg-base-100 shadow-lg"
+          className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-box border border-base-300 bg-base-100 shadow-lg"
         >
           {results.length === 0 ? (
             <div className="px-3 py-2 text-xs text-base-content/60">
@@ -54,7 +54,7 @@ export const GlobalSearch = ({ bundle, onPick }: Props) => {
                       }}
                       className="w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 flex items-center gap-2"
                     >
-                      <span className="text-[9px] uppercase tracking-wide rounded bg-base-200 px-1.5 py-0.5 text-base-content/80 shrink-0">
+                      <span className="text-[9px] uppercase tracking-wide rounded-badge bg-base-200 px-1.5 py-0.5 text-base-content/80 shrink-0">
                         {entry.type}
                       </span>
                       <span className="font-medium truncate">{entry.name}</span>

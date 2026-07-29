@@ -12,7 +12,7 @@ import type { SessionActions } from "./useSessionActions"
 // hover title rather than spending inline width on a row that now also holds the
 // section dock.
 const IDENTITY_H1 = "text-sm font-semibold flex items-center gap-1.5 min-w-0 shrink"
-const CHIP = "shrink-0 inline-flex items-center rounded bg-base-200 text-base-content/80"
+const CHIP = "shrink-0 inline-flex items-center rounded-badge bg-base-200 text-base-content/80"
 
 // Until the session query resolves, the id from the URL is all we know.
 const PendingIdentity = ({ fallbackId }: { readonly fallbackId: string }) => (

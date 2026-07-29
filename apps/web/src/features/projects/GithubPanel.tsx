@@ -42,7 +42,7 @@ const RunRow = ({ run }: { run: GithubWorkflowRun }) => (
     target="_blank"
     rel="noreferrer"
     data-testid="gh-run"
-    className="flex items-center gap-2 text-xs hover:bg-base-200 rounded px-2 py-1 -mx-2 min-w-0"
+    className="flex items-center gap-2 text-xs hover:bg-base-200 rounded-btn px-2 py-1 -mx-2 min-w-0"
   >
     <span className={`badge badge-sm shrink-0 ${runTone(run.status, run.conclusion)}`}>
       {runLabel(run.status, run.conclusion)}
@@ -64,7 +64,7 @@ const PrRow = ({
 }) => (
   <div
     data-testid="gh-pr"
-    className="flex items-center gap-2 text-xs rounded px-2 py-1 -mx-2 min-w-0 hover:bg-base-200"
+    className="flex items-center gap-2 text-xs rounded-btn px-2 py-1 -mx-2 min-w-0 hover:bg-base-200"
   >
     <button
       type="button"
@@ -205,7 +205,7 @@ const Warning = ({ warning }: { warning?: string }) =>
   warning ? (
     <div
       data-testid="gh-warning"
-      className="text-[11px] rounded bg-warning/10 border border-warning/30 text-warning px-2 py-1"
+      className="text-[11px] rounded-btn bg-warning/10 border border-warning/30 text-warning px-2 py-1"
     >
       {warning}
     </div>
@@ -251,7 +251,7 @@ export const GithubPanel = ({ projectId, githubUrl }: Props) => {
   return (
     <section
       data-testid="github-panel"
-      className="flex flex-col gap-3 rounded-lg border border-base-300 bg-base-100 p-3"
+      className="flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3"
     >
       <GithubHeader githubUrl={githubUrl} />
       <GithubBody projectId={projectId} q={q} />

@@ -64,7 +64,7 @@ const EdgeLabelInput = ({ id, initial }: { id: string; initial: string }) => {
         e.stopPropagation()
       }}
       placeholder="label"
-      className="border border-primary rounded bg-base-100 px-1.5 py-0.5 text-[10px] text-base-content shadow-sm outline-none w-28 text-center"
+      className="border border-primary rounded-btn bg-base-100 px-1.5 py-0.5 text-[10px] text-base-content shadow-sm outline-none w-28 text-center"
     />
   )
 }
@@ -79,7 +79,7 @@ const EdgeLabelChip = (args: { id: string; label: string; stroke: string | undef
       data-testid="canvas-edge-label-text"
       onClick={() => selectEdge(args.id)}
       onDoubleClick={() => startEditing(args.id)}
-      className="rounded border border-base-300 bg-base-100 px-1.5 py-0.5 text-[10px] text-base-content shadow-sm cursor-text"
+      className="rounded-btn border border-base-300 bg-base-100 px-1.5 py-0.5 text-[10px] text-base-content shadow-sm cursor-text"
       style={args.stroke ? { color: args.stroke, borderColor: args.stroke } : undefined}
       title="Double-click to rename"
     >

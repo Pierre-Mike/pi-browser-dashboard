@@ -35,7 +35,7 @@ export const EditableGroupNode = ({ id, data, selected }: NodeProps<GroupNode>) 
     <div
       data-testid="canvas-node-group"
       data-node-id={id}
-      className={`relative w-full h-full rounded-lg border-2 border-dashed ${
+      className={`relative w-full h-full rounded-box border-2 border-dashed ${
         palette.stroke ? "" : defaultBorder
       }`}
       style={

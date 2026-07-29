@@ -78,7 +78,7 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
         <button
           type="button"
           onClick={onClose}
-          className="text-xs rounded px-2 py-1 hover:bg-base-200"
+          className="text-xs rounded-btn px-2 py-1 hover:bg-base-200"
         >
           Cancel
         </button>
@@ -98,7 +98,7 @@ export const RemoveDialog = ({ open, onClose, entry, status, projectId }: Props)
               { onSuccess: () => onClose() },
             )
           }}
-          className="text-xs rounded px-3 py-1 bg-error text-white hover:bg-error disabled:opacity-60"
+          className="text-xs rounded-btn px-3 py-1 bg-error text-white hover:bg-error disabled:opacity-60"
         >
           {m.isPending ? "Removing…" : "Remove"}
         </button>

@@ -29,7 +29,7 @@ export const AgenticBrowser = ({ category, onRegister }: Props) => {
             {listing.repoPath}/{category}
           </span>
         </p>
-        <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg">
+        <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-box">
           No items under <span className="font-mono">{category}/</span> in the agentic repo.
         </div>
       </div>
@@ -49,12 +49,12 @@ export const AgenticBrowser = ({ category, onRegister }: Props) => {
           <li
             key={item.name}
             data-testid={`agentic-item-${category}-${item.name}`}
-            className="rounded border border-base-300 bg-base-100 p-2 flex flex-col gap-1"
+            className="rounded-box border border-base-300 bg-base-100 p-2 flex flex-col gap-1"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium truncate">{item.name}</span>
               <span
-                className={`text-[9px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${
+                className={`text-[9px] uppercase tracking-wide rounded-badge px-1.5 py-0.5 font-medium ${
                   item.registered ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
                 }`}
               >
@@ -69,7 +69,7 @@ export const AgenticBrowser = ({ category, onRegister }: Props) => {
                 type="button"
                 data-testid={`agentic-register-${category}-${item.name}`}
                 onClick={() => onRegister(item)}
-                className="self-start text-xs rounded px-2 py-0.5 border border-primary/40 text-primary hover:bg-primary/10 mt-1"
+                className="self-start text-xs rounded-btn px-2 py-0.5 border border-primary/40 text-primary hover:bg-primary/10 mt-1"
               >
                 Register in catalog
               </button>

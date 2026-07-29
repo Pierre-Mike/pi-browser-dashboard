@@ -140,7 +140,7 @@ const FilePreview = ({ ref }: { ref: string }) => {
           data-testid="canvas-file-open-canvas"
           onClick={onOpenCanvas}
           disabled={!loadable || openingCanvas}
-          className="rounded border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-[11px] disabled:opacity-40"
+          className="rounded-btn border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-[11px] disabled:opacity-40"
         >
           {openingCanvas ? "Opening…" : "Open canvas"}
         </button>
@@ -198,7 +198,7 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
       data-testid="canvas-node-file"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[160px] min-h-[48px] text-left ${
+      className={`group rounded-box border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[160px] min-h-[48px] text-left ${
         palette.stroke ? "" : selected ? "border-primary ring-1 ring-primary/60" : "border-base-300"
       }`}
       style={
@@ -236,7 +236,7 @@ export const EditableFileNode = ({ id, data, selected }: NodeProps<FileNode>) =>
             data-testid="canvas-file-browse"
             onMouseDown={(e) => e.preventDefault()}
             onClick={openPicker}
-            className="self-start rounded border border-base-300 px-1.5 py-0.5 text-[11px] hover:bg-base-200"
+            className="self-start rounded-btn border border-base-300 px-1.5 py-0.5 text-[11px] hover:bg-base-200"
           >
             Browse…
           </button>

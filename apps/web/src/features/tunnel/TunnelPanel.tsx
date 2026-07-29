@@ -44,7 +44,7 @@ export const TunnelPanel = () => {
   return (
     <div
       data-testid="tunnel-panel"
-      className="flex flex-col gap-3 max-w-2xl rounded-lg border border-base-300 bg-base-200/40 p-4"
+      className="flex flex-col gap-3 max-w-2xl rounded-box border border-base-300 bg-base-200/40 p-4"
     >
       <header className="flex items-center justify-between gap-3">
         <div className="flex flex-col">
@@ -127,7 +127,7 @@ export const TunnelPanel = () => {
         ) : null}
       </div>
 
-      <p className="text-[11px] text-warning border border-warning/30 bg-warning/10 rounded px-2 py-1.5">
+      <p className="text-[11px] text-warning border border-warning/30 bg-warning/10 rounded-btn px-2 py-1.5">
         ⚠ Anyone with this URL can reach your dashboard. There is no authentication — stop the
         tunnel when you are done.
       </p>

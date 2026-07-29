@@ -101,11 +101,11 @@ const ToolCall = ({
   const preview = toolPreview(name, input)
   const icon = TOOL_ICON[name] ?? "▸"
   return (
-    <div className="mt-1.5 text-[11px] rounded-md border border-base-300 bg-base-200 max-w-full">
+    <div className="mt-1.5 text-[11px] rounded-box border border-base-300 bg-base-200 max-w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2 py-1 hover:bg-base-300 text-left rounded-md"
+        className="flex w-full items-center gap-1.5 px-2 py-1 hover:bg-base-300 text-left rounded-t-box"
       >
         <span className="text-base-content/60 shrink-0 w-3 text-center">{open ? "▾" : "▸"}</span>
         <span className="shrink-0 font-mono" aria-hidden>
@@ -125,7 +125,7 @@ const ToolCall = ({
             <div className="text-[9px] uppercase tracking-wide text-base-content/60 mb-0.5">
               Arguments
             </div>
-            <pre className="rounded bg-base-300 border border-base-300 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-base-content/80">
+            <pre className="rounded-box bg-base-300 border border-base-300 p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words text-base-content/80">
               {inputStr}
             </pre>
           </div>
@@ -135,7 +135,7 @@ const ToolCall = ({
                 Result
               </div>
               <pre
-                className={`rounded p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words border ${
+                className={`rounded-box p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words border ${
                   result.isError
                     ? "bg-error/15 text-error border-error/30"
                     : "bg-base-300 text-base-content/80 border-base-300"
@@ -160,7 +160,7 @@ const Thinking = ({ text }: { text: string }) => {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-start gap-1.5 rounded-md border border-secondary/30 bg-secondary/10 px-2 py-1 hover:bg-secondary/20 text-left max-w-full"
+        className="inline-flex items-start gap-1.5 rounded-btn border border-secondary/30 bg-secondary/10 px-2 py-1 hover:bg-secondary/20 text-left max-w-full"
         title="Internal reasoning"
       >
         <span className="text-secondary/60 shrink-0 w-3 text-center mt-0.5">
@@ -177,7 +177,7 @@ const Thinking = ({ text }: { text: string }) => {
         ) : null}
       </button>
       {open ? (
-        <div className="mt-1 rounded border border-secondary/30 bg-secondary/10 p-2.5 text-[12px] italic text-base-content whitespace-pre-wrap break-words leading-relaxed">
+        <div className="mt-1 rounded-box border border-secondary/30 bg-secondary/10 p-2.5 text-[12px] italic text-base-content whitespace-pre-wrap break-words leading-relaxed">
           {text}
         </div>
       ) : null}
@@ -193,7 +193,7 @@ const ToolResult = ({ text, isError }: { text: string; isError?: boolean }) => {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono ${
+        className={`inline-flex items-center gap-1.5 rounded-btn border px-2 py-0.5 font-mono ${
           isError
             ? "border-error/30 bg-error/15 text-error"
             : "border-base-300 bg-base-200 text-base-content/80 hover:bg-base-300"
@@ -207,7 +207,7 @@ const ToolResult = ({ text, isError }: { text: string; isError?: boolean }) => {
       </button>
       {open ? (
         <pre
-          className={`mt-1 rounded p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words ${
+          className={`mt-1 rounded-box p-2 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap break-words ${
             isError
               ? "bg-error/15 text-error border border-error/30"
               : "bg-base-300 text-base-content/80 border border-base-300"
@@ -254,7 +254,7 @@ const blockKey = (b: PairedBlock, idx: number): string => {
 const UserBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string }) => (
   <div className="flex gap-2 w-full">
     <div className="flex flex-col items-end w-full min-w-0">
-      <div className="w-full rounded-2xl rounded-tr-sm bg-primary text-primary-content px-3.5 py-2 shadow-sm text-right">
+      <div className="w-full rounded-box rounded-tr-none bg-primary text-primary-content px-3.5 py-2 shadow-sm text-right">
         {blocks.map((b, i) =>
           b.kind === "text" ? (
             <pre
@@ -280,7 +280,7 @@ const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string
   <div className="flex gap-2 w-full">
     <Avatar kind="assistant" />
     <div className="flex flex-col items-start w-full min-w-0">
-      <div className="w-full rounded-2xl rounded-tl-sm bg-base-100 border border-base-300 px-3.5 py-2 text-base-content shadow-sm">
+      <div className="w-full rounded-box rounded-tl-none bg-base-100 border border-base-300 px-3.5 py-2 text-base-content shadow-sm">
         {blocks.length === 0 ? (
           <span className="text-base-content/60 italic text-sm">…</span>
         ) : (
@@ -307,7 +307,7 @@ const AssistantBubble = ({ blocks, time }: { blocks: PairedBlock[]; time: string
 
 const ResultBubble = ({ text, time }: { text: string; time: string }) => (
   <div className="flex justify-center">
-    <div className="max-w-[78%] rounded-xl border border-success/30 bg-success/15 px-3 py-2 text-base-content text-xs">
+    <div className="max-w-[78%] rounded-box border border-success/30 bg-success/15 px-3 py-2 text-base-content text-xs">
       <div className="text-[10px] uppercase tracking-wide font-semibold opacity-60 mb-0.5">
         Result {time ? `· ${time}` : ""}
       </div>

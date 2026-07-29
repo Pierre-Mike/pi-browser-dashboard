@@ -68,7 +68,7 @@ export const SessionContextMenu = ({ short, x, y, onClose }: Props) => {
       data-testid="session-context-menu"
       data-short={short}
       style={{ left: x, top: y, width: MENU_WIDTH }}
-      className="fixed z-50 rounded-md border border-base-300 bg-base-100 shadow-lg py-1 text-xs"
+      className="fixed z-50 rounded-box border border-base-300 bg-base-100 shadow-lg py-1 text-xs"
     >
       <button
         type="button"

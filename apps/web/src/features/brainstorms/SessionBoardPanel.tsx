@@ -50,7 +50,7 @@ const SessionAside = ({ session, board }: Props) => {
       // Shrinkable (not `shrink-0`): the board column's flex basis is 0, so a
       // too-wide panel gives width back here rather than pushing the row
       // off-screen behind a page-wide scrollbar.
-      className={`relative flex min-w-0 flex-col gap-2 rounded-xl border border-base-300 bg-base-200/40 p-2 min-h-0 ${
+      className={`relative flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-200/40 p-2 min-h-0 ${
         dragging ? "select-none" : ""
       }`}
     >
