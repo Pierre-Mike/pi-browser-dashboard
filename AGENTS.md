@@ -991,8 +991,11 @@ property below applies identically to both.
   parses (so an author can build a rule up before turning the dangerous part
   on) but the engine refuses to fire it, reported as a `KeysNotConfirmed`
   suppression.
-- **Two loop breakers**, both enforced in the pure core (`evaluate`) and
-  tested there:
+- **Two loop breakers**, both enforced in the pure core and tested there. Both
+  evaluators (`evaluate` for the supervisor reading, `evaluateScreen` for the
+  screen) route a matched rule through one source-blind `outcomeFor`, so the
+  suppressions cannot diverge between the two readings — that is structural, not
+  a promise:
   - A per-(rule, session) **cooldown** — `cooldownMs` on the rule, defaulting
     to 300000ms (5 minutes) when omitted — so a dwell rule re-checked on
     every tick cannot resend the same keystroke to a still-blocked session a
@@ -1005,14 +1008,14 @@ property below applies identically to both.
     silence: it is recorded in the firing log and published on the bus the
     same as a real firing, because a silently-throttled automation is
     indistinguishable from a broken one.
-- **A dry-run preview** (`POST /rules/preview`) evaluates every
+- **A dry-run preview** (`POST /rules/preview`) evaluates both readings of every
   currently-known session against the rules file on disk and reports what
   would happen — fires nothing, calls no port, records nothing. It ignores
   the file's own top-level `enabled` gate (but not a rule's own `enabled`) so
   an author can test-drive a rules file before ever flipping automation on.
 - **A pause switch** (`POST /rules/pause`) at runtime, mirroring
-  `issue-driver`'s own `/pause` — suppresses every action without touching
-  the file or losing the engine's tracked session state.
+  `issue-driver`'s own `/pause` — suppresses every action, on either reading,
+  without touching the file or losing the engine's tracked session state.
 - Actions never touch a session the rule did not match, and a rule that
   matches nothing is not an error — it simply produces no outcome.
 
