@@ -6,14 +6,14 @@ import { SessionRegistry } from "./sessions.io"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
 import type { WaitRequest } from "./sessions-wait.core"
 import {
+  makeSessionWaitIoLive,
   SessionWaitIo,
-  SessionWaitIoLive,
+  systemWaitClock,
   type TerminalScreensPort,
   type TerminalStateReader,
+  type WaitClock,
   type WaitOutcome,
 } from "./sessions-wait.io"
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<SessionRegistry> =>
   Layer.succeed(SessionRegistry, {
@@ -23,10 +23,66 @@ const buildRegistryLayer = (sessions: Map<string, SessionState>): Layer.Layer<Se
     diagnostics: () => Promise.resolve(undefined),
   })
 
+// The clock the whole suite runs on. Time advances only when a test advances
+// it, and the timeout fires only when a test fires it, so every `waitedMs` here
+// is an exact number rather than a measurement — and a wait with
+// `timeoutMs: 120` costs no milliseconds at all.
+//
+// This is the fix for the flake this file used to carry: the timeout test
+// asserted `waitedMs >= 50` against a real 50ms timer, and CI produced 49
+// because the timer and the reading came off two different clocks.
+const makeFakeClock = () => {
+  let nowMs = 0
+  let pending: { readonly delayMs: number; readonly run: () => void } | undefined
+  const clock: WaitClock = {
+    now: () => nowMs,
+    after: (input) => {
+      pending = input
+      return () => {
+        pending = undefined
+      }
+    },
+  }
+  return {
+    clock,
+    // True once the wait has reached `Effect.async` and armed its timeout —
+    // the same synchronous block that subscribes to the bus, so this is also
+    // the signal that publishing is now safe.
+    armed: (): boolean => pending !== undefined,
+    advance: (ms: number): void => {
+      nowMs += ms
+    },
+    // Fire the timeout the way the runtime would: the clock has reached the
+    // deadline, so move it there first, then run the callback.
+    fireTimeout: (): void => {
+      const timer = pending
+      if (!timer) throw new Error("no timeout armed")
+      pending = undefined
+      nowMs += timer.delayMs
+      timer.run()
+    },
+    // Fire it having advanced by LESS than the delay — what a runtime whose
+    // timer clock and reading clock disagree actually does, and exactly the
+    // condition that failed on CI.
+    fireTimeoutEarlyBy: (ms: number): void => {
+      const timer = pending
+      if (!timer) throw new Error("no timeout armed")
+      pending = undefined
+      nowMs += timer.delayMs - ms
+      timer.run()
+    },
+  }
+}
+
+let fake = makeFakeClock()
 let runtime: ManagedRuntime.ManagedRuntime<SessionWaitIo, never> | null = null
 
 const startRuntime = (sessions: Map<string, SessionState>) => {
-  const layer = Layer.provide(SessionWaitIoLive, buildRegistryLayer(sessions))
+  fake = makeFakeClock()
+  const layer = Layer.provide(
+    makeSessionWaitIoLive({ clock: fake.clock }),
+    buildRegistryLayer(sessions),
+  )
   runtime = ManagedRuntime.make(layer)
   return runtime
 }
@@ -37,6 +93,18 @@ afterEach(async () => {
     runtime = null
   }
 })
+
+// Yields to the runtime until `ready` holds, instead of sleeping a guessed
+// number of milliseconds and hoping. Bounded so a genuine hang fails as a test
+// rather than as a suite that never returns; the bound is a backstop, never
+// the normal path.
+const until = async (ready: () => boolean): Promise<void> => {
+  for (let i = 0; i < 5_000; i++) {
+    if (ready()) return
+    await new Promise((r) => setTimeout(r, 0))
+  }
+  throw new Error("condition never became true")
+}
 
 const runWait = (input: {
   readonly short: string
@@ -116,8 +184,14 @@ const publishTerminal = (data: {
 }
 
 // Seeds a single "ab12" session, starts the runtime, kicks off a wait against
-// it, and gives the subscription time to attach — every bus-driven test below
-// needs exactly this before it can safely publish.
+// it, and waits for the subscription to actually attach — every bus-driven test
+// below needs exactly this before it can safely publish.
+//
+// The readiness signal is the wait's own armed timeout, not a fixed sleep: the
+// bus subscription and the timeout are registered in the same synchronous
+// block, so `armed()` is the precise moment publishing becomes safe. A sleep
+// long enough to be safe on a loaded CI runner is a sleep wasted on every other
+// run, and one that is not long enough is a flake.
 const beginWait = async (input: {
   readonly session?: Partial<SessionState>
   readonly request?: Partial<WaitRequest>
@@ -135,34 +209,51 @@ const beginWait = async (input: {
     readTerminalState: input.readTerminalState,
     terminalScreens: input.terminalScreens,
   })
-  await sleep(30) // let the wait subscribe before the caller publishes
+  await until(fake.armed)
   return { before, promise }
 }
 
 describe("SessionWaitIo — bus-driven resolution", () => {
   it("resolves Satisfied once a later session.state event reaches an awaited state", async () => {
     const { before, promise } = await beginWait({ session: { sessionId: "sess-1" } })
+    fake.advance(37)
     publishState({ short: "ab12", sessionId: "sess-1", state: "done" })
-    const outcome = await promise
-    expect(outcome._tag).toBe("Satisfied")
-    if (outcome._tag === "Satisfied") {
-      expect(outcome.state).toBe("done")
-      expect(outcome.via).toBe("supervisor")
-      expect(outcome.waitedMs).toBeGreaterThanOrEqual(0)
-    }
+    // waitedMs is the clock's own reading, so it is an exact 37 rather than
+    // "some non-negative number of real milliseconds".
+    expect(await promise).toEqual({
+      _tag: "Satisfied",
+      state: "done",
+      via: "supervisor",
+      waitedMs: 37,
+    })
     expect(sseBus.subscriberCount()).toBe(before)
   })
 
   it("resolves Timeout when no matching event arrives before timeoutMs", async () => {
-    const before = sseBus.subscriberCount()
-    startRuntime(new Map([["ab12", makeSession({ short: "ab12" })]]))
-    const outcome = await runWait({
-      short: "ab12",
-      request: defaultRequest({ until: ["done"], timeoutMs: 50 }),
-    })
-    expect(outcome._tag).toBe("Timeout")
-    if (outcome._tag === "Timeout") expect(outcome.waitedMs).toBeGreaterThanOrEqual(50)
+    const { before, promise } = await beginWait({ request: { until: ["done"], timeoutMs: 50 } })
+    fake.fireTimeout()
+    expect(await promise).toEqual({ _tag: "Timeout", waitedMs: 50 })
     expect(sseBus.subscriberCount()).toBe(before)
+  })
+
+  // The CI flake, as a test. A runtime schedules its timers on one clock and
+  // the wait reads elapsed time off another; when the two disagree by a
+  // fraction of a millisecond the reading truncates below the timeout that was
+  // actually honoured, and this test used to report `waitedMs: 49` for a
+  // `timeoutMs: 50` wait roughly once every few hundred CI runs.
+  it("never reports having waited less than timeoutMs, even on an early-firing timer", async () => {
+    const { promise } = await beginWait({ request: { until: ["done"], timeoutMs: 50 } })
+    fake.fireTimeoutEarlyBy(1)
+    expect(await promise).toEqual({ _tag: "Timeout", waitedMs: 50 })
+  })
+
+  it("reports a genuinely late timer in full — the floor is not a clamp", async () => {
+    const { promise } = await beginWait({ request: { until: ["done"], timeoutMs: 50 } })
+    // A busy event loop delivered the timeout 800ms late; that IS the caller's
+    // signal, so it must survive intact.
+    fake.advance(800)
+    fake.fireTimeout()
+    expect(await promise).toEqual({ _tag: "Timeout", waitedMs: 850 })
   })
 
   it("resolves Removed when the session is removed while waiting", async () => {
@@ -195,12 +286,11 @@ describe("SessionWaitIo — bus-driven resolution", () => {
     publishState({ short: "cd34", sessionId: "sess-9", state: "done" })
     publishState({ short: "ab12", sessionId: "sess-1", state: "working" })
     publishState({ short: "ab12", sessionId: "sess-1", state: "done" })
-    const outcome = await promise
-    expect(outcome).toEqual({
+    expect(await promise).toEqual({
       _tag: "Satisfied",
       state: "done",
       via: "supervisor",
-      waitedMs: expect.any(Number),
+      waitedMs: 0,
     })
     expect(sseBus.subscriberCount()).toBe(before)
   })
@@ -215,13 +305,13 @@ describe("SessionWaitIo — screen-derived resolution", () => {
       session: { state: "working", sessionId: "sess-1" },
       request: { until: ["idle"], via: "screen" },
     })
+    fake.advance(12)
     publishTerminal({ scope: "session", id: "ab12", state: "idle" })
-    const outcome = await promise
-    expect(outcome).toEqual({
+    expect(await promise).toEqual({
       _tag: "Satisfied",
       state: "idle",
       via: "screen",
-      waitedMs: expect.any(Number),
+      waitedMs: 12,
     })
     expect(sseBus.subscriberCount()).toBe(before)
   })
@@ -235,13 +325,18 @@ describe("SessionWaitIo — screen-derived resolution", () => {
     expect(await promise).toMatchObject({ _tag: "Satisfied", state: "blocked", via: "screen" })
   })
 
+  // The four "ignores X" tests below publish the event that must NOT settle the
+  // wait and then fire the timeout by hand. sseBus.publish is synchronous, so
+  // by the time the timeout fires the event has provably been evaluated and
+  // dropped — stronger evidence than "nothing happened for 120ms", and free.
   it("ignores terminal.state entirely under the default via, timing out instead", async () => {
     const { before, promise } = await beginWait({
       session: { state: "working", sessionId: "sess-1" },
       request: { until: ["idle"], timeoutMs: 120 },
     })
     publishTerminal({ scope: "session", id: "ab12", state: "idle" })
-    expect(await promise).toMatchObject({ _tag: "Timeout" })
+    fake.fireTimeout()
+    expect(await promise).toEqual({ _tag: "Timeout", waitedMs: 120 })
     expect(sseBus.subscriberCount()).toBe(before)
   })
 
@@ -251,6 +346,7 @@ describe("SessionWaitIo — screen-derived resolution", () => {
       request: { until: ["done"], timeoutMs: 120, via: "screen" },
     })
     publishState({ short: "ab12", sessionId: "sess-1", state: "done" })
+    fake.fireTimeout()
     expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
@@ -260,6 +356,7 @@ describe("SessionWaitIo — screen-derived resolution", () => {
       request: { until: ["idle"], timeoutMs: 120, via: "screen" },
     })
     publishTerminal({ scope: "project", id: "ab12", state: "idle" })
+    fake.fireTimeout()
     expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
@@ -269,6 +366,7 @@ describe("SessionWaitIo — screen-derived resolution", () => {
       request: { until: ["idle", "working", "blocked"], timeoutMs: 120, via: "screen" },
     })
     publishTerminal({ scope: "session", id: "ab12", state: "unknown" })
+    fake.fireTimeout()
     expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
@@ -286,13 +384,15 @@ describe("SessionWaitIo — screen-derived resolution", () => {
   })
 
   it("does not consult the current screen when via is supervisor", async () => {
-    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
-    const outcome = await runWait({
-      short: "ab12",
-      request: defaultRequest({ until: ["blocked"], timeoutMs: 120 }),
+    const { promise } = await beginWait({
+      session: { state: "working" },
+      request: { until: ["blocked"], timeoutMs: 120 },
       readTerminalState: readerFor({ "session:ab12": { state: "blocked" } }),
     })
-    expect(outcome).toMatchObject({ _tag: "Timeout" })
+    // It armed a timeout at all, rather than settling from the screen it was
+    // handed — that is the claim; firing it just collects the outcome.
+    fake.fireTimeout()
+    expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
   it("keeps listening when the reader has no record for this short", async () => {
@@ -337,16 +437,16 @@ describe("SessionWaitIo — untilOutput", () => {
       request: { until: [], untilOutput: OUTPUT_PATTERN },
       terminalScreens: screens.port,
     })
+    fake.advance(9)
     screens.emit({
       scope: "session",
       id: "ab12",
       text: " Bash(rm -rf build)\n Do you want to proceed?\n ❯ 1. Yes",
     })
-    const outcome = await promise
-    expect(outcome).toEqual({
+    expect(await promise).toEqual({
       _tag: "OutputMatched",
       matched: "Do you want to proceed?",
-      waitedMs: expect.any(Number),
+      waitedMs: 9,
     })
   })
 
@@ -370,7 +470,8 @@ describe("SessionWaitIo — untilOutput", () => {
       request: { until: [], untilOutput: OUTPUT_PATTERN, timeoutMs: 80 },
       terminalScreens: screens.port,
     })
-    expect(await promise).toMatchObject({ _tag: "Timeout" })
+    fake.fireTimeout()
+    expect(await promise).toEqual({ _tag: "Timeout", waitedMs: 80 })
     expect(screens.observerCount()).toBe(0)
   })
 
@@ -382,6 +483,7 @@ describe("SessionWaitIo — untilOutput", () => {
       terminalScreens: screens.port,
     })
     screens.emit({ scope: "session", id: "ab12", text: "Elucidating…" })
+    fake.fireTimeout()
     expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
@@ -394,6 +496,7 @@ describe("SessionWaitIo — untilOutput", () => {
     })
     screens.emit({ scope: "session", id: "cd34", text: "Do you want to proceed?" })
     screens.emit({ scope: "project", id: "ab12", text: "Do you want to proceed?" })
+    fake.fireTimeout()
     expect(await promise).toMatchObject({ _tag: "Timeout" })
   })
 
@@ -405,6 +508,7 @@ describe("SessionWaitIo — untilOutput", () => {
       terminalScreens: screens.port,
     })
     expect(screens.observerCount()).toBe(0)
+    fake.fireTimeout()
     await promise
   })
 
@@ -473,5 +577,38 @@ describe("SessionWaitIo — untilOutput", () => {
       terminalScreens: makeScreens({ enabled: false }).port,
     })
     expect(outcome).toMatchObject({ _tag: "Satisfied", state: "done" })
+  })
+})
+
+// Every suite above runs on the fake clock, so this is the only thing standing
+// between the real wiring and nobody checking it. Deliberately no assertion on
+// how long anything took — that is the class of assertion this file was
+// changed to remove.
+describe("systemWaitClock", () => {
+  it("reads a monotonic clock, not the wall clock", () => {
+    let previous = systemWaitClock.now()
+    for (let i = 0; i < 100; i++) {
+      const current = systemWaitClock.now()
+      // Non-decreasing is the property that matters: it is what makes a
+      // negative waitedMs impossible when the host re-syncs its wall clock
+      // part-way through a wait.
+      expect(current).toBeGreaterThanOrEqual(previous)
+      previous = current
+    }
+    // Process-relative, not epoch milliseconds. Date.now() is the clock this
+    // slice used to read, and reading it against a monotonic timer is what
+    // produced `waitedMs: 49` for a `timeoutMs: 50` wait on CI.
+    expect(systemWaitClock.now()).toBeLessThan(Date.now())
+  })
+
+  it("schedules a real timer and hands back a canceller that works", async () => {
+    const fired: string[] = []
+    // The cancelled timer has the shorter delay, so had cancelling not worked
+    // it would have landed strictly before the kept one.
+    const cancel = systemWaitClock.after({ delayMs: 0, run: () => fired.push("cancelled") })
+    cancel()
+    systemWaitClock.after({ delayMs: 5, run: () => fired.push("kept") })
+    await until(() => fired.length > 0)
+    expect(fired).toEqual(["kept"])
   })
 })

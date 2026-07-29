@@ -15,10 +15,41 @@ import {
   evaluateScreenObservation,
   evaluateWaitEvent,
   sessionSlugFromTerminalState,
+  timeoutWaitedMs,
   type WaitEvent,
   type WaitRequest,
   type WaitTarget,
 } from "./sessions-wait.core"
+
+// The two time-dependent things a wait does — read elapsed time, and schedule
+// the timeout — behind one port, in the same spirit as terminal-poll.io.ts's
+// `ports.now()`. They are ONE port rather than two on purpose: `waitedMs` is
+// the difference between two `now()` reads, and if the timeout is scheduled on
+// some other clock then that subtraction is a comparison between two
+// instruments. It was: the timer came from `setTimeout` (monotonic) and the
+// readings from `Date.now()` (wall), and on a CI runner a `timeoutMs: 50` wait
+// reported `waitedMs: 49`.
+//
+// Injected so tests can settle a timeout without spending the timeout. A wait's
+// observable behaviour is "what happened before the deadline", and a suite that
+// proves that by sleeping is both slow and, at the boundary, a coin toss.
+export type WaitClock = {
+  readonly now: () => number
+  // Schedules `run` for `delayMs` from now, on the same clock `now` reads.
+  // Returns the canceller.
+  readonly after: (input: { readonly delayMs: number; readonly run: () => void }) => () => void
+}
+
+export const systemWaitClock: WaitClock = {
+  // `performance.now()`, not `Date.now()`: monotonic, so a host re-syncing the
+  // wall clock mid-wait cannot make an elapsed duration shrink (or go
+  // negative), and it shares a time base with the timer below.
+  now: () => performance.now(),
+  after: ({ delayMs, run }) => {
+    const timer = setTimeout(run, delayMs)
+    return () => clearTimeout(timer)
+  },
+}
 
 // The terminal slice's screen-derived facts for one terminal, as plain data.
 // Structurally what terminal.routes.ts's `readTerminalState` door returns —
@@ -117,12 +148,12 @@ const outcomeFromBusEvent = ({
   target,
   request,
   event,
-  startedAt,
+  elapsedMs,
 }: {
   readonly target: WaitTarget
   readonly request: WaitRequest
   readonly event: BusEvent
-  readonly startedAt: number
+  readonly elapsedMs: () => number
 }): WaitOutcome | undefined => {
   const waitEvent = decodeBusEvent(event)
   if (!waitEvent) return undefined
@@ -133,7 +164,7 @@ const outcomeFromBusEvent = ({
       _tag: "Satisfied",
       state: decision.state,
       via: decision.via,
-      waitedMs: Date.now() - startedAt,
+      waitedMs: elapsedMs(),
     }
   }
   return decision
@@ -145,12 +176,12 @@ const outcomeFromScreen = ({
   target,
   request,
   screen,
-  startedAt,
+  elapsedMs,
 }: {
   readonly target: WaitTarget
   readonly request: WaitRequest
   readonly screen: { readonly scope: string; readonly id: string; readonly text: string }
-  readonly startedAt: number
+  readonly elapsedMs: () => number
 }): WaitOutcome | undefined => {
   const decision = evaluateScreenObservation({
     request,
@@ -158,7 +189,7 @@ const outcomeFromScreen = ({
     observation: { scope: screen.scope, short: screen.id, text: screen.text },
   })
   if (decision._tag === "Ignore") return undefined
-  return { _tag: "OutputMatched", matched: decision.matched, waitedMs: Date.now() - startedAt }
+  return { _tag: "OutputMatched", matched: decision.matched, waitedMs: elapsedMs() }
 }
 
 // Subscribes to the SSE bus — and, when the request carries a pattern, to the
@@ -169,17 +200,19 @@ const outcomeFromScreen = ({
 const waitForEvent = ({
   target,
   request,
-  startedAt,
+  elapsedMs,
+  clock,
   terminalScreens,
 }: {
   readonly target: WaitTarget
   readonly request: WaitRequest
-  readonly startedAt: number
+  readonly elapsedMs: () => number
+  readonly clock: WaitClock
   readonly terminalScreens: TerminalScreensPort | undefined
 }): Effect.Effect<WaitOutcome> =>
   Effect.async<WaitOutcome>((resume) => {
     let settled = false
-    let timer: ReturnType<typeof setTimeout>
+    let cancelTimer: () => void = () => {}
     let unsubscribe: () => void
     // No-op until the pattern path actually subscribes, so `release` below can
     // stay branch-free.
@@ -188,30 +221,36 @@ const waitForEvent = ({
     const settle = (outcome: WaitOutcome): void => {
       if (settled) return
       settled = true
-      clearTimeout(timer)
+      cancelTimer()
       unsubscribe()
       unsubscribeScreens()
       resume(Effect.succeed(outcome))
     }
 
     unsubscribe = sseBus.subscribe((event) => {
-      const outcome = outcomeFromBusEvent({ target, request, event, startedAt })
+      const outcome = outcomeFromBusEvent({ target, request, event, elapsedMs })
       if (outcome) settle(outcome)
     })
     if (request.untilOutput !== undefined && terminalScreens !== undefined) {
       unsubscribeScreens = terminalScreens.subscribe((screen) => {
-        const outcome = outcomeFromScreen({ target, request, screen, startedAt })
+        const outcome = outcomeFromScreen({ target, request, screen, elapsedMs })
         if (outcome) settle(outcome)
       })
     }
-    timer = setTimeout(() => {
-      settle({ _tag: "Timeout", waitedMs: Date.now() - startedAt })
-    }, request.timeoutMs)
+    cancelTimer = clock.after({
+      delayMs: request.timeoutMs,
+      run: () => {
+        settle({
+          _tag: "Timeout",
+          waitedMs: timeoutWaitedMs({ requestedMs: request.timeoutMs, elapsedMs: elapsedMs() }),
+        })
+      },
+    })
 
     return Effect.sync(() => {
       if (settled) return
       settled = true
-      clearTimeout(timer)
+      cancelTimer()
       unsubscribe()
       unsubscribeScreens()
     })
@@ -246,10 +285,19 @@ const screenPollingUnavailable = ({
   return terminalScreens === undefined || !terminalScreens.enabled()
 }
 
-const buildApi = (registry: SessionRegistryApi): SessionWaitApi => ({
+const buildApi = ({
+  registry,
+  clock,
+}: {
+  readonly registry: SessionRegistryApi
+  readonly clock: WaitClock
+}): SessionWaitApi => ({
   wait: ({ short, request, pinnedSessionId, readTerminalState, terminalScreens }) =>
     Effect.gen(function* () {
-      const startedAt = Date.now()
+      const startedAt = clock.now()
+      // Rounded here rather than at each branch: `waitedMs` crosses HTTP and
+      // `pid wait` prints it verbatim, and a monotonic clock reads fractional.
+      const elapsedMs = (): number => Math.round(clock.now() - startedAt)
       if (screenPollingUnavailable({ request, terminalScreens })) {
         return { _tag: "ScreenPollingDisabled" as const }
       }
@@ -269,11 +317,22 @@ const buildApi = (registry: SessionRegistryApi): SessionWaitApi => ({
         }
       }
       const target: WaitTarget = { short, sessionId: pinnedSessionId ?? current?.sessionId }
-      return yield* waitForEvent({ target, request, startedAt, terminalScreens })
+      return yield* waitForEvent({ target, request, elapsedMs, clock, terminalScreens })
     }),
 })
 
-export const SessionWaitIoLive: Layer.Layer<SessionWaitIo, never, SessionRegistry> = Layer.effect(
-  SessionWaitIo,
-  Effect.map(SessionRegistry, buildApi),
-)
+// Layer factory over the clock, in the shape platform/runtime.ts already uses
+// for `makeIssueDriverLive`. Tests build the same live handlers over a clock
+// they drive; nothing else about the slice is stubbed.
+export const makeSessionWaitIoLive = ({
+  clock,
+}: {
+  readonly clock: WaitClock
+}): Layer.Layer<SessionWaitIo, never, SessionRegistry> =>
+  Layer.effect(
+    SessionWaitIo,
+    Effect.map(SessionRegistry, (registry) => buildApi({ registry, clock })),
+  )
+
+export const SessionWaitIoLive: Layer.Layer<SessionWaitIo, never, SessionRegistry> =
+  makeSessionWaitIoLive({ clock: systemWaitClock })
