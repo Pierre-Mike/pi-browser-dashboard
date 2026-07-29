@@ -91,7 +91,6 @@ const snapshot: HarnessSnapshot = {
   biome: await read("biome.json"),
   lefthook: await read("lefthook.yml"),
   packageJson: await read("package.json"),
-  unitTestsWorkflow: await read(".github/workflows/unit-tests.yml"),
   claudeMd: await read("CLAUDE.md"),
   agentsMd: await read("AGENTS.md"),
   gritPlugins,

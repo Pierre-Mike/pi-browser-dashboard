@@ -88,10 +88,6 @@ const healthy = (): HarnessSnapshot => ({
         "bun run lint:ci && bun run typecheck && bun run test && bun run test:web && bun run test:cli && bun run audit && bun run axiom-debt",
     },
   }),
-  unitTestsWorkflow: [
-    ...REQUIRED_CI_CONTEXTS.map((c) => `    name: ${c}`),
-    `      - uses: actions/checkout@${SHA}`,
-  ].join("\n"),
   claudeMd: canon("\nshared canon\n"),
   agentsMd: canon("\nshared canon\n"),
   gritPlugins: REQUIRED_GRIT_PLUGINS.map((p) => `biome-plugins/${p}`),
@@ -102,10 +98,20 @@ const healthy = (): HarnessSnapshot => ({
     "shared/tsconfig.json",
   ],
   presentFiles: [...TRACKED],
+  // Mirrors the real split: most required contexts are jobs in unit-tests.yml,
+  // but `Playwright` is declared in pr-e2e.yml. The fixture keeps them apart so
+  // the cross-workflow search is exercised rather than assumed.
   workflows: [
     {
       name: "unit-tests.yml",
-      text: REQUIRED_CI_CONTEXTS.map((c) => `    name: ${c}`).join("\n"),
+      text: [
+        ...REQUIRED_CI_CONTEXTS.filter((c) => c !== "Playwright").map((c) => `    name: ${c}`),
+        `      - uses: actions/checkout@${SHA}`,
+      ].join("\n"),
+    },
+    {
+      name: "pr-e2e.yml",
+      text: ["    name: Playwright", "      - name: Install Playwright browsers"].join("\n"),
     },
     { name: "codeql.yml", text: `      - uses: github/codeql-action/init@${SHA}` },
   ],
@@ -190,14 +196,43 @@ describe("auditHarness", () => {
     expect(checksFor({ ...healthy(), packageJson: JSON.stringify(pkg) })).toContain("scripts")
   })
 
+  const withWorkflowText = (input: {
+    readonly file: string
+    readonly edit: (text: string) => string
+  }): HarnessSnapshot => ({
+    ...healthy(),
+    workflows: healthy().workflows.map((w) =>
+      w.name === input.file ? { ...w, text: input.edit(w.text) } : w,
+    ),
+  })
+
   it("catches a renamed CI job that the branch ruleset still requires", () => {
-    const snap = {
-      ...healthy(),
-      unitTestsWorkflow: healthy().unitTestsWorkflow.replace(
-        "bun test (daemon + web)",
-        "bun test (all)",
-      ),
-    }
+    const snap = withWorkflowText({
+      file: "unit-tests.yml",
+      edit: (t) => t.replace("bun test (daemon + web)", "bun test (all)"),
+    })
+    expect(checksFor(snap)).toContain("ci-contexts")
+  })
+
+  // The contexts are not all in one workflow. `Playwright` is required by the
+  // ruleset and declared in pr-e2e.yml; a check that only read unit-tests.yml
+  // reported green while renaming that job made every PR unmergeable.
+  it("catches a renamed required job in a workflow other than unit-tests.yml", () => {
+    const snap = withWorkflowText({
+      file: "pr-e2e.yml",
+      edit: (t) => t.replace("    name: Playwright", "    name: e2e"),
+    })
+    expect(checksFor(snap)).toContain("ci-contexts")
+  })
+
+  // "Playwright" survives that rename inside the step name "Install Playwright
+  // browsers", so a substring search would still pass. Only a `name:` line that
+  // declares the job itself counts.
+  it("does not accept a required context that appears only in a step name", () => {
+    const snap = withWorkflowText({
+      file: "pr-e2e.yml",
+      edit: (t) => t.replace("    name: Playwright\n", ""),
+    })
     expect(checksFor(snap)).toContain("ci-contexts")
   })
 
