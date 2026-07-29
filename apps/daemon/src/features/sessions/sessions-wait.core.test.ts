@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
+import { OUTPUT_PATTERN_MAX_CHARS, WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
 import { Either } from "effect"
 import {
   decideInitial,
@@ -9,7 +9,6 @@ import {
   evaluateScreenObservation,
   evaluateWaitEvent,
   matchOutputPattern,
-  OUTPUT_PATTERN_MAX_CHARS,
   parseWaitRequest,
   sessionSlugFromTerminalState,
   type WaitRequest,

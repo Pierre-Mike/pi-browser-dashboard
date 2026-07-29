@@ -25,6 +25,7 @@ import {
   exitCodeForTerminalLookup,
   exitCodeForUsage,
   exitCodeForWaitBody,
+  exitCodeForWaitPostStatus,
   type FleetRunStarted,
   type FleetRunSummaryWire,
   filterByState,
@@ -47,6 +48,7 @@ import {
   formatWaitOutcome,
   type HelpCommand,
   NAMED_KEYS_HELP,
+  OUTPUT_ANCHORS_HELP,
   type ParseError,
   parseAgentArgv,
   parseDispatchResponse,
@@ -70,6 +72,7 @@ import {
   type SessionRow,
   type TerminalRow,
   type TerminalStateEntry,
+  WAIT_VIA_HELP,
   type WaitOutcomeBody,
   type WaitParams,
   worstExitCode,
@@ -81,7 +84,8 @@ Usage:
   pid sessions [--state <slug,...>] [--json]
   pid explain <short> [--json]
   pid terminals [<scope>:<id>] [--json]
-  pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
+  pid wait <short> [--until <slug,...>] [--until-output <text> [--anchor <where>]]
+           [--via supervisor|screen|either] [--timeout <ms>] [--json]
   pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
   pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
   pid spawn <intent> [--n <count>] [--agent <name>] [--cwd <path>] [--wait <slug,...>] [--json]
@@ -102,6 +106,20 @@ PID_URL overrides the default http://localhost:8787; --url overrides PID_URL.
 session states: done, working, blocked, needs_input, idle, failed, stopped, unknown
 terminal states: working, blocked, idle, unknown
 key names: ${NAMED_KEYS_HELP}
+wait via: ${WAIT_VIA_HELP}
+anchors: ${OUTPUT_ANCHORS_HELP}
+
+pid wait takes either condition, or both — first to fire wins. --until watches
+a session's state; --until-output watches its screen for a literal substring
+(no regex; capped at 200 characters), anchored anywhere on a line by default.
+--via chooses which reading may settle an --until wait: supervisor (default)
+trusts state.json only, screen trusts the classified pane only, either takes
+whichever comes first. A satisfied wait prints which one settled it, because
+"the pane looks done" is a weaker claim than "the agent reported done". Only
+working, blocked and idle have screen evidence at all, so a screen-only wait on
+done/failed/stopped/needs_input can never be satisfied. --until-output needs
+the daemon's screen poller: with PID_TERMINAL_POLL_MS=0 it exits 8 at once
+rather than waiting for a timeout that would read like "not yet".
 
 pid terminals reports what the daemon last read off each terminal's screen —
 working, blocked, idle or unknown — including sessions nobody has opened in
@@ -144,6 +162,9 @@ Exit codes:
   6  not found
   7  "pid fleet run --wait": the run finished with a failed or skipped step,
      or refused to start because that fleet already has an active run
+  8  screen_polling_disabled — "--until-output" needs the daemon's screen
+     poller, which is off (PID_TERMINAL_POLL_MS=0). Not a timeout: retrying
+     cannot help until the daemon is reconfigured
 `
 
 // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution (see apps/web/src/lib/api.ts call sites)
@@ -308,11 +329,23 @@ const runWait = async ({
 }): Promise<ExitCode> => {
   const res: Response = await client.sessions[":id"].wait.$post({
     param: { id: command.short },
-    json: buildWaitRequestBody({ until: command.until, timeoutMs: command.timeoutMs }),
+    json: buildWaitRequestBody({
+      until: command.until,
+      untilOutput: command.untilOutput,
+      via: command.via,
+      timeoutMs: command.timeoutMs,
+    }),
   })
   const body = await readJson(res)
-  const notOk = checkOk({ res, body, label: "wait" })
-  if (notOk !== undefined) return notOk
+  // `checkOk`'s generic 404-or-else split cannot see the one status this route
+  // has that no other does: 409 `screen_polling_disabled` (an `--until-output`
+  // wait against a daemon whose poller is off). It gets its own exit code so an
+  // agent never mistakes a misconfigured daemon for "the pattern has not
+  // appeared yet" and retries forever.
+  if (!res.ok) {
+    console.error(`wait: ${errorMessageFrom(body)}`)
+    return exitCodeForWaitPostStatus(res.status)
+  }
   return printAndExit({
     body,
     json: command.json,
