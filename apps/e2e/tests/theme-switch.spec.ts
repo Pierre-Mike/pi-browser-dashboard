@@ -21,11 +21,21 @@ const openWithTheme = async ({ page, stored }: { page: Page; stored: string }): 
   await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
 }
 
-// terminalTheme.ts's two backgrounds. The terminal palette is still one
-// light/dark pair shared by every family (per-family xterm colours are a later
-// change) — what this spec pins is *which* of the pair a chosen theme selects.
-const XTERM_DARK = "rgb(11, 18, 32)"
-const XTERM_LIGHT = "rgb(248, 250, 252)"
+// Each family owns its xterm pane as well as its chrome: the palette in
+// apps/web/src/features/terminal/terminalTheme.ts is keyed by resolved theme
+// name, so all eight themes have a pane colour of their own. Written out
+// literally because apps/e2e drives the app from outside and must not import
+// apps/web internals — the same rule as THEME_KEY above.
+//
+// The regression these guard is a family's terminal falling back to `pid`'s
+// slate/sky pair, which is how `sunsetdark` used to show a cool navy rectangle
+// inside warm plum chrome. So every assertion below names the family it is
+// exercising, and PID_* appears only where the pid family is actually active.
+const PID_DARK = "rgb(11, 18, 32)" // piddark   #0b1220 (frozen)
+const PID_LIGHT = "rgb(248, 250, 252)" // pidlight  #f8fafc (frozen)
+const TERMINAL_DARK = "rgb(6, 26, 14)" // terminaldark  #061a0e — phosphor
+const SUNSET_LIGHT = "rgb(254, 245, 238)" // sunsetlight   #fef5ee — warm cream
+const SUNSET_DARK = "rgb(30, 18, 26)" // sunsetdark    #1e121a — warm plum
 
 const expectTerminalBackground = async ({
   page,
@@ -46,7 +56,9 @@ test("an explicit dark family wins over a light OS preference", async ({ page })
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "terminaldark")
   await expect(page.locator("html")).toHaveCSS("color-scheme", "dark")
-  await expectTerminalBackground({ page, color: XTERM_DARK })
+  // The terminal family's own pane, not pid's: a phosphor-green shell around a
+  // slate-blue terminal was the defect.
+  await expectTerminalBackground({ page, color: TERMINAL_DARK })
 })
 
 test("an explicit light family wins over a dark OS preference", async ({ page }) => {
@@ -55,7 +67,28 @@ test("an explicit light family wins over a dark OS preference", async ({ page })
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "sunsetlight")
   await expect(page.locator("html")).toHaveCSS("color-scheme", "light")
-  await expectTerminalBackground({ page, color: XTERM_LIGHT })
+  await expectTerminalBackground({ page, color: SUNSET_LIGHT })
+})
+
+test("switching family repaints the terminal pane in that family's colours", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" })
+  await openWithTheme({ page, stored: "pid:dark" })
+  await expectTerminalBackground({ page, color: PID_DARK })
+
+  // Driven through the real Appearance picker, and asserted twice over: a pane
+  // that silently kept pid's colour would pass a single-family spec, and a pane
+  // that only re-themed on reload would pass a seeded one.
+  for (const [family, resolved, colour] of [
+    ["terminal", "terminaldark", TERMINAL_DARK],
+    ["sunset", "sunsetdark", SUNSET_DARK],
+  ] as const) {
+    await page.getByTestId("dashboard-tab-settings").click()
+    await expect(page.getByTestId("gs-appearance-family")).toBeVisible()
+    await page.getByTestId("gs-appearance-family").selectOption(family)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", resolved)
+    await expectTerminalBackground({ page, color: colour })
+    expect(colour).not.toBe(PID_DARK)
+  }
 })
 
 test("a garbage stored value falls back to the default family instead of wedging", async ({
@@ -65,6 +98,10 @@ test("a garbage stored value falls back to the default family instead of wedging
   await openWithTheme({ page, stored: "vaporwave:sepia" })
 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "pidlight")
+  // The palette lookup is total for the same reason the family lookup is: an
+  // unrecognised name still has to paint a pane, not leave xterm with an
+  // undefined theme.
+  await expectTerminalBackground({ page, color: PID_LIGHT })
 })
 
 // ── shape ───────────────────────────────────────────────────────────────────

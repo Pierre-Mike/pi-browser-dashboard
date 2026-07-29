@@ -26,11 +26,57 @@ Because `base: false`, **the app shell paints the page**, not daisyUI. That is
 text-base-content`). A raw colour literal there — or in the sidebar chrome — is a
 surface no theme can reach, which is exactly how it used to be.
 
-The xterm palette (`features/terminal/terminalTheme.ts`) is still one light/dark
-pair shared by every family; `TerminalView` picks between them from the resolved
-theme name. Per-family terminal colours are deliberately not done yet, and it
-shows: in `sunsetdark` the terminal pane is cool navy inside warm plum chrome,
-which reads as a hole in the page rather than a panel.
+### The xterm pane is a ninth surface, keyed by theme name
+
+`features/terminal/terminalTheme.ts` holds **eight palettes, one per theme**,
+keyed by the resolved daisyUI name; `TerminalView` passes `useTheme().resolved`
+straight in. It used to be one light/dark pair shared by every family, and that
+showed: `terminaldark` wrapped a slate-blue terminal in a phosphor-green shell
+and `sunsetdark` put a cool navy pane inside warm plum chrome, which read as a
+hole in the page rather than a panel.
+
+xterm paints its own canvas from hex values, so this is the one surface a
+semantic token cannot reach — `bg-base-100` stops at the pane's border. Hence the
+wholesale allow-list in the palette ratchet: these literals are colour *data*.
+The module stays pure (no DOM, unit-testable under bun) and the lookup is
+**total** — an unrecognised theme name falls back to `pid` by the same `dark`
+suffix the CSS `dark:` variant keys on, so it paints rather than handing xterm an
+undefined theme.
+
+Three rules hold every palette together, all asserted by
+`terminalTheme.test.ts`:
+
+- **The pane sits between its theme's `base-100` and `base-200`, per channel.**
+  Checkable rather than a matter of taste, and read from `tailwind.config.js` at
+  runtime, so a new family cannot forget. `pid` already satisfied it (`#f8fafc`
+  is exactly halfway between `#ffffff` and `#f1f5f9`), which is why its pane
+  never looked wrong; a palette copied from `pid` into another family fails on
+  every channel at once.
+- **Foreground clears 4.5:1 on background; every ANSI *ink* slot clears 3:1.**
+  ANSI `black` is exempt by construction — it is a background slot (xterm's own
+  default is `#000000`, 1:1 against any dark pane) and is only required to
+  differ from the pane. `pidlight.brightYellow` (2.81:1) and
+  `pidlight.brightWhite` (2.45:1) are exempted **by name**, with the ratio
+  recorded, because `pid` is byte-frozen — the same pattern
+  `themeCatalog.test.ts` uses for `pidlight`'s primary.
+- **Every light palette overrides all sixteen slots**, `white`/`brightWhite`
+  as grays: xterm's defaults assume a dark background, and white-on-light is
+  invisible. `piddark` is the one theme allowed to declare none (it shipped that
+  way, and the defaults already suit a dark pane); every other theme declares all
+  sixteen so no slot inherits a stock colour.
+
+A family's palette also has to *read* as that family, so the test pins the
+character too: `terminal`'s ink is green-dominant and its `blue`/`brightBlue`
+lean teal (a phosphor tube has no blue in it), `mono` keeps pane and ink
+near-grayscale while `red` stays hue-identifiable — desaturate, don't erase, or a
+build failure stops reading as an error — and `sunset`'s pane is warm where
+`pid`'s is cool.
+
+`apps/e2e/tests/theme-switch.spec.ts` closes it end to end: switching family
+through the real Appearance picker repaints the pane live, and each assertion
+names the family it exercises. `terminal-light-mode.spec.ts` owns the `pid` pair
+(`rgb(11,18,32)` / `rgb(248,250,252)`) and asserts `data-theme` alongside them,
+so a pane that fell back to `pid` can no longer pass as its own family.
 
 ### Shape is a theme property too
 
