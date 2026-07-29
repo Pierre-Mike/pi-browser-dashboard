@@ -19,7 +19,7 @@ import { SessionRegistry } from "./sessions.io"
 import { explainSession } from "./sessions-explain.core"
 import { type KeyStep, parseKeysRequest } from "./sessions-keys.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
-import { SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
+import { SessionWaitIo, type TerminalStateReader, type WaitOutcome } from "./sessions-wait.io"
 
 const MAX_TRANSCRIPT_LINES = 500
 
@@ -102,7 +102,16 @@ const currentSessionId = async (
 const waitOutcomeBody = ({ outcome, short }: { outcome: WaitOutcome; short: string }) => {
   switch (outcome._tag) {
     case "Satisfied":
-      return { ok: true, short, state: outcome.state, waitedMs: outcome.waitedMs }
+      // `via` names which observation settled it — the supervisor's state.json
+      // or the screen classifier — so a caller can tell a confirmed finish
+      // from one inferred off the pane.
+      return {
+        ok: true,
+        short,
+        state: outcome.state,
+        via: outcome.via,
+        waitedMs: outcome.waitedMs,
+      }
     case "Timeout":
       return { ok: false, reason: "timeout", short, waitedMs: outcome.waitedMs }
     case "OccupantChanged":
@@ -127,11 +136,13 @@ const sendAndMaybeWait = async ({
   id,
   keys,
   waitRequest,
+  readTerminalState,
 }: {
   runtime: SessionsRouteRuntime
   id: string
   keys: string
   waitRequest: WaitRequest | undefined
+  readTerminalState: TerminalStateReader | undefined
 }): Promise<SendOutcome> => {
   // Capture the occupant's sessionId *before* sending, so a requested wait is
   // pinned to whoever held the session at request time — not whoever (if
@@ -147,7 +158,7 @@ const sendAndMaybeWait = async ({
   if (!waitRequest) return { _tag: "Sent", wait: undefined }
   const outcome = await runtime.runPromise(
     Effect.flatMap(SessionWaitIo, (svc) =>
-      svc.wait({ short: id, request: waitRequest, pinnedSessionId }),
+      svc.wait({ short: id, request: waitRequest, pinnedSessionId, readTerminalState }),
     ),
   )
   return { _tag: "Sent", wait: outcome }
@@ -176,7 +187,18 @@ const sessionFsRoute = async (
   return c.json(out, status)
 }
 
-export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
+// Everything this router needs from the composition root. `readTerminalState`
+// is the terminal slice's published door onto the polled screen
+// classifications, passed in rather than imported — the same shape
+// brainstorms.routes.ts and fleet.routes.ts use for their own cross-slice
+// needs. Absent (route tests, and any caller that doesn't care) simply means
+// no screen facts are available.
+export type SessionsRouteDeps = {
+  readonly runtime: SessionsRouteRuntime
+  readonly readTerminalState?: TerminalStateReader | undefined
+}
+
+export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDeps) =>
   new Hono()
     .get("/", async (c) => {
       const list = await runtime.runPromise(
@@ -408,6 +430,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         id,
         keys: body.keys as string,
         waitRequest,
+        readTerminalState,
       })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
@@ -447,7 +470,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         waitRequest = parsedWait.right
       }
       const { keys, resolved } = parsedKeys.right
-      const outcome = await sendAndMaybeWait({ runtime, id, keys, waitRequest })
+      const outcome = await sendAndMaybeWait({ runtime, id, keys, waitRequest, readTerminalState })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
       }
@@ -463,12 +486,15 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         return c.json({ error: "bad_request", message: parsed.left.message }, 400)
       }
       const outcome = await runtime.runPromise(
-        Effect.flatMap(SessionWaitIo, (svc) => svc.wait({ short: id, request: parsed.right })),
+        Effect.flatMap(SessionWaitIo, (svc) =>
+          svc.wait({ short: id, request: parsed.right, readTerminalState }),
+        ),
       )
       if (outcome._tag === "NotFound") return c.json({ error: "not_found", short: id }, 404)
       return c.json(waitOutcomeBody({ outcome, short: id }))
     })
 
-const app = buildSessionsApp(appRuntime)
-
-export { app }
+// No module-level `app` any more: this router now needs a port only the
+// composition root can supply (the terminal slice's screen-state door), so
+// api.ts builds it — `buildSessionsApp({ runtime: appRuntime, ... })` — the
+// same way it builds the brainstorms and fleet routers.
