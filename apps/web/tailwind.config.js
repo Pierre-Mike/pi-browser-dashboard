@@ -62,10 +62,19 @@ export default {
   // that hardcodes a radius instead of using them. Adding a shape to a family
   // is therefore a change to these four lines and nothing else.
   //
-  // `pid` is byte-frozen — it is the default and must keep looking exactly as
-  // it did before shape was tokenized. The other three differ on purpose:
-  // mono is tight and technical, terminal is fully square (and drops the button
-  // transition to 0s: a CRT does not ease), sunset is soft.
+  // `pid`'s **shape** is frozen — it is the default and must keep looking
+  // exactly as it did before shape was tokenized. The other three differ on
+  // purpose: mono is tight and technical, terminal is fully square (and drops
+  // the button transition to 0s: a CRT does not ease), sunset is soft.
+  //
+  // Its **colour** is not frozen any more, and the freeze is why: `pid` was held
+  // byte-identical while the seven newer themes were built, so a palette
+  // regression could never be blamed on the machinery. Every one of those seven
+  // then cleared WCAG AA on its accent while `pid` — the machine-wide default —
+  // did not, at 2.77:1 for `text-primary` on `base-100`. The accent trio
+  // (`primary`, `info`, `secondary`) was darkened along its own hue until it
+  // cleared 4.5:1; nothing else about the family moved. `themeCatalog.test.ts`
+  // is now the floor, so the next accent cannot regress without failing a gate.
   //
   // The two variants of a family always share one shape. Light and dark are the
   // same design in two lightings, not two designs.
@@ -78,16 +87,33 @@ export default {
     themes: [
       {
         pidlight: {
-          primary: "#0ea5e9", // sky-500
+          // sky-700, not sky-500. `primary` is read both ways — as a surface
+          // under `primary-content` and as ink via `text-primary` (38 sites:
+          // links, active tabs, focus rings, count pills) — so it has to clear
+          // 4.5:1 in both directions. sky-500 managed 2.65 / 2.77 and sky-600
+          // only 3.91 / 4.10; sky-700 is the first step on the ramp that clears
+          // the bar, at 5.67 / 5.93.
+          primary: "#0369a1", // sky-700
           "primary-content": "#f8fafc",
-          secondary: "#6366f1", // indigo-500
+          // indigo-600, not indigo-500: `text-secondary` on white measured
+          // 4.47:1 — a miss is a miss, and 0.03 is not a reason to exempt.
+          secondary: "#4f46e5", // indigo-600
           accent: "#f59e0b", // amber-500
           neutral: "#1e293b", // slate-800
           "base-100": "#ffffff",
           "base-200": "#f1f5f9", // slate-100
           "base-300": "#e2e8f0", // slate-200
           "base-content": "#0f172a", // slate-900
-          info: "#0ea5e9",
+          // `info` tracks `primary` in this family by design, and `text-info` is
+          // how a "working" session paints, so it moves with it.
+          info: "#0369a1",
+          // The three *status* hues still miss 4.5:1 as ink on white — success
+          // 2.54, warning 2.15 (it is `accent`, same hex), error 3.67 — and are
+          // named in `themeCatalog.test.ts`'s exemption list with those ratios,
+          // not left unmeasured. They are deliberately not in this change: a
+          // status colour carries meaning ("blocked" vs "failed" at a glance in
+          // the sidebar), so darkening the set is a design decision that wants
+          // its own before/after, not a rider on an accent fix.
           success: "#10b981",
           warning: "#f59e0b",
           error: "#f43f5e",

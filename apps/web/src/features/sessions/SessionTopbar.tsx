@@ -106,7 +106,8 @@ const BusyLabel = ({
 )
 
 // Kill / Delete keep their tinted look via semantic warning / error tokens, so
-// one class adapts across the pidlight / piddark themes — no per-theme variant.
+// one class adapts across all eight themes — four families, light and dark each
+// — with no per-theme variant.
 const KILL_BTN =
   "btn btn-xs normal-case border-warning/40 bg-warning/15 text-warning hover:bg-warning/25 disabled:opacity-30 disabled:bg-transparent disabled:border-base-300 disabled:text-base-content/50"
 const DELETE_BTN_ARMED = "border-error bg-error text-error-content hover:opacity-90"

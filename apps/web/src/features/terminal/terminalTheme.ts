@@ -42,13 +42,21 @@ export type TerminalTheme = {
   readonly brightWhite?: string
 }
 
-// ── pid (default, frozen) ───────────────────────────────────────────────────
+// ── pid (default) ───────────────────────────────────────────────────────────
 //
-// Byte-frozen, both variants. `pid` is the default family, its two backgrounds
-// are asserted verbatim by the e2e suite, and tokenizing the palette was meant
-// to make the other families expressible — not to restyle this one. The dark
-// variant deliberately declares no ANSI slots: xterm's defaults already assume
-// a dark background, and this is what shipped.
+// Both **backgrounds** are frozen — they are asserted verbatim by the e2e suite
+// and they are what makes the pane sit inside the shell gradient. The rest of
+// the family was frozen too while the seven newer palettes were built, so that a
+// regression could never be blamed on the machinery; that freeze is over, and
+// what it had been protecting was two ANSI slots that missed the 3:1 ink floor.
+//
+// `piddark` still declares no ANSI slots. Not because "this is what shipped" —
+// that reason expired with the freeze — but because xterm's dark defaults are
+// measurably fine on #0b1220 (the darkest ink slot is brightBlack #666666 at
+// 3.26:1, then ANSI red #cd3131 at 3.64:1; every other slot is above 3.8) and
+// declaring sixteen slate/sky replacements would repaint every character of the
+// app's default dark terminal for no accessibility gain. It is a deferral with a
+// number behind it, and `terminalTheme.test.ts` names it as the one exemption.
 const pidDark: TerminalTheme = {
   background: "#0b1220",
   foreground: "#e2e8f0",
@@ -62,7 +70,11 @@ const pidDark: TerminalTheme = {
 const pidLight: TerminalTheme = {
   background: "#f8fafc",
   foreground: "#0f172a",
-  cursor: "#0284c7",
+  // The cursor is the theme's `primary`, as it is in all seven other palettes.
+  // pidlight was the lone exception — cursor sky-600 under a sky-500 primary,
+  // because the primary was too light for the pane. With primary at sky-700 the
+  // exception has no reason left, and the caret gains contrast (3.91 → 5.67).
+  cursor: "#0369a1",
   black: "#0f172a",
   red: "#dc2626",
   green: "#15803d",
@@ -74,11 +86,21 @@ const pidLight: TerminalTheme = {
   brightBlack: "#475569",
   brightRed: "#ef4444",
   brightGreen: "#16a34a",
-  brightYellow: "#ca8a04",
+  // Not yellow-600 (#ca8a04, 2.81:1): darkened along the same hue (~41°) until
+  // it clears the 3:1 ink floor, and still a clear step above `yellow` in
+  // luminance so the bright half of the ramp stays a bright half.
+  brightYellow: "#b67c04",
   brightBlue: "#2563eb",
   brightMagenta: "#9333ea",
   brightCyan: "#0891b2",
-  brightWhite: "#94a3b8",
+  // Not slate-400 (#94a3b8, 2.45:1). A light theme's "bright white" is a gray by
+  // construction, and the counter-argument on record was that a gray clearing
+  // 3:1 stops reading as the bright end of the ramp. The repo's own three light
+  // palettes refute it: mono ships #8e8e99 at 3.11, terminal #7e8878 at 3.28,
+  // sunset #9e7d84 at 3.41, each still visibly lighter than its `white`. This is
+  // the same move on the slate ramp — halfway to slate-500, 3.27:1, and still
+  // ~1.5× the luminance of `white` #64748b.
+  brightWhite: "#7c8ca2",
 }
 
 // ── mono ────────────────────────────────────────────────────────────────────
