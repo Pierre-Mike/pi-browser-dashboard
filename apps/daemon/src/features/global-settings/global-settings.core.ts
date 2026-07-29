@@ -17,6 +17,7 @@ import type {
   NetworkSettings,
   OrchestrationSettings,
   SkillGroup,
+  UiSettings,
 } from "@pid/shared"
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
@@ -37,6 +38,11 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
     appPort: 8787,
     tunnelPort: 5173,
   },
+  // Both halves empty = no machine-wide theme default, so a browser with no pick
+  // of its own gets whatever apps/web calls its default. Naming `pid`/`system`
+  // here would be a second copy of a decision that belongs next to
+  // tailwind.config.js, and it would silently outvote a future rename there.
+  ui: { themeFamily: "", themeMode: "" },
   skillGroups: [],
 }
 
@@ -102,6 +108,22 @@ const readNetwork = (input: {
   }
 }
 
+// The theme halves are opaque here on purpose: which families and modes exist is
+// declared in apps/web/src/lib/ui/theme.core.ts, next to the tailwind config that
+// emits them. Validating a family name in the daemon would mean a web-only
+// rename needed a daemon release, and would turn an unrecognised value into a
+// *rejected* one — the file must be able to say "vaporwave" and let the reader
+// fall back per half. So the only rule is "a string" (`optStr`, since "" is the
+// meaningful "unset", exactly as in orchestration.defaultAgent).
+const readUi = (input: { readonly raw: unknown; readonly base: UiSettings }): UiSettings => {
+  const { raw, base } = input
+  if (!isObject(raw)) return base
+  return {
+    themeFamily: optStr(raw.themeFamily) ?? base.themeFamily,
+    themeMode: optStr(raw.themeMode) ?? base.themeMode,
+  }
+}
+
 // Validate a group's skill id list: non-empty strings only, trimmed, deduped,
 // order preserved. Anything else (missing, wrong-typed, blank) is dropped.
 const readSkillIds = (raw: unknown): readonly string[] => {
@@ -148,6 +170,7 @@ const fromObject = (input: {
     library: readLibrary({ raw: parsed.library, base: base.library }),
     orchestration: readOrchestration({ raw: parsed.orchestration, base: base.orchestration }),
     network: readNetwork({ raw: parsed.network, base: base.network }),
+    ui: readUi({ raw: parsed.ui, base: base.ui }),
     skillGroups: readSkillGroups({ raw: parsed.skillGroups, base: base.skillGroups }),
   }
 }

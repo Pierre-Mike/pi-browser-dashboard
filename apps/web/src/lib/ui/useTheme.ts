@@ -1,22 +1,42 @@
+import type { UiSettings } from "@pid/shared"
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react"
 import {
-  DEFAULT_THEME,
-  parseStoredTheme,
   resolveTheme,
+  resolveThemeChoice,
   schemeForThemeName,
   serializeTheme,
   type ThemeChoice,
   type ThemeMode,
+  type ThemeOffer,
   type ThemeSelection,
+  themeOfferFromSettings,
+  themeOfferFromStored,
 } from "./theme.core"
 
 // The I/O edge of the theme: localStorage, matchMedia, and the two attributes on
 // <html>. Every decision lives in theme.core.ts — this file only reads facts,
 // writes the answer, and notifies React.
 //
-// Persistence is per-browser (localStorage), like usePersistedFlag and
-// usePinnedProjects. Promoting the choice to a machine-wide default belongs in
-// the global-settings file, which is a daemon round-trip and a later change.
+// Two sources feed the choice, and they arrive at different times, which is the
+// whole reason this file is shaped the way it is:
+//
+//   - **This browser's pick** — `localStorage["pid:ui:theme"]`, synchronous, so
+//     it is read and painted at *import* time, before React mounts.
+//   - **The machine-wide default** — the global-settings `ui` section, which
+//     costs a daemon round-trip and lands later, via `applyMachineTheme` (see
+//     features/global-settings/useMachineTheme.ts).
+//
+// Seeding from the slow source would mean painting `pid` first and the real theme
+// a round-trip later: a visible flash on every load for everyone who picked
+// something. Seeding from the fast one and reconciling costs no repaint at all
+// for those people, because `resolveThemeChoice` lets their pick override the
+// machine default — the arriving value changes nothing they can see. A browser
+// that has *never* picked has nothing to flash away from: it shows the fallback
+// until the default arrives, then adopts it once.
+//
+// The browser value stays an **override**, not a cache: `applyMachineTheme` never
+// writes localStorage, so a default changed from another device cannot overrule a
+// browser that has already chosen.
 
 // Not exported: nothing outside this module should reach past the hook to the
 // storage layer. The e2e suite seeds the literal key, and says so.
@@ -24,12 +44,12 @@ const THEME_STORAGE_KEY = "pid:ui:theme"
 
 const PREFERS_DARK = "(prefers-color-scheme: dark)"
 
-const read = (): ThemeChoice => {
-  if (typeof window === "undefined") return DEFAULT_THEME
+const readStored = (): ThemeOffer => {
+  if (typeof window === "undefined") return {}
   try {
-    return parseStoredTheme({ raw: window.localStorage.getItem(THEME_STORAGE_KEY) })
+    return themeOfferFromStored({ raw: window.localStorage.getItem(THEME_STORAGE_KEY) })
   } catch {
-    return DEFAULT_THEME
+    return {}
   }
 }
 
@@ -46,10 +66,28 @@ const write = (choice: ThemeChoice): void => {
 // the settings dropdown edits the choice; two independent useState hooks would
 // never see each other's writes — the exact trap usePersistedFlag documents for
 // the sidebar rail, which is why __root.tsx owns that one instance.
-let current: ThemeChoice = read()
+//
+// `state` is rebuilt (never mutated) on every change, so it doubles as the
+// useSyncExternalStore snapshot: a stable reference between notifications.
+type ThemeState = {
+  readonly choice: ThemeChoice
+  readonly machine: ThemeOffer
+}
+
+let browser: ThemeOffer = readStored()
+let machine: ThemeOffer = {}
+let state: ThemeState = { choice: resolveThemeChoice({ browser, machine }), machine }
+
 const listeners = new Set<() => void>()
 
-const snapshot = (): ThemeChoice => current
+const snapshot = (): ThemeState => state
+
+/**
+ * The store's current value. Exported for the co-located test, which drives the
+ * two writers in sequence — the precedence between them is the behaviour worth
+ * pinning, and it is unreachable through the hook without a DOM.
+ */
+export const themeStoreSnapshot = snapshot
 
 const subscribe = (onStoreChange: () => void): (() => void) => {
   listeners.add(onStoreChange)
@@ -59,12 +97,30 @@ const subscribe = (onStoreChange: () => void): (() => void) => {
 }
 
 const notify = (): void => {
+  state = { choice: resolveThemeChoice({ browser, machine }), machine }
   for (const listener of listeners) listener()
 }
 
-const publish = (next: ThemeChoice): void => {
-  current = next
-  write(next)
+/**
+ * Adopt this browser's own pick. The only path that writes localStorage — which
+ * is what makes the stored value an explicit override rather than a cache of
+ * whatever was last displayed.
+ */
+export const publishThemeChoice = (choice: ThemeChoice): void => {
+  browser = choice
+  write(choice)
+  notify()
+}
+
+/**
+ * Adopt the machine-wide default from the global-settings `ui` section. Writes
+ * nothing: a browser that has already picked keeps its pick, and one that has not
+ * simply starts resolving through this instead of through the fallback.
+ */
+export const applyMachineTheme = ({ ui }: { readonly ui: UiSettings | undefined }): void => {
+  const next = themeOfferFromSettings({ ui })
+  if (next.family === machine.family && next.mode === machine.mode) return
+  machine = next
   notify()
 }
 
@@ -84,18 +140,18 @@ const prefersDarkNow = (): boolean =>
 // paint, which is a visible flash of the default theme on every load for anyone
 // who picked something else.
 if (typeof window !== "undefined") {
-  applyTheme(resolveTheme({ ...current, prefersDark: prefersDarkNow() }))
+  applyTheme(resolveTheme({ ...state.choice, prefersDark: prefersDarkNow() }))
   // Another tab of the same dashboard changed the theme: adopt it without
   // writing back (that would ping-pong between tabs).
   window.addEventListener("storage", (event) => {
     if (event.key !== THEME_STORAGE_KEY) return
-    current = read()
+    browser = readStored()
     notify()
   })
 }
 
 export const useTheme = (): ThemeSelection => {
-  const choice = useSyncExternalStore(subscribe, snapshot, snapshot)
+  const { choice, machine: machineDefault } = useSyncExternalStore(subscribe, snapshot, snapshot)
   const [prefersDark, setPrefersDark] = useState<boolean>(prefersDarkNow)
 
   useEffect(() => {
@@ -113,8 +169,14 @@ export const useTheme = (): ThemeSelection => {
     applyTheme(resolved)
   }, [resolved])
 
-  const setFamily = useCallback((family: string) => publish({ ...current, family }), [])
-  const setMode = useCallback((mode: ThemeMode) => publish({ ...current, mode }), [])
+  const setFamily = useCallback(
+    (family: string) => publishThemeChoice({ ...state.choice, family }),
+    [],
+  )
+  const setMode = useCallback(
+    (mode: ThemeMode) => publishThemeChoice({ ...state.choice, mode }),
+    [],
+  )
 
-  return { choice, resolved, setFamily, setMode }
+  return { choice, resolved, machine: machineDefault, setFamily, setMode }
 }

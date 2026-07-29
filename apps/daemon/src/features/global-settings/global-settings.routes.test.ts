@@ -78,6 +78,22 @@ describe("global-settings routes", () => {
     expect((await res.json()).skillGroups).toEqual([])
   })
 
+  // The section allowlist is the gate: a section missing from SECTIONS is dropped
+  // before merge, so a new one is inert until it is listed there.
+  it("POST /settings persists the ui section", async () => {
+    const app = buildApp()
+    const res = await app.request("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ui: { themeFamily: "terminal", themeMode: "dark" } }),
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).ui).toEqual({ themeFamily: "terminal", themeMode: "dark" })
+
+    const reread = await (await app.request("/settings")).json()
+    expect(reread.ui).toEqual({ themeFamily: "terminal", themeMode: "dark" })
+  })
+
   it("POST /settings ignores unknown keys and bad values without corrupting state", async () => {
     const app = buildApp()
     const res = await app.request("/settings", {

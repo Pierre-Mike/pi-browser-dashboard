@@ -8,8 +8,30 @@ per-project. Parse/merge fill missing or wrong-typed fields from
 `DEFAULT_GLOBAL_SETTINGS` field-by-field, so a hand-edited or partial file never
 throws and a bad PATCH can't corrupt stored state.
 
-Four sections, each a single source of truth for values formerly hard-coded
-across the daemon: `git`, `library`, `orchestration`, `network`.
+Five sections. Four are a single source of truth for values formerly hard-coded
+across the daemon: `git`, `library`, `orchestration`, `network`. The fifth, `ui`,
+is the odd one out — see below.
+
+## `ui` is stored, not judged
+
+`ui: { themeFamily, themeMode }` is the machine-wide theme default: what a browser
+that has never picked one should show. Both halves are **opaque strings** and
+`readUi` validates nothing beyond "is a string" (`optStr`, so `""` is the
+meaningful *unset*, as in `orchestration.defaultAgent`).
+
+That is deliberate. The theme vocabulary lives in
+`apps/web/src/lib/ui/theme.core.ts` next to the `tailwind.config.js` that emits
+the themes, so validating a family name here would mean a web-only rename needed
+a daemon release — and would turn an unrecognised value into a *rejected* one.
+The file must be able to say `vaporwave` and have the reader fall back per half.
+`DEFAULT_GLOBAL_SETTINGS.ui` is `{ "", "" }` for the same reason: naming
+`pid`/`system` here would be a second copy of a decision that belongs in
+`apps/web`, and it would silently outvote a future rename there.
+
+Precedence on the reading side is **browser pick → this section → apps/web's own
+default**, resolved per half by `resolveThemeChoice`. The browser half is an
+override, not a cache, so writing this section never repaints a browser that has
+already chosen.
 
 ## Shape lives in `shared/`, policy lives here
 
@@ -46,6 +68,10 @@ migrated incrementally — each consumer reads its `GlobalSettings` section at
 **layer build** (daemon restart picks up changes, consistent with the other
 config-driven repos). Status:
 
+- ✅ `ui.{themeFamily,themeMode}` → `apps/web`'s theme store, via
+  `useMachineTheme()` in `routes/__root.tsx`. Read on every page load through the
+  settings query rather than at layer build, because it is a client-side default
+  and no daemon code reads it at all.
 - ✅ `git.{defaultBranch,remoteName}` → `sessions/files.repo` diff base, via the
   pure `gitBaseCandidates(git)` helper in `global-settings.core`. `FilesIoLive`
   depends on `GlobalSettingsService`. The default (`origin`/`main`) yields the

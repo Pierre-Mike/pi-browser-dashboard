@@ -10,7 +10,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 // Keep only the known top-level sections; mergeGlobalSettings validates the
 // nested field values, so a bad value is dropped rather than rejecting the
 // whole request.
-const SECTIONS = ["git", "library", "orchestration", "network"] as const
+const SECTIONS = ["git", "library", "orchestration", "network", "ui"] as const
 
 const toPatch = (body: Record<string, unknown>): GlobalSettingsPatch => {
   const patch: Record<string, unknown> = {}

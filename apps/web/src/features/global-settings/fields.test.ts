@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import type { GlobalSettings } from "@pid/shared"
-import { FIELD_GROUPS, setField, settingsEqual } from "./fields"
+import {
+  FIELD_GROUPS,
+  formSectionsEqual,
+  reseedDraft,
+  setField,
+  settingsEqual,
+  toFormPatch,
+} from "./fields"
 
 const base: GlobalSettings = {
   git: { defaultBranch: "main", remoteName: "origin" },
@@ -13,8 +20,14 @@ const base: GlobalSettings = {
     maxParallel: 10,
   },
   network: { projectsRoot: "/code", appPort: 8787, tunnelPort: 5173 },
+  ui: { themeFamily: "", themeMode: "" },
   skillGroups: [],
 }
+
+const withUi = (settings: GlobalSettings, themeFamily: string): GlobalSettings => ({
+  ...settings,
+  ui: { themeFamily, themeMode: "dark" },
+})
 
 describe("FIELD_GROUPS", () => {
   it("covers every field of every section, naming the on-disk key path", () => {
@@ -77,5 +90,62 @@ describe("settingsEqual", () => {
         setField({ settings: base, section: "git", key: "remoteName", raw: "upstream" }),
       ),
     ).toBe(false)
+  })
+
+  it("counts a ui change, which is what makes it the wrong test for `dirty`", () => {
+    expect(settingsEqual(base, withUi(base, "mono"))).toBe(false)
+  })
+})
+
+describe("toFormPatch", () => {
+  // The Appearance section owns `ui` and writes it separately, so a form Save
+  // must not carry a stale copy along and revert it.
+  it("omits ui and keeps every section the form renders", () => {
+    const patch = toFormPatch(withUi(base, "mono"))
+    expect(Object.keys(patch)).toEqual([
+      "git",
+      "library",
+      "orchestration",
+      "network",
+      "skillGroups",
+    ])
+    expect(patch).not.toHaveProperty("ui")
+    expect(patch.network).toEqual(base.network)
+  })
+})
+
+describe("formSectionsEqual", () => {
+  it("ignores a ui change, so a machine-default write does not read as unsaved edits", () => {
+    expect(formSectionsEqual(base, withUi(base, "mono"))).toBe(true)
+  })
+
+  it("still catches a change to any editable section", () => {
+    expect(
+      formSectionsEqual(
+        base,
+        setField({ settings: base, section: "git", key: "remoteName", raw: "upstream" }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe("reseedDraft", () => {
+  const edited = setField({ settings: base, section: "git", key: "defaultBranch", raw: "trunk" })
+
+  it("seeds from stored on first load", () => {
+    expect(reseedDraft({ draft: undefined, seeded: undefined, stored: base })).toBe(base)
+  })
+
+  it("adopts a new stored value when the draft is untouched since it was seeded", () => {
+    const stored = withUi(base, "terminal")
+    expect(reseedDraft({ draft: base, seeded: base, stored })).toBe(stored)
+  })
+
+  // The case the second writer introduced: something the user was not doing
+  // updated the query, and their half-typed branch name must survive it.
+  it("keeps a dirty draft rather than discarding edits in progress", () => {
+    expect(reseedDraft({ draft: edited, seeded: base, stored: withUi(base, "terminal") })).toBe(
+      edited,
+    )
   })
 })

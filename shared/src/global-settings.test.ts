@@ -15,6 +15,7 @@ const full = {
     maxParallel: 10,
   },
   network: { projectsRoot: "/code", appPort: 8787, tunnelPort: 5173 },
+  ui: { themeFamily: "pid", themeMode: "system" },
   skillGroups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms"] }],
 } as const
 
@@ -51,6 +52,28 @@ describe("decodeGlobalSettings", () => {
   it("rejects a non-object", () => {
     expect(() => decodeGlobalSettings(null)).toThrow()
     expect(() => decodeGlobalSettings([1, 2, 3])).toThrow()
+  })
+
+  // The `ui` halves are opaque strings on the wire: the theme vocabulary lives
+  // in apps/web next to tailwind.config.js, so a family this daemon has never
+  // heard of has to survive the trip and be resolved by the reader.
+  it("carries an unrecognised theme family through untouched", () => {
+    const decoded = decodeGlobalSettings({
+      ...full,
+      ui: { themeFamily: "vaporwave", themeMode: "sepia" },
+    })
+    expect(decoded.ui).toEqual({ themeFamily: "vaporwave", themeMode: "sepia" })
+  })
+
+  it("accepts the empty halves that mean 'no machine-wide default'", () => {
+    expect(decodeGlobalSettings({ ...full, ui: { themeFamily: "", themeMode: "" } }).ui).toEqual({
+      themeFamily: "",
+      themeMode: "",
+    })
+  })
+
+  it("rejects a ui section that is missing a half", () => {
+    expect(() => decodeGlobalSettings({ ...full, ui: { themeFamily: "pid" } })).toThrow()
   })
 
   it("rejects an undocumented top-level field", () => {

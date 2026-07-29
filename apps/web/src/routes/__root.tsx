@@ -1,4 +1,5 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
+import { useMachineTheme } from "../features/global-settings/useMachineTheme"
 import { PaletteController } from "../features/palette/PaletteController"
 import { MobileNav } from "../features/sessions/MobileNav"
 import { mainClass } from "../features/sessions/navChrome"
@@ -17,9 +18,13 @@ function RootLayout() {
   // every page's reopen chip share one instance — two separate usePersistedFlag
   // calls in the same tab don't sync with each other, only across tabs.
   const rail = usePersistedFlag("pid:sidebar:rail-collapsed")
-  // Keeps <html data-theme> in step with the stored choice and the OS
+  // Keeps <html data-theme> in step with the resolved choice and the OS
   // preference. The dropdown in global settings reads the same store.
   useTheme()
+  // …and the machine-wide default from the settings file feeds that same store,
+  // for a browser that has never picked. Here rather than in the Settings tab:
+  // the second device is the whole point, and it may never open Settings.
+  useMachineTheme()
 
   return (
     // daisyUI runs with base:false, so this element *is* the page paint. Base

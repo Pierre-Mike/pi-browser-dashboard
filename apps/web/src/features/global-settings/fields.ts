@@ -1,8 +1,8 @@
 // Field descriptors + pure draft helpers for the global-settings form. Kept
 // separate from React so the section/field layout and the coercion rules are
 // unit-tested as data in / data out. The view iterates FIELD_GROUPS; the form
-// hook uses setField/settingsEqual on the working draft.
-import type { GlobalSettings } from "@pid/shared"
+// hook uses setField/reseedDraft/toFormPatch on the working draft.
+import type { GlobalSettings, GlobalSettingsPatch } from "@pid/shared"
 
 export type Section = keyof GlobalSettings
 export type FieldType = "text" | "number"
@@ -142,3 +142,44 @@ export const setField = ({
 
 export const settingsEqual = (a: GlobalSettings, b: GlobalSettings): boolean =>
   JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * What this form is allowed to write back — every section it renders a control
+ * for, and nothing else.
+ *
+ * `ui` is excluded on purpose. The Appearance section writes that half directly,
+ * so it can change *after* the draft was seeded; posting the whole draft would
+ * then revert the machine default the user had just set, with no field on screen
+ * to explain why.
+ */
+export const toFormPatch = (settings: GlobalSettings): GlobalSettingsPatch => ({
+  git: settings.git,
+  library: settings.library,
+  orchestration: settings.orchestration,
+  network: settings.network,
+  skillGroups: settings.skillGroups,
+})
+
+/** Do two documents agree on everything this form can edit? Drives `dirty`. */
+export const formSectionsEqual = (a: GlobalSettings, b: GlobalSettings): boolean =>
+  JSON.stringify(toFormPatch(a)) === JSON.stringify(toFormPatch(b))
+
+/**
+ * Which working draft survives the persisted settings changing underneath.
+ *
+ * The settings query has two writers now — this form's Save, and the Appearance
+ * section's "set as this machine's default" — so a re-seed can be triggered by
+ * something the user was not doing. Re-seeding unconditionally would discard
+ * whatever they were typing. So: adopt the new value only when the draft is
+ * untouched since it was last seeded; otherwise the edits win and stay dirty.
+ */
+export const reseedDraft = ({
+  draft,
+  seeded,
+  stored,
+}: {
+  draft: GlobalSettings | undefined
+  seeded: GlobalSettings | undefined
+  stored: GlobalSettings
+}): GlobalSettings =>
+  draft === undefined || seeded === undefined || settingsEqual(draft, seeded) ? stored : draft

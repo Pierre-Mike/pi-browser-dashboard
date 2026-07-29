@@ -1,6 +1,6 @@
 import type { GlobalSettings, SkillGroup } from "@pid/shared"
-import { useEffect, useState } from "react"
-import { type Section, setField, settingsEqual } from "./fields"
+import { useEffect, useRef, useState } from "react"
+import { formSectionsEqual, reseedDraft, type Section, setField, toFormPatch } from "./fields"
 import { removeSkillGroup } from "./skillGroups"
 import { useGlobalSettings, useUpdateGlobalSettings } from "./useGlobalSettings"
 
@@ -31,15 +31,24 @@ export const useGlobalSettingsForm = (): GlobalSettingsForm => {
   const update = useUpdateGlobalSettings()
   const stored = settings.data
   const [draft, setDraft] = useState<GlobalSettings | undefined>(undefined)
+  const seeded = useRef<GlobalSettings | undefined>(undefined)
 
   // Seed (and re-seed) the working copy whenever the persisted value changes —
-  // on first load and after a successful save.
+  // on first load, after a successful save, and now also when the Appearance
+  // section writes the `ui` section. `reseedDraft` is what keeps that third case
+  // from discarding edits in progress; the ref holds the value we last seeded
+  // from, read *before* it is overwritten.
   useEffect(() => {
-    if (stored) setDraft(stored)
+    if (stored === undefined) return
+    const previous = seeded.current
+    seeded.current = stored
+    setDraft((prev) => reseedDraft({ draft: prev, seeded: previous, stored }))
   }, [stored])
 
   const effective = draft ?? stored
-  const dirty = stored !== undefined && draft !== undefined && !settingsEqual(draft, stored)
+  // Only the sections this form renders a control for count: a `ui` change
+  // arriving from the Appearance section is not an unsaved edit of anything here.
+  const dirty = stored !== undefined && draft !== undefined && !formSectionsEqual(draft, stored)
 
   return {
     loading: settings.isLoading || effective === undefined,
@@ -55,7 +64,7 @@ export const useGlobalSettingsForm = (): GlobalSettingsForm => {
       ),
     dirty,
     saving: update.isPending,
-    save: () => draft && update.mutate(draft),
+    save: () => draft && update.mutate(toFormPatch(draft)),
     reset: () => stored && setDraft(stored),
   }
 }
