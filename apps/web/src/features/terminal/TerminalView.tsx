@@ -3,12 +3,11 @@ import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef, useState } from "react"
 import { wsBase } from "../../lib/apiBase"
-import { schemeForThemeName } from "../../lib/ui/theme.core"
 import { useTheme } from "../../lib/ui/useTheme"
 import { subscribeDroppedPaths } from "../uploads/dropEvents"
 import { shellQuotePath } from "./ptyPath"
 import { TerminalStateChip } from "./TerminalStateChip"
-import { type ColorScheme, terminalTheme } from "./terminalTheme"
+import { terminalTheme } from "./terminalTheme"
 import { terminalKillUrl, terminalWsUrl } from "./terminalUrl"
 import { useTerminalState } from "./useTerminalState"
 
@@ -38,15 +37,17 @@ export const TerminalView = (props: Props) => {
   const id = "id" in props ? props.id : ""
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
-  // The xterm palette follows the *resolved app theme*, not the OS: picking a
-  // dark family while the OS is light must give a dark terminal. In the default
-  // `system` mode the resolved name still tracks prefers-color-scheme, so the
-  // OS-follows-live behaviour is unchanged.
-  const scheme: ColorScheme = schemeForThemeName({ theme: useTheme().resolved })
-  // Read by the mount effect, which must not depend on `scheme` — re-running it
+  // The xterm palette follows the *resolved app theme* — the whole name, not its
+  // light/dark suffix: each family owns its own pane colours, so `terminaldark`
+  // gets a phosphor pane and `sunsetdark` a warm one instead of both borrowing
+  // pid's slate. Picking a dark family while the OS is light still gives a dark
+  // terminal, and in the default `system` mode the resolved name tracks
+  // prefers-color-scheme, so the OS-follows-live behaviour is unchanged.
+  const theme = useTheme().resolved
+  // Read by the mount effect, which must not depend on `theme` — re-running it
   // would tear down the WS/pty. The effect below re-themes in place instead.
-  const schemeRef = useRef(scheme)
-  schemeRef.current = scheme
+  const themeRef = useRef(theme)
+  themeRef.current = theme
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting")
   const [_reconnectKey, setReconnectKey] = useState(0)
   const [restarting, setRestarting] = useState(false)
@@ -62,10 +63,10 @@ export const TerminalView = (props: Props) => {
       fontFamily:
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: 13,
-      // Read through the ref so this effect doesn't depend on `scheme`
+      // Read through the ref so this effect doesn't depend on `theme`
       // (re-running it would tear down the WS); the effect below applies live
-      // scheme changes via term.options.theme.
-      theme: { ...terminalTheme(schemeRef.current) },
+      // theme changes via term.options.theme.
+      theme: { ...terminalTheme({ theme: themeRef.current }) },
       convertEol: true,
       cursorBlink: true,
       scrollback: 5_000,
@@ -201,8 +202,8 @@ export const TerminalView = (props: Props) => {
 
   useEffect(() => {
     // xterm only repaints when options.theme is assigned a fresh object.
-    if (termRef.current) termRef.current.options.theme = { ...terminalTheme(scheme) }
-  }, [scheme])
+    if (termRef.current) termRef.current.options.theme = { ...terminalTheme({ theme }) }
+  }, [theme])
 
   const onRestart = async (): Promise<void> => {
     if (restarting) return
@@ -230,7 +231,7 @@ export const TerminalView = (props: Props) => {
         ref={hostRef}
         data-testid="terminal-host"
         className="flex-1 min-h-0 rounded-box p-2 shadow-inner"
-        style={{ backgroundColor: terminalTheme(scheme).background }}
+        style={{ backgroundColor: terminalTheme({ theme }).background }}
       />
       <div className="flex items-center gap-2 px-1 pt-1.5 text-[10px] text-base-content/60">
         <span
