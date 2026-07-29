@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import type { PollCandidate } from "./terminal-poll.core"
-import { createTerminalPoller, type TerminalPollPorts } from "./terminal-poll.io"
+import { createTerminalPoller, type ScreenText, type TerminalPollPorts } from "./terminal-poll.io"
 
 const SESSION_LIST = `default [Created 12h ago]
 abcd1234 [Created 1m ago]
@@ -23,6 +23,7 @@ type Published = {
 type Harness = {
   readonly ports: TerminalPollPorts
   readonly published: Published[]
+  readonly noted: ScreenText[]
   readonly dumped: string[]
   readonly paneListed: string[]
   readonly candidates: PollCandidate[]
@@ -34,6 +35,7 @@ type Harness = {
 
 const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   const published: Published[] = []
+  const noted: ScreenText[] = []
   const dumped: string[] = []
   const paneListed: string[] = []
   const attached: string[] = []
@@ -43,7 +45,8 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     { scope: "session", id: "abcd1234", sessionName: "abcd1234" },
   ]
   let nowMs = 1_000
-  let dump = "Working..."
+  // pi's rendered spinner line: the bare literal no longer classifies.
+  let dump = " ⠋ Working..."
 
   const ports: TerminalPollPorts = {
     listCandidates: async () => candidates,
@@ -62,6 +65,9 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
       published.push(record)
       prior.set(`${record.scope}:${record.id}`, record.state)
     },
+    noteScreen: (screen) => {
+      noted.push(screen)
+    },
     now: () => nowMs,
     ...overrides,
   }
@@ -69,6 +75,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   return {
     ports,
     published,
+    noted,
     dumped,
     paneListed,
     candidates,
@@ -103,14 +110,14 @@ describe("createTerminalPoller.tick", () => {
         id: "global",
         state: "working",
         matcher: "pi-working",
-        evidence: "Working...",
+        evidence: "⠋ Working...",
       },
       {
         scope: "session",
         id: "abcd1234",
         state: "working",
         matcher: "pi-working",
-        evidence: "Working...",
+        evidence: "⠋ Working...",
       },
     ])
   })
@@ -144,9 +151,53 @@ describe("createTerminalPoller.tick", () => {
     const h = makeHarness()
     const poller = makePoller(h)
     await poller.tick()
-    h.setDump("Do you want to proceed?")
+    // Question line plus option list: the rendered dialog shape, verbatim from
+    // the live capture in terminal-state.core.test.ts. The bare question is not
+    // enough any more — any screen can print a sentence.
+    h.setDump(" Do you want to proceed?\n ❯ 1. Yes\n   2. No")
     await poller.tick()
     expect(h.published.slice(2).map((p) => p.state)).toEqual(["blocked", "blocked"])
+  })
+
+  // `wait --until-output` resolves off these observations and nothing else, so
+  // the gate that stops redundant SSE events must NOT also gate them: a pattern
+  // routinely appears while the classification is unchanged.
+  it("offers every dump's text to screen observers, transition or not", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    expect(h.noted).toHaveLength(2)
+    await poller.tick()
+    // Second pass: same screen, so nothing published — but still noted.
+    expect(h.published).toHaveLength(2)
+    expect(h.noted).toHaveLength(4)
+  })
+
+  it("notes the ANSI-stripped text against the same scope and id it publishes", async () => {
+    const h = makeHarness()
+    h.setDump("[38;2;220;129;97mElucidating…[0m")
+    await makePoller(h).tick()
+    const session = h.noted.find((n) => n.scope === "session")
+    expect(session?.id).toBe("abcd1234")
+    expect(session?.text).toBe("Elucidating…")
+  })
+
+  it("notes nothing for an empty dump — there is no screen to match against", async () => {
+    const h = makeHarness({ dumpScreen: async () => "" })
+    await makePoller(h).tick()
+    expect(h.noted).toEqual([])
+  })
+
+  // An observer is a wait fiber's callback. One that throws must not cost the
+  // pass its remaining targets or its state publishing.
+  it("survives an observer that throws, and still publishes", async () => {
+    const h = makeHarness({
+      noteScreen: () => {
+        throw new Error("observer exploded")
+      },
+    })
+    await makePoller(h).tick()
+    expect(h.published).toHaveLength(2)
   })
 
   it("publishes nothing for an empty dump rather than guessing", async () => {
@@ -182,6 +233,29 @@ describe("createTerminalPoller.tick", () => {
     const poller = makePoller(h)
     await Promise.all([poller.tick(), poller.tick(), poller.tick()])
     expect(h.dumped).toEqual(["default/terminal_0", "abcd1234/terminal_0"])
+  })
+})
+
+// The sessions routes refuse an `untilOutput` wait when this is false, rather
+// than accepting a request nothing can ever satisfy.
+describe("createTerminalPoller.isEnabled", () => {
+  it("is false before start — importing a module must not look armed", () => {
+    expect(makePoller(makeHarness()).isEnabled()).toBe(false)
+  })
+
+  it("is true once started with a positive interval, and false again after stop", () => {
+    const poller = makePoller(makeHarness())
+    poller.start({ intervalMs: 60_000 })
+    expect(poller.isEnabled()).toBe(true)
+    poller.stop()
+    expect(poller.isEnabled()).toBe(false)
+  })
+
+  it.each([0, -1, Number.NaN])("stays false for the disabling interval %p", (intervalMs) => {
+    const poller = makePoller(makeHarness())
+    poller.start({ intervalMs })
+    expect(poller.isEnabled()).toBe(false)
+    poller.stop()
   })
 })
 

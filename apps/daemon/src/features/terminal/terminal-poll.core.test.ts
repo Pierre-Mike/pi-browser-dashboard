@@ -142,7 +142,7 @@ describe("foldScreenDump", () => {
   })
 
   it("does not publish when the state is unchanged", () => {
-    const folded = foldScreenDump({ dump: "Working...", prior: "working", maxChars })
+    const folded = foldScreenDump({ dump: " ⠋ Working...", prior: "working", maxChars })
     expect(folded.classification.state).toBe("working")
     expect(folded.publish).toBe(false)
   })
@@ -153,7 +153,11 @@ describe("foldScreenDump", () => {
   // would let one stale permission prompt outrank the live spinner forever.
   it("treats each dump as a whole snapshot, so a stale screen cannot outrank the current one", () => {
     const blocked = foldScreenDump({
-      dump: "Do you want to proceed?",
+      // The dialog's question line AND its option list — the header alone is a
+      // sentence any screen can print, so it no longer classifies as blocked.
+      // These two lines are verbatim from the live capture kept in
+      // terminal-state.core.test.ts.
+      dump: " Do you want to proceed?\n ❯ 1. Yes\n   2. No",
       prior: undefined,
       maxChars,
     })
@@ -161,13 +165,13 @@ describe("foldScreenDump", () => {
 
     // The very next dump, after the human answered, shows work in progress and
     // no trace of the dialog. State must follow the screen, not its history.
-    const working = foldScreenDump({ dump: "Working...", prior: "blocked", maxChars })
+    const working = foldScreenDump({ dump: " ⠋ Working...", prior: "blocked", maxChars })
     expect(working.classification.state).toBe("working")
     expect(working.publish).toBe(true)
   })
 
   it("keeps the BOTTOM of an oversized screen — that is where every status line lives", () => {
-    const dump = `${"scrollback\n".repeat(500)}Working...`
+    const dump = `${"scrollback\n".repeat(500)} ⠋ Working...`
     const folded = foldScreenDump({ dump, prior: undefined, maxChars: 40 })
     expect(folded.classification.state).toBe("working")
   })

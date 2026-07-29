@@ -10,9 +10,10 @@ import {
 // Real evidence, not hand-typed: most fixtures below are exact byte slices
 // captured by driving an actual `claude` 2.1.220 or `pi` 0.80.3 CLI through a
 // forked pty (throwaway driver script, not part of this repo) and logging
-// raw stdout. The two PERMISSION_* literals are the exception — see their
-// own comment. See terminal-state.core.ts's module comment for the full
-// evidence-source breakdown.
+// raw stdout, and the rest are verbatim `zellij action dump-screen` output
+// from real sessions. One literal is read out of the shipped binary instead
+// and says so at its definition. See terminal-state.core.ts's module comment
+// for the full evidence-source breakdown.
 
 // Startup splash: heavy true-colour SGR + cursor-column-absolute CSI + one
 // OSC title update, no ellipsis/gerund content — exercises stripAnsi without
@@ -26,11 +27,18 @@ const SPLASH_FIXTURE =
 const THINKING_FIXTURE =
   "\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\x1b[2C\x1b[4A\x1b[?25h\x1b[?25l\x1b[2D\x1b[4B\r\x1b[7A\x1b[38;2;215;119;87m·\x1b[3G\x1b[38;2;220;129;97mBurrowing…\x1b[14G\x1b[38;2;153;153;153m(3s · ↓\x1b[22G4 tokens)"
 
-// Tool call in flight: "⏺ Bash(echo hello-from-claude) … ⎿  Waiting…",
-// including the real `\x1b[K` erase-in-line CSI and an embedded `\r`
-// (no `\n`) between the tool line and the "Waiting…" line.
+// Tool call dispatched and still pending: the tool line, then its pending
+// marker. Includes the real `\x1b[K` erase-in-line CSI and an embedded `\r`
+// (no `\n`) between the two lines.
+//
+// The pad between the marker and the word is an ordinary space followed by
+// U+00A0, and it is written as an ESCAPE below for the same reason PROMPT_LINE
+// is: hexdumping a live dump of this line gives `20 20 23bf 20 a0 57 61 …`,
+// and a NO-BREAK SPACE is indistinguishable from a space in source. This
+// fixture carried the real NBSP all along (it came off a pty) invisibly, so no
+// reader could have known which one the matcher had to tolerate.
 const TOOL_WAITING_FIXTURE =
-  "\r\x1b[7A\x1b[38;2;153;153;153m⏺\x1b[3G\x1b[39m\x1b[1mBash\x1b[22m(echo hello-from-claude)\r\x1b[1B\x1b[38;2;153;153;153m  ⎿  Waiting…"
+  "\r\x1b[7A\x1b[38;2;153;153;153m⏺\x1b[3G\x1b[39m\x1b[1mBash\x1b[22m(echo hello-from-claude)\r\x1b[1B\x1b[38;2;153;153;153m  ⎿ \u00a0Waiting…"
 
 // Turn finished: OSC title update back to the static "✳" glyph, then
 // "Churned for 6s" plain text, then a `\x1b[K` before the next redraw.
@@ -43,15 +51,164 @@ const TURN_COMPLETE_FIXTURE =
 const PI_WORKING_FIXTURE =
   "\x1b[2K \x1b[38;2;138;190;183m⠋\x1b[39m \x1b[38;2;128;128;128mWorking...\x1b[39m"
 
-// NOT a captured render — these two are read directly out of the shipped
-// Claude Code 2.1.220 binary (`strings -a` on
-// ~/.local/share/claude/versions/2.1.220), which is how permission-prompt
-// and permission-prompt-reject-option in the matcher table are verified.
-// See the module comment and each matcher's own comment for the full
-// evidence trail. Plain strings (no ANSI) because that's exactly what
-// `strings` extracts — the CLI never rendered this text to a live terminal
-// during this investigation (auto-approved past the dialog every time).
-const PERMISSION_PROMPT_LITERAL = "Do you want to proceed?"
+// ---- live working-state captures (2026-07-29) ---------------------------
+//
+// Same method as the dialog captures below: real CLIs inside zellij sessions
+// created for the purpose (`polltest-work22*`, `polltest-pi22`), read with
+// `zellij action dump-screen --pane-id terminal_0`, plus the raw byte stream of
+// the same screens through a forked pty running `zellij attach`.
+//
+// Claude Code mid-turn, 50-col pane. Two things on screen at once: a tool's own
+// progress line, and the rotating status line underneath it. The spinner glyph
+// rotates (`·` U+00B7, `✢` U+2722, `✻` U+273B, `✶` U+2726 were all captured), so
+// it is NOT what the matcher keys on — the duration in the parenthetical is.
+const CC_STATUS_LINE_DUMP = [
+  "⏺ Searching for 1 pattern… (ctrl+o to expand)",
+  "     (ctrl+b to run in background)",
+  "",
+  "✶ Slithering… (41s · ↓ 125 tokens)",
+].join("\n")
+
+// The same status line as raw redraw bytes: zellij wraps every word in an OSC 8
+// hyperlink reset and colours it with true-colour SGR, so `stripAnsi` has to put
+// "Slithering…" and "(12s" back together before the row can match. Cut at an
+// escape boundary, hence the parenthetical stops after the duration.
+const CC_STATUS_LINE_WS_BYTES =
+  "\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;215;119;87mSkedaddling…\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m(12s\x1b[m\x1b]8;;\x1b\\"
+
+// A dispatched tool still pending, dump form. Captured from the same session as
+// the Bash dialog below — the marker persists for as long as the tool has not
+// returned, which includes "the human has not answered the dialog yet", so a
+// screen carrying this can be `blocked`; ordering, not this row, decides that.
+// The pad is space + U+00A0 again, escaped so a reader can see it.
+const CC_TOOL_WAITING_DUMP = [
+  "⏺ Bash(touch /tmp/permprobe19/hello.txt)",
+  "  ⎿ \u00a0Waiting…",
+].join("\n")
+
+// pi 0.80.3 mid-turn, dump form. Ten distinct braille spinner frames were
+// captured (U+2807 U+280B U+280F U+2819 U+2826 U+2827 U+2834 U+2838 U+2839
+// U+283C), always immediately before the literal, always one ordinary space
+// apart: hexdump `20 2838 20 57 6f 72 6b 69 6e 67 2e 2e 2e`.
+const PI_WORKING_DUMP = " ⠸ Working..."
+
+// The same pi line as raw redraw bytes, through zellij.
+const PI_WORKING_WS_BYTES =
+  "\x1b[?25l\x1b[37;1H\x1b[?25l\x1b[34;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;138;190;183m⠏\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;128;128;128mWorking...\x1b[m\x1b]8;;\x1b\\"
+
+// The screen that produced the live false positive: three lines of the AGENTS.md
+// paragraph that documents this very table, quoting the literals it matches on.
+// Verbatim from the file as it read before this change.
+const WORKING_LITERALS_QUOTED_IN_PROSE = [
+  'status-line and dialog shapes — Claude Code\'s `"<Gerund>…(<N>s · …)"` while',
+  'generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn',
+  'permission decision; pi\'s `"Working..."` spinner — against a per-connection',
+].join("\n")
+
+// ---- live permission-dialog captures (2026-07-29) -----------------------
+//
+// These are RENDERS, not `strings` output. A `claude` 2.1.220 was started
+// inside a zellij session created for this purpose (`polltest-perm19`, cwd
+// /private/tmp/permprobe19) under `--permission-mode manual` plus
+// `--settings '{"permissions":{"ask":["Bash"]}}'` / `["Write"]`, so the tool
+// call it was asked to make had to stop at a real dialog instead of being
+// auto-approved by the box's broad user-level Bash allow-list — the exact
+// obstacle that left these rows unrendered the first time round. Each fixture
+// below is verbatim `zellij action dump-screen --pane-id terminal_0` output.
+//
+// Every space in the dialog is an ORDINARY space — checked, not assumed.
+// Hexdump of the header plus both option lines of the Bash dialog:
+//   20 44 6f 20 79 6f 75 20 77 61 6e 74 20 74 6f 20 70 72 6f 63 65 65 64 3f 0a
+//   20 e2 9d af 20 31 2e 20 59 65 73 0a
+//   20 20 20 32 2e 20 4e 6f 0a
+// i.e. `␠Do you want to proceed?\n␠❯␠1.␠Yes\n␠␠␠2.␠No\n` — no U+00A0 in the
+// dialog itself, unlike the resting prompt line and the pending-tool marker
+// below, both of which carry one and both of which escape it.
+const PERMISSION_DIALOG_BASH_DUMP = [
+  "❯ Run the bash command: touch /tmp/permprobe19/hello.txt -- nothing else, no explanation.",
+  "",
+  "⏺ Bash(touch /tmp/permprobe19/hello.txt)",
+  "  ⎿ \u00a0Waiting…",
+  "",
+  "────────────────────────────────────────────────────────────────────────",
+  " Bash command",
+  "",
+  "   touch /tmp/permprobe19/hello.txt",
+  "   Create empty file hello.txt",
+  "",
+  " Permission rule Bash requires confirmation for this command.",
+  " /permissions to update rules",
+  "",
+  " Do you want to proceed?",
+  " ❯ 1. Yes",
+  "   2. No",
+  "",
+  " Esc to cancel · Tab to amend · ctrl+e to explain",
+].join("\n")
+
+// The SAME dialog machinery for a Write tool call, captured the same way from
+// `polltest-perm19b`. Its header is not "Do you want to proceed?" at all — it
+// names the action — which is why matching that one sentence missed this whole
+// class of live blocked screen (it read `unknown` before this change).
+const PERMISSION_DIALOG_WRITE_DUMP = [
+  "⏺ Write(hello2.txt)",
+  "",
+  "──────────────────────────────────────────────────",
+  " Create file",
+  " hello2.txt",
+  "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+  "  1 hi",
+  "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+  " Do you want to create hello2.txt?",
+  " ❯ 1. Yes",
+  "   2. Yes, allow all edits during this session",
+  "      (shift+tab)",
+  "   3. No",
+  "",
+  " Esc to cancel · Tab to amend",
+].join("\n")
+
+// The byte stream, not the settled screen: 428 bytes copied verbatim out of the
+// pty log of that same dialog (a forked pty ran `zellij attach polltest-perm19`
+// and logged every byte). This is the shape the WS tap sees, and it is NOT the
+// dump's shape — the TUI moves to the next row with an absolute cursor-position
+// CSI (`\x1b[29;1H`) and pads with spaces instead of emitting `\n`, and wraps
+// every word in an OSC 8 hyperlink reset. After stripAnsi the header and its
+// option list therefore end up on ONE line separated by 97 spaces, so a matcher
+// anchored on a line break between them fires on the dump and silently misses
+// every attached terminal.
+const PERMISSION_DIALOG_WS_BYTES =
+  "Do you want to proceed?                                                                                                \x1b[29;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249m❯\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m1.\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249mYes\x1b[m\x1b]8;;\x1b\\                                                                                                               \x1b[30;1H\x1b[m\x1b[m\x1b]8;;\x1b\\   \x1b[38;2;153;153;153m2.\x1b[m\x1b]8;;\x1b\\ No                         "
+
+// A screen that merely DISPLAYS this matcher table and the AGENTS.md paragraph
+// about it — captured live from a zellij session (`polltest-selfref19`) that ran
+// `sed -n` over those two files and then idled. Under the pre-2026-07-29 rows
+// this classified `blocked`, which is how the self-referential false positive
+// was found: every agent editing, diffing or documenting this file looked like
+// an agent waiting on a permission decision.
+const SELF_REFERENCE_DUMP = [
+  "    // has binary-string evidence but no captured live-render evidence.",
+  "    pattern: /Do you want to proceed\\?/,",
+  "  },",
+  "  {",
+  '    name: "permission-prompt-reject-option",',
+  '    state: "blocked",',
+  "    // Verified the same way, same binary offsets: the dialog's third option",
+  '    // literal, "No, and tell Claude what to do differently". Covers the case',
+  "    // where the tail window caught only the bottom of a long dialog and the",
+  '    // "Do you want to proceed?" header already scrolled out of the',
+  "    pattern: /No, and tell Claude what to do differently/,",
+  "  },",
+  'ends, `"Do you want to proceed?"` (or its reject option) while blocked on a',
+  'permission decision; pi\'s `"Working..."` spinner — against a per-connection',
+].join("\n")
+
+// Read out of the shipped binary, NOT rendered: `strings -a` on
+// ~/.local/share/claude/versions/2.1.220 contains this option label four
+// times, but neither live dialog above used it — 2.1.220 renders a bare "No".
+// It stays as a bottom-of-dialog fallback for the variant that does render it,
+// and the `3.` prefix is the part that makes it a rendered option line rather
+// than a string anyone can print.
 const PERMISSION_REJECT_OPTION_LITERAL = "No, and tell Claude what to do differently"
 
 // A real `zellij action dump-screen` of a Claude Code session RESTING at its
@@ -195,7 +352,9 @@ describe("classifyTail", () => {
   })
 
   it("still reports blocked when the prompt box shares the frame with a permission dialog", () => {
-    const result = classifyTail({ tail: `${PERMISSION_PROMPT_LITERAL}\n${PROMPT_RESTING_DUMP}` })
+    const result = classifyTail({
+      tail: `${PERMISSION_DIALOG_BASH_DUMP}\n${PROMPT_RESTING_DUMP}`,
+    })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt")
   })
@@ -211,21 +370,129 @@ describe("classifyTail", () => {
     const result = classifyTail({ tail: PI_WORKING_FIXTURE })
     expect(result.state).toBe("working")
     expect(result.matcher).toBe("pi-working")
-    expect(result.evidence).toBe("Working...")
+    expect(result.evidence).toBe("⠋ Working...")
   })
 
-  it("classifies the Claude Code permission-prompt header as blocked", () => {
-    const result = classifyTail({ tail: PERMISSION_PROMPT_LITERAL })
+  it("classifies a live-captured Claude Code status line as working", () => {
+    const result = classifyTail({ tail: CC_STATUS_LINE_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("thinking-gerund")
+    // Evidence is the gerund alone: the duration is required by a lookahead, so
+    // the tooltip does not carry a token count that changes every frame.
+    expect(result.evidence).toBe("Slithering…")
+  })
+
+  it("classifies the status line from raw redraw bytes, not just a settled dump", () => {
+    const result = classifyTail({ tail: CC_STATUS_LINE_WS_BYTES })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("thinking-gerund")
+  })
+
+  it("classifies a live-captured pending tool call as working", () => {
+    const result = classifyTail({ tail: CC_TOOL_WAITING_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("tool-call-waiting")
+  })
+
+  it("classifies a live-captured pi spinner line as working, dump and raw alike", () => {
+    expect(classifyTail({ tail: PI_WORKING_DUMP }).matcher).toBe("pi-working")
+    expect(classifyTail({ tail: PI_WORKING_WS_BYTES }).matcher).toBe("pi-working")
+  })
+
+  // The same defect the blocked rows had, on the working side: a screen that
+  // merely QUOTES these literals is not a working agent. Caught by measuring —
+  // one live pane was reading `working` for exactly this reason.
+  it("does not report working for a screen that merely quotes the literals", () => {
+    expect(classifyTail({ tail: WORKING_LITERALS_QUOTED_IN_PROSE }).state).toBe("unknown")
+  })
+
+  it("does not report working for a gerund with no elapsed-time reading", () => {
+    // Prose, and a placeholder in a doc: both end in "ing…" and neither is a
+    // status line. The rendered one always carries "(<N>s …)".
+    expect(classifyTail({ tail: "Elucidating… soon, I hope" }).state).toBe("unknown")
+    expect(classifyTail({ tail: 'Claude Code\'s `"<Gerund>…(<N>s · …)"` while' }).state).toBe(
+      "unknown",
+    )
+    // A tool's own progress line, captured live above, is not the status line:
+    // its parenthetical is a key hint, not a duration.
+    expect(classifyTail({ tail: "⏺ Searching for 1 pattern… (ctrl+o to expand)" }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("does not report working for the pending marker quoted with one pad space", () => {
+    // The doc writes it `"⎿ Waiting…"`; the render pads with two characters and
+    // stands alone on its line.
+    expect(classifyTail({ tail: 'the `"⎿ Waiting…"` marker means a tool is running' }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("does not report working for the pi literal without its spinner glyph", () => {
+    expect(classifyTail({ tail: 'pi\'s `"Working..."` spinner' }).state).toBe("unknown")
+    expect(classifyTail({ tail: "Working on it, boss" }).state).toBe("unknown")
+  })
+
+  it("classifies a live-captured Bash permission dialog as blocked", () => {
+    const result = classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("permission-prompt")
+    // Evidence is the header line only — the option list is required by a
+    // lookahead, so a chip tooltip stays one readable line.
+    expect(result.evidence).toBe("Do you want to proceed?")
+  })
+
+  it("classifies a live-captured Write permission dialog as blocked, header and all", () => {
+    // The old row matched the single sentence "Do you want to proceed?", which
+    // this real dialog never prints: it read `unknown` on a live box.
+    const result = classifyTail({ tail: PERMISSION_DIALOG_WRITE_DUMP })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("permission-prompt")
+    expect(result.evidence).toBe("Do you want to create hello2.txt?")
+  })
+
+  it("classifies the dialog from raw WS bytes, where the redraw emits no newline", () => {
+    // The attached path never sees the dump's line breaks (see the fixture
+    // comment): header and options arrive on one line, 97 spaces apart.
+    const result = classifyTail({ tail: PERMISSION_DIALOG_WS_BYTES })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt")
   })
 
-  it("classifies the permission-prompt reject option as blocked on its own", () => {
-    // Simulates the tail catching only the bottom of a long dialog — the
-    // header has already scrolled out of the bounded window.
-    const result = classifyTail({ tail: PERMISSION_REJECT_OPTION_LITERAL })
+  // The bug this row was rewritten for: the header is a sentence any terminal
+  // can print — an agent editing this table, reviewing the diff or reading
+  // AGENTS.md printed it and was classified as blocked on a human.
+  it("does not report blocked for a screen that merely displays the header text", () => {
+    expect(classifyTail({ tail: "Do you want to proceed?" }).state).toBe("unknown")
+    // This used to assert only "not blocked", because the same paragraph quotes
+    // `"⎿ Waiting…"` and `"Working..."` and so still read `working`. Both rows
+    // are anchored on a rendered shape now, so the honest answer is `unknown`:
+    // a screen discussing the matchers matches nothing at all.
+    expect(classifyTail({ tail: SELF_REFERENCE_DUMP }).state).toBe("unknown")
+  })
+
+  // Ordering, not the pattern: the real dialog above is drawn UNDER a still-live
+  // "⎿  Waiting…" tool line, so the tail carries a working match too. Only
+  // first-match-wins with the blocked rows on top keeps this blocked.
+  it("reports blocked, not working, when the dialog sits under a live tool-call line", () => {
+    expect(PERMISSION_DIALOG_BASH_DUMP).toContain("⎿ \u00a0Waiting…")
+    expect(classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP }).matcher).toBe("permission-prompt")
+  })
+
+  it("classifies a numbered reject option as blocked when the header scrolled out", () => {
+    // Simulates the tail catching only the bottom of a long dialog. The `3.` is
+    // load-bearing: it is what a rendered option list has and a source listing
+    // does not.
+    const result = classifyTail({ tail: `   3. ${PERMISSION_REJECT_OPTION_LITERAL} (esc)` })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt-reject-option")
+  })
+
+  it("does not report blocked for the bare reject-option label with no option number", () => {
+    expect(classifyTail({ tail: PERMISSION_REJECT_OPTION_LITERAL }).state).toBe("unknown")
+    expect(classifyTail({ tail: `pattern: /${PERMISSION_REJECT_OPTION_LITERAL}/,` }).state).toBe(
+      "unknown",
+    )
   })
 
   it("returns unknown — not a guess — when nothing recognizable is in the tail", () => {
@@ -234,7 +501,7 @@ describe("classifyTail", () => {
   })
 
   it("prefers blocked over a stale working line still inside the window", () => {
-    const tail = `${THINKING_FIXTURE} Do you want to proceed?`
+    const tail = `${THINKING_FIXTURE}\n${PERMISSION_DIALOG_BASH_DUMP}`
     expect(classifyTail({ tail }).state).toBe("blocked")
   })
 
@@ -244,7 +511,7 @@ describe("classifyTail", () => {
   })
 
   it("caps evidence length so one runaway line can't bloat the payload", () => {
-    const longVerb = `A${"b".repeat(250)}ing…`
+    const longVerb = `A${"b".repeat(250)}ing… (3s · ↓4 tokens)`
     const result = classifyTail({ tail: longVerb })
     expect(result.state).toBe("working")
     expect(result.evidence?.length).toBe(201)

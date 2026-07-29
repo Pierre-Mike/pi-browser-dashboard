@@ -134,9 +134,12 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/{stop,respawn,rm,rename,tag}
                         /sessions/:id/send   (raw keys string; optional `wait` → submit-and-wait)
                         /sessions/:id/keys   (named key vocabulary; optional `wait`)
-                        /sessions/:id/wait   (server-owned wait on session state)
+                        /sessions/:id/wait   (server-owned wait on session state,
+                                              `via` supervisor | screen | either)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
-                        /sessions/:id/explain  (state provenance: source, staleness, why)
+                        /sessions/:id/explain  (state provenance: source, staleness, why,
+                                                + the screen's own reading and whether
+                                                  it contradicts the supervisor)
                         /terminal/states  (current agent-state per known terminal,
                                            attached WS or polled screen dump)
                         /sessions/:id/brainstorms  (drawings in the session's worktree)
@@ -186,12 +189,14 @@ notification         ← a `notify` rule action's own message, for a future
 `POST /sessions/:id/wait` and the optional `wait` object on `POST
 /sessions/:id/send` let a caller block on a session reaching one of a set of
 states instead of polling `GET /sessions` — the daemon already publishes
-`session.state` / `session.removed` on the SSE bus, so the wait is
-event-driven, not a poll loop.
+`session.state` / `session.removed` / `terminal.state` on the SSE bus, so the
+wait is event-driven, not a poll loop.
 
-- Body: `{ until: SessionStateSlug[], timeoutMs? }` — `until` non-empty,
-  `timeoutMs` defaults to 30s, capped at 10 minutes.
-- `POST /:id/wait` responses: `200 { ok: true, short, state, waitedMs }`
+- Body: `{ until: SessionStateSlug[], timeoutMs?, via?, untilOutput? }` —
+  `timeoutMs` defaults to 30s, capped at 10 minutes, `via` defaults to
+  `"supervisor"`. `until` must be non-empty when present, and a request needs
+  `until` or `untilOutput`; neither is a 400.
+- `POST /:id/wait` responses: `200 { ok: true, short, state, via, waitedMs }`
   (satisfied), `200 { ok: false, reason: "timeout" | "occupant_changed" |
   "removed", short, waitedMs? }`, or `404 { error: "not_found", short }`.
 - `POST /:id/send` with a `wait` object sends the keys first, then waits, and
@@ -203,6 +208,81 @@ event-driven, not a poll loop.
   send-with-wait, closing the race between the two calls), and reports
   `occupant_changed` rather than a false `Satisfied` if a different
   `sessionId` takes over the same `short` while waiting.
+
+#### `via`: which observation settles the wait
+
+A session has two independent readings, and they disagree in exactly the case
+that matters. `state.json` is what the supervisor last wrote; the screen
+classification (`features/terminal/terminal-state.*`, polled every 15s for
+every unattended pane) is what the terminal actually shows. Session `4d76edc1`
+sat at `working` in `state.json` for 24 hours while its pane showed an empty
+prompt — no supervisor-sourced wait could ever have noticed, which is why
+`via` exists.
+
+- `"supervisor"` (default) — `session.state` only. Every caller written before
+  this field existed keeps precisely its old semantics.
+- `"screen"` — `terminal.state` only, `scope === "session"` records only.
+- `"either"` — whichever arrives first.
+- `Satisfied` carries `via: "supervisor" | "screen"` (never `"either"` — that
+  is a request, not an answer), threaded through `WaitOutcome` onto the wire.
+  A screen-satisfied wait is the weaker claim of the two: the pane looks like
+  that state, the agent did not report it.
+- The screen vocabulary is a **subset**: `working` → `working`, `blocked` →
+  `blocked`, `idle` → `idle`, and `unknown` maps to nothing at all, so it can
+  never satisfy a wait. There is no screen evidence for `done` / `failed` /
+  `stopped` / `needs_input`, so a `via: "screen"` wait naming only those times
+  out by construction.
+- `decideInitial` consults the **current** screen too, not just later
+  transitions: a pane already `blocked` when the wait starts satisfies
+  immediately rather than hanging for the full timeout.
+- `session.removed` settles `Removed` under every `via` — a deleted session is
+  not an observation about state, it is the end of the thing observed.
+- **How the screen reaches this slice.** The terminal slice publishes one door,
+  `readTerminalState({ scope, id })` over its own `terminalStates` map;
+  `api.ts` passes it as an injected port into `buildSessionsApp` and into the
+  fleet run ports. `sessions-wait.core.ts` only ever sees plain data (a
+  `SessionStateSlug | undefined`), and neither the core nor
+  `sessions-wait.io.ts` imports the terminal slice. It is a port rather than a
+  `Context.Tag` for a concrete reason: `terminal.routes.ts` imports
+  `platform/runtime.ts`, so a Layer dependency would close an import cycle
+  through the very runtime that provides it.
+
+#### `untilOutput`: wait for text on the screen
+
+herdr's `pane wait-output`, for the things that have no state slug — a specific
+prompt, a test summary, a banner an agent prints itself.
+
+- `untilOutput: "text"` (substring anywhere) or
+  `untilOutput: { text, anchor?: "anywhere" | "line-start" | "line-end" | "line" }`.
+  Anchored forms compare against the **trimmed** line, because a real dump pads
+  rows to the viewport width and the empty prompt line with U+00A0.
+- **Literal only — no regex, deliberately.** A caller-supplied regex, evaluated
+  in the daemon's own event path against up to `tailMaxChars` of output from an
+  unauthenticated local endpoint, is a ReDoS surface: compiling once bounds the
+  compile, not the backtracking, and JS gives no way to time-bound a match. The
+  text is capped at `OUTPUT_PATTERN_MAX_CHARS` (200) and `anchor` covers what a
+  regex was wanted for here. Do not add regex support without a real guard.
+- Independent of `via`, which governs how *state* is read. Gating a pattern on
+  `via` would make `{ untilOutput, via: "supervisor" }` unsatisfiable — a trap,
+  not a safeguard.
+- Combining `until` and `untilOutput` is allowed: first to fire wins, the same
+  composition rule as `via: "either"`. Outcomes are distinguishable —
+  `Satisfied` carries `state`/`via`, `OutputMatched` carries `matched` (the line
+  the pattern appeared on) and no state.
+- **Screen text never touches `sseBus`.** That bus is what
+  `features/events/events.routes.ts` forwards to every connected browser, so
+  publishing pane text there would ship the contents of every terminal to every
+  SSE client as a side effect of a wait feature. Instead `terminal.routes.ts`
+  exposes an in-process channel, `subscribeTerminalScreens`, fed by a new
+  `noteScreen` poller port that fires on **every** successful dump — not behind
+  the publish-on-change gate, because a pattern routinely appears while the
+  classification is unchanged. `api.ts` injects `{ enabled, subscribe }` into the
+  sessions routes as one port.
+- Because it resolves off poller passes and nothing else, worst-case latency is
+  one poll interval, only text still on screen can match (it watches a pane, it
+  does not tail a log), and a daemon with polling disabled answers
+  `409 { error: "screen_polling_disabled" }` at request time rather than letting
+  the wait time out — `TerminalPollerApi.isEnabled()` is what the route reads.
 
 ### Named key vocabulary (`features/sessions/sessions-keys.*`)
 
@@ -245,13 +325,73 @@ bytes to the browser over the existing WS bridge (`terminal.routes.ts`), it
 taps the same bytes to classify what the agent is doing, the way `herdr`
 reads any terminal's screen instead of requiring an integration: a pure
 regex table (`MATCHERS` in `terminal-state.core.ts`) matches known
-status-line and dialog shapes — Claude Code's `"<Gerund>…(<N>s · …)"` while
-generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn
-ends, `"Do you want to proceed?"` (or its reject option) while blocked on a
-permission decision; pi's `"Working..."` spinner — against a per-connection
-rolling tail, stripped of ANSI first. States: `working`, `blocked`, `idle`,
-`unknown` — `unknown` is the honest default when nothing matches, not a
-guessed `idle`.
+status-line and dialog shapes — Claude Code's rotating status line
+(`<Gerund>…` plus a live elapsed-time reading) while generating, a dispatched
+tool's pending marker mid-tool-call, a finished turn's `<PastVerb> for <N>s`,
+a permission dialog's question line *together with its option list* while
+blocked on a permission decision; pi's braille spinner plus its working
+literal — against a per-connection rolling tail, stripped of ANSI first.
+States: `working`, `blocked`, `idle`, `unknown` — `unknown` is the honest
+default when nothing matches, not a guessed `idle`.
+
+**Every shape above is described here with placeholders, deliberately.** These
+matchers read screens, and this file gets displayed on screens: paste a complete
+rendered line into the docs and the docs start classifying as an agent at work.
+That is not hypothetical — it is how the self-reference defect below was found,
+twice. Verbatim captures belong in the test fixtures, which is the one place a
+matchable render is correct.
+
+The `blocked` rows are the load-bearing ones (`wait --until blocked`, the
+auto-answer rules) and they were rewritten on 2026-07-29 against two live
+`dump-screen` captures of real dialogs, which corrected two things the earlier
+binary-strings evidence could not:
+
+- **The question is not one fixed sentence.** A Bash approval asks
+  `Do you want to proceed?`; a Write approval asks
+  `Do you want to create <file>?` and never prints "proceed". Matching the one
+  sentence read a genuinely blocked live screen as `unknown`. The row now
+  matches `Do you want to …?` as a shape.
+- **A question line alone is a substring anyone can print — including us.** The
+  old row was self-referential: any terminal *displaying* the matcher table, a
+  diff of it, or this paragraph classified as `blocked`. Confirmed live on a
+  session that only ran `sed` over those two files. The question now counts only
+  when the dialog's own option list follows it (`1.` is always the first item,
+  wherever the `❯` cursor sits), which a source listing does not have.
+
+The gap between question and options is whitespace-only but **not reliably a
+newline**: a dump separates them with `\n`, while the attached WS path carries
+zellij's redraw, which jumps rows with an absolute cursor CSI and pads with
+spaces — after `stripAnsi` both sit on ONE line, 97 spaces apart in the measured
+capture. A matcher anchored on a line break passes on dumps and silently misses
+every attached terminal, so the row tolerates either. Two live-captured gaps
+remain documented in the row itself: the workspace-trust dialog wraps its
+question mid-line and still reads `unknown`, and so would a pane narrow enough
+to wrap the question.
+
+The three `working` rows were anchored the same way, and for the same reason:
+measuring the blocked fix caught a live pane reading `working` purely because the
+screen was displaying the paragraph you are reading. Each row now requires
+something a render has and a quotation does not — verified against fresh dumps
+*and* raw redraw bytes of real `claude` 2.1.220 and `pi` 0.80.3 turns:
+
+- **The status line is anchored on its elapsed-time reading, not its glyph.** The
+  spinner glyph rotates (four distinct code points in a single captured turn), so
+  pinning it would pin noise. Every captured status line carried the duration; a
+  gerund without one is prose, or a tool's own progress line whose parenthetical
+  is a key hint rather than a clock. The duration sits in a lookahead so the
+  reported evidence stays the verb and does not churn every frame.
+- **The pending-tool marker has to own its line.** Line start or whitespace
+  before it, whitespace or line end after it, and a two-character pad between
+  marker and word — which in the render is a space followed by U+00A0, not two
+  spaces. A quotation has a delimiter on at least one side and pads with one.
+- **pi's literal counts only behind a braille spinner glyph** (the whole
+  U+2800–U+28FF block, since ten frames of it were captured in one turn).
+
+One row is still literal-matched and says so in its own comment: `turn-complete`
+(`<PastVerb> for <N>s`). It has the same defect — pasting a real example into the
+matcher table made the table classify itself as `idle` — and it wants the same
+treatment against a fresh capture, in its own change. `prompt-resting` stays last
+regardless; its correctness is ordering, not pattern.
 
 `prompt-resting` (an empty `❯` input line) is the one row whose correctness
 depends entirely on **ordering**, and it is last for that reason. The prompt box
@@ -267,7 +407,9 @@ an empty shell is idle), and a working frame that carries no spinner would read
 
 - `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
   evidence, at } }` for every terminal classified so far, so a client that
-  connects late can render a chip immediately.
+  connects late can render a chip immediately. `pid terminals` (see
+  "Agent-facing CLI" below) is the same map for an agent, so this classification
+  is not browser-only.
 - `terminal.state` SSE event — published only on an actual state change (no
   event per keystroke), throttled to at most one classification pass per
   400ms per connection so a fast-redrawing spinner doesn't cost a regex pass
@@ -346,22 +488,38 @@ was needed.
   beyond the first terminal pane in a session; and a session drill-in exposed
   under a `daemonShort` alias, whose polled record is keyed by the canonical
   roster short, so the chip appears under that id rather than the alias.
-- Evidence for every VERIFIED row is one of two kinds, named in the row's own
-  comment: bytes captured from a real pty run, or a literal read straight out
-  of the shipped CLI — `strings -a` on the Claude Code binary
-  (`~/.local/share/claude/versions/<version>`, a single compiled Mach-O
-  executable) for `"Do you want to proceed?"` and its reject option (found
-  adjacent to unambiguous tool-approval identifiers — "Bash command
-  (unsandboxed)", "accept-once", "confirm:yes" — confirming it is the
-  dialog's own copy), or pi's unminified `dist/` source directly for
+- Evidence for every VERIFIED row is one of three kinds, named in the row's own
+  comment: bytes captured from a real pty run, a live `dump-screen` of a real
+  session, or a literal read straight out of the shipped CLI — `strings -a` on
+  the Claude Code binary (`~/.local/share/claude/versions/<version>`, a single
+  compiled Mach-O executable), or pi's unminified `dist/` source directly for
   `"Working..."`. No row was fabricated from memory of what a CLI "probably"
-  prints. The permission-prompt rows have binary-string evidence but not a
-  captured live render — every attempt to trigger the dialog against a real
-  `claude` process here auto-approved the tool call first (a broad
-  user-level Bash allow-list). See the matcher table's comments for the full
-  trail per row, including a documented pi hint (`(escape to interrupt)`)
-  that exists in source but was not observed live, so has no matcher of its
-  own.
+  prints. **The three are not interchangeable**: a binary literal proves the
+  string exists, only a render proves it reaches a screen, and only a render
+  shows what surrounds it. The permission rows shipped on strings alone and both
+  errors that cost — one wrong claim, one self-referential false positive — were
+  only visible in a render. Getting one took `--permission-mode manual` plus an
+  explicit `--settings '{"permissions":{"ask":["Bash"]}}'`, because otherwise the
+  box's broad user-level allow-list auto-approves the call and no dialog is ever
+  drawn. That is now the recipe, not a blocker. One row is still strings-only and
+  says so: the `"No, and tell Claude what to do differently"` option label exists
+  four times in the 2.1.220 binary, but neither captured dialog rendered it
+  (2.1.220 draws a bare `"No"`), so it is kept as an anchored fallback for the
+  variant that does. See the matcher table's comments for the full trail per row,
+  including a documented pi hint (`(escape to interrupt)`) that exists in source
+  but was not observed live, so has no matcher of its own.
+- **Self-reference is a live failure mode of screen scraping, not a curiosity.**
+  Any matcher keyed on a bare sentence fires on a terminal that is merely
+  *discussing* that sentence — an agent editing this table, reviewing its diff or
+  displaying this file. Six of the seven rows are anchored against it now: the
+  two `blocked` rows (question + option list, option label + list number), the
+  three `working` rows (elapsed-time reading, own-line pending marker, braille
+  spinner) and `prompt-resting`, which is a whole-line pattern to begin with. The
+  holdout is `turn-complete`, flagged in its own comment. Two habits keep it from
+  coming back: **anchor on a rendered shape, never a bare sentence**, and **write
+  placeholders in comments and docs, never a complete rendered line**. A
+  regression here is invisible without measurement, because the matcher does not
+  fail on the fixtures — it fails on the file that describes it.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 
@@ -922,6 +1080,7 @@ vocabulary, wait semantics, `explain`, and a fan-out/join `spawn` recipe (see
 ```
 pid sessions [--state <slug,...>] [--json]
 pid explain <short> [--json]
+pid terminals [<scope>:<id>] [--json]
 pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
 pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
 pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
@@ -974,6 +1133,32 @@ pid [--help] [--url <base>]
   `shift-tab`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`,
   `page-down`, `backspace`, `delete`, `space` (the same deliberately-closed
   vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
+- `pid terminals` reads `GET /terminal/states` — the screen classification
+  ("Terminal agent-state detection" above) for every terminal the daemon has
+  looked at, whether over an attached WS bridge or the unattended poller. It
+  answers a different question from `pid sessions`/`pid explain`: those report
+  the *roster's* state for work the daemon spawned, while this reports what the
+  *pane* shows, which is the only way an agent can see a `claude` or `pi` a
+  human started by hand. States are the four screen slugs (`working`,
+  `blocked`, `idle`, `unknown`), never the 8 session slugs.
+  - With no argument it prints every terminal, one row per key. With a
+    `<scope>:<id>` key (`session:ab12`, `project:my-app`, `global:global`,
+    `orchestrator:orchestrator` — `terminalStateKey` in
+    `terminal-state.core.ts`) it prints just that one. The scope is
+    **mandatory**: shorts, project ids and the two fixed terminal names share
+    one key namespace, so a bare `ab12` would make the CLI guess — it is a
+    usage error (exit 2) instead.
+  - A key the daemon has never classified exits **6**, not a synthesized
+    `state: "unknown"`. `unknown` is a real classification (the screen was read
+    and no matcher fired); an absent key means nobody has looked yet — poller
+    off, never attached, or the short is simply wrong — and an agent needs that
+    distinction to choose between retrying and giving up. The endpoint kicks a
+    stale poll pass fire-and-forget, so its own response predates that pass:
+    a 6 for a session spawned seconds ago is worth one retry, which is what
+    the stderr line says.
+  - `--json` prints the daemon's own map verbatim, narrowed to the matched
+    keys — a map even for a single key (and `{}` plus exit 6 when it missed),
+    so a `jq` pipeline reads one shape regardless of arguments.
 - `pid fleets` lists a project's `.pid/fleet.json` recipes (see "Fleet
   recipes" above) via `GET /projects/:id/fleets` — schema + validation +
   wave planning only, never spawns anything. `--project` defaults to the
@@ -1014,7 +1199,7 @@ An orchestrating agent composes `pid` in a shell
 | 3 | wait timed out |
 | 4 | `occupant_changed` — the session was replaced under the wait |
 | 5 | `removed` — the session went away |
-| 6 | not found (daemon returned 404) |
+| 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key |
 | 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |
 
 `pid spawn --n <count> --wait` runs `count` independent spawn+wait attempts
@@ -1029,6 +1214,68 @@ the others since it always short-circuits before any request is made). `pid
 fleet run` itself never calls `worstExitCode` (each run only has one
 outcome), but 7 sits at this point in the ranking so the severity table
 stays total.
+
+### Spawn-time discovery (`PID_URL`, `PID_SKILL_URL`, `PID_BIN`)
+
+Everything above only ever got used when a human pasted instructions into a
+session: nothing told a spawned session which port the daemon bound, and the
+`pid` binary was on no PATH it could see. Every session the daemon spawns now
+carries three variables — `PID_URL` (the daemon's root url, what `pid --url`
+takes), `PID_SKILL_URL` (this daemon's own `/agent-skill.md`, prefixed
+correctly for how *this* process serves the API) and `PID_BIN` (absolute path
+to a runnable `pid`) — plus a shim at `<claudeConfigDir>/pid-dashboard/bin/pid`
+that `PID_BIN` points at.
+
+`platform/agent-discovery.core.ts` builds all of it as plain data;
+`platform/agent-discovery.io.ts` resolves the `pid` command, writes the shim
+and holds the one snapshot both dispatch paths read; `server.ts` arms it AFTER
+`Bun.serve` so the url is the port actually bound (`--port`, `PORT` and
+`port: 0` are all correct) and with `API_PREFIX` when a `staticDir` moved the
+API — under the single-port layout the SPA owns `/` and 404s
+`/agent-skill.md`, so the bare path would be a dead url. Until armed, the
+snapshot is `undefined` and every spawn is byte-identical to what it was
+before this existed.
+
+**The two spawn paths need different carriers, and this is not a style choice.**
+`claude --bg` does not run the session as its child: the supervisor claims a
+pre-warmed `claude bg-spare` process whose environment predates the dispatch
+(`ps` shows the pool; a spare's env is the supervisor's). Verified live — a var
+set on the `claude --bg` invocation is invisible inside the session, while the
+same var passed as `--settings '{"env":{…}}'` is visible, and the supervisor
+records that flag in `respawnFlags`, so it survives a respawn. So the claude
+path carries discovery as settings JSON on argv (`claudeDiscoveryFlags`, placed
+before the variadic `--tools` and its `--` terminator), and the pi path — whose
+zellij session the daemon spawns itself with an env it builds byte-for-byte —
+carries it as ordinary env plus a PATH prepend (`discoveryChildEnv`).
+
+**PATH is honestly one-sided.** In a pi pane the shim dir is on PATH, so the
+bare name `pid` resolves. In a claude background session it cannot be:
+settings `env` values are literal (verified — `${PATH}` arrives as the four
+characters `${PA…`), so the only way to add a directory would be to overwrite
+the whole variable with a value this daemon guessed, which would change how an
+existing spawn behaves. `"$PID_BIN"` is the contract there, and the skill
+document tells an agent the one-line `export PATH="$(dirname "$PID_BIN"):$PATH"`
+if it wants the bare name. Nothing is ever written outside
+`<claudeConfigDir>/pid-dashboard/` — a symlink into `~/.local/bin` would be a
+machine-wide install the user never asked for.
+
+The shim resolves the invocation for whichever install shape is running, in
+order: this monorepo checkout (`bun apps/cli/src/agent/main.ts`), the packed
+`pid-dashboard` bundle (`bun <dist>/agent/main.js`, the sibling `bun build`
+emits for `bin.pid`), then an already-installed `pid` on the daemon's own PATH
+(a global install, or `bunx pid-dashboard`, which puts the package's bins
+there). It execs through `process.execPath`, so the session does not need `bun`
+on its PATH. If none resolve, or the shim cannot be written, `PID_BIN` is
+absent and the url variables are still published — a session then talks HTTP
+rather than being handed a path that does not run.
+
+**`PID_AGENT_POINTER=1` (default off)** adds ONE sentence to a dispatched
+claude session's *system* prompt (`--append-system-prompt`) naming the skill
+url and `PID_BIN`. Env vars and a shim are inert until an agent looks for them,
+and an agent that was never told has no reason to look — the pointer is what
+actually closes that loop — but it changes what every session this daemon
+spawns is told, so it is opt-in and the user's own prompt is never touched. pi
+has no `--append-system-prompt` equivalent, so the pointer is claude-only.
 
 ## Frontend skeleton
 
@@ -1101,6 +1348,37 @@ provenance surface for all of this: it reports where a session's `state` came
 from (its own state.json vs a roster-only seed ahead of the first read), how
 stale that read is, whether the worker's pid is still alive, and — when the
 slug is `unknown` — what the raw value actually was.
+
+#### `explain` cites the screen (`features/sessions/sessions-explain.*`)
+
+Provenance from `state.json` alone can only ever report what the supervisor
+said about itself. The polled screen classification is a second, independent
+observation, and `explain` now reports it alongside:
+
+- `terminal: { state, matcher, evidence, ageMs } | undefined` — the pane's last
+  classification, which rule fired, the exact line it matched, and how long ago
+  it was sampled. `undefined` when the poller has never classified this
+  session's terminal.
+- `screenDisagrees: boolean` — whether that reading actually contradicts
+  `state`, plus a `reasons[]` sentence naming both slugs and the matcher when
+  it does. This is the `4d76edc1` case: `state.json` said `working` for 24
+  hours while the pane sat at an empty prompt.
+
+Agreement is decided by `SCREEN_AGREES_WITH`, a **mirror** of the web chip's
+`AGREES_WITH` (`apps/web/src/features/terminal/terminalState.ts`), held to it
+by `scripts/mirrored-constants.test.ts` — the two make the same judgement and
+were tuned together against the live daemon, and neither app may import the
+other. Its two load-bearing rows: a resting pane agrees with every not-running
+state (`idle`/`done`/`stopped`/`failed`), because a finished session naturally
+sits at its prompt; and `blocked` agrees with `needs_input`. An empty row —
+`unknown` — asserts nothing and so can never disagree, which is why no matcher
+firing is never grounds for calling the supervisor wrong.
+
+Purity: `sessions-explain.core.ts` takes the screen as **plain input fields**
+(`ScreenFacts`, whose `state` is a bare `string`), never importing
+`../terminal/*`. The route reads the record through the same injected
+`readTerminalState` port the waits use, and does the `Date.parse` itself so the
+core keeps its no-clock rule.
 
 ### 2. Orchestrator role — dispatcher via `claude --bg`
 

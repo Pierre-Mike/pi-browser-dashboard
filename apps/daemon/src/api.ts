@@ -67,13 +67,39 @@ const fleetRunPorts: FleetRunPorts = {
       }),
       fallbackMessage: "dispatch failed",
     }),
-  wait: ({ short, until, timeoutMs }) =>
-    appRuntime.runPromise(
+  // `via: "supervisor"` keeps a fleet step's wait meaning exactly what it
+  // meant before the screen became a wait source: a fleet recipe has no `via`
+  // field yet, and inferring one from the pane would change every existing
+  // recipe's semantics silently.
+  wait: async ({ short, until, timeoutMs }) => {
+    const outcome = await appRuntime.runPromise(
       Effect.gen(function* () {
         const sessionWait = yield* SessionWaitIo
-        return yield* sessionWait.wait({ short, request: { until, timeoutMs } })
+        return yield* sessionWait.wait({
+          short,
+          // A fleet recipe has no pattern field, so `untilOutput` is always
+          // undefined here and the screens port is never consulted — passed
+          // anyway so a future step-level pattern needs no wiring change.
+          request: { until, untilOutput: undefined, timeoutMs, via: "supervisor" },
+          readTerminalState: terminalRoute.readTerminalState,
+          terminalScreens,
+        })
       }),
-    ),
+    )
+    // Adapting one slice's vocabulary to another's port is this composition
+    // root's job, so the two screen-pattern outcomes are narrowed away here
+    // rather than widening the fleet engine's own WaitOutcomeLike for cases its
+    // recipes cannot express. Unreachable given `untilOutput: undefined` above;
+    // `Timeout` is the closest existing meaning if it ever were reached — the
+    // step did not get to the state it asked for.
+    if (outcome._tag === "OutputMatched") {
+      return { _tag: "Timeout", waitedMs: outcome.waitedMs }
+    }
+    if (outcome._tag === "ScreenPollingDisabled") {
+      return { _tag: "Timeout", waitedMs: 0 }
+    }
+    return outcome
+  },
 }
 
 // Bridges the rules engine's plain-Promise ports (features/rules/ must not
@@ -126,6 +152,17 @@ export const rulesEngine = createRulesEngine({ ports: rulesPorts })
 // module must not arm it. Only server.ts's startDaemon() calls start().
 export const terminalPoller = terminalRoute.terminalPoller
 
+// The terminal slice's screen-text channel, as one port. Screen text is
+// deliberately absent from `sseBus` (that stream reaches every browser — see
+// terminal.routes.ts's subscribeTerminalScreens), so a `wait --until-output`
+// subscribes through here. `enabled` is the poller's own armed state: an output
+// wait resolves off its passes and nothing else, so with polling disabled the
+// request is refused up front instead of timing out.
+const terminalScreens = {
+  enabled: () => terminalRoute.terminalPoller.isEnabled(),
+  subscribe: terminalRoute.subscribeTerminalScreens,
+}
+
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
   js: "text/javascript; charset=utf-8",
@@ -175,7 +212,20 @@ const app = new Hono()
   .get("/agent-skill.md", (c) =>
     c.text(AGENT_SKILL_MD, 200, { "Content-Type": "text/markdown; charset=utf-8" }),
   )
-  .route("/sessions", sessionsRoute.app)
+  // The sessions router is built here, not in its own module, because it needs
+  // a port only a composition root can hand it: `readTerminalState`, the
+  // terminal slice's published door onto the polled screen classifications.
+  // That is what lets a wait resolve on what the pane actually shows
+  // (`via: "screen"`/`"either"`) and lets `GET /sessions/:id/explain` cite the
+  // screen — without the sessions slice importing the terminal slice.
+  .route(
+    "/sessions",
+    sessionsRoute.buildSessionsApp({
+      runtime: appRuntime,
+      readTerminalState: terminalRoute.readTerminalState,
+      terminalScreens,
+    }),
+  )
   // Brainstorm boards are the canvas files in the session's own worktree, so
   // they hang off the session — an agent editing one writes inside the tree it
   // already owns. Mounted here rather than inside the sessions router so the
@@ -277,8 +327,13 @@ export type AppType = typeof app
 // the Cloudflare-tunnel dev proxy. SSE stays unprefixed everywhere (sse.ts
 // always hits "/events" directly), so it's aliased at the bare path too.
 // Call AFTER mountExtensions(app) so extension routes are captured below.
+// The prefix the API moves to when the SPA owns "/". Exported because a
+// spawned session has to be told where /agent-skill.md really answers
+// (server.ts's armAgentDiscovery), and a second literal would be free to drift.
+export const API_PREFIX = "/__api"
+
 export const buildApp = (staticDir?: string): Hono => {
-  const wrapper = new Hono().route("/__api", app)
+  const wrapper = new Hono().route(API_PREFIX, app)
   if (!staticDir) return wrapper.route("/", app)
   return wrapper.route("/events", eventsRoute.app).route("/", buildStaticApp(staticDir))
 }

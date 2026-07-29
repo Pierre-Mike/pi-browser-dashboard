@@ -9,7 +9,13 @@ import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } fro
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.io"
 import { buildSessionsApp } from "./sessions.routes"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
-import { type SessionWaitApi, SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
+import {
+  type SessionWaitApi,
+  SessionWaitIo,
+  type TerminalScreensPort,
+  type TerminalStateReader,
+  type WaitOutcome,
+} from "./sessions-wait.io"
 
 type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
 
@@ -157,7 +163,13 @@ type WaitSpy = {
     readonly short: string
     readonly until: readonly string[]
     readonly timeoutMs: number
+    readonly via: string
+    readonly untilOutput: string | undefined
+    readonly gotScreens: boolean
     readonly pinnedSessionId: string | undefined
+    // Whether the route handed the wait service a screen-state reader at all —
+    // the injected port api.ts wires to the terminal slice's door.
+    readonly gotReader: boolean
     readonly sawSendFirst: boolean
   }>
   outcome: WaitOutcome
@@ -165,7 +177,7 @@ type WaitSpy = {
 
 const newWaitSpy = (): WaitSpy => ({
   calls: [],
-  outcome: { _tag: "Satisfied", state: "done", waitedMs: 0 },
+  outcome: { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 0 },
 })
 
 const buildWaitLayer = ({
@@ -176,12 +188,16 @@ const buildWaitLayer = ({
   shellSpy: ShellSpy
 }): Layer.Layer<SessionWaitIo> => {
   const api: SessionWaitApi = {
-    wait: ({ short, request, pinnedSessionId }) => {
+    wait: ({ short, request, pinnedSessionId, readTerminalState, terminalScreens }) => {
       spy.calls.push({
         short,
         until: request.until,
         timeoutMs: request.timeoutMs,
+        via: request.via,
+        untilOutput: request.untilOutput?.text,
+        gotScreens: terminalScreens !== undefined,
         pinnedSessionId,
+        gotReader: readTerminalState !== undefined,
         sawSendFirst: shellSpy.calls.some((c) => c.op === "send"),
       })
       return Effect.succeed(spy.outcome)
@@ -190,6 +206,18 @@ const buildWaitLayer = ({
   return Layer.succeed(SessionWaitIo, api)
 }
 
+// Stands in for the door terminal.routes.ts publishes and api.ts injects: the
+// polled screen classification for one terminal, keyed as GET /terminal/states
+// keys it. `undefined` (the default) is a daemon where nothing has been
+// classified yet.
+const readerFor =
+  (records: Record<string, string>): TerminalStateReader =>
+  ({ scope, id }) => {
+    const state = records[`${scope}:${id}`]
+    if (state === undefined) return undefined
+    return { state, matcher: "prompt-resting", evidence: "❯", at: "2026-07-28T00:00:00.000Z" }
+  }
+
 const buildHarness = ({
   sessions,
   spy,
@@ -197,6 +225,8 @@ const buildHarness = ({
   piStub = newPiStub(),
   waitStub = newWaitSpy(),
   diagnosticsOverrides,
+  readTerminalState,
+  terminalScreens,
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
@@ -204,6 +234,8 @@ const buildHarness = ({
   piStub?: PiStub
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
+  readTerminalState?: TerminalStateReader
+  terminalScreens?: TerminalScreensPort
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions, diagnosticsOverrides),
@@ -213,7 +245,7 @@ const buildHarness = ({
     buildWaitLayer({ spy: waitStub, shellSpy: spy }),
   )
   const runtime = ManagedRuntime.make(layer)
-  const app = buildSessionsApp(runtime)
+  const app = buildSessionsApp({ runtime, readTerminalState, terminalScreens })
   return { app, runtime, filesStub, piStub, waitStub, dispose: () => runtime.dispose() }
 }
 
@@ -229,6 +261,8 @@ const requestOn = async ({
   piStub,
   waitStub,
   diagnosticsOverrides,
+  readTerminalState,
+  terminalScreens,
 }: {
   path: string
   init?: RequestInit
@@ -238,6 +272,8 @@ const requestOn = async ({
   piStub?: PiStub
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
+  readTerminalState?: TerminalStateReader
+  terminalScreens?: TerminalScreensPort
 }): Promise<Response> => {
   const { app, dispose } = buildHarness({
     sessions,
@@ -246,6 +282,8 @@ const requestOn = async ({
     piStub,
     waitStub,
     diagnosticsOverrides,
+    readTerminalState,
+    terminalScreens,
   })
   try {
     return await app.request(path, init)
@@ -435,6 +473,75 @@ describe("GET /sessions/:id/explain", () => {
   // a pi short 404s here even though it lists and GETs fine. Documented gap;
   // a pi-aware explain (reading its own spawn log's "pi-spawn-log" source) is
   // a follow-up, not something this test should silently mask.
+  // The screen facts reach explain through the same injected reader the waits
+  // use, so this route is where "state.json says X, the pane says Y" becomes
+  // something an agent can read.
+  it("cites the screen when it contradicts the supervisor slug", async () => {
+    const sessions = oneSession({ state: "working", updatedAt: new Date().toISOString() })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      screenDisagrees: boolean
+      terminal: { state: string; matcher: string; evidence: string; ageMs: number }
+      reasons: string[]
+    }
+    expect(body.screenDisagrees).toBe(true)
+    expect(body.terminal.state).toBe("idle")
+    expect(body.terminal.matcher).toBe("prompt-resting")
+    expect(body.terminal.evidence).toBe("❯")
+    // Age is computed from the record's own `at`, so it must be a real number.
+    expect(typeof body.terminal.ageMs).toBe("number")
+    expect(body.reasons.some((r) => r.toLowerCase().includes("screen"))).toBe(true)
+  })
+
+  it("stays silent about the screen when it confirms the supervisor", async () => {
+    const sessions = oneSession({ state: "done" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    const body = (await res.json()) as { screenDisagrees: boolean; reasons: string[] }
+    expect(body.screenDisagrees).toBe(false)
+    expect(body.reasons.some((r) => r.toLowerCase().includes("screen"))).toBe(false)
+  })
+
+  it("omits the screen section when nothing has classified this session's pane", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "session:cd34": "idle" }),
+    })
+    const body = (await res.json()) as { terminal?: unknown; screenDisagrees: boolean }
+    expect(body.terminal).toBeUndefined()
+    expect(body.screenDisagrees).toBe(false)
+  })
+
+  it("reads the session scope, not a same-named terminal in another scope", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions,
+      readTerminalState: readerFor({ "project:ab12": "idle" }),
+    })
+    const body = (await res.json()) as { terminal?: unknown }
+    expect(body.terminal).toBeUndefined()
+  })
+
+  it("explains exactly as before when the composition root injected no reader", async () => {
+    const sessions = oneSession({ state: "working" })
+    const res = await requestOn({ path: "/ab12/explain", sessions })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { terminal?: unknown; screenDisagrees: boolean }
+    expect(body.terminal).toBeUndefined()
+    expect(body.screenDisagrees).toBe(false)
+  })
+
   it("404s for a pi session — diagnostics has no pi-registry fallback (documented gap)", async () => {
     const piStub = newPiStub()
     piStub.sessions.set(
@@ -966,7 +1073,7 @@ describe("POST /sessions/:id/keys", () => {
   it("sends the resolved keys, then embeds the wait outcome pinned to the pre-send occupant", async () => {
     const spy = newSpy()
     const waitStub = newWaitSpy()
-    waitStub.outcome = { _tag: "Satisfied", state: "done", waitedMs: 12 }
+    waitStub.outcome = { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 12 }
     const sessions = oneSession({ sessionId: "sess-1" })
     const { app, dispose } = buildHarness({ sessions, spy, waitStub })
     try {
@@ -985,7 +1092,7 @@ describe("POST /sessions/:id/keys", () => {
           short: "ab12",
           resolved: ["down", "enter"],
           bytes: 4,
-          wait: { ok: true, short: "ab12", state: "done", waitedMs: 12 },
+          wait: { ok: true, short: "ab12", state: "done", via: "supervisor", waitedMs: 12 },
         },
       })
     } finally {
@@ -1063,11 +1170,11 @@ describe("POST /sessions/:id/wait", () => {
   it("returns 200 with the Satisfied payload", async () => {
     const res = await waitRes({
       id: "ab12",
-      outcome: { _tag: "Satisfied", state: "done", waitedMs: 42 },
+      outcome: { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 42 },
     })
     await expectJson(res, {
       status: 200,
-      body: { ok: true, short: "ab12", state: "done", waitedMs: 42 },
+      body: { ok: true, short: "ab12", state: "done", via: "supervisor", waitedMs: 42 },
     })
   })
 
@@ -1082,6 +1189,195 @@ describe("POST /sessions/:id/wait", () => {
   it("returns 200 with the Removed payload", async () => {
     const res = await waitRes({ id: "ab12", outcome: { _tag: "Removed" } })
     await expectJson(res, { status: 200, body: { ok: false, reason: "removed", short: "ab12" } })
+  })
+
+  it("defaults via to supervisor when the body omits it", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done"] }),
+      },
+      waitStub,
+    })
+    expect(waitStub.calls[0]?.via).toBe("supervisor")
+  })
+
+  it.each(["screen", "either"] as const)("forwards via %s to the wait service", async (via) => {
+    const waitStub = newWaitSpy()
+    const res = await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via }),
+      },
+      waitStub,
+    })
+    expect(res.status).toBe(200)
+    expect(waitStub.calls[0]).toMatchObject({ short: "ab12", until: ["idle"], via })
+  })
+
+  it("rejects an unknown via with 400 bad_request", async () => {
+    const waitStub = newWaitSpy()
+    const res = await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done"], via: "telepathy" }),
+      },
+      waitStub,
+    })
+    expect(res.status).toBe(400)
+    expect(waitStub.calls).toEqual([])
+  })
+
+  // The route is where the terminal slice's door reaches the wait service.
+  // Without this the screen sources would only ever see mid-wait transitions,
+  // never the classification that was already on screen when the wait started.
+  it("hands the injected screen-state reader to the wait service", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via: "screen" }),
+      },
+      waitStub,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    expect(waitStub.calls[0]?.gotReader).toBe(true)
+  })
+
+  it("passes no reader when the composition root injected none", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via: "screen" }),
+      },
+      waitStub,
+    })
+    expect(waitStub.calls[0]?.gotReader).toBe(false)
+  })
+
+  // --- untilOutput -------------------------------------------------------
+
+  const screensPort = ({ enabled = true }: { enabled?: boolean } = {}): TerminalScreensPort => ({
+    enabled: () => enabled,
+    subscribe: () => () => {},
+  })
+
+  const postWaitBody = ({
+    body,
+    waitStub,
+    terminalScreens,
+  }: {
+    body: unknown
+    waitStub?: WaitSpy
+    terminalScreens?: TerminalScreensPort
+  }): Promise<Response> =>
+    requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      waitStub,
+      terminalScreens,
+    })
+
+  it("forwards a parsed untilOutput pattern and the screen channel", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({
+      body: { untilOutput: "Do you want to proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    expect(res.status).toBe(200)
+    expect(waitStub.calls[0]).toMatchObject({
+      short: "ab12",
+      until: [],
+      untilOutput: "Do you want to proceed?",
+      gotScreens: true,
+    })
+  })
+
+  it("accepts until and untilOutput together", async () => {
+    const waitStub = newWaitSpy()
+    await postWaitBody({
+      body: { until: ["failed"], untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    expect(waitStub.calls[0]).toMatchObject({ until: ["failed"], untilOutput: "proceed?" })
+  })
+
+  it("rejects a request with neither until nor untilOutput", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({ body: {}, waitStub })
+    expect(res.status).toBe(400)
+    expect(waitStub.calls).toEqual([])
+  })
+
+  it("rejects an over-long pattern with 400 before reaching the wait service", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({ body: { untilOutput: "x".repeat(5_000) }, waitStub })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; message: string }
+    expect(body.error).toBe("bad_request")
+    expect(body.message).toContain("capped")
+    expect(waitStub.calls).toEqual([])
+  })
+
+  it("returns 200 with the OutputMatched payload — matched, and no state", async () => {
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "OutputMatched", matched: "Do you want to proceed?", waitedMs: 9 }
+    const res = await postWaitBody({
+      body: { untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: true, short: "ab12", matched: "Do you want to proceed?", waitedMs: 9 },
+    })
+  })
+
+  // 409 rather than a silent 30-second timeout: the request is well-formed and
+  // would work on a daemon with the poller armed, so the fault is configuration.
+  it("returns 409 screen_polling_disabled when the poller cannot serve the pattern", async () => {
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "ScreenPollingDisabled" }
+    const res = await postWaitBody({
+      body: { untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort({ enabled: false }),
+    })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string; short: string; message: string }
+    expect(body.error).toBe("screen_polling_disabled")
+    expect(body.short).toBe("ab12")
+    // The message must name the knob, or the caller cannot act on it.
+    expect(body.message).toContain("PID_TERMINAL_POLL_MS")
+  })
+
+  it("reports a screen-satisfied wait with via: screen", async () => {
+    const res = await waitRes({
+      id: "ab12",
+      outcome: { _tag: "Satisfied", state: "blocked", via: "screen", waitedMs: 7 },
+    })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: true, short: "ab12", state: "blocked", via: "screen", waitedMs: 7 },
+    })
   })
 })
 

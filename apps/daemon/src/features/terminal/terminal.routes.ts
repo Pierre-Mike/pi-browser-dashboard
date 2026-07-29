@@ -105,7 +105,7 @@ const bridges = new WeakMap<object, Bridge>()
 // name doubles as the id; see idForScope below) come from terminal-poll.core.ts,
 // so the WS bridge and the unattended poller share one vocabulary.
 
-type TerminalStateRecord = {
+export type TerminalStateRecord = {
   readonly scope: TerminalScope
   readonly id: string
   readonly state: TerminalStateSlug
@@ -121,6 +121,67 @@ type TerminalStateRecord = {
 // that connects late render a chip immediately instead of waiting for the next
 // transition.
 const terminalStates = new Map<string, TerminalStateRecord>()
+
+// This slice's published door onto that map: one terminal's last known
+// classification, or `undefined` when nothing has classified it. Read-only by
+// construction, and the only way another slice is allowed to learn what the
+// screen says — the sessions slice's waits and `GET /sessions/:id/explain`
+// receive this function as a port injected by api.ts rather than importing
+// this module, so the dependency stays a door and not a back-channel.
+//
+// `scope` is typed `string`, not `TerminalScope`, deliberately: a caller in
+// another slice must not have to import this slice's vocabulary to ask a
+// question, and an unrecognized scope simply finds nothing.
+export const readTerminalState = (input: {
+  readonly scope: string
+  readonly id: string
+}): TerminalStateRecord | undefined => terminalStates.get(terminalStateKey(input))
+
+// --- screen-text observers ---------------------------------------------------
+
+// A screen observation: the bounded, ANSI-stripped text of one pane, exactly as
+// the poller just read it.
+type TerminalScreen = {
+  readonly scope: string
+  readonly id: string
+  readonly text: string
+}
+
+type ScreenObserver = (screen: TerminalScreen) => void
+
+const screenObservers = new Set<ScreenObserver>()
+
+// This channel exists INSTEAD OF putting screen text on `sseBus`, and that is
+// the whole point of it.
+//
+// `sseBus` is the stream `features/events/events.routes.ts` forwards to every
+// connected browser. Publishing pane text there would ship the full contents of
+// every terminal the daemon can see — source code, file paths, whatever an
+// agent happens to have on screen — to every SSE client, as a side effect of
+// adding a wait feature. So screen text stays in-process: observers register
+// here, and only the classification (`terminal.state`, four slugs and a matched
+// line) goes on the bus.
+//
+// If you are here to "simplify" this by folding it into publishTerminalState:
+// that is the change this comment exists to stop.
+export const subscribeTerminalScreens = (observer: ScreenObserver): (() => void) => {
+  screenObservers.add(observer)
+  return () => {
+    screenObservers.delete(observer)
+  }
+}
+
+// Called by the poller on every successful dump, transition or not. One
+// observer throwing must not cost the others their notification.
+const noteTerminalScreen = (screen: TerminalScreen): void => {
+  for (const observer of [...screenObservers]) {
+    try {
+      observer(screen)
+    } catch {
+      // An observer's failure is its own; the pass carries on.
+    }
+  }
+}
 
 // Zellij session names with a live WS bridge right now, refcounted: React
 // StrictMode double-mounts TerminalView and the daemon keeps the previous child
@@ -826,6 +887,7 @@ export const terminalPoller = createTerminalPoller({
     attachedSessionNames: () => [...attachedSessions.keys()],
     priorState: ({ key }) => terminalStates.get(key)?.state,
     publish: publishTerminalState,
+    noteScreen: noteTerminalScreen,
     now: () => Date.now(),
   },
   tailMaxChars: TERMINAL_STATE_TAIL_MAX_CHARS,

@@ -32,6 +32,19 @@ export type PidConfig = {
    * attached path costs nothing beyond a regex over bytes it already has.
    */
   readonly terminalPollMs: number
+  /**
+   * Add ONE pointer sentence to a dispatched claude session's system prompt
+   * (`--append-system-prompt`) naming the agent skill's url and the `pid`
+   * binary — see platform/agent-discovery.core.ts.
+   *
+   * Off by default, and deliberately so: env vars and a shim are inert until
+   * an agent looks for them, while a prompt line changes what every session
+   * this daemon spawns is told. Set PID_AGENT_POINTER=1 to accept that
+   * trade-off. The env half of discovery is always on; only the sentence is
+   * gated. pi has no `--append-system-prompt` equivalent, so this only
+   * affects the claude path.
+   */
+  readonly agentPointer: boolean
 }
 
 // See `terminalPollMs`. 15s is slower than a human notices a chip change but
@@ -57,6 +70,7 @@ const buildConfig = (): PidConfig => {
     tunnelPort: Number(process.env.PID_TUNNEL_PORT ?? process.env.PID_WEB_PORT ?? 5173),
     zellijPrefix: process.env.PID_ZELLIJ_PREFIX ?? "",
     terminalPollMs: Number(process.env.PID_TERMINAL_POLL_MS ?? DEFAULT_TERMINAL_POLL_MS),
+    agentPointer: process.env.PID_AGENT_POINTER === "1",
   }
 }
 

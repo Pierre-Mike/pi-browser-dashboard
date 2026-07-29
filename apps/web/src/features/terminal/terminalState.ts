@@ -22,7 +22,12 @@ export const terminalStateKey = (input: { readonly scope: string; readonly id: s
 // Session-state slugs each terminal classification is really asserting the same
 // thing as. Used to decide whether a card's terminal chip is news; see
 // terminalStateAddsInfo.
-const AGREES_WITH: Record<TerminalStateSlug, readonly string[]> = {
+//
+// Exported for scripts/mirrored-constants.test.ts only: the daemon's
+// GET /sessions/:id/explain makes the same judgement over its own copy
+// (`SCREEN_AGREES_WITH` in sessions-explain.core.ts) and neither app may import
+// the other, so a test outside both holds them to each other.
+export const AGREES_WITH: Record<TerminalStateSlug, readonly string[]> = {
   working: ["working"],
   // "blocked" and the supervisor's "needs_input" are one fact under two names.
   blocked: ["blocked", "needs_input"],

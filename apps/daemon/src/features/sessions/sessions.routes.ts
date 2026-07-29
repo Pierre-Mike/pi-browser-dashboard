@@ -16,10 +16,15 @@ import {
 import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
-import { explainSession } from "./sessions-explain.core"
+import { explainSession, type ScreenFacts } from "./sessions-explain.core"
 import { type KeyStep, parseKeysRequest } from "./sessions-keys.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
-import { SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
+import {
+  SessionWaitIo,
+  type TerminalScreensPort,
+  type TerminalStateReader,
+  type WaitOutcome,
+} from "./sessions-wait.io"
 
 const MAX_TRANSCRIPT_LINES = 500
 
@@ -96,13 +101,50 @@ const currentSessionId = async (
     }),
   )
 
+// The polled screen classification for one session short, as the plain input
+// fields sessions-explain.core.ts takes. The impure half of the sandwich: the
+// reader is a port (the terminal slice's door, injected by api.ts) and
+// `Date.parse` happens here so the pure core keeps its no-clock rule and never
+// has to know the wire format of a `terminal.state` record.
+const screenFactsFor = ({
+  short,
+  readTerminalState,
+}: {
+  readonly short: string
+  readonly readTerminalState: TerminalStateReader | undefined
+}): ScreenFacts | undefined => {
+  const record = readTerminalState?.({ scope: "session", id: short })
+  if (!record) return undefined
+  return {
+    state: record.state,
+    matcher: record.matcher,
+    evidence: record.evidence,
+    atMs: Date.parse(record.at),
+  }
+}
+
 // Maps a WaitOutcome onto the JSON payload documented for POST /:id/wait —
 // reused as-is for the `wait` field POST /:id/send embeds when the caller
 // opts into submit-and-wait.
 const waitOutcomeBody = ({ outcome, short }: { outcome: WaitOutcome; short: string }) => {
   switch (outcome._tag) {
     case "Satisfied":
-      return { ok: true, short, state: outcome.state, waitedMs: outcome.waitedMs }
+      // `via` names which observation settled it — the supervisor's state.json
+      // or the screen classifier — so a caller can tell a confirmed finish
+      // from one inferred off the pane.
+      return {
+        ok: true,
+        short,
+        state: outcome.state,
+        via: outcome.via,
+        waitedMs: outcome.waitedMs,
+      }
+    // A pattern match reports no `state` — there is none to report — so a
+    // caller distinguishes the two successes by which field is present.
+    case "OutputMatched":
+      return { ok: true, short, matched: outcome.matched, waitedMs: outcome.waitedMs }
+    case "ScreenPollingDisabled":
+      return { ok: false, reason: "screen_polling_disabled", short }
     case "Timeout":
       return { ok: false, reason: "timeout", short, waitedMs: outcome.waitedMs }
     case "OccupantChanged":
@@ -127,11 +169,15 @@ const sendAndMaybeWait = async ({
   id,
   keys,
   waitRequest,
+  readTerminalState,
+  terminalScreens,
 }: {
   runtime: SessionsRouteRuntime
   id: string
   keys: string
   waitRequest: WaitRequest | undefined
+  readTerminalState: TerminalStateReader | undefined
+  terminalScreens: TerminalScreensPort | undefined
 }): Promise<SendOutcome> => {
   // Capture the occupant's sessionId *before* sending, so a requested wait is
   // pinned to whoever held the session at request time — not whoever (if
@@ -147,7 +193,13 @@ const sendAndMaybeWait = async ({
   if (!waitRequest) return { _tag: "Sent", wait: undefined }
   const outcome = await runtime.runPromise(
     Effect.flatMap(SessionWaitIo, (svc) =>
-      svc.wait({ short: id, request: waitRequest, pinnedSessionId }),
+      svc.wait({
+        short: id,
+        request: waitRequest,
+        pinnedSessionId,
+        readTerminalState,
+        terminalScreens,
+      }),
     ),
   )
   return { _tag: "Sent", wait: outcome }
@@ -176,7 +228,25 @@ const sessionFsRoute = async (
   return c.json(out, status)
 }
 
-export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
+// Everything this router needs from the composition root. `readTerminalState`
+// is the terminal slice's published door onto the polled screen
+// classifications, passed in rather than imported — the same shape
+// brainstorms.routes.ts and fleet.routes.ts use for their own cross-slice
+// needs. Absent (route tests, and any caller that doesn't care) simply means
+// no screen facts are available.
+export type SessionsRouteDeps = {
+  readonly runtime: SessionsRouteRuntime
+  readonly readTerminalState?: TerminalStateReader | undefined
+  // The screen-text channel an `untilOutput` wait resolves off. Absent means no
+  // channel is wired, which such a request is refused for.
+  readonly terminalScreens?: TerminalScreensPort | undefined
+}
+
+export const buildSessionsApp = ({
+  runtime,
+  readTerminalState,
+  terminalScreens,
+}: SessionsRouteDeps) =>
   new Hono()
     .get("/", async (c) => {
       const list = await runtime.runPromise(
@@ -225,6 +295,7 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
           lastEventAtMs: diag.lastEventAtMs,
           pidAlive: diag.pidAlive,
           stateFilePresent: diag.stateFilePresent,
+          terminal: screenFactsFor({ short: id, readTerminalState }),
         }),
       )
     })
@@ -408,6 +479,8 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         id,
         keys: body.keys as string,
         waitRequest,
+        readTerminalState,
+        terminalScreens,
       })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
@@ -447,7 +520,14 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         waitRequest = parsedWait.right
       }
       const { keys, resolved } = parsedKeys.right
-      const outcome = await sendAndMaybeWait({ runtime, id, keys, waitRequest })
+      const outcome = await sendAndMaybeWait({
+        runtime,
+        id,
+        keys,
+        waitRequest,
+        readTerminalState,
+        terminalScreens,
+      })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
       }
@@ -463,12 +543,29 @@ export const buildSessionsApp = (runtime: SessionsRouteRuntime) =>
         return c.json({ error: "bad_request", message: parsed.left.message }, 400)
       }
       const outcome = await runtime.runPromise(
-        Effect.flatMap(SessionWaitIo, (svc) => svc.wait({ short: id, request: parsed.right })),
+        Effect.flatMap(SessionWaitIo, (svc) =>
+          svc.wait({ short: id, request: parsed.right, readTerminalState, terminalScreens }),
+        ),
       )
       if (outcome._tag === "NotFound") return c.json({ error: "not_found", short: id }, 404)
+      // 409, not 400: the request is well-formed and would be valid on a daemon
+      // with screen polling armed. The fault is this daemon's configuration, so
+      // it gets its own status rather than being confused with a bad pattern.
+      if (outcome._tag === "ScreenPollingDisabled") {
+        return c.json(
+          {
+            error: "screen_polling_disabled",
+            short: id,
+            message:
+              "untilOutput needs the terminal screen poller, which is disabled on this daemon (set PID_TERMINAL_POLL_MS to a positive number of milliseconds)",
+          },
+          409,
+        )
+      }
       return c.json(waitOutcomeBody({ outcome, short: id }))
     })
 
-const app = buildSessionsApp(appRuntime)
-
-export { app }
+// No module-level `app` any more: this router now needs a port only the
+// composition root can supply (the terminal slice's screen-state door), so
+// api.ts builds it — `buildSessionsApp({ runtime: appRuntime, ... })` — the
+// same way it builds the brainstorms and fleet routers.

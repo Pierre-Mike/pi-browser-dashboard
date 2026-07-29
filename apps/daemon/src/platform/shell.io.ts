@@ -1,4 +1,6 @@
 import { Context, Data, Effect, Layer } from "effect"
+import { claudeDiscoveryFlags } from "./agent-discovery.core"
+import { agentDiscovery } from "./agent-discovery.io"
 
 export class ShellError extends Data.TaggedError("ShellError")<{
   readonly message: string
@@ -137,12 +139,16 @@ export const buildDispatchArgs = ({
   effort,
   model,
   tools,
+  discoveryFlags,
 }: DispatchInput): string[] => {
   const args: string[] = ["claude", "--bg"]
   if (agent) args.push("--agent", agent)
   if (permissionMode) args.push("--permission-mode", permissionMode)
   if (effort) args.push("--effort", effort)
   if (model) args.push("--model", model)
+  // Before --tools below, so the `--` terminator stays the last flag: these
+  // are the daemon's own discovery flags, never a caller's (shell.types.ts).
+  if (discoveryFlags) args.push(...discoveryFlags)
   // `--tools <tools...>` is variadic and otherwise swallows the trailing
   // positional intent as more "tool names" — terminate it with `--` so the
   // prompt always parses as the prompt.
@@ -273,7 +279,14 @@ process.on("beforeExit", evictAll)
 export const ShellIoLive: Layer.Layer<ShellIo> = Layer.succeed(ShellIo, {
   dispatch: (input) =>
     Effect.gen(function* () {
-      const args = buildDispatchArgs(input)
+      // Every claude dispatch — the route, a fleet step, the issue driver —
+      // goes through here, so this is the one place discovery has to be added
+      // for a spawned session to find the daemon. Inert until server.ts arms
+      // it, in which case the argv is exactly what it was before.
+      const args = buildDispatchArgs({
+        ...input,
+        discoveryFlags: claudeDiscoveryFlags(agentDiscovery.snapshot()),
+      })
       const cwd = resolveSpawnCwd(input.cwd, process.env)
       const { stdout } = yield* runCommand({ cmd: args, cwd })
       const short = parseShort(stdout)
