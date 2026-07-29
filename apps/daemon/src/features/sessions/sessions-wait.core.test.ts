@@ -11,6 +11,7 @@ import {
   matchOutputPattern,
   parseWaitRequest,
   sessionSlugFromTerminalState,
+  timeoutWaitedMs,
   type WaitRequest,
 } from "./sessions-wait.core"
 
@@ -740,5 +741,33 @@ describe("decodeSessionRemovedEvent", () => {
     expect(decodeSessionRemovedEvent({})).toBeUndefined()
     expect(decodeSessionRemovedEvent({ short: "" })).toBeUndefined()
     expect(decodeSessionRemovedEvent({ short: 42 })).toBeUndefined()
+  })
+})
+
+describe("timeoutWaitedMs", () => {
+  // The CI flake this rule exists for, as data: the timer fired against a clock
+  // that read 49 for a wait asked to last 50.
+  test("never reports less than the timeout the caller asked for", () => {
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 49 })).toBe(50)
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 0 })).toBe(50)
+  })
+
+  test("reports a real overshoot in full — the floor is not a clamp", () => {
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 812 })).toBe(812)
+  })
+
+  test("passes an exact reading through unchanged", () => {
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 50 })).toBe(50)
+  })
+
+  test("rounds a fractional monotonic reading to whole milliseconds", () => {
+    // `waitedMs` crosses HTTP and `pid wait` prints it verbatim, so a
+    // performance.now() difference must not reach a caller as 812.3910419.
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 812.3910419 })).toBe(812)
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: 812.6 })).toBe(813)
+  })
+
+  test("survives a clock that ran backwards mid-wait", () => {
+    expect(timeoutWaitedMs({ requestedMs: 50, elapsedMs: -3 })).toBe(50)
   })
 })

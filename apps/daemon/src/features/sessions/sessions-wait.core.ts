@@ -115,6 +115,28 @@ const parseTimeoutMs = (raw: unknown): Either.Either<number, WaitRequestError> =
   return Either.right(raw)
 }
 
+// What a timed-out wait reports having waited.
+//
+// Not simply the measured elapsed time, because a timeout is a fact about the
+// request as well as a measurement: the wait was asked to honour `requestedMs`
+// and it did, so reporting less than that describes a wait that never happened.
+// It can nonetheless come out lower — a runtime schedules its timers against a
+// monotonic clock and the elapsed reading is taken separately, so a timer that
+// fires a fraction of a millisecond "early" against the reading clock truncates
+// to one below. CI caught exactly that: a `timeoutMs: 50` wait reported
+// `waitedMs: 49`.
+//
+// The floor is the caller's own `requestedMs`, not a tolerance — a real
+// overshoot (a busy event loop delivering the timer late) is still reported in
+// full, which is the only part of this number a caller can act on.
+export const timeoutWaitedMs = ({
+  requestedMs,
+  elapsedMs,
+}: {
+  readonly requestedMs: number
+  readonly elapsedMs: number
+}): number => Math.max(requestedMs, Math.round(elapsedMs))
+
 // --- Output patterns ---------------------------------------------------------
 
 // Deliberately NOT a regex — see `OUTPUT_PATTERN_MAX_CHARS` in
