@@ -144,7 +144,10 @@ describe("createTerminalPoller.tick", () => {
     const h = makeHarness()
     const poller = makePoller(h)
     await poller.tick()
-    h.setDump("Do you want to proceed?")
+    // Question line plus option list: the rendered dialog shape, verbatim from
+    // the live capture in terminal-state.core.test.ts. The bare question is not
+    // enough any more — any screen can print a sentence.
+    h.setDump(" Do you want to proceed?\n ❯ 1. Yes\n   2. No")
     await poller.tick()
     expect(h.published.slice(2).map((p) => p.state)).toEqual(["blocked", "blocked"])
   })

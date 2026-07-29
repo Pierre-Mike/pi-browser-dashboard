@@ -287,11 +287,38 @@ reads any terminal's screen instead of requiring an integration: a pure
 regex table (`MATCHERS` in `terminal-state.core.ts`) matches known
 status-line and dialog shapes — Claude Code's `"<Gerund>…(<N>s · …)"` while
 generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn
-ends, `"Do you want to proceed?"` (or its reject option) while blocked on a
-permission decision; pi's `"Working..."` spinner — against a per-connection
-rolling tail, stripped of ANSI first. States: `working`, `blocked`, `idle`,
-`unknown` — `unknown` is the honest default when nothing matches, not a
-guessed `idle`.
+ends, a permission dialog's question line *together with its option list*
+while blocked on a permission decision; pi's `"Working..."` spinner — against
+a per-connection rolling tail, stripped of ANSI first. States: `working`,
+`blocked`, `idle`, `unknown` — `unknown` is the honest default when nothing
+matches, not a guessed `idle`.
+
+The `blocked` rows are the load-bearing ones (`wait --until blocked`, the
+auto-answer rules) and they were rewritten on 2026-07-29 against two live
+`dump-screen` captures of real dialogs, which corrected two things the earlier
+binary-strings evidence could not:
+
+- **The question is not one fixed sentence.** A Bash approval asks
+  `Do you want to proceed?`; a Write approval asks
+  `Do you want to create <file>?` and never prints "proceed". Matching the one
+  sentence read a genuinely blocked live screen as `unknown`. The row now
+  matches `Do you want to …?` as a shape.
+- **A question line alone is a substring anyone can print — including us.** The
+  old row was self-referential: any terminal *displaying* the matcher table, a
+  diff of it, or this paragraph classified as `blocked`. Confirmed live on a
+  session that only ran `sed` over those two files. The question now counts only
+  when the dialog's own option list follows it (`1.` is always the first item,
+  wherever the `❯` cursor sits), which a source listing does not have.
+
+The gap between question and options is whitespace-only but **not reliably a
+newline**: a dump separates them with `\n`, while the attached WS path carries
+zellij's redraw, which jumps rows with an absolute cursor CSI and pads with
+spaces — after `stripAnsi` both sit on ONE line, 97 spaces apart in the measured
+capture. A matcher anchored on a line break passes on dumps and silently misses
+every attached terminal, so the row tolerates either. Two live-captured gaps
+remain documented in the row itself: the workspace-trust dialog wraps its
+question mid-line and still reads `unknown`, and so would a pane narrow enough
+to wrap the question.
 
 `prompt-resting` (an empty `❯` input line) is the one row whose correctness
 depends entirely on **ordering**, and it is last for that reason. The prompt box
@@ -388,22 +415,36 @@ was needed.
   beyond the first terminal pane in a session; and a session drill-in exposed
   under a `daemonShort` alias, whose polled record is keyed by the canonical
   roster short, so the chip appears under that id rather than the alias.
-- Evidence for every VERIFIED row is one of two kinds, named in the row's own
-  comment: bytes captured from a real pty run, or a literal read straight out
-  of the shipped CLI — `strings -a` on the Claude Code binary
-  (`~/.local/share/claude/versions/<version>`, a single compiled Mach-O
-  executable) for `"Do you want to proceed?"` and its reject option (found
-  adjacent to unambiguous tool-approval identifiers — "Bash command
-  (unsandboxed)", "accept-once", "confirm:yes" — confirming it is the
-  dialog's own copy), or pi's unminified `dist/` source directly for
+- Evidence for every VERIFIED row is one of three kinds, named in the row's own
+  comment: bytes captured from a real pty run, a live `dump-screen` of a real
+  session, or a literal read straight out of the shipped CLI — `strings -a` on
+  the Claude Code binary (`~/.local/share/claude/versions/<version>`, a single
+  compiled Mach-O executable), or pi's unminified `dist/` source directly for
   `"Working..."`. No row was fabricated from memory of what a CLI "probably"
-  prints. The permission-prompt rows have binary-string evidence but not a
-  captured live render — every attempt to trigger the dialog against a real
-  `claude` process here auto-approved the tool call first (a broad
-  user-level Bash allow-list). See the matcher table's comments for the full
-  trail per row, including a documented pi hint (`(escape to interrupt)`)
-  that exists in source but was not observed live, so has no matcher of its
-  own.
+  prints. **The three are not interchangeable**: a binary literal proves the
+  string exists, only a render proves it reaches a screen, and only a render
+  shows what surrounds it. The permission rows shipped on strings alone and both
+  errors that cost — one wrong claim, one self-referential false positive — were
+  only visible in a render. Getting one took `--permission-mode manual` plus an
+  explicit `--settings '{"permissions":{"ask":["Bash"]}}'`, because otherwise the
+  box's broad user-level allow-list auto-approves the call and no dialog is ever
+  drawn. That is now the recipe, not a blocker. One row is still strings-only and
+  says so: the `"No, and tell Claude what to do differently"` option label exists
+  four times in the 2.1.220 binary, but neither captured dialog rendered it
+  (2.1.220 draws a bare `"No"`), so it is kept as an anchored fallback for the
+  variant that does. See the matcher table's comments for the full trail per row,
+  including a documented pi hint (`(escape to interrupt)`) that exists in source
+  but was not observed live, so has no matcher of its own.
+- **Self-reference is a live failure mode of screen scraping, not a curiosity.**
+  Any matcher keyed on a bare sentence fires on a terminal that is merely
+  *discussing* that sentence — an agent editing this table, reviewing its diff or
+  displaying this file. The `blocked` rows are anchored against it (question +
+  option list, option label + list number). The `working` rows are **not** yet:
+  the paragraph above quotes `"⎿ Waiting…"` and `"Working..."`, so a terminal
+  showing it still reads `working`. Cheaper to be wrong there — a spurious
+  `working` costs a chip, a spurious `blocked` wakes a wait and an auto-answer
+  rule — but it is the same bug, and fixing it needs a fresh pi capture to anchor
+  the spinner, not speculation.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 
