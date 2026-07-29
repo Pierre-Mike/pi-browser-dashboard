@@ -325,13 +325,21 @@ bytes to the browser over the existing WS bridge (`terminal.routes.ts`), it
 taps the same bytes to classify what the agent is doing, the way `herdr`
 reads any terminal's screen instead of requiring an integration: a pure
 regex table (`MATCHERS` in `terminal-state.core.ts`) matches known
-status-line and dialog shapes — Claude Code's `"<Gerund>…(<N>s · …)"` while
-generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn
-ends, a permission dialog's question line *together with its option list*
-while blocked on a permission decision; pi's `"Working..."` spinner — against
-a per-connection rolling tail, stripped of ANSI first. States: `working`,
-`blocked`, `idle`, `unknown` — `unknown` is the honest default when nothing
-matches, not a guessed `idle`.
+status-line and dialog shapes — Claude Code's rotating status line
+(`<Gerund>…` plus a live elapsed-time reading) while generating, a dispatched
+tool's pending marker mid-tool-call, a finished turn's `<PastVerb> for <N>s`,
+a permission dialog's question line *together with its option list* while
+blocked on a permission decision; pi's braille spinner plus its working
+literal — against a per-connection rolling tail, stripped of ANSI first.
+States: `working`, `blocked`, `idle`, `unknown` — `unknown` is the honest
+default when nothing matches, not a guessed `idle`.
+
+**Every shape above is described here with placeholders, deliberately.** These
+matchers read screens, and this file gets displayed on screens: paste a complete
+rendered line into the docs and the docs start classifying as an agent at work.
+That is not hypothetical — it is how the self-reference defect below was found,
+twice. Verbatim captures belong in the test fixtures, which is the one place a
+matchable render is correct.
 
 The `blocked` rows are the load-bearing ones (`wait --until blocked`, the
 auto-answer rules) and they were rewritten on 2026-07-29 against two live
@@ -359,6 +367,31 @@ every attached terminal, so the row tolerates either. Two live-captured gaps
 remain documented in the row itself: the workspace-trust dialog wraps its
 question mid-line and still reads `unknown`, and so would a pane narrow enough
 to wrap the question.
+
+The three `working` rows were anchored the same way, and for the same reason:
+measuring the blocked fix caught a live pane reading `working` purely because the
+screen was displaying the paragraph you are reading. Each row now requires
+something a render has and a quotation does not — verified against fresh dumps
+*and* raw redraw bytes of real `claude` 2.1.220 and `pi` 0.80.3 turns:
+
+- **The status line is anchored on its elapsed-time reading, not its glyph.** The
+  spinner glyph rotates (four distinct code points in a single captured turn), so
+  pinning it would pin noise. Every captured status line carried the duration; a
+  gerund without one is prose, or a tool's own progress line whose parenthetical
+  is a key hint rather than a clock. The duration sits in a lookahead so the
+  reported evidence stays the verb and does not churn every frame.
+- **The pending-tool marker has to own its line.** Line start or whitespace
+  before it, whitespace or line end after it, and a two-character pad between
+  marker and word — which in the render is a space followed by U+00A0, not two
+  spaces. A quotation has a delimiter on at least one side and pads with one.
+- **pi's literal counts only behind a braille spinner glyph** (the whole
+  U+2800–U+28FF block, since ten frames of it were captured in one turn).
+
+One row is still literal-matched and says so in its own comment: `turn-complete`
+(`<PastVerb> for <N>s`). It has the same defect — pasting a real example into the
+matcher table made the table classify itself as `idle` — and it wants the same
+treatment against a fresh capture, in its own change. `prompt-resting` stays last
+regardless; its correctness is ordering, not pattern.
 
 `prompt-resting` (an empty `❯` input line) is the one row whose correctness
 depends entirely on **ordering**, and it is last for that reason. The prompt box
@@ -478,13 +511,15 @@ was needed.
 - **Self-reference is a live failure mode of screen scraping, not a curiosity.**
   Any matcher keyed on a bare sentence fires on a terminal that is merely
   *discussing* that sentence — an agent editing this table, reviewing its diff or
-  displaying this file. The `blocked` rows are anchored against it (question +
-  option list, option label + list number). The `working` rows are **not** yet:
-  the paragraph above quotes `"⎿ Waiting…"` and `"Working..."`, so a terminal
-  showing it still reads `working`. Cheaper to be wrong there — a spurious
-  `working` costs a chip, a spurious `blocked` wakes a wait and an auto-answer
-  rule — but it is the same bug, and fixing it needs a fresh pi capture to anchor
-  the spinner, not speculation.
+  displaying this file. Six of the seven rows are anchored against it now: the
+  two `blocked` rows (question + option list, option label + list number), the
+  three `working` rows (elapsed-time reading, own-line pending marker, braille
+  spinner) and `prompt-resting`, which is a whole-line pattern to begin with. The
+  holdout is `turn-complete`, flagged in its own comment. Two habits keep it from
+  coming back: **anchor on a rendered shape, never a bare sentence**, and **write
+  placeholders in comments and docs, never a complete rendered line**. A
+  regression here is invisible without measurement, because the matcher does not
+  fail on the fixtures — it fails on the file that describes it.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 

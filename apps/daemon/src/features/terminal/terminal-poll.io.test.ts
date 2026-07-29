@@ -45,7 +45,8 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     { scope: "session", id: "abcd1234", sessionName: "abcd1234" },
   ]
   let nowMs = 1_000
-  let dump = "Working..."
+  // pi's rendered spinner line: the bare literal no longer classifies.
+  let dump = " ⠋ Working..."
 
   const ports: TerminalPollPorts = {
     listCandidates: async () => candidates,
@@ -109,14 +110,14 @@ describe("createTerminalPoller.tick", () => {
         id: "global",
         state: "working",
         matcher: "pi-working",
-        evidence: "Working...",
+        evidence: "⠋ Working...",
       },
       {
         scope: "session",
         id: "abcd1234",
         state: "working",
         matcher: "pi-working",
-        evidence: "Working...",
+        evidence: "⠋ Working...",
       },
     ])
   })

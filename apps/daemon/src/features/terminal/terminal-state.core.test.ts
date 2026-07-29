@@ -10,9 +10,10 @@ import {
 // Real evidence, not hand-typed: most fixtures below are exact byte slices
 // captured by driving an actual `claude` 2.1.220 or `pi` 0.80.3 CLI through a
 // forked pty (throwaway driver script, not part of this repo) and logging
-// raw stdout. The two PERMISSION_* literals are the exception — see their
-// own comment. See terminal-state.core.ts's module comment for the full
-// evidence-source breakdown.
+// raw stdout, and the rest are verbatim `zellij action dump-screen` output
+// from real sessions. One literal is read out of the shipped binary instead
+// and says so at its definition. See terminal-state.core.ts's module comment
+// for the full evidence-source breakdown.
 
 // Startup splash: heavy true-colour SGR + cursor-column-absolute CSI + one
 // OSC title update, no ellipsis/gerund content — exercises stripAnsi without
@@ -26,11 +27,18 @@ const SPLASH_FIXTURE =
 const THINKING_FIXTURE =
   "\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\x1b[2C\x1b[4A\x1b[?25h\x1b[?25l\x1b[2D\x1b[4B\r\x1b[7A\x1b[38;2;215;119;87m·\x1b[3G\x1b[38;2;220;129;97mBurrowing…\x1b[14G\x1b[38;2;153;153;153m(3s · ↓\x1b[22G4 tokens)"
 
-// Tool call in flight: "⏺ Bash(echo hello-from-claude) … ⎿  Waiting…",
-// including the real `\x1b[K` erase-in-line CSI and an embedded `\r`
-// (no `\n`) between the tool line and the "Waiting…" line.
+// Tool call dispatched and still pending: the tool line, then its pending
+// marker. Includes the real `\x1b[K` erase-in-line CSI and an embedded `\r`
+// (no `\n`) between the two lines.
+//
+// The pad between the marker and the word is an ordinary space followed by
+// U+00A0, and it is written as an ESCAPE below for the same reason PROMPT_LINE
+// is: hexdumping a live dump of this line gives `20 20 23bf 20 a0 57 61 …`,
+// and a NO-BREAK SPACE is indistinguishable from a space in source. This
+// fixture carried the real NBSP all along (it came off a pty) invisibly, so no
+// reader could have known which one the matcher had to tolerate.
 const TOOL_WAITING_FIXTURE =
-  "\r\x1b[7A\x1b[38;2;153;153;153m⏺\x1b[3G\x1b[39m\x1b[1mBash\x1b[22m(echo hello-from-claude)\r\x1b[1B\x1b[38;2;153;153;153m  ⎿  Waiting…"
+  "\r\x1b[7A\x1b[38;2;153;153;153m⏺\x1b[3G\x1b[39m\x1b[1mBash\x1b[22m(echo hello-from-claude)\r\x1b[1B\x1b[38;2;153;153;153m  ⎿ \u00a0Waiting…"
 
 // Turn finished: OSC title update back to the static "✳" glyph, then
 // "Churned for 6s" plain text, then a `\x1b[K` before the next redraw.
@@ -42,6 +50,60 @@ const TURN_COMPLETE_FIXTURE =
 // the literal status text — cycling roughly every 100ms for the whole turn.
 const PI_WORKING_FIXTURE =
   "\x1b[2K \x1b[38;2;138;190;183m⠋\x1b[39m \x1b[38;2;128;128;128mWorking...\x1b[39m"
+
+// ---- live working-state captures (2026-07-29) ---------------------------
+//
+// Same method as the dialog captures below: real CLIs inside zellij sessions
+// created for the purpose (`polltest-work22*`, `polltest-pi22`), read with
+// `zellij action dump-screen --pane-id terminal_0`, plus the raw byte stream of
+// the same screens through a forked pty running `zellij attach`.
+//
+// Claude Code mid-turn, 50-col pane. Two things on screen at once: a tool's own
+// progress line, and the rotating status line underneath it. The spinner glyph
+// rotates (`·` U+00B7, `✢` U+2722, `✻` U+273B, `✶` U+2726 were all captured), so
+// it is NOT what the matcher keys on — the duration in the parenthetical is.
+const CC_STATUS_LINE_DUMP = [
+  "⏺ Searching for 1 pattern… (ctrl+o to expand)",
+  "     (ctrl+b to run in background)",
+  "",
+  "✶ Slithering… (41s · ↓ 125 tokens)",
+].join("\n")
+
+// The same status line as raw redraw bytes: zellij wraps every word in an OSC 8
+// hyperlink reset and colours it with true-colour SGR, so `stripAnsi` has to put
+// "Slithering…" and "(12s" back together before the row can match. Cut at an
+// escape boundary, hence the parenthetical stops after the duration.
+const CC_STATUS_LINE_WS_BYTES =
+  "\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;215;119;87mSkedaddling…\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m(12s\x1b[m\x1b]8;;\x1b\\"
+
+// A dispatched tool still pending, dump form. Captured from the same session as
+// the Bash dialog below — the marker persists for as long as the tool has not
+// returned, which includes "the human has not answered the dialog yet", so a
+// screen carrying this can be `blocked`; ordering, not this row, decides that.
+// The pad is space + U+00A0 again, escaped so a reader can see it.
+const CC_TOOL_WAITING_DUMP = [
+  "⏺ Bash(touch /tmp/permprobe19/hello.txt)",
+  "  ⎿ \u00a0Waiting…",
+].join("\n")
+
+// pi 0.80.3 mid-turn, dump form. Ten distinct braille spinner frames were
+// captured (U+2807 U+280B U+280F U+2819 U+2826 U+2827 U+2834 U+2838 U+2839
+// U+283C), always immediately before the literal, always one ordinary space
+// apart: hexdump `20 2838 20 57 6f 72 6b 69 6e 67 2e 2e 2e`.
+const PI_WORKING_DUMP = " ⠸ Working..."
+
+// The same pi line as raw redraw bytes, through zellij.
+const PI_WORKING_WS_BYTES =
+  "\x1b[?25l\x1b[37;1H\x1b[?25l\x1b[34;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;138;190;183m⠏\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;128;128;128mWorking...\x1b[m\x1b]8;;\x1b\\"
+
+// The screen that produced the live false positive: three lines of the AGENTS.md
+// paragraph that documents this very table, quoting the literals it matches on.
+// Verbatim from the file as it read before this change.
+const WORKING_LITERALS_QUOTED_IN_PROSE = [
+  'status-line and dialog shapes — Claude Code\'s `"<Gerund>…(<N>s · …)"` while',
+  'generating, `"⎿ Waiting…"` mid-tool-call, `"<PastVerb> for <N>s"` once a turn',
+  'permission decision; pi\'s `"Working..."` spinner — against a per-connection',
+].join("\n")
 
 // ---- live permission-dialog captures (2026-07-29) -----------------------
 //
@@ -59,13 +121,14 @@ const PI_WORKING_FIXTURE =
 //   20 44 6f 20 79 6f 75 20 77 61 6e 74 20 74 6f 20 70 72 6f 63 65 65 64 3f 0a
 //   20 e2 9d af 20 31 2e 20 59 65 73 0a
 //   20 20 20 32 2e 20 4e 6f 0a
-// i.e. `␠Do you want to proceed?\n␠❯␠1.␠Yes\n␠␠␠2.␠No\n` — no U+00A0 here,
-// unlike the resting prompt line below, so these fixtures need no escapes.
+// i.e. `␠Do you want to proceed?\n␠❯␠1.␠Yes\n␠␠␠2.␠No\n` — no U+00A0 in the
+// dialog itself, unlike the resting prompt line and the pending-tool marker
+// below, both of which carry one and both of which escape it.
 const PERMISSION_DIALOG_BASH_DUMP = [
   "❯ Run the bash command: touch /tmp/permprobe19/hello.txt -- nothing else, no explanation.",
   "",
   "⏺ Bash(touch /tmp/permprobe19/hello.txt)",
-  "  ⎿  Waiting…",
+  "  ⎿ \u00a0Waiting…",
   "",
   "────────────────────────────────────────────────────────────────────────",
   " Bash command",
@@ -307,7 +370,67 @@ describe("classifyTail", () => {
     const result = classifyTail({ tail: PI_WORKING_FIXTURE })
     expect(result.state).toBe("working")
     expect(result.matcher).toBe("pi-working")
-    expect(result.evidence).toBe("Working...")
+    expect(result.evidence).toBe("⠋ Working...")
+  })
+
+  it("classifies a live-captured Claude Code status line as working", () => {
+    const result = classifyTail({ tail: CC_STATUS_LINE_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("thinking-gerund")
+    // Evidence is the gerund alone: the duration is required by a lookahead, so
+    // the tooltip does not carry a token count that changes every frame.
+    expect(result.evidence).toBe("Slithering…")
+  })
+
+  it("classifies the status line from raw redraw bytes, not just a settled dump", () => {
+    const result = classifyTail({ tail: CC_STATUS_LINE_WS_BYTES })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("thinking-gerund")
+  })
+
+  it("classifies a live-captured pending tool call as working", () => {
+    const result = classifyTail({ tail: CC_TOOL_WAITING_DUMP })
+    expect(result.state).toBe("working")
+    expect(result.matcher).toBe("tool-call-waiting")
+  })
+
+  it("classifies a live-captured pi spinner line as working, dump and raw alike", () => {
+    expect(classifyTail({ tail: PI_WORKING_DUMP }).matcher).toBe("pi-working")
+    expect(classifyTail({ tail: PI_WORKING_WS_BYTES }).matcher).toBe("pi-working")
+  })
+
+  // The same defect the blocked rows had, on the working side: a screen that
+  // merely QUOTES these literals is not a working agent. Caught by measuring —
+  // one live pane was reading `working` for exactly this reason.
+  it("does not report working for a screen that merely quotes the literals", () => {
+    expect(classifyTail({ tail: WORKING_LITERALS_QUOTED_IN_PROSE }).state).toBe("unknown")
+  })
+
+  it("does not report working for a gerund with no elapsed-time reading", () => {
+    // Prose, and a placeholder in a doc: both end in "ing…" and neither is a
+    // status line. The rendered one always carries "(<N>s …)".
+    expect(classifyTail({ tail: "Elucidating… soon, I hope" }).state).toBe("unknown")
+    expect(classifyTail({ tail: 'Claude Code\'s `"<Gerund>…(<N>s · …)"` while' }).state).toBe(
+      "unknown",
+    )
+    // A tool's own progress line, captured live above, is not the status line:
+    // its parenthetical is a key hint, not a duration.
+    expect(classifyTail({ tail: "⏺ Searching for 1 pattern… (ctrl+o to expand)" }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("does not report working for the pending marker quoted with one pad space", () => {
+    // The doc writes it `"⎿ Waiting…"`; the render pads with two characters and
+    // stands alone on its line.
+    expect(classifyTail({ tail: 'the `"⎿ Waiting…"` marker means a tool is running' }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("does not report working for the pi literal without its spinner glyph", () => {
+    expect(classifyTail({ tail: 'pi\'s `"Working..."` spinner' }).state).toBe("unknown")
+    expect(classifyTail({ tail: "Working on it, boss" }).state).toBe("unknown")
   })
 
   it("classifies a live-captured Bash permission dialog as blocked", () => {
@@ -341,22 +464,18 @@ describe("classifyTail", () => {
   // AGENTS.md printed it and was classified as blocked on a human.
   it("does not report blocked for a screen that merely displays the header text", () => {
     expect(classifyTail({ tail: "Do you want to proceed?" }).state).toBe("unknown")
-    // Asserted as "not blocked" rather than "unknown" on purpose: the same
-    // AGENTS.md paragraph quotes `"⎿ Waiting…"` and pi's `"Working..."` too, so
-    // this screen still trips a `working` row (`tool-call-waiting` first, then
-    // `pi-working`) and reads `working`. That is the identical self-reference
-    // class in the `working` rows — out of scope here (this change is about the
-    // `blocked` rows, the ones `wait --until blocked` and the auto-answer rules
-    // key off), and recorded so the next person anchors those rows against a
-    // fresh capture rather than on speculation.
-    expect(classifyTail({ tail: SELF_REFERENCE_DUMP }).state).not.toBe("blocked")
+    // This used to assert only "not blocked", because the same paragraph quotes
+    // `"⎿ Waiting…"` and `"Working..."` and so still read `working`. Both rows
+    // are anchored on a rendered shape now, so the honest answer is `unknown`:
+    // a screen discussing the matchers matches nothing at all.
+    expect(classifyTail({ tail: SELF_REFERENCE_DUMP }).state).toBe("unknown")
   })
 
   // Ordering, not the pattern: the real dialog above is drawn UNDER a still-live
   // "⎿  Waiting…" tool line, so the tail carries a working match too. Only
   // first-match-wins with the blocked rows on top keeps this blocked.
   it("reports blocked, not working, when the dialog sits under a live tool-call line", () => {
-    expect(PERMISSION_DIALOG_BASH_DUMP).toContain("⎿  Waiting…")
+    expect(PERMISSION_DIALOG_BASH_DUMP).toContain("⎿ \u00a0Waiting…")
     expect(classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP }).matcher).toBe("permission-prompt")
   })
 
@@ -392,7 +511,7 @@ describe("classifyTail", () => {
   })
 
   it("caps evidence length so one runaway line can't bloat the payload", () => {
-    const longVerb = `A${"b".repeat(250)}ing…`
+    const longVerb = `A${"b".repeat(250)}ing… (3s · ↓4 tokens)`
     const result = classifyTail({ tail: longVerb })
     expect(result.state).toBe("working")
     expect(result.evidence?.length).toBe(201)
