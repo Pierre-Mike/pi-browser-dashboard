@@ -24,12 +24,15 @@ export const WAIT_VIA_VALUES: ReadonlyArray<WaitVia> = ["supervisor", "screen", 
 
 export type WaitRequest = {
   readonly until: ReadonlyArray<SessionStateSlug>
+  // A pattern the session's screen must show. Independent of `until`; see
+  // parseWaitRequest for what supplying both means.
+  readonly untilOutput: OutputPattern | undefined
   readonly timeoutMs: number
   readonly via: WaitVia
 }
 
 export type WaitRequestError = {
-  readonly _tag: "BadUntil" | "BadTimeout" | "BadVia"
+  readonly _tag: "BadUntil" | "BadTimeout" | "BadVia" | "BadPattern"
   readonly message: string
 }
 
@@ -64,12 +67,19 @@ const parseVia = (raw: unknown): Either.Either<WaitVia, WaitRequestError> => {
   return Either.right(raw)
 }
 
-const parseUntil = (
-  raw: unknown,
+// `until` may be omitted entirely when `untilOutput` carries the condition
+// instead, but a wait with neither has nothing to wait for and is a 400 rather
+// than a request that blocks until it times out.
+const emptyUntilError = (outputRequested: boolean): WaitRequestError =>
+  badUntil(
+    outputRequested
+      ? "until, when present, must be a non-empty array of session states"
+      : "a wait needs until (a non-empty array of session states) or untilOutput",
+  )
+
+const parseUntilSlugs = (
+  raw: ReadonlyArray<unknown>,
 ): Either.Either<ReadonlyArray<SessionStateSlug>, WaitRequestError> => {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return Either.left(badUntil("until must be a non-empty array of session states"))
-  }
   const slugs: SessionStateSlug[] = []
   for (const item of raw) {
     if (typeof item !== "string" || !isSessionStateSlug(item)) {
@@ -78,6 +88,17 @@ const parseUntil = (
     if (!slugs.includes(item)) slugs.push(item)
   }
   return Either.right(slugs)
+}
+
+const parseUntil = (
+  raw: unknown,
+  { outputRequested }: { readonly outputRequested: boolean },
+): Either.Either<ReadonlyArray<SessionStateSlug>, WaitRequestError> => {
+  if (raw === undefined && outputRequested) return Either.right([])
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return Either.left(emptyUntilError(outputRequested))
+  }
+  return parseUntilSlugs(raw)
 }
 
 const parseTimeoutMs = (raw: unknown): Either.Either<number, WaitRequestError> => {
@@ -90,17 +111,122 @@ const parseTimeoutMs = (raw: unknown): Either.Either<number, WaitRequestError> =
   return Either.right(raw)
 }
 
+// --- Output patterns ---------------------------------------------------------
+
+// Deliberately NOT a regex.
+//
+// A wait pattern is attacker-adjacent input on an unauthenticated local
+// endpoint, and it would be matched inside the daemon's own event path against
+// up to `tailMaxChars` of terminal output. Compiling a user regex once at parse
+// time bounds the compile cost but not backtracking, and JS offers no way to
+// time-bound a match: a twenty-character nested quantifier over an 8,000-char
+// screen is still catastrophic. A capped literal cannot backtrack at all, and
+// `anchor` covers the one thing a regex was actually wanted for here — pinning
+// the match to a whole line rather than any substring of one.
+export const OUTPUT_PATTERN_MAX_CHARS = 200
+
+export type OutputAnchor = "anywhere" | "line-start" | "line-end" | "line"
+
+const OUTPUT_ANCHORS: ReadonlyArray<OutputAnchor> = ["anywhere", "line-start", "line-end", "line"]
+
+export type OutputPattern = {
+  readonly text: string
+  readonly anchor: OutputAnchor
+}
+
+const badPattern = (message: string): WaitRequestError => ({ _tag: "BadPattern", message })
+
+const isOutputAnchor = (raw: unknown): raw is OutputAnchor =>
+  typeof raw === "string" && (OUTPUT_ANCHORS as ReadonlyArray<string>).includes(raw)
+
+// Accepts either the shorthand — a bare string, meaning "this substring
+// anywhere" — or the explicit `{ text, anchor? }` object.
+const parseUntilOutput = (
+  raw: unknown,
+): Either.Either<OutputPattern | undefined, WaitRequestError> => {
+  if (raw === undefined) return Either.right(undefined)
+  const source = typeof raw === "string" ? { text: raw } : raw
+  if (!isPlainObject(source)) {
+    return Either.left(badPattern("untilOutput must be a string or an object with a text field"))
+  }
+  const { text, anchor } = source
+  if (!isNonEmptyString(text)) {
+    return Either.left(badPattern("untilOutput text must be a non-empty string"))
+  }
+  if (text.length > OUTPUT_PATTERN_MAX_CHARS) {
+    return Either.left(
+      badPattern(`untilOutput text is capped at ${OUTPUT_PATTERN_MAX_CHARS} characters`),
+    )
+  }
+  if (anchor !== undefined && !isOutputAnchor(anchor)) {
+    return Either.left(badPattern(`untilOutput anchor must be one of ${OUTPUT_ANCHORS.join(", ")}`))
+  }
+  return Either.right({ text, anchor: anchor ?? "anywhere" })
+}
+
+const lineMatches = ({
+  pattern,
+  line,
+}: {
+  readonly pattern: OutputPattern
+  readonly line: string
+}): boolean => {
+  // An anchored pattern compares against the TRIMMED line: a real dump pads the
+  // empty prompt line with U+00A0 and right-pads rows to the viewport width
+  // (see terminal-state.core.ts's prompt-resting row, which was fixed for
+  // exactly this), so anchoring to the raw line would never fire on a live
+  // screen.
+  const trimmed = line.trim()
+  if (pattern.anchor === "line") return trimmed === pattern.text
+  if (pattern.anchor === "line-start") return trimmed.startsWith(pattern.text)
+  if (pattern.anchor === "line-end") return trimmed.endsWith(pattern.text)
+  return line.includes(pattern.text)
+}
+
+// Does this screen contain the pattern? Pure string work over already
+// ANSI-stripped text — the terminal slice computes the plain text once per dump
+// and the shell hands that in.
+//
+// Returns the matched LINE rather than a boolean so the outcome can quote what
+// it saw, the same instinct as a classification's `evidence`: a caller that
+// asked for "Do you want to proceed?" gets back the line it actually appeared on.
+export const matchOutputPattern = ({
+  pattern,
+  text,
+}: {
+  readonly pattern: OutputPattern
+  readonly text: string
+}): string | undefined => {
+  for (const line of text.split("\n")) {
+    if (lineMatches({ pattern, line })) return line.trim()
+  }
+  return undefined
+}
+
 // Validates an untrusted JSON body for POST /:id/wait (and the optional
 // `wait` object nested in POST /:id/send).
+//
+// `until` and `untilOutput` are independent conditions and at least one must be
+// present. Supplying both is allowed and means "whichever happens first" —
+// consistent with `via: "either"`, and the genuinely useful case ("wait for the
+// permission prompt, or for the session to die, whichever comes first"). The
+// outcome says which one fired.
 export const parseWaitRequest = (raw: unknown): Either.Either<WaitRequest, WaitRequestError> => {
   if (!isPlainObject(raw)) return Either.left(badUntil("wait request body must be an object"))
-  const until = parseUntil(raw.until)
+  const untilOutput = parseUntilOutput(raw.untilOutput)
+  if (Either.isLeft(untilOutput)) return Either.left(untilOutput.left)
+  const until = parseUntil(raw.until, { outputRequested: untilOutput.right !== undefined })
   if (Either.isLeft(until)) return Either.left(until.left)
   const timeoutMs = parseTimeoutMs(raw.timeoutMs)
   if (Either.isLeft(timeoutMs)) return Either.left(timeoutMs.left)
   const via = parseVia(raw.via)
   if (Either.isLeft(via)) return Either.left(via.left)
-  return Either.right({ until: until.right, timeoutMs: timeoutMs.right, via: via.right })
+  return Either.right({
+    until: until.right,
+    untilOutput: untilOutput.right,
+    timeoutMs: timeoutMs.right,
+    via: via.right,
+  })
 }
 
 // --- screen -> session vocabulary -------------------------------------------
@@ -220,6 +346,45 @@ export const evaluateWaitEvent = ({
   if (event.kind === "removed") return { _tag: "Removed" }
   if (event.kind === "terminal") return evaluateTerminalEvent({ request, event })
   return evaluateSupervisorEvent({ request, target, event })
+}
+
+// --- Screen-text observation -------------------------------------------------
+//
+// A screen observation arrives on its own channel, not on the SSE bus: it
+// carries the whole (bounded) pane text, and the bus is the stream every
+// browser is subscribed to. See sessions-wait.io.ts's port.
+
+export type ScreenObservation = {
+  readonly scope: string
+  readonly short: string
+  readonly text: string // ANSI already stripped by the terminal slice
+}
+
+export type ScreenDecision =
+  | { readonly _tag: "OutputMatched"; readonly matched: string }
+  | { readonly _tag: "Ignore" }
+
+// Note what does NOT appear here: `via`. `via` governs how a session's STATE is
+// observed, and `untilOutput` is not a statement about state — it is a
+// statement about bytes on a screen. Gating it on `via` would make
+// `{ untilOutput, via: "supervisor" }` a request that can never be satisfied,
+// which is a trap rather than a safeguard.
+export const evaluateScreenObservation = ({
+  request,
+  target,
+  observation,
+}: {
+  readonly request: WaitRequest
+  readonly target: WaitTarget
+  readonly observation: ScreenObservation
+}): ScreenDecision => {
+  if (request.untilOutput === undefined) return { _tag: "Ignore" }
+  // Only the session scope names a roster short; the global, orchestrator and
+  // project terminals cannot be about this wait's target.
+  if (observation.scope !== "session") return { _tag: "Ignore" }
+  if (observation.short !== target.short) return { _tag: "Ignore" }
+  const matched = matchOutputPattern({ pattern: request.untilOutput, text: observation.text })
+  return matched === undefined ? { _tag: "Ignore" } : { _tag: "OutputMatched", matched }
 }
 
 export type InitialDecision =

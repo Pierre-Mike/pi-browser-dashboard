@@ -150,6 +150,10 @@ export const selectPollTargets = (input: {
 export type ScreenFold = {
   readonly classification: Classification
   readonly publish: boolean
+  // The bounded screen, ANSI stripped: what the pane actually reads as. Handed
+  // to `wait --until-output` observers, which need to match a pattern against
+  // the whole screen rather than against a classification of it.
+  readonly text: string
 }
 
 export const foldScreenDump = (input: {
@@ -171,6 +175,12 @@ export const foldScreenDump = (input: {
   return {
     classification,
     publish: decideTransition({ prior: input.prior, next: classification }).publish,
+    // `classifyTail` strips internally and does not hand the result back, so
+    // this strips the same bounded tail a second time rather than reaching into
+    // terminal-state.core.ts to split its classifier apart. Two regex passes
+    // over at most `maxChars` per terminal per poll interval is not a cost worth
+    // destabilising that module's matcher table for.
+    text: stripAnsi(tail),
   }
 }
 

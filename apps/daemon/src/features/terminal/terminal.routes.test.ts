@@ -1,4 +1,5 @@
 import { describe, expect, it, mock } from "bun:test"
+import { sseBus } from "../../platform/sse-bus"
 import {
   app,
   type ChildBridgeForTest,
@@ -6,6 +7,7 @@ import {
   readTerminalState,
   resolveClaudeSession,
   resolvePiSession,
+  subscribeTerminalScreens,
 } from "./terminal.routes"
 
 const makeChild = (opts?: {
@@ -101,6 +103,33 @@ describe("readTerminalState", () => {
     // pair, so neither can answer for the other.
     expect(readTerminalState({ scope: "session", id: "global" })).toBeUndefined()
     expect(readTerminalState({ scope: "global", id: "global" })).toBeUndefined()
+  })
+})
+
+// The in-process channel `wait --until-output` resolves off. It exists instead
+// of putting screen text on the SSE bus, which every browser is subscribed to.
+describe("subscribeTerminalScreens", () => {
+  it("hands the unsubscribe back, and stops delivering once it is called", () => {
+    const seen: string[] = []
+    const off = subscribeTerminalScreens((s) => seen.push(`${s.scope}:${s.id}`))
+    expect(typeof off).toBe("function")
+    off()
+    // Calling it twice must not throw — the wait's interruption finalizer and
+    // its settle path can both run.
+    expect(() => off()).not.toThrow()
+    expect(seen).toEqual([])
+  })
+
+  it("does not publish screen text on the SSE bus", () => {
+    const busEvents: string[] = []
+    const offBus = sseBus.subscribe((e) => busEvents.push(e.type))
+    const off = subscribeTerminalScreens(() => {})
+    off()
+    offBus()
+    // Subscribing and unsubscribing is not itself an event, and no code path
+    // here may ever put a `terminal.screen` (or any text-bearing) event on the
+    // bus — that is the invariant this channel exists to preserve.
+    expect(busEvents).not.toContain("terminal.screen")
   })
 })
 

@@ -71,17 +71,35 @@ const fleetRunPorts: FleetRunPorts = {
   // meant before the screen became a wait source: a fleet recipe has no `via`
   // field yet, and inferring one from the pane would change every existing
   // recipe's semantics silently.
-  wait: ({ short, until, timeoutMs }) =>
-    appRuntime.runPromise(
+  wait: async ({ short, until, timeoutMs }) => {
+    const outcome = await appRuntime.runPromise(
       Effect.gen(function* () {
         const sessionWait = yield* SessionWaitIo
         return yield* sessionWait.wait({
           short,
-          request: { until, timeoutMs, via: "supervisor" },
+          // A fleet recipe has no pattern field, so `untilOutput` is always
+          // undefined here and the screens port is never consulted — passed
+          // anyway so a future step-level pattern needs no wiring change.
+          request: { until, untilOutput: undefined, timeoutMs, via: "supervisor" },
           readTerminalState: terminalRoute.readTerminalState,
+          terminalScreens,
         })
       }),
-    ),
+    )
+    // Adapting one slice's vocabulary to another's port is this composition
+    // root's job, so the two screen-pattern outcomes are narrowed away here
+    // rather than widening the fleet engine's own WaitOutcomeLike for cases its
+    // recipes cannot express. Unreachable given `untilOutput: undefined` above;
+    // `Timeout` is the closest existing meaning if it ever were reached — the
+    // step did not get to the state it asked for.
+    if (outcome._tag === "OutputMatched") {
+      return { _tag: "Timeout", waitedMs: outcome.waitedMs }
+    }
+    if (outcome._tag === "ScreenPollingDisabled") {
+      return { _tag: "Timeout", waitedMs: 0 }
+    }
+    return outcome
+  },
 }
 
 // Bridges the rules engine's plain-Promise ports (features/rules/ must not
@@ -133,6 +151,17 @@ export const rulesEngine = createRulesEngine({ ports: rulesPorts })
 // poller spawns `zellij` against the user's live sessions, so importing this
 // module must not arm it. Only server.ts's startDaemon() calls start().
 export const terminalPoller = terminalRoute.terminalPoller
+
+// The terminal slice's screen-text channel, as one port. Screen text is
+// deliberately absent from `sseBus` (that stream reaches every browser — see
+// terminal.routes.ts's subscribeTerminalScreens), so a `wait --until-output`
+// subscribes through here. `enabled` is the poller's own armed state: an output
+// wait resolves off its passes and nothing else, so with polling disabled the
+// request is refused up front instead of timing out.
+const terminalScreens = {
+  enabled: () => terminalRoute.terminalPoller.isEnabled(),
+  subscribe: terminalRoute.subscribeTerminalScreens,
+}
 
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
@@ -191,6 +220,7 @@ const app = new Hono()
     sessionsRoute.buildSessionsApp({
       runtime: appRuntime,
       readTerminalState: terminalRoute.readTerminalState,
+      terminalScreens,
     }),
   )
   // Brainstorm boards are the canvas files in the session's own worktree, so

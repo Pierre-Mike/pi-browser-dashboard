@@ -57,7 +57,22 @@ export type TerminalPollPorts = {
   // get a redundant transition event on the next pass.
   readonly priorState: (input: { readonly key: string }) => TerminalStateSlug | undefined
   readonly publish: (input: PolledState) => void
+  // Every successful dump's text, offered on EVERY pass — deliberately not
+  // behind the publish-on-change gate below. A `wait --until-output` pattern
+  // can appear while the classification stays identical (a new line printed by
+  // a session that is still `working` is the normal case), so gating this the
+  // way `publish` is gated would make the common case invisible.
+  //
+  // Separate from `publish` because that one lands on the SSE bus, which every
+  // connected browser is subscribed to: screen text must never go there.
+  readonly noteScreen: (input: ScreenText) => void
   readonly now: () => number
+}
+
+export type ScreenText = {
+  readonly scope: TerminalScope
+  readonly id: string
+  readonly text: string
 }
 
 export type TerminalPollerApi = {
@@ -79,6 +94,11 @@ export type TerminalPollerApi = {
   // event (plus the next read), rather than making a chip request block on two
   // subprocess spawns per unattended session.
   readonly refreshIfStale: () => void
+  // Whether passes are actually armed. A `wait --until-output` resolves off
+  // these passes and nothing else, so with polling disabled such a wait could
+  // only ever time out — the sessions routes read this to refuse the request
+  // up front instead.
+  readonly isEnabled: () => boolean
 }
 
 export const createTerminalPoller = (input: {
@@ -108,6 +128,13 @@ export const createTerminalPoller = (input: {
       prior: ports.priorState({ key }),
       maxChars: tailMaxChars,
     })
+    // Before the transition gate: an output pattern must see every pass, and an
+    // observer must never be able to break the poller either, hence the catch.
+    try {
+      ports.noteScreen({ scope: target.scope, id: target.id, text: folded.text })
+    } catch {
+      // An observer that throws is its own problem, not this pass's.
+    }
     if (!folded.publish) return
     ports.publish({
       scope: target.scope,
@@ -176,5 +203,9 @@ export const createTerminalPoller = (input: {
     void tick()
   }
 
-  return { start, stop, tick, refreshIfStale }
+  // `intervalMs` is 0 both before start() and after a start() the guard
+  // rejected, so this is the same test `refreshIfStale` uses for "inert".
+  const isEnabled = (): boolean => intervalMs > 0
+
+  return { start, stop, tick, refreshIfStale, isEnabled }
 }

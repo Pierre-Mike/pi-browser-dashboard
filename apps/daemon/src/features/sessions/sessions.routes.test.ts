@@ -12,6 +12,7 @@ import { makeSessionState as makeSession } from "./sessions.testFixtures"
 import {
   type SessionWaitApi,
   SessionWaitIo,
+  type TerminalScreensPort,
   type TerminalStateReader,
   type WaitOutcome,
 } from "./sessions-wait.io"
@@ -163,6 +164,8 @@ type WaitSpy = {
     readonly until: readonly string[]
     readonly timeoutMs: number
     readonly via: string
+    readonly untilOutput: string | undefined
+    readonly gotScreens: boolean
     readonly pinnedSessionId: string | undefined
     // Whether the route handed the wait service a screen-state reader at all —
     // the injected port api.ts wires to the terminal slice's door.
@@ -185,12 +188,14 @@ const buildWaitLayer = ({
   shellSpy: ShellSpy
 }): Layer.Layer<SessionWaitIo> => {
   const api: SessionWaitApi = {
-    wait: ({ short, request, pinnedSessionId, readTerminalState }) => {
+    wait: ({ short, request, pinnedSessionId, readTerminalState, terminalScreens }) => {
       spy.calls.push({
         short,
         until: request.until,
         timeoutMs: request.timeoutMs,
         via: request.via,
+        untilOutput: request.untilOutput?.text,
+        gotScreens: terminalScreens !== undefined,
         pinnedSessionId,
         gotReader: readTerminalState !== undefined,
         sawSendFirst: shellSpy.calls.some((c) => c.op === "send"),
@@ -221,6 +226,7 @@ const buildHarness = ({
   waitStub = newWaitSpy(),
   diagnosticsOverrides,
   readTerminalState,
+  terminalScreens,
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
@@ -229,6 +235,7 @@ const buildHarness = ({
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
   readTerminalState?: TerminalStateReader
+  terminalScreens?: TerminalScreensPort
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions, diagnosticsOverrides),
@@ -238,7 +245,7 @@ const buildHarness = ({
     buildWaitLayer({ spy: waitStub, shellSpy: spy }),
   )
   const runtime = ManagedRuntime.make(layer)
-  const app = buildSessionsApp({ runtime, readTerminalState })
+  const app = buildSessionsApp({ runtime, readTerminalState, terminalScreens })
   return { app, runtime, filesStub, piStub, waitStub, dispose: () => runtime.dispose() }
 }
 
@@ -255,6 +262,7 @@ const requestOn = async ({
   waitStub,
   diagnosticsOverrides,
   readTerminalState,
+  terminalScreens,
 }: {
   path: string
   init?: RequestInit
@@ -265,6 +273,7 @@ const requestOn = async ({
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
   readTerminalState?: TerminalStateReader
+  terminalScreens?: TerminalScreensPort
 }): Promise<Response> => {
   const { app, dispose } = buildHarness({
     sessions,
@@ -274,6 +283,7 @@ const requestOn = async ({
     waitStub,
     diagnosticsOverrides,
     readTerminalState,
+    terminalScreens,
   })
   try {
     return await app.request(path, init)
@@ -1255,6 +1265,108 @@ describe("POST /sessions/:id/wait", () => {
       waitStub,
     })
     expect(waitStub.calls[0]?.gotReader).toBe(false)
+  })
+
+  // --- untilOutput -------------------------------------------------------
+
+  const screensPort = ({ enabled = true }: { enabled?: boolean } = {}): TerminalScreensPort => ({
+    enabled: () => enabled,
+    subscribe: () => () => {},
+  })
+
+  const postWaitBody = ({
+    body,
+    waitStub,
+    terminalScreens,
+  }: {
+    body: unknown
+    waitStub?: WaitSpy
+    terminalScreens?: TerminalScreensPort
+  }): Promise<Response> =>
+    requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      waitStub,
+      terminalScreens,
+    })
+
+  it("forwards a parsed untilOutput pattern and the screen channel", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({
+      body: { untilOutput: "Do you want to proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    expect(res.status).toBe(200)
+    expect(waitStub.calls[0]).toMatchObject({
+      short: "ab12",
+      until: [],
+      untilOutput: "Do you want to proceed?",
+      gotScreens: true,
+    })
+  })
+
+  it("accepts until and untilOutput together", async () => {
+    const waitStub = newWaitSpy()
+    await postWaitBody({
+      body: { until: ["failed"], untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    expect(waitStub.calls[0]).toMatchObject({ until: ["failed"], untilOutput: "proceed?" })
+  })
+
+  it("rejects a request with neither until nor untilOutput", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({ body: {}, waitStub })
+    expect(res.status).toBe(400)
+    expect(waitStub.calls).toEqual([])
+  })
+
+  it("rejects an over-long pattern with 400 before reaching the wait service", async () => {
+    const waitStub = newWaitSpy()
+    const res = await postWaitBody({ body: { untilOutput: "x".repeat(5_000) }, waitStub })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; message: string }
+    expect(body.error).toBe("bad_request")
+    expect(body.message).toContain("capped")
+    expect(waitStub.calls).toEqual([])
+  })
+
+  it("returns 200 with the OutputMatched payload — matched, and no state", async () => {
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "OutputMatched", matched: "Do you want to proceed?", waitedMs: 9 }
+    const res = await postWaitBody({
+      body: { untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort(),
+    })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: true, short: "ab12", matched: "Do you want to proceed?", waitedMs: 9 },
+    })
+  })
+
+  // 409 rather than a silent 30-second timeout: the request is well-formed and
+  // would work on a daemon with the poller armed, so the fault is configuration.
+  it("returns 409 screen_polling_disabled when the poller cannot serve the pattern", async () => {
+    const waitStub = newWaitSpy()
+    waitStub.outcome = { _tag: "ScreenPollingDisabled" }
+    const res = await postWaitBody({
+      body: { untilOutput: "proceed?" },
+      waitStub,
+      terminalScreens: screensPort({ enabled: false }),
+    })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: string; short: string; message: string }
+    expect(body.error).toBe("screen_polling_disabled")
+    expect(body.short).toBe("ab12")
+    // The message must name the knob, or the caller cannot act on it.
+    expect(body.message).toContain("PID_TERMINAL_POLL_MS")
   })
 
   it("reports a screen-satisfied wait with via: screen", async () => {

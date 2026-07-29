@@ -192,9 +192,10 @@ states instead of polling `GET /sessions` — the daemon already publishes
 `session.state` / `session.removed` / `terminal.state` on the SSE bus, so the
 wait is event-driven, not a poll loop.
 
-- Body: `{ until: SessionStateSlug[], timeoutMs?, via? }` — `until` non-empty,
+- Body: `{ until: SessionStateSlug[], timeoutMs?, via?, untilOutput? }` —
   `timeoutMs` defaults to 30s, capped at 10 minutes, `via` defaults to
-  `"supervisor"`.
+  `"supervisor"`. `until` must be non-empty when present, and a request needs
+  `until` or `untilOutput`; neither is a 400.
 - `POST /:id/wait` responses: `200 { ok: true, short, state, via, waitedMs }`
   (satisfied), `200 { ok: false, reason: "timeout" | "occupant_changed" |
   "removed", short, waitedMs? }`, or `404 { error: "not_found", short }`.
@@ -245,6 +246,43 @@ prompt — no supervisor-sourced wait could ever have noticed, which is why
   `Context.Tag` for a concrete reason: `terminal.routes.ts` imports
   `platform/runtime.ts`, so a Layer dependency would close an import cycle
   through the very runtime that provides it.
+
+#### `untilOutput`: wait for text on the screen
+
+herdr's `pane wait-output`, for the things that have no state slug — a specific
+prompt, a test summary, a banner an agent prints itself.
+
+- `untilOutput: "text"` (substring anywhere) or
+  `untilOutput: { text, anchor?: "anywhere" | "line-start" | "line-end" | "line" }`.
+  Anchored forms compare against the **trimmed** line, because a real dump pads
+  rows to the viewport width and the empty prompt line with U+00A0.
+- **Literal only — no regex, deliberately.** A caller-supplied regex, evaluated
+  in the daemon's own event path against up to `tailMaxChars` of output from an
+  unauthenticated local endpoint, is a ReDoS surface: compiling once bounds the
+  compile, not the backtracking, and JS gives no way to time-bound a match. The
+  text is capped at `OUTPUT_PATTERN_MAX_CHARS` (200) and `anchor` covers what a
+  regex was wanted for here. Do not add regex support without a real guard.
+- Independent of `via`, which governs how *state* is read. Gating a pattern on
+  `via` would make `{ untilOutput, via: "supervisor" }` unsatisfiable — a trap,
+  not a safeguard.
+- Combining `until` and `untilOutput` is allowed: first to fire wins, the same
+  composition rule as `via: "either"`. Outcomes are distinguishable —
+  `Satisfied` carries `state`/`via`, `OutputMatched` carries `matched` (the line
+  the pattern appeared on) and no state.
+- **Screen text never touches `sseBus`.** That bus is what
+  `features/events/events.routes.ts` forwards to every connected browser, so
+  publishing pane text there would ship the contents of every terminal to every
+  SSE client as a side effect of a wait feature. Instead `terminal.routes.ts`
+  exposes an in-process channel, `subscribeTerminalScreens`, fed by a new
+  `noteScreen` poller port that fires on **every** successful dump — not behind
+  the publish-on-change gate, because a pattern routinely appears while the
+  classification is unchanged. `api.ts` injects `{ enabled, subscribe }` into the
+  sessions routes as one port.
+- Because it resolves off poller passes and nothing else, worst-case latency is
+  one poll interval, only text still on screen can match (it watches a pane, it
+  does not tail a log), and a daemon with polling disabled answers
+  `409 { error: "screen_polling_disabled" }` at request time rather than letting
+  the wait time out — `TerminalPollerApi.isEnabled()` is what the route reads.
 
 ### Named key vocabulary (`features/sessions/sessions-keys.*`)
 
