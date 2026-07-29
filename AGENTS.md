@@ -267,7 +267,9 @@ an empty shell is idle), and a working frame that carries no spinner would read
 
 - `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
   evidence, at } }` for every terminal classified so far, so a client that
-  connects late can render a chip immediately.
+  connects late can render a chip immediately. `pid terminals` (see
+  "Agent-facing CLI" below) is the same map for an agent, so this classification
+  is not browser-only.
 - `terminal.state` SSE event — published only on an actual state change (no
   event per keystroke), throttled to at most one classification pass per
   400ms per connection so a fast-redrawing spinner doesn't cost a regex pass
@@ -922,6 +924,7 @@ vocabulary, wait semantics, `explain`, and a fan-out/join `spawn` recipe (see
 ```
 pid sessions [--state <slug,...>] [--json]
 pid explain <short> [--json]
+pid terminals [<scope>:<id>] [--json]
 pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
 pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
 pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
@@ -974,6 +977,32 @@ pid [--help] [--url <base>]
   `shift-tab`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`,
   `page-down`, `backspace`, `delete`, `space` (the same deliberately-closed
   vocabulary as `POST /:id/keys`, so `ctrl-z`/`ctrl-c` are rejected here too).
+- `pid terminals` reads `GET /terminal/states` — the screen classification
+  ("Terminal agent-state detection" above) for every terminal the daemon has
+  looked at, whether over an attached WS bridge or the unattended poller. It
+  answers a different question from `pid sessions`/`pid explain`: those report
+  the *roster's* state for work the daemon spawned, while this reports what the
+  *pane* shows, which is the only way an agent can see a `claude` or `pi` a
+  human started by hand. States are the four screen slugs (`working`,
+  `blocked`, `idle`, `unknown`), never the 8 session slugs.
+  - With no argument it prints every terminal, one row per key. With a
+    `<scope>:<id>` key (`session:ab12`, `project:my-app`, `global:global`,
+    `orchestrator:orchestrator` — `terminalStateKey` in
+    `terminal-state.core.ts`) it prints just that one. The scope is
+    **mandatory**: shorts, project ids and the two fixed terminal names share
+    one key namespace, so a bare `ab12` would make the CLI guess — it is a
+    usage error (exit 2) instead.
+  - A key the daemon has never classified exits **6**, not a synthesized
+    `state: "unknown"`. `unknown` is a real classification (the screen was read
+    and no matcher fired); an absent key means nobody has looked yet — poller
+    off, never attached, or the short is simply wrong — and an agent needs that
+    distinction to choose between retrying and giving up. The endpoint kicks a
+    stale poll pass fire-and-forget, so its own response predates that pass:
+    a 6 for a session spawned seconds ago is worth one retry, which is what
+    the stderr line says.
+  - `--json` prints the daemon's own map verbatim, narrowed to the matched
+    keys — a map even for a single key (and `{}` plus exit 6 when it missed),
+    so a `jq` pipeline reads one shape regardless of arguments.
 - `pid fleets` lists a project's `.pid/fleet.json` recipes (see "Fleet
   recipes" above) via `GET /projects/:id/fleets` — schema + validation +
   wave planning only, never spawns anything. `--project` defaults to the
@@ -1014,7 +1043,7 @@ An orchestrating agent composes `pid` in a shell
 | 3 | wait timed out |
 | 4 | `occupant_changed` — the session was replaced under the wait |
 | 5 | `removed` — the session went away |
-| 6 | not found (daemon returned 404) |
+| 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key |
 | 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |
 
 `pid spawn --n <count> --wait` runs `count` independent spawn+wait attempts

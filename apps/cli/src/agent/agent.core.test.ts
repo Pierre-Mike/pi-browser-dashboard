@@ -12,9 +12,11 @@ import {
   exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForRulesErrors,
+  exitCodeForTerminalLookup,
   exitCodeForUsage,
   exitCodeForWaitBody,
   filterByState,
+  filterTerminalsByKey,
   formatExplain,
   formatFleetDryRun,
   formatFleetRunStarted,
@@ -29,9 +31,11 @@ import {
   formatSessions,
   formatSpawned,
   formatStopped,
+  formatTerminalStates,
   formatWaitOutcome,
   isNamedKeyName,
   isSessionStateSlug,
+  isTerminalStateSlug,
   parseAgentArgv,
   parseDispatchResponse,
   parseExplainResponse,
@@ -46,6 +50,7 @@ import {
   parseRulesStatusResponse,
   parseSendResponse,
   parseSessionsResponse,
+  parseTerminalStatesResponse,
   parseWaitOutcomeBody,
   resolveApiBase,
   resolveBaseUrl,
@@ -595,6 +600,73 @@ describe("parseAgentArgv", () => {
       )
     })
   })
+
+  describe("terminals", () => {
+    it("defaults key to undefined and json to false", () => {
+      expect(right(parseAgentArgv(["terminals"]))).toEqual({
+        _tag: "Terminals",
+        key: undefined,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("parses a single terminal key and --json", () => {
+      expect(right(parseAgentArgv(["terminals", "session:ab12", "--json"]))).toEqual({
+        _tag: "Terminals",
+        key: "session:ab12",
+        json: true,
+        url: undefined,
+      })
+    })
+
+    it("accepts every scope, including the two whose scope doubles as the id", () => {
+      for (const key of ["global:global", "orchestrator:orchestrator", "project:pwui"]) {
+        expect(right(parseAgentArgv(["terminals", key]))).toEqual({
+          _tag: "Terminals",
+          key,
+          json: false,
+          url: undefined,
+        })
+      }
+    })
+
+    it("keeps a colon inside the id — a project id may contain one", () => {
+      expect(right(parseAgentArgv(["terminals", "project:a:b"]))).toEqual({
+        _tag: "Terminals",
+        key: "project:a:b",
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("rejects a bare short — the key must name its scope", () => {
+      expect(left(parseAgentArgv(["terminals", "ab12"])).message).toBe(
+        'terminals: "ab12" is not a terminal key — expected <scope>:<id>, e.g. session:ab12',
+      )
+    })
+
+    it("rejects an empty scope or an empty id", () => {
+      expect(left(parseAgentArgv(["terminals", ":ab12"])).message).toBe(
+        'terminals: ":ab12" is not a terminal key — expected <scope>:<id>, e.g. session:ab12',
+      )
+      expect(left(parseAgentArgv(["terminals", "session:"])).message).toBe(
+        'terminals: "session:" is not a terminal key — expected <scope>:<id>, e.g. session:ab12',
+      )
+    })
+
+    it("rejects an unknown scope", () => {
+      expect(left(parseAgentArgv(["terminals", "pane:ab12"])).message).toBe(
+        'terminals: unknown scope "pane" — expected one of: global, orchestrator, project, session',
+      )
+    })
+
+    it("rejects a second positional", () => {
+      expect(left(parseAgentArgv(["terminals", "session:ab12", "session:cd34"])).message).toBe(
+        "terminals: unexpected argument: session:cd34",
+      )
+    })
+  })
 })
 
 describe("resolveBaseUrl", () => {
@@ -942,6 +1014,187 @@ describe("parseExplainResponse", () => {
     expect(left(parseExplainResponse({ ...full, reasons: ["ok", 1] })).message).toBe(
       "explain response is missing reasons",
     )
+  })
+})
+
+describe("isTerminalStateSlug", () => {
+  it("accepts the four screen-classification slugs and rejects session-only ones", () => {
+    expect(isTerminalStateSlug("working")).toBe(true)
+    expect(isTerminalStateSlug("blocked")).toBe(true)
+    expect(isTerminalStateSlug("idle")).toBe(true)
+    expect(isTerminalStateSlug("unknown")).toBe(true)
+    expect(isTerminalStateSlug("done")).toBe(false)
+    expect(isTerminalStateSlug("needs_input")).toBe(false)
+  })
+})
+
+describe("parseTerminalStatesResponse", () => {
+  it("rejects a non-object and an array", () => {
+    expect(left(parseTerminalStatesResponse([])).message).toBe(
+      "terminals response must be an object",
+    )
+    expect(left(parseTerminalStatesResponse("nope")).message).toBe(
+      "terminals response must be an object",
+    )
+  })
+
+  it("keys each entry by its map key and keeps the daemon's order", () => {
+    expect(
+      right(
+        parseTerminalStatesResponse({
+          "global:global": {
+            scope: "global",
+            id: "global",
+            state: "unknown",
+            at: "2026-01-01T00:00:00.000Z",
+          },
+          "session:ab12": {
+            scope: "session",
+            id: "ab12",
+            state: "idle",
+            matcher: "prompt-resting",
+            evidence: "❯",
+            at: "2026-01-01T00:00:01.000Z",
+          },
+        }),
+      ),
+    ).toEqual([
+      {
+        key: "global:global",
+        state: "unknown",
+        matcher: undefined,
+        evidence: undefined,
+        at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        key: "session:ab12",
+        state: "idle",
+        matcher: "prompt-resting",
+        evidence: "❯",
+        at: "2026-01-01T00:00:01.000Z",
+      },
+    ])
+  })
+
+  it("degrades an unrecognized state to unknown and drops a non-object entry", () => {
+    expect(
+      right(
+        parseTerminalStatesResponse({
+          "session:ab12": { state: "some-future-state" },
+          "session:cd34": "nope",
+        }),
+      ),
+    ).toEqual([
+      {
+        key: "session:ab12",
+        state: "unknown",
+        matcher: undefined,
+        evidence: undefined,
+        at: undefined,
+      },
+    ])
+  })
+})
+
+describe("filterTerminalsByKey / exitCodeForTerminalLookup", () => {
+  const session = {
+    key: "session:ab12",
+    state: "idle" as const,
+    matcher: undefined,
+    evidence: undefined,
+    at: undefined,
+  }
+  const project = {
+    key: "project:pwui",
+    state: "working" as const,
+    matcher: undefined,
+    evidence: undefined,
+    at: undefined,
+  }
+  const entries = [session, project]
+
+  it("returns everything when no key was given", () => {
+    expect(filterTerminalsByKey({ terminals: entries, key: undefined })).toEqual(entries)
+  })
+
+  it("narrows to the one requested key", () => {
+    expect(filterTerminalsByKey({ terminals: entries, key: "project:pwui" })).toEqual([project])
+  })
+
+  it("returns nothing for a key the daemon has never classified", () => {
+    expect(filterTerminalsByKey({ terminals: entries, key: "session:zz99" })).toEqual([])
+  })
+
+  it("exits 6 only when a requested key matched nothing", () => {
+    expect(exitCodeForTerminalLookup({ key: "session:zz99", matched: 0 })).toBe(6)
+    expect(exitCodeForTerminalLookup({ key: "session:ab12", matched: 1 })).toBe(0)
+    expect(exitCodeForTerminalLookup({ key: undefined, matched: 0 })).toBe(0)
+  })
+})
+
+describe("formatTerminalStates", () => {
+  it("reports an empty map distinctly", () => {
+    expect(formatTerminalStates({ terminals: [], now: 0 })).toBe("no terminal states")
+  })
+
+  it("formats one row with its age, matcher and evidence", () => {
+    expect(
+      formatTerminalStates({
+        terminals: [
+          {
+            key: "session:ab12",
+            state: "idle",
+            matcher: "prompt-resting",
+            evidence: "❯",
+            atMs: undefined,
+          },
+        ],
+        now: 1_000_000,
+      }),
+    ).toBe("session:ab12  idle        —  prompt-resting  ❯")
+  })
+
+  it("aligns columns, truncates long evidence and blanks a missing matcher", () => {
+    expect(
+      formatTerminalStates({
+        terminals: [
+          {
+            key: "global:global",
+            state: "unknown",
+            matcher: undefined,
+            evidence: undefined,
+            atMs: 1_000_000 - 65_000,
+          },
+          {
+            key: "session:ab12",
+            state: "working",
+            matcher: "thinking-gerund",
+            evidence: "x".repeat(60),
+            atMs: 1_000_000 - 5_000,
+          },
+        ],
+        now: 1_000_000,
+      }),
+    ).toBe(
+      `global:global  unknown    1m  \nsession:ab12   working    5s  thinking-gerund  ${"x".repeat(47)}…`,
+    )
+  })
+
+  it("shows evidence with no matcher, and a matcher with no evidence", () => {
+    expect(
+      formatTerminalStates({
+        terminals: [
+          {
+            key: "project:a",
+            state: "working",
+            matcher: "pi-working",
+            evidence: undefined,
+            atMs: 0,
+          },
+        ],
+        now: 0,
+      }),
+    ).toBe("project:a  working    0s  pi-working")
   })
 })
 

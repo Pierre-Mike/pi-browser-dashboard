@@ -69,6 +69,34 @@ export const isNamedKeyName = (s: string): s is NamedKeyName =>
 
 export const NAMED_KEYS_HELP = NAMED_KEYS.join(", ")
 
+// --- Terminal screen-state vocabulary ----------------------------------------
+//
+// A *terminal* state is not a session state: it is what the daemon read off a
+// terminal's screen (`TerminalStateSlug` in
+// apps/daemon/src/features/terminal/terminal-state.core.ts), four slugs deep,
+// where a session state is the 8-slug roster vocabulary above. Two separate
+// unions on purpose — `done`/`needs_input` are roster facts no screen matcher
+// can produce, and `unknown` means "nothing matched", not "no idea who this
+// is". Mirrored as a literal copy for the same reason the two lists above are
+// (apps/cli cannot deep-import a daemon slice-internal module).
+const TERMINAL_STATE_SLUGS = ["working", "blocked", "idle", "unknown"] as const
+export type TerminalStateSlug = (typeof TERMINAL_STATE_SLUGS)[number]
+
+export const isTerminalStateSlug = (s: string): s is TerminalStateSlug =>
+  (TERMINAL_STATE_SLUGS as readonly string[]).includes(s)
+
+// The `scope` half of a `terminalStateKey` — mirrors `TerminalScope` in
+// apps/daemon/src/features/terminal/terminal-poll.core.ts. "global" and
+// "orchestrator" are single fixed terminals whose scope name doubles as their
+// id, so their keys read `global:global` / `orchestrator:orchestrator`.
+const TERMINAL_SCOPES = ["global", "orchestrator", "project", "session"] as const
+type TerminalScope = (typeof TERMINAL_SCOPES)[number]
+
+const isTerminalScope = (s: string): s is TerminalScope =>
+  (TERMINAL_SCOPES as readonly string[]).includes(s)
+
+const TERMINAL_SCOPES_HELP = TERMINAL_SCOPES.join(", ")
+
 // --- Command model -----------------------------------------------------------
 
 export type WaitParams = {
@@ -181,6 +209,16 @@ export type RulesPreviewCommand = {
   readonly url: string | undefined
 }
 
+export type TerminalsCommand = {
+  readonly _tag: "Terminals"
+  // undefined means "the whole map". A key is always the full
+  // `<scope>:<id>` shape the daemon publishes, never a bare short — see
+  // parseTerminalKey for why the scope is mandatory.
+  readonly key: string | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
 export type HelpCommand = {
   readonly _tag: "Help"
   readonly url: string | undefined
@@ -200,6 +238,7 @@ export type Command =
   | FleetRunsCommand
   | RulesCommand
   | RulesPreviewCommand
+  | TerminalsCommand
   | HelpCommand
 
 export type UsageError = {
@@ -823,6 +862,69 @@ const parseRulesCommand = (
     : parseRulesListCommand(rest, url)
 }
 
+// `<scope>:<id>` split on the FIRST colon only — an id may itself contain one
+// (a project id is a directory name), so only the scope half is delimited.
+const splitTerminalKey = (
+  raw: string,
+): { readonly scope: string; readonly id: string } | undefined => {
+  const idx = raw.indexOf(":")
+  if (idx <= 0) return undefined
+  const id = raw.slice(idx + 1)
+  return id.length === 0 ? undefined : { scope: raw.slice(0, idx), id }
+}
+
+// The scope is mandatory, not inferred: session shorts, project ids and the
+// two fixed terminal names share one key namespace, so a bare `ab12` could
+// name either a session or a project and the CLI would have to guess. A usage
+// error (exit 2) here is strictly better than a confident answer about the
+// wrong terminal — and better than a `not found` (6) that reads as "no such
+// session" when the real problem is a malformed argument.
+const parseTerminalKey = (raw: string): Either.Either<string, UsageError> => {
+  const parts = splitTerminalKey(raw)
+  if (parts === undefined) {
+    return Either.left(
+      usageError(
+        `terminals: "${raw}" is not a terminal key — expected <scope>:<id>, e.g. session:ab12`,
+      ),
+    )
+  }
+  if (!isTerminalScope(parts.scope)) {
+    return Either.left(
+      usageError(
+        `terminals: unknown scope "${parts.scope}" — expected one of: ${TERMINAL_SCOPES_HELP}`,
+      ),
+    )
+  }
+  return Either.right(raw)
+}
+
+const parseOptionalTerminalKey = (
+  positionals: ReadonlyArray<string>,
+): Either.Either<string | undefined, UsageError> => {
+  const raw = positionals[0]
+  return raw === undefined ? Either.right(undefined) : parseTerminalKey(raw)
+}
+
+const parseTerminalsCommand = (
+  rest: ReadonlyArray<string>,
+  url: string | undefined,
+): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "terminals", argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const combined = Either.all({
+    extra: rejectExtraPositionals({ command: "terminals", positionals, max: 1 }),
+    key: parseOptionalTerminalKey(positionals),
+  })
+  if (Either.isLeft(combined)) return Either.left(combined.left)
+  return Either.right({
+    _tag: "Terminals",
+    key: combined.right.key,
+    json: flags.has("json"),
+    url,
+  })
+}
+
 const parseShortOnlyCommand = ({
   tag,
   command,
@@ -881,6 +983,7 @@ const SUBCOMMAND_PARSERS: Readonly<
   fleets: parseFleetsCommand,
   fleet: parseFleetCommand,
   rules: parseRulesCommand,
+  terminals: parseTerminalsCommand,
 }
 
 // `rest` is always non-empty here (parseAgentArgv only calls this once the
@@ -1359,6 +1462,87 @@ export const parseExplainResponse = (raw: unknown): Either.Either<ExplainSummary
     pidAlive: optionalBoolean(raw.pidAlive),
   })
 }
+
+// --- Terminal screen states (GET /terminal/states) ---------------------------
+//
+// The daemon answers with a MAP keyed by `<scope>:<id>` (`terminalStateKey` in
+// terminal-state.core.ts), not an array, so the key is the identity and is
+// carried onto each entry here — `scope`/`id` are also present in the record
+// but are redundant with it.
+
+export type TerminalStateEntry = {
+  readonly key: string
+  readonly state: TerminalStateSlug
+  // Which MATCHERS row fired, and the line it matched — both absent for an
+  // `unknown` classification (nothing matched, so there is nothing to quote).
+  readonly matcher: string | undefined
+  readonly evidence: string | undefined
+  // Raw ISO string as the daemon stamped it; the core does not read a clock,
+  // so turning it into an age is the shell's job (see TerminalRow below, the
+  // same split SessionListEntry/SessionRow uses for `createdAt`).
+  readonly at: string | undefined
+}
+
+// A slug this CLI doesn't know degrades to `unknown` rather than failing the
+// whole map — same policy as parseSessionListItem above, and `unknown` is
+// already this vocabulary's own "nothing recognised" value.
+const normalizeTerminalState = (state: unknown): TerminalStateSlug =>
+  typeof state === "string" && isTerminalStateSlug(state) ? state : "unknown"
+
+const parseTerminalStateItem = ({
+  key,
+  value,
+}: {
+  readonly key: string
+  readonly value: unknown
+}): TerminalStateEntry | undefined =>
+  isPlainObject(value)
+    ? {
+        key,
+        state: normalizeTerminalState(value.state),
+        matcher: optionalString(value.matcher),
+        evidence: optionalString(value.evidence),
+        at: optionalString(value.at),
+      }
+    : undefined
+
+export const parseTerminalStatesResponse = (
+  raw: unknown,
+): Either.Either<ReadonlyArray<TerminalStateEntry>, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("terminals response must be an object"))
+  const entries = Object.entries(raw)
+    .map(([key, value]) => parseTerminalStateItem({ key, value }))
+    .filter((e): e is TerminalStateEntry => e !== undefined)
+  return Either.right(entries)
+}
+
+export const filterTerminalsByKey = ({
+  terminals,
+  key,
+}: {
+  readonly terminals: ReadonlyArray<TerminalStateEntry>
+  readonly key: string | undefined
+}): ReadonlyArray<TerminalStateEntry> =>
+  key === undefined ? terminals : terminals.filter((t) => t.key === key)
+
+// A key absent from the map exits 6, the same "not found" an explicit 404
+// carries. It is deliberately NOT reported as `state: "unknown"`: `unknown` is
+// a real classification — the daemon looked at that screen and no matcher
+// fired — whereas an absent key means nobody has looked at all (no WS bridge
+// has ever attached, the poller is disabled, or it has not reached that
+// terminal yet), which is also what a typo'd or dead short produces. Folding
+// the two together would make `pid terminals session:typo` answer confidently
+// about a session that does not exist, and would strip an orchestrating agent
+// of the one distinction it needs to decide between "retry, classification is
+// pending" and "this short is wrong". Asking for the whole map is never a
+// not-found: an empty map is a legitimate answer (exit 0).
+export const exitCodeForTerminalLookup = ({
+  key,
+  matched,
+}: {
+  readonly key: string | undefined
+  readonly matched: number
+}): ExitCode => (key !== undefined && matched === 0 ? 6 : 0)
 
 // --- Fleet recipes (GET /projects/:id/fleets) --------------------------------
 //
@@ -2097,6 +2281,63 @@ export const formatSessions = ({
   const shortWidth = Math.max(5, ...sessions.map((s) => s.short.length))
   const stateWidth = Math.max(5, ...sessions.map((s) => s.state.length))
   return sessions.map((row) => formatSessionRow({ row, now, shortWidth, stateWidth })).join("\n")
+}
+
+// A terminal row ready for column formatting — `atMs` is the shell's
+// `Date.parse` of the entry's raw ISO `at`, the same split SessionRow uses.
+export type TerminalRow = {
+  readonly key: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+  readonly evidence: string | undefined
+  readonly atMs: number | undefined
+}
+
+// The daemon caps evidence at 200 chars; a terminal row is one line, so cap it
+// again at the same width `sessions` gives an intent.
+const EVIDENCE_MAX_WIDTH = 48
+
+const formatTerminalDetail = (row: TerminalRow): string =>
+  [
+    row.matcher,
+    row.evidence === undefined
+      ? undefined
+      : truncate({ text: row.evidence, max: EVIDENCE_MAX_WIDTH }),
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join("  ")
+
+const formatTerminalRow = ({
+  row,
+  now,
+  keyWidth,
+  stateWidth,
+}: {
+  readonly row: TerminalRow
+  readonly now: number
+  readonly keyWidth: number
+  readonly stateWidth: number
+}): string =>
+  [
+    padEndTo({ text: row.key, width: keyWidth }),
+    padEndTo({ text: row.state, width: stateWidth }),
+    formatAge(ageMs({ now, sinceMs: row.atMs })).padStart(4),
+    formatTerminalDetail(row),
+  ].join("  ")
+
+// Same column discipline as formatSessions, and the same insertion order the
+// daemon's own map has — no re-sorting, so a repeated call renders stably.
+export const formatTerminalStates = ({
+  terminals,
+  now,
+}: {
+  readonly terminals: ReadonlyArray<TerminalRow>
+  readonly now: number
+}): string => {
+  if (terminals.length === 0) return "no terminal states"
+  const keyWidth = Math.max(8, ...terminals.map((t) => t.key.length))
+  const stateWidth = Math.max(7, ...terminals.map((t) => t.state.length))
+  return terminals.map((row) => formatTerminalRow({ row, now, keyWidth, stateWidth })).join("\n")
 }
 
 export const formatExplain = (explanation: ExplainSummary): string => {

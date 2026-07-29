@@ -22,11 +22,13 @@ import {
   exitCodeForFleets,
   exitCodeForOutcome,
   exitCodeForRulesErrors,
+  exitCodeForTerminalLookup,
   exitCodeForUsage,
   exitCodeForWaitBody,
   type FleetRunStarted,
   type FleetRunSummaryWire,
   filterByState,
+  filterTerminalsByKey,
   formatExplain,
   formatFleetDryRun,
   formatFleetRunStarted,
@@ -41,6 +43,7 @@ import {
   formatSessions,
   formatSpawned,
   formatStopped,
+  formatTerminalStates,
   formatWaitOutcome,
   type HelpCommand,
   NAMED_KEYS_HELP,
@@ -59,11 +62,14 @@ import {
   parseRulesStatusResponse,
   parseSendResponse,
   parseSessionsResponse,
+  parseTerminalStatesResponse,
   parseWaitOutcomeBody,
   resolveApiBase,
   resolveBaseUrl,
   type SessionListEntry,
   type SessionRow,
+  type TerminalRow,
+  type TerminalStateEntry,
   type WaitOutcomeBody,
   type WaitParams,
   worstExitCode,
@@ -74,6 +80,7 @@ const HELP = `pid — agent-facing CLI over the pi-browser-dashboard daemon
 Usage:
   pid sessions [--state <slug,...>] [--json]
   pid explain <short> [--json]
+  pid terminals [<scope>:<id>] [--json]
   pid wait <short> --until <slug,...> [--timeout <ms>] [--json]
   pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
   pid keys <short> <name...> [--wait <slug,...>] [--timeout <ms>] [--json]
@@ -93,7 +100,17 @@ for a human. --url and --help/-h are recognised anywhere in the invocation.
 PID_URL overrides the default http://localhost:8787; --url overrides PID_URL.
 
 session states: done, working, blocked, needs_input, idle, failed, stopped, unknown
+terminal states: working, blocked, idle, unknown
 key names: ${NAMED_KEYS_HELP}
+
+pid terminals reports what the daemon last read off each terminal's screen —
+working, blocked, idle or unknown — including sessions nobody has opened in
+the dashboard. That is a different question from a session's roster state
+(pid sessions / pid explain): the evidence is the pane itself, so it also
+covers a claude or pi a human started by hand. With no argument it prints
+every terminal; with a <scope>:<id> key (session:ab12, project:my-app,
+global:global, orchestrator:orchestrator) it prints just that one, and exits 6
+if that terminal has no classification yet.
 
 pid fleets lists the declarative multi-agent recipes in a project's
 .pid/fleet.json (schema + validation + wave planning only). pid fleet run
@@ -629,6 +646,92 @@ const runRulesPreview = async ({
   })
 }
 
+const toTerminalRow = (e: TerminalStateEntry): TerminalRow => ({
+  key: e.key,
+  state: e.state,
+  matcher: e.matcher,
+  evidence: e.evidence,
+  atMs: e.at === undefined ? undefined : Date.parse(e.at),
+})
+
+// GET /terminal/states answers with a map, so "verbatim" here means the raw
+// map narrowed to the matched keys — never a re-serialized reconstruction of
+// the fields this CLI happens to parse (the same rule printSessionsJson
+// follows for the array `sessions` returns). The container stays a map even
+// for a single key, so `pid terminals --json | jq` reads the same shape
+// whether or not a key was passed.
+const narrowTerminalsJson = ({
+  body,
+  matched,
+}: {
+  readonly body: unknown
+  readonly matched: ReadonlyArray<TerminalStateEntry>
+}): Record<string, unknown> => {
+  const keep = new Set(matched.map((t) => t.key))
+  const isMap = typeof body === "object" && body !== null && !Array.isArray(body)
+  const entries = isMap ? Object.entries(body) : []
+  return Object.fromEntries(entries.filter(([key]) => keep.has(key)))
+}
+
+const printTerminals = ({
+  body,
+  matched,
+  json,
+}: {
+  readonly body: unknown
+  readonly matched: ReadonlyArray<TerminalStateEntry>
+  readonly json: boolean
+}): void => {
+  if (json) {
+    console.log(JSON.stringify(narrowTerminalsJson({ body, matched })))
+    return
+  }
+  console.log(formatTerminalStates({ terminals: matched.map(toTerminalRow), now: Date.now() }))
+}
+
+// A requested key that matched nothing is reported on stderr only, the same
+// way `explain`'s 404 is: stdout stays empty rather than claiming "no terminal
+// states" (the map is not empty — this key is missing from it). `--json` still
+// prints, since an empty map is valid JSON and keeps a `jq` pipeline honest.
+const reportTerminals = ({
+  body,
+  matched,
+  command,
+}: {
+  readonly body: unknown
+  readonly matched: ReadonlyArray<TerminalStateEntry>
+  readonly command: Extract<Command, { readonly _tag: "Terminals" }>
+}): ExitCode => {
+  const code = exitCodeForTerminalLookup({ key: command.key, matched: matched.length })
+  if (code === 0 || command.json) printTerminals({ body, matched, json: command.json })
+  // The endpoint refreshes a stale poll pass fire-and-forget, so a
+  // classification for a just-spawned session can land moments after this very
+  // response — say so rather than letting an agent read 6 as "that short does
+  // not exist".
+  if (code !== 0) console.error(`terminals: ${command.key}: no classification yet — retry`)
+  return code
+}
+
+const runTerminals = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "Terminals" }>
+}): Promise<ExitCode> => {
+  const res: Response = await client.terminal.states.$get()
+  const body = await readJson(res)
+  const notOk = checkOk({ res, body, label: "terminals" })
+  if (notOk !== undefined) return notOk
+  const parsed = parseTerminalStatesResponse(body)
+  if (Either.isLeft(parsed)) {
+    console.error(`terminals: ${parsed.left.message}`)
+    return exitCodeForOutcome({ _tag: "HttpError" })
+  }
+  const matched = filterTerminalsByKey({ terminals: parsed.right, key: command.key })
+  return reportTerminals({ body, matched, command })
+}
+
 type DispatchOneResult =
   | { readonly _tag: "Failed"; readonly code: ExitCode; readonly body: unknown }
   | { readonly _tag: "Dispatched"; readonly short: string }
@@ -767,6 +870,7 @@ const HANDLERS: Readonly<Record<NonHelpCommand["_tag"], AnyCommandHandler>> = {
   FleetRuns: runFleetRuns,
   Rules: runRules,
   RulesPreview: runRulesPreview,
+  Terminals: runTerminals,
 }
 
 const runCommand = ({
