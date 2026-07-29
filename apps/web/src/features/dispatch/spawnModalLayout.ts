@@ -28,7 +28,7 @@ export const SPAWN_INTENT_INPUT =
 // row. `shrink`, `max-w-full`, `whitespace-normal`, and `break-all` undo that so
 // long ids wrap inside the pill instead of forcing a horizontal scrollbar.
 export const skillChipClass = (selected: boolean) =>
-  `btn btn-xs h-auto min-h-0 max-w-full shrink whitespace-normal break-all gap-1 rounded-full px-2.5 py-1 text-left font-mono text-[11px] normal-case transition ${
+  `btn btn-xs h-auto min-h-0 max-w-full shrink whitespace-normal break-all gap-1 rounded-badge px-2.5 py-1 text-left font-mono text-[11px] normal-case transition ${
     selected
       ? "btn-primary shadow-sm shadow-primary/30"
       : "btn-ghost border border-base-300 text-base-content/80 hover:border-base-300"
@@ -40,4 +40,4 @@ export const skillChipClass = (selected: boolean) =>
 // wrap/shrink discipline as skillChipClass so a long group name can't force a
 // horizontal scrollbar.
 export const GROUP_PILL_CLASS =
-  "btn btn-xs h-auto min-h-0 max-w-full shrink whitespace-normal break-words gap-1 rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-1 text-left text-[11px] font-medium normal-case text-secondary transition hover:bg-secondary/20 hover:border-secondary/40"
+  "btn btn-xs h-auto min-h-0 max-w-full shrink whitespace-normal break-words gap-1 rounded-badge border border-secondary/40 bg-secondary/10 px-2.5 py-1 text-left text-[11px] font-medium normal-case text-secondary transition hover:bg-secondary/20 hover:border-secondary/40"

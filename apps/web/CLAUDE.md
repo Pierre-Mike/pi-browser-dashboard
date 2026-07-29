@@ -41,13 +41,20 @@ blocks), `--rounded-btn` (buttons, inputs, selects, tabs, small controls),
 
 | family | `box` | `btn` | `badge` | `animation-btn` |
 |---|---|---|---|---|
-| `pid` (default, **byte-frozen**) | `0.75rem` | `0.5rem` | `1rem` | `0.2s` |
+| `pid` (default, **frozen**) | `0.75rem` | `0.5rem` | `1rem` | `0.2s` |
 | `mono` | `0.25rem` | `0.125rem` | `0.25rem` | `0.1s` |
 | `terminal` | `0` | `0` | `0` | `0s` |
 | `sunset` | `1rem` | `0.75rem` | `2rem` | `0.3s` |
 
 Both variants of a family share one shape. Changing a family's form is a change
 to those four lines and **nothing else** — no component edits.
+
+`pid`'s *tokens* are frozen; its *pixels* are not. The migration mapped each
+element by **role** (panel → `box`, control → `btn`, chip → `badge`), and
+Tailwind's scale never lined up with daisyUI's tokens — `rounded-lg` is `0.5rem`
+where `--rounded-btn` is also `0.5rem`, but `--rounded-box` is `0.75rem`. So a
+panel that was `rounded-lg` (8px) is now 12px. That is intended: preserving
+every old literal would have meant a token per accident.
 
 `theme.extend.borderRadius` in `tailwind.config.js` aliases the three vars into
 Tailwind's own radius scale, which is what makes the **corner-specific** forms

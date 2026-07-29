@@ -68,9 +68,14 @@ describe("spawnModalLayout", () => {
   })
 
   describe("GROUP_PILL_CLASS", () => {
-    it("is a rounded pill button distinct from a primary skill chip", () => {
+    it("is a chip-shaped button distinct from a primary skill chip", () => {
       expect(GROUP_PILL_CLASS).toContain("btn")
-      expect(GROUP_PILL_CLASS).toContain("rounded-full")
+      // Was `rounded-full`. A padded chip is a *pill*, and pill-vs-rectangle is
+      // a theme decision — `rounded-full` kept it round in the fully-square
+      // `terminal` family, and on a `btn` it also overrode the var the theme had
+      // just set. `--rounded-badge` is 2rem in `sunset`, so it still reads as a
+      // pill wherever the family wants one.
+      expect(GROUP_PILL_CLASS).toContain("rounded-badge")
       expect(GROUP_PILL_CLASS).not.toContain("btn-primary")
     })
 

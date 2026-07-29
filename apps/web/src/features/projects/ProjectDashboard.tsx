@@ -97,7 +97,7 @@ const tally = (sessions: readonly SessionState[]): Counts => {
 
 const Pill = ({ label, value, tone }: { label: string; value: number; tone: string }) => (
   <span
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}
+    className={`inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-[11px] font-medium ${tone}`}
   >
     <span className="font-mono tabular-nums">{value}</span>
     <span className="opacity-80">{label}</span>
