@@ -845,7 +845,6 @@ describe("terminalStateKey", () => {
   })
 })
 
-<<<<<<< HEAD
 // A pane is addressed as a terminal in its own right: the same `<scope>:<id>`
 // key with the zellij pane id appended. That is what lets one session's second
 // pane have its own entry in GET /terminal/states without a second key format,
@@ -883,7 +882,9 @@ describe("terminalPaneRowId / terminalPaneKeyPrefix", () => {
       id: terminalPaneRowId({ id: "ab12x", paneId: "terminal_0" }),
     })
     expect(other.startsWith(prefix)).toBe(false)
-=======
+  })
+})
+
 // A rules file may target one matcher BY NAME, so the name vocabulary is a wire
 // contract and lives in `@pid/shared`. The compiler already refuses a row named
 // off-vocabulary (`Matcher.name` is the shared union); this closes the other
@@ -911,6 +912,5 @@ describe("the matcher table against the published name vocabulary", () => {
 
   it("keeps prompt-resting last", () => {
     expect(TERMINAL_MATCHER_ORDER.at(-1)).toBe("prompt-resting")
->>>>>>> fc9a73b (feat(rules): trigger rules on the screen reading, not just the supervisor's)
   })
 })

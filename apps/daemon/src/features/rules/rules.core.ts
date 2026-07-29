@@ -2,6 +2,7 @@ import {
   isNamedKey,
   isSessionStateSlug,
   isTerminalMatcherName,
+  isTerminalPaneRowId,
   isTerminalStateSlug,
   type NamedKey,
   type SessionStateSlug,
@@ -684,11 +685,24 @@ export type DecodedTerminalState = {
 // of raw screen text — is deliberately dropped here: no rule condition reads it,
 // and not carrying it into the engine's retained per-session view is one less
 // place terminal contents can leak out of.
+//
+// Two shapes are refused, and both refusals are about ADDRESSABILITY — a rule's
+// action names a session, so an observation this engine keeps has to be one whose
+// subject a `keys` or `stop` can actually reach:
+//   - any scope but `session`: a global/orchestrator/project pane's `id` is not a
+//     session short.
+//   - a PANE row (`id` of `<short>#<paneId>`): panes are classified individually
+//     and published on this same event, but that `id` is not a short either. No
+//     coverage is lost by skipping them, because the session-level row for the
+//     same short already folds every pane into the most attention-worthy reading
+//     (blocked > working > idle > unknown) and carries the winning pane's own
+//     matcher — so a prompt waiting in a second pane still triggers a rule, under
+//     the identity the action can address.
 export const decodeTerminalStatePayload = (payload: unknown): DecodedTerminalState | undefined => {
   if (!isPlainObject(payload)) return undefined
   const { scope, id, state, matcher } = payload
   if (scope !== "session") return undefined
-  if (!isNonEmptyString(id)) return undefined
+  if (!isNonEmptyString(id) || isTerminalPaneRowId(id)) return undefined
   if (!isTerminalStateSlug(state)) return undefined
   return { short: id, state, matcher: isNonEmptyString(matcher) ? matcher : undefined }
 }

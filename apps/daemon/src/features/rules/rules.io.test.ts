@@ -463,6 +463,31 @@ describe("createRulesEngine — screen-triggered rules", () => {
     expect(notify).toEqual([])
   })
 
+  // A multi-pane session publishes one row per pane on this same event, with an
+  // `id` of `<short>#<paneId>`. Acting on one would send keystrokes to a session
+  // that does not exist; the session-level row already folds every pane into the
+  // worst reading, so the coverage is there under an id an action can reach.
+  it("ignores a pane row and acts on the session-level row for the same short", async () => {
+    await writeRulesFile({
+      enabled: true,
+      rules: [{ name: "s", when: { screen: "blocked" }, do: { action: "notify", message: "m" } }],
+    })
+    const { ports, notify } = makeFakePorts()
+    createRulesEngine({ ports, configDir: root }).start()
+    const short = `pane-row-${crypto.randomUUID()}`
+    publishTerminalState({
+      short: `${short}#terminal_1`,
+      state: "blocked",
+      matcher: "permission-prompt",
+    })
+    await sleep(80)
+    expect(notify).toEqual([])
+
+    publishTerminalState({ short, state: "blocked", matcher: "permission-prompt" })
+    await waitFor({ predicate: () => notify.length === 1 })
+    expect(notify[0]).toEqual({ short, rule: "s", message: "m" })
+  })
+
   it("holds a screen dwell until forMs has elapsed, then fires on a tick", async () => {
     await writeRulesFile({
       enabled: true,

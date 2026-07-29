@@ -28,7 +28,11 @@
 // validate against the same lists this file classifies with — and a pure core
 // cannot import another slice's internals. See shared/src/terminal.ts's header.
 // Re-exported so every existing importer of this module is untouched.
-import type { TerminalMatcherName, TerminalStateSlug } from "@pid/shared"
+import {
+  TERMINAL_PANE_SEPARATOR,
+  type TerminalMatcherName,
+  type TerminalStateSlug,
+} from "@pid/shared"
 
 export type { TerminalStateSlug }
 
@@ -439,7 +443,12 @@ export const terminalStateKey = (input: { readonly scope: string; readonly id: s
 // colon. Nothing ever parses a pane key back apart — the only use is prefix
 // matching to find one terminal's pane rows — so an id that itself contained a
 // `#` could at worst over-match its own rows, never another terminal's.
-const TERMINAL_PANE_SEPARATOR = "#"
+//
+// The separator itself lives in `@pid/shared` (with `isTerminalPaneRowId`)
+// because it turned out to be a wire fact, not a private key format: both row
+// kinds ride the same `terminal.state` event, and a consumer that ADDRESSES
+// sessions — `features/rules` — has to tell a pane row's `id` from a session
+// short before acting on it.
 
 export const terminalPaneRowId = (input: {
   readonly id: string

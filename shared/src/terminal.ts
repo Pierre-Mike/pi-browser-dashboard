@@ -72,3 +72,24 @@ export type TerminalMatcherName = (typeof TERMINAL_MATCHER_NAMES)[number]
 
 export const isTerminalMatcherName = (value: unknown): value is TerminalMatcherName =>
   typeof value === "string" && (TERMINAL_MATCHER_NAMES as readonly string[]).includes(value)
+
+/**
+ * What separates a terminal's `id` from a zellij pane id in a PANE row.
+ *
+ * A zellij session can hold several terminal panes, and each is classified in its
+ * own right. The session-level row keeps exactly `<scope>:<id>` — the identity
+ * every wait, rule, chip and `pid terminals` call addresses, and the one that
+ * folds every pane into the most attention-worthy reading — while the pane rows
+ * sit beside it as `<scope>:<id>#<paneId>`, carrying the same `scope` and an `id`
+ * of `<id>#<paneId>`.
+ *
+ * This is here rather than only in the terminal slice because it is a *wire*
+ * fact: both row kinds ride the same `terminal.state` event, so any consumer that
+ * addresses sessions has to be able to tell them apart. `features/rules` is the
+ * case that proved it — a pane row's `id` is not a session short, and sending
+ * keystrokes to it would target a session that does not exist.
+ */
+export const TERMINAL_PANE_SEPARATOR = "#"
+
+/** True for a pane row's `id`; false for a session-level, addressable one. */
+export const isTerminalPaneRowId = (id: string): boolean => id.includes(TERMINAL_PANE_SEPARATOR)

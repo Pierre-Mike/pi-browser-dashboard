@@ -2,8 +2,10 @@ import { describe, expect, it } from "bun:test"
 import { SESSION_STATE_SLUGS } from "./session"
 import {
   isTerminalMatcherName,
+  isTerminalPaneRowId,
   isTerminalStateSlug,
   TERMINAL_MATCHER_NAMES,
+  TERMINAL_PANE_SEPARATOR,
   TERMINAL_STATE_SLUGS,
 } from "./terminal"
 
@@ -56,6 +58,19 @@ describe("isTerminalMatcherName", () => {
   it("rejects non-strings without throwing", () => {
     expect(isTerminalMatcherName(undefined)).toBe(false)
     expect(isTerminalMatcherName(["permission-prompt"])).toBe(false)
+  })
+})
+
+describe("isTerminalPaneRowId", () => {
+  it("recognizes a pane row's id", () => {
+    expect(isTerminalPaneRowId(`ab12${TERMINAL_PANE_SEPARATOR}terminal_1`)).toBe(true)
+  })
+
+  // The distinction a consumer that addresses sessions depends on: a session-level
+  // id is a short a `keys` or `stop` can reach, a pane row's is not.
+  it("leaves a session-level id alone", () => {
+    expect(isTerminalPaneRowId("ab12")).toBe(false)
+    expect(isTerminalPaneRowId("global")).toBe(false)
   })
 })
 

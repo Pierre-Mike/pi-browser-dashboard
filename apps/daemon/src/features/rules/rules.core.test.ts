@@ -1062,6 +1062,21 @@ describe("decodeTerminalStatePayload", () => {
     }
   })
 
+  // Pane rows ride the same event as session rows, and a pane row's `id` is not
+  // a short — a rule firing on one would send keystrokes to a session that does
+  // not exist. Nothing is lost: the session-level row for the same short already
+  // folds every pane into the worst reading.
+  it("ignores a pane row, whose id is not an addressable short", () => {
+    expect(
+      decodeTerminalStatePayload({
+        scope: "session",
+        id: "ab12#terminal_1",
+        state: "blocked",
+        matcher: "permission-prompt",
+      }),
+    ).toBeUndefined()
+  })
+
   it("rejects a malformed payload without throwing", () => {
     expect(decodeTerminalStatePayload(null)).toBeUndefined()
     expect(decodeTerminalStatePayload({ scope: "session", state: "blocked" })).toBeUndefined()

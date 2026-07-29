@@ -1144,6 +1144,16 @@ is narrower than it is.
   matcher-scoped rules are actually written against — that means a rule keys on
   whichever dialog first blocked the pane, which is also the one a human would
   answer first.
+- **Rules act on the session row, not on pane rows.** A multi-pane session
+  publishes one `terminal.state` row per pane on the same event, with an `id` of
+  `<short>#<paneId>` (see "Unattended sessions" above). The engine skips those:
+  a pane row's `id` is not a short, so a `keys` or `stop` fired for one would
+  target a session that does not exist. No coverage is lost, because the
+  session-level row already folds every pane into the most attention-worthy
+  reading and carries the winning pane's own matcher — a prompt waiting in a
+  second pane still triggers a rule, under an identity the action can address.
+  `isTerminalPaneRowId` in `shared/src/terminal.ts` is the one place that
+  distinction is spelled, since it is a wire fact both slices depend on.
 - **Screen latency is the poll interval.** An unattended pane is classified once
   per `PID_TERMINAL_POLL_MS` pass, so a screen trigger fires up to one interval
   after the screen actually changed, and a dwell is accurate to the same
