@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
+import type { GlobalSettings } from "@pid/shared"
 import { FIELD_GROUPS, setField, settingsEqual } from "./fields"
-import type { GlobalSettings } from "./types"
 
 const base: GlobalSettings = {
   git: { defaultBranch: "main", remoteName: "origin" },

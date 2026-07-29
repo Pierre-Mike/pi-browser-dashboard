@@ -15,6 +15,7 @@
  * a call site and decodes an untrusted response at runtime.
  */
 export * from "./api-error"
+export * from "./global-settings"
 export * from "./keys"
 export * from "./project"
 export * from "./session"

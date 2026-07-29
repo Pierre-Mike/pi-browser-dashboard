@@ -11,6 +11,24 @@ throws and a bad PATCH can't corrupt stored state.
 Four sections, each a single source of truth for values formerly hard-coded
 across the daemon: `git`, `library`, `orchestration`, `network`.
 
+## Shape lives in `shared/`, policy lives here
+
+`GlobalSettings` is an effect `Schema` in `shared/src/global-settings.ts`, because
+`apps/web` edits the same document. It used to be declared twice — here, and by
+hand in `apps/web/src/features/global-settings/types.ts` under a comment reading
+"Mirrors apps/daemon/…". That is the `SessionState` / `Project` defect again, and
+the web copy was already drifting in kind: it re-spelled each nested section
+inline instead of naming it, so a section could gain a field with nothing left to
+disagree with it. `apps/web` now decodes responses with `decodeGlobalSettings`
+and the local `globalSettings.parse.ts` guard is gone.
+
+What stays in this slice is the **policy**: `DEFAULT_GLOBAL_SETTINGS` and the
+per-field readers. A default is an opinion the file's owner holds (`~/Github`,
+port 8787), not a shape both ends must agree on, and the web app never needs one
+— it renders whatever the daemon resolved. `serializeGlobalSettings` is asserted
+against `decodeGlobalSettings` in the core test, so a field added to the defaults
+without being added to the contract fails as an excess property.
+
 Plus one list, not a section: `skillGroups` — named `{name, skills[]}` presets
 the web spawn modal applies in one click (and saves the current selection into).
 Unlike the object sections, a PATCH that includes `skillGroups` **replaces the

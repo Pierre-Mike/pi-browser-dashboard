@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { decodeGlobalSettings, type GlobalSettings } from "@pid/shared"
 import {
   DEFAULT_GLOBAL_SETTINGS,
-  type GlobalSettings,
   gitBaseCandidates,
   mergeGlobalSettings,
   parseGlobalSettings,
@@ -133,6 +133,15 @@ describe("serializeGlobalSettings", () => {
     const text = serializeGlobalSettings(DEFAULT_GLOBAL_SETTINGS)
     expect(text.endsWith("\n")).toBe(true)
     expect(parseGlobalSettings(text)).toEqual(DEFAULT_GLOBAL_SETTINGS)
+  })
+
+  // This slice owns the policy (defaults, per-field validation); `@pid/shared`
+  // owns the shape. The two can only drift apart in one direction — a field
+  // added here and not there — and `onExcessProperty: "error"` catches exactly
+  // that, from the same body a client would receive.
+  it("emits a document the shared contract accepts", () => {
+    const wire: unknown = JSON.parse(serializeGlobalSettings(DEFAULT_GLOBAL_SETTINGS))
+    expect(decodeGlobalSettings(wire)).toEqual(DEFAULT_GLOBAL_SETTINGS)
   })
 })
 

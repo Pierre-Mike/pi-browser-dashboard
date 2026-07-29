@@ -2,66 +2,22 @@
 // (<claudeConfigDir>/pid-dashboard/settings.json). No I/O — file reads/writes
 // live in global-settings.io.ts.
 //
-// This file is the single source of truth for values that were previously
-// hard-coded across the daemon: the git defaults (base branch / remote), the
-// library locations, the orchestration (spawn) defaults, and the network ports.
-// Like pid-settings.core, parse/merge fill missing or invalid fields from
-// DEFAULT_GLOBAL_SETTINGS field-by-field, so a hand-edited or partial file never
+// The *shape* is the `GlobalSettings` contract in `@pid/shared`, because
+// `apps/web` edits the same document; this file owns the *policy* — the default
+// value of every field, and the per-field validation that makes a hand-edited
+// file safe to read. Like pid-settings.core, parse/merge fill missing or invalid
+// fields from DEFAULT_GLOBAL_SETTINGS field-by-field, so a partial file never
 // throws and a bad patch can never corrupt stored state. New keys can be added
 // without a migration.
-
-export type GitSettings = {
-  /** Branch PRs target and worktrees branch from. */
-  readonly defaultBranch: string
-  /** Remote name used for fetch/push/PR base. */
-  readonly remoteName: string
-}
-
-export type LibrarySettings = {
-  /** Path to the library catalog YAML. */
-  readonly catalogPath: string
-  /** Path to the `agentic` checkout backing `library install`. */
-  readonly agenticRepoPath: string
-}
-
-export type OrchestrationSettings = {
-  /** Binary used to spawn sessions (`claude --bg …`). */
-  readonly claudeBin: string
-  /** Agent pre-filled in the dispatch bar (empty = none). */
-  readonly defaultAgent: string
-  /** Permission mode pre-filled in the dispatch bar (empty = none). */
-  readonly defaultPermissionMode: string
-  /** Reasoning effort pre-filled in the dispatch bar (empty = none). */
-  readonly defaultEffort: string
-  /** Max sessions a single dispatch may fan out to. */
-  readonly maxParallel: number
-}
-
-export type NetworkSettings = {
-  /** Root under which projects are discovered. */
-  readonly projectsRoot: string
-  /** Port the daemon listens on. */
-  readonly appPort: number
-  /** Local port the Cloudflare quick-tunnel exposes publicly. */
-  readonly tunnelPort: number
-}
-
-// A named, reusable set of skills (slash-commands) the spawn modal can apply in
-// one click. Stored globally so the same preset is offered in every project.
-export type SkillGroup = {
-  /** Display name, also the dedupe key. */
-  readonly name: string
-  /** Skill ids selected when this group is applied, in selection order. */
-  readonly skills: readonly string[]
-}
-
-export type GlobalSettings = {
-  readonly git: GitSettings
-  readonly library: LibrarySettings
-  readonly orchestration: OrchestrationSettings
-  readonly network: NetworkSettings
-  readonly skillGroups: readonly SkillGroup[]
-}
+import type {
+  GitSettings,
+  GlobalSettings,
+  GlobalSettingsPatch,
+  LibrarySettings,
+  NetworkSettings,
+  OrchestrationSettings,
+  SkillGroup,
+} from "@pid/shared"
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   git: { defaultBranch: "main", remoteName: "origin" },
@@ -208,16 +164,6 @@ export const parseGlobalSettings = (text: string | null | undefined): GlobalSett
   }
   if (!isObject(parsed)) return DEFAULT_GLOBAL_SETTINGS
   return fromObject({ parsed, base: DEFAULT_GLOBAL_SETTINGS })
-}
-
-export type GlobalSettingsPatch = {
-  readonly git?: Partial<GitSettings>
-  readonly library?: Partial<LibrarySettings>
-  readonly orchestration?: Partial<OrchestrationSettings>
-  readonly network?: Partial<NetworkSettings>
-  // A list, not a partial: providing it replaces the whole set; omitting it
-  // leaves the stored groups untouched.
-  readonly skillGroups?: readonly SkillGroup[]
 }
 
 // Apply a partial patch over current settings. Invalid field values are ignored

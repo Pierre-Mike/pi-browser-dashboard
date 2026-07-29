@@ -2,7 +2,7 @@
 // separate from React so the section/field layout and the coercion rules are
 // unit-tested as data in / data out. The view iterates FIELD_GROUPS; the form
 // hook uses setField/settingsEqual on the working draft.
-import type { GlobalSettings } from "./types"
+import type { GlobalSettings } from "@pid/shared"
 
 export type Section = keyof GlobalSettings
 export type FieldType = "text" | "number"

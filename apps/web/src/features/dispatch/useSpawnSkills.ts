@@ -1,7 +1,7 @@
+import type { SkillGroup } from "@pid/shared"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { Project } from "../../lib/types"
 import { useGlobalClaudeConfig, useProjectClaudeConfig } from "../claude-config/useClaudeConfig"
-import type { SkillGroup } from "../global-settings/types"
 import { useGlobalSettings, useUpdateGlobalSettings } from "../global-settings/useGlobalSettings"
 import { useProjectPidSettings, useUpdateProjectPidSettings } from "../pid-settings/usePidSettings"
 import { applyGroupToSelection, groupSkills, upsertSkillGroup } from "./skillGroups"

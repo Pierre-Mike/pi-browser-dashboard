@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import type { SkillGroup } from "../global-settings/types"
+import type { SkillGroup } from "@pid/shared"
 import { applyGroupToSelection, groupSkills, upsertSkillGroup } from "./skillGroups"
 
 describe("applyGroupToSelection", () => {

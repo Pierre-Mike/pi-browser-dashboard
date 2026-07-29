@@ -2,7 +2,7 @@
 // No React — useSpawnSkills wires these to query state and the picker renders
 // the result. A group is a reusable set of skills the user can apply in one
 // click at spawn time, or save the current selection as.
-import type { SkillGroup } from "../global-settings/types"
+import type { SkillGroup } from "@pid/shared"
 
 // Apply a group's skills to the current selection: additive union, preserving
 // order (current picks first, then the group's skills not already chosen).
