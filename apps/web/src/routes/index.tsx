@@ -46,11 +46,15 @@ const ICONS: Record<StaticTabKey, ReactNode> = {
 }
 
 const TABS: readonly { key: StaticTabKey; label: string }[] = [
+  // Activity leads the dock and is also the default tab (see the
+  // `tab = "projects"` fallback in IndexPage), same as the project dashboard:
+  // landing on "/" shows what the fleet is doing, and attaches no pty until
+  // you ask for one.
+  { key: "projects", label: "Activity" },
   { key: "terminal", label: "Terminal" },
   // Orchestration is global by design: one voice supervisor coordinates work
   // across ALL projects, so it lives on the root dashboard, not per-project.
   { key: "orchestration", label: "Orchestration" },
-  { key: "projects", label: "Activity" },
   { key: "claude", label: "Claude" },
   { key: "library", label: "Library" },
   { key: "extensions", label: "Extensions" },
@@ -118,7 +122,7 @@ const ProjectsPanel = () => {
 }
 
 function IndexPage() {
-  const { tab = "terminal" } = Route.useSearch()
+  const { tab = "projects" } = Route.useSearch()
   const navigate = Route.useNavigate()
   const setTab = (next: TabKey) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
   const extensionsQ = useExtensions()

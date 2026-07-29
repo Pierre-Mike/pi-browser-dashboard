@@ -251,9 +251,10 @@ export const openSessionPage = async (page: Page, short: string): Promise<void> 
   await expect(page).toHaveURL(new RegExp(`/sessions/${short}$`))
 }
 
-// Dashboards default to the Terminal tab; session cards live behind the
-// "projects" tab (on /) or the "sessions" tab (on /projects/$slug). Click
-// whichever is present so card assertions see a populated panel.
+// Session cards live behind the "projects" tab (on /) or the "sessions" tab (on
+// /projects/$slug) — both are the default now, but a test may have navigated
+// away. Click whichever is present and inactive so card assertions see a
+// populated panel.
 export const ensureProjectsTab = async (page: Page): Promise<void> => {
   for (const testid of ["dashboard-tab-projects", "project-tab-sessions"]) {
     const tab = page.getByTestId(testid)

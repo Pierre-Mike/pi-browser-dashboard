@@ -121,8 +121,10 @@ test("drop while the global terminal is active: path is sent over the pty WebSoc
   })
 
   await page.goto("/")
-  // Dashboard defaults to the Terminal tab; wait for the host to render and
-  // for the status badge to flip to "open" so the WS is connected before we drop.
+  // The dashboard defaults to Activity, so pick Terminal; then wait for the host
+  // to render and for the status badge to flip to "open" so the WS is connected
+  // before we drop.
+  await page.getByTestId("dashboard-tab-terminal").click()
   await expect(page.getByTestId("global-terminal")).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("global-terminal")).toContainText("open", { timeout: 20_000 })
 

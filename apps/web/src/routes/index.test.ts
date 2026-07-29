@@ -22,6 +22,21 @@ describe("root dashboard orchestration tab", () => {
   })
 })
 
+describe("root dashboard default tab", () => {
+  it("docks Activity FIRST and opens on it, matching the project dashboard", () => {
+    // The dock used to open with Terminal, so landing on "/" attached a pty
+    // before you had asked for one. Activity (`projects`) is the leftmost tab
+    // and the fallback, so first and default agree on both dashboards.
+    const tabs = src.match(/const TABS:[\s\S]+?\n\]/)
+    expect(tabs).not.toBeNull()
+    const keys = [...(tabs?.[0].matchAll(/key:\s*"([a-z]+)"/g) ?? [])].map((m) => m[1])
+    expect(keys[0]).toBe("projects")
+    expect(keys).toContain("terminal")
+    expect(src).toMatch(/tab\s*=\s*"projects"\s*\}\s*=\s*Route\.useSearch\(\)/)
+    expect(src).not.toMatch(/tab\s*=\s*"terminal"\s*\}\s*=\s*Route\.useSearch\(\)/)
+  })
+})
+
 describe("root dashboard navigation polish (shared daisyUI dock)", () => {
   it("renders an icon next to every static tab via a keyed ICONS map", () => {
     // One icon per static tab key — the bar must read at a glance.
