@@ -237,10 +237,11 @@ describe("SessionWaitIo — bus-driven resolution", () => {
   })
 
   // The CI flake, as a test. A runtime schedules its timers on one clock and
-  // the wait reads elapsed time off another; when the two disagree by a
-  // fraction of a millisecond the reading truncates below the timeout that was
-  // actually honoured, and this test used to report `waitedMs: 49` for a
-  // `timeoutMs: 50` wait roughly once every few hundred CI runs.
+  // the wait used to read elapsed time off another; when the two disagree by a
+  // fraction of a millisecond the reading lands below the timeout that was
+  // actually honoured. That is how this file once reported `waitedMs: 49` for
+  // a `timeoutMs: 50` wait — green on the re-run, and green in the sibling job
+  // on the same commit.
   it("never reports having waited less than timeoutMs, even on an early-firing timer", async () => {
     const { promise } = await beginWait({ request: { until: ["done"], timeoutMs: 50 } })
     fake.fireTimeoutEarlyBy(1)
