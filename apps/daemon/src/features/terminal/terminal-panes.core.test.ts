@@ -172,12 +172,18 @@ describe("decideCreatePane", () => {
   })
 
   // A pane the poller cannot reach is a pane nothing can observe, which is the
-  // opposite of the point. The cap is the poller's own MAX_PANES_PER_SESSION.
+  // opposite of the point. The ceiling is not a second constant: it IS the
+  // poller's own MAX_PANES_PER_SESSION, so raising one raises both — which is
+  // exactly why this test reads the constant rather than the number 4.
   it("refuses to create a pane the screen poller would never classify", () => {
-    expect(createRequest({ terminalPaneCount: 4 })).toEqual({
+    expect(createRequest({ terminalPaneCount: MAX_PANES_PER_SESSION })).toEqual({
       _tag: "Refused",
       reason: "pane_budget",
     })
+  })
+
+  it("allows the pane that fills the poller's cap exactly", () => {
+    expect(createRequest({ terminalPaneCount: MAX_PANES_PER_SESSION - 1 })._tag).toBe("Create")
   })
 })
 
