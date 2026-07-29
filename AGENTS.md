@@ -1507,6 +1507,24 @@ them.
 
 `pid rules [--json]` lists the parsed rules, validation errors, and
 enabled/paused state; `pid rules preview [--json]` runs the dry-run above.
+One line per rule, in file order, columns `name  source  <trigger>`:
+
+```
+state-change rules: enabled
+
+  answer-permission  screen      blocked  permission-prompt  for 2m
+  nudge-stale        supervisor  blocked  for 5m
+```
+
+The `source` column is the rule's derived `when.source` — which reading fires
+it — and the trigger that follows is the state or screen slug, the matcher when
+the rule names one, and the dwell when it has one. Without those columns two
+rules watching *different* readings of the same slug print identically, which
+is the whole distinction an author needs to check. The CLI parses that trigger
+tolerantly: a `when` shape it cannot read costs those columns on that one line
+and never the listing, so a CLI older than the daemon still answers. `--json`
+passes `GET /rules` through verbatim.
+
 Both exit 2 on an invalid rules file, the same as `pid fleets` — see AGENTS.md
 "Exit codes" below (2 already means "an invalid recipe file," broadened here
 to cover an invalid rules file too; no new code was introduced).
@@ -1728,8 +1746,11 @@ pid [--help] [--url <base>]
 - `pid rules` lists the state-change automation rules in
   `<claudeConfigDir>/pid-dashboard/rules.json` (see "State-change rules"
   above) via `GET /rules` — off by default, so this is safe to run at any
-  time. A non-empty `errors` list exits 2, the same linter contract as `pid
-  fleets`. `pid rules preview` evaluates every currently-known session
+  time. Each line names the rule's trigger (`source`, then the state or screen
+  slug, the matcher and the dwell) so a screen rule is distinguishable from a
+  supervisor one at a glance. A non-empty `errors` list exits 2, the same
+  linter contract as `pid fleets`. `pid rules preview` evaluates every
+  currently-known session
   against the file via `POST /rules/preview` and reports what would fire —
   it never spawns, sends keys, or stops anything.
 
