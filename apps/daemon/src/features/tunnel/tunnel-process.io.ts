@@ -9,7 +9,7 @@
  * in tunnel.core.ts.
  */
 import type { Subprocess } from "bun"
-import { parseTunnelUrl, STOPPED, type TunnelState } from "./tunnel.core"
+import { STOPPED, scanForUrl, type TunnelState, URL_CARRY_CHARS } from "./tunnel.core"
 
 const STARTUP_TIMEOUT_MS = 20_000
 
@@ -48,7 +48,6 @@ const launch = async (port: number): Promise<TunnelState> => {
   }
   proc = child
 
-  let buffered = ""
   let resolved = false
 
   const settle = (next: TunnelState): TunnelState => {
@@ -57,19 +56,54 @@ const launch = async (port: number): Promise<TunnelState> => {
     return next
   }
 
-  const watch = (stream: ReadableStream<Uint8Array> | null): Promise<string | null> => {
-    if (!stream) return Promise.resolve(null)
+  /**
+   * Read one of the child's pipes to completion, reporting the first tunnel URL
+   * it sees through `onUrl`.
+   *
+   * Two things here are deliberate and were both real bugs:
+   *
+   *  - The loop does not stop once it has the URL, it keeps reading and
+   *    discarding. cloudflared writes to stderr for as long as it runs, and a
+   *    piped stream nobody reads is not free: Bun keeps draining the pipe into a
+   *    buffer that nothing ever consumes, so RSS climbs for the daemon's whole
+   *    life (measured: 41 MB to 254 MB in 15 seconds against a chatty child).
+   *    Releasing the reader on success is what caused that, so success now only
+   *    changes what the loop *does* with the bytes. `platform/shell.io.ts`
+   *    drains its attach children for the same reason.
+   *  - Only `URL_CARRY_CHARS` of history is carried between reads, per stream,
+   *    instead of one ever-growing shared buffer re-scanned per chunk. See
+   *    `scanForUrl`, which also explains why the scan has to precede the bound.
+   */
+  const watch = (input: {
+    readonly stream: ReadableStream<Uint8Array> | null
+    readonly onUrl: (url: string) => void
+  }): Promise<void> => {
+    const { stream, onUrl } = input
+    if (!stream) return Promise.resolve()
     return (async () => {
       const dec = new TextDecoder()
       const reader = stream.getReader()
+      let carry = ""
+      let found = false
       try {
         while (true) {
           const { value, done } = await reader.read()
-          if (done) return null
-          buffered += dec.decode(value, { stream: true })
-          const url = parseTunnelUrl(buffered)
-          if (url) return url
+          if (done) return
+          if (found) continue
+          const scan = scanForUrl({
+            carry,
+            chunk: dec.decode(value, { stream: true }),
+            maxChars: URL_CARRY_CHARS,
+          })
+          carry = scan.carry
+          if (scan.url !== null) {
+            found = true
+            carry = ""
+            onUrl(scan.url)
+          }
         }
+      } catch {
+        // Pipe closed under us (child killed) — nothing left to drain.
       } finally {
         reader.releaseLock()
       }
@@ -82,11 +116,14 @@ const launch = async (port: number): Promise<TunnelState> => {
     s instanceof ReadableStream ? s : null
 
   // Resolve as soon as EITHER stream surfaces a URL — cloudflared logs to
-  // stderr by default, so awaiting both would hang on the empty stdout.
-  const urlPromise = Promise.race([
-    watch(asStream(child.stdout)),
-    watch(asStream(child.stderr)),
-  ]).then((u) => u)
+  // stderr by default, so awaiting both would hang on the empty stdout. The
+  // watchers themselves keep running past this point to drain their pipes; only
+  // the URL is raced.
+  const urlPromise = new Promise<string>((resolveUrl) => {
+    const onUrl = (url: string): void => resolveUrl(url)
+    void watch({ stream: asStream(child.stdout), onUrl })
+    void watch({ stream: asStream(child.stderr), onUrl })
+  })
   const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), STARTUP_TIMEOUT_MS))
   const exitPromise = child.exited.then(() => "EXITED" as const)
 
