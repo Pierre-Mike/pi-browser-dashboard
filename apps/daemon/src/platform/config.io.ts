@@ -19,7 +19,24 @@ export type PidConfig = {
    * another port.
    */
   readonly zellijPrefix: string
+  /**
+   * How often (ms) to classify a screen dump for the zellij sessions this
+   * daemon owns that have NO attached terminal WebSocket, so an unattended
+   * `claude` / `pi` still gets a state. `0` disables the poller entirely — no
+   * timer, and the refresh-on-read hook on GET /terminal/states stays inert
+   * too.
+   *
+   * Deliberately lazy compared with the 400ms throttle the attached path uses:
+   * every polled session costs TWO `zellij` subprocess spawns per pass
+   * (`action list-panes`, then `action dump-screen --pane-id …`), where the
+   * attached path costs nothing beyond a regex over bytes it already has.
+   */
+  readonly terminalPollMs: number
 }
+
+// See `terminalPollMs`. 15s is slower than a human notices a chip change but
+// fast enough that a rule with a dwell window still sees the transition.
+const DEFAULT_TERMINAL_POLL_MS = 15_000
 
 type ConfigServiceApi = {
   readonly get: () => Effect.Effect<PidConfig, never, never>
@@ -39,6 +56,7 @@ const buildConfig = (): PidConfig => {
     // Default to the web dashboard dev port so the tunnel URL serves the UI.
     tunnelPort: Number(process.env.PID_TUNNEL_PORT ?? process.env.PID_WEB_PORT ?? 5173),
     zellijPrefix: process.env.PID_ZELLIJ_PREFIX ?? "",
+    terminalPollMs: Number(process.env.PID_TERMINAL_POLL_MS ?? DEFAULT_TERMINAL_POLL_MS),
   }
 }
 

@@ -1,8 +1,9 @@
 import { Effect } from "effect"
-import app, { buildApp, mountExtensions, rulesEngine, websocket } from "./api"
+import app, { buildApp, mountExtensions, rulesEngine, terminalPoller, websocket } from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.io"
 import { SessionRegistry } from "./features/sessions/sessions.io"
 import { TunnelService } from "./features/tunnel/tunnel.io"
+import { ConfigIoLive, ConfigService } from "./platform/config.io"
 import { loadExtensions } from "./platform/extensions/loader"
 import { appRuntime } from "./platform/runtime"
 
@@ -106,6 +107,24 @@ const startRulesTick = (rulesTickMs: number): ReturnType<typeof setInterval> | n
   return setInterval(runTick, rulesTickMs)
 }
 
+// Arm the unattended terminal-state poller: a screen dump for every zellij
+// session this daemon owns that has no attached WebSocket, so a `claude`/`pi`
+// nobody has opened in the dashboard still gets classified. The interval comes
+// from the typed config funnel (`PID_TERMINAL_POLL_MS`, default 15s, `0`
+// disables) — resolved here, in the composition root, the same way
+// platform/zellij-prefix.ts resolves the prefix: ConfigService.get() is a pure
+// Effect.succeed with no async acquisition, and ConfigIoLive is not part of
+// appRuntime's own layer set.
+const startTerminalPoll = (): void => {
+  const { terminalPollMs } = Effect.runSync(
+    Effect.provide(
+      Effect.flatMap(ConfigService, (s) => s.get()),
+      ConfigIoLive,
+    ),
+  )
+  terminalPoller.start({ intervalMs: terminalPollMs })
+}
+
 // Bring up the Cloudflare quick-tunnel. Failures must never block the daemon.
 const startTunnel = (): void => {
   void appRuntime
@@ -147,6 +166,9 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
 
   const issueDriverTimer = startIssuePoll(issuePollMs)
   const rulesTickTimer = startRulesTick(rulesTickMs)
+  // After SessionRegistry above: the poller's first pass enumerates the roster,
+  // so it wants the registry constructed rather than racing its boot scan.
+  startTerminalPoll()
 
   // Discover, permission-gate and mount extensions. A failure here must never
   // block daemon boot.
@@ -168,6 +190,7 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
   const stop = async (): Promise<void> => {
     if (issueDriverTimer) clearInterval(issueDriverTimer)
     if (rulesTickTimer) clearInterval(rulesTickTimer)
+    terminalPoller.stop()
     server.stop()
     if (tunnel) {
       await appRuntime
