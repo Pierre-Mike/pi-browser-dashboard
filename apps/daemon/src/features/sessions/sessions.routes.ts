@@ -276,25 +276,31 @@ export const buildSessionsApp = ({
     })
     // State provenance for a status chip that can't otherwise justify itself:
     // where `state` came from, how stale it is, and why (unrecognized slug,
-    // missing state.json, a dead worker pid). Claude sessions only — pi has
-    // no registry diagnostics to report (see SessionRegistryApi.diagnostics).
+    // missing state.json, a dead worker pid).
+    //
+    // Both harnesses answer here. A pi run is in no supervisor roster at all —
+    // its provenance is the daemon's own spawn log — so the registry lookup
+    // comes up empty for a pi short and this route used to 404 on it, which
+    // left the one command built for trust blind to half the sessions this
+    // dashboard spawns. The pi spawn log's `diagnostics` door returns the same
+    // shape, so the fallback is a `??` and not a second code path: what differs
+    // between the harnesses lives in sessions-explain.core.ts, where the
+    // reasons are written.
     .get("/:id/explain", async (c) => {
       const id = c.req.param("id")
       const diag = await runtime.runPromise(
         Effect.gen(function* () {
           const reg = yield* SessionRegistry
-          return yield* Effect.promise(() => reg.diagnostics(id))
+          const pi = yield* PiSessionsIo
+          const claude = yield* Effect.promise(() => reg.diagnostics(id))
+          return claude ?? pi.diagnostics(id)
         }),
       )
       if (!diag) return c.json({ error: "not_found", short: id }, 404)
       return c.json(
         explainSession({
-          session: diag.session,
+          ...diag,
           now: Date.now(),
-          updatedAtMs: diag.updatedAtMs,
-          lastEventAtMs: diag.lastEventAtMs,
-          pidAlive: diag.pidAlive,
-          stateFilePresent: diag.stateFilePresent,
           terminal: screenFactsFor({ short: id, readTerminalState }),
         }),
       )

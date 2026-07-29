@@ -90,6 +90,11 @@ const DIAGNOSTICS_STUB_DEFAULTS: {
   stateFilePresent: true,
 }
 
+// `Date.parse` of an optional instant — shared by both registry stubs so
+// neither has to spell the undefined branch out inline.
+const parsedInstant = (raw: string | undefined): number | undefined =>
+  raw === undefined ? undefined : Date.parse(raw)
+
 const buildRegistryLayer = (
   sessions: Map<string, SessionState>,
   diagnosticsOverrides: Map<string, DiagnosticsStub> = new Map(),
@@ -132,12 +137,27 @@ const newFilesStub = (): FilesStub => ({ diffByPath: new Map(), failWith: undefi
 
 // In-memory PiSessionsIo stub: pi sessions are keyed by short, remove()
 // records what it dropped so tests can assert the pi rm branch fired.
+// `diagnostics` overrides let an explain test set the pid probe and transcript
+// presence directly rather than faking pi's transcript tree.
 type PiStub = {
   readonly sessions: Map<string, SessionState>
   readonly removed: string[]
+  readonly diagnostics: Map<
+    string,
+    { readonly pidAlive?: boolean; readonly piTranscriptPresent?: boolean }
+  >
 }
 
-const newPiStub = (): PiStub => ({ sessions: new Map(), removed: [] })
+const newPiStub = (): PiStub => ({ sessions: new Map(), removed: [], diagnostics: new Map() })
+
+// "Everything is fine" for a pi run, mirroring DIAGNOSTICS_STUB_DEFAULTS above:
+// a live process that has already written its transcript. Spread AFTER the
+// fixed fields and BEFORE the per-short override, so a test only names what it
+// is actually varying.
+const PI_DIAGNOSTICS_STUB_DEFAULTS: {
+  readonly pidAlive: boolean
+  readonly piTranscriptPresent: boolean
+} = { pidAlive: true, piTranscriptPresent: true }
 
 const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsIo> => {
   const api: PiSessionsApi = {
@@ -151,6 +171,18 @@ const buildPiSessionsLayer = (stub: PiStub): Layer.Layer<PiSessionsIo> => {
       return true
     },
     getOne: (short) => stub.sessions.get(short),
+    diagnostics: (short) => {
+      const session = stub.sessions.get(short)
+      if (!session) return undefined
+      return {
+        session,
+        updatedAtMs: parsedInstant(session.updatedAt),
+        lastEventAtMs: undefined,
+        stateFilePresent: false,
+        ...PI_DIAGNOSTICS_STUB_DEFAULTS,
+        ...stub.diagnostics.get(short),
+      }
+    },
   }
   return Layer.succeed(PiSessionsIo, api)
 }
@@ -468,11 +500,6 @@ describe("GET /sessions/:id/explain", () => {
     expect(body.reasons.some((r) => r.includes("respawn"))).toBe(true)
   })
 
-  // Deliberate, not incidental: unlike GET /:id, this route never falls back
-  // to PiSessionsIo — diagnostics() only knows the claude SessionRegistry, so
-  // a pi short 404s here even though it lists and GETs fine. Documented gap;
-  // a pi-aware explain (reading its own spawn log's "pi-spawn-log" source) is
-  // a follow-up, not something this test should silently mask.
   // The screen facts reach explain through the same injected reader the waits
   // use, so this route is where "state.json says X, the pane says Y" becomes
   // something an agent can read.
@@ -542,14 +569,93 @@ describe("GET /sessions/:id/explain", () => {
     expect(body.screenDisagrees).toBe(false)
   })
 
-  it("404s for a pi session — diagnostics has no pi-registry fallback (documented gap)", async () => {
+  // This dashboard spawns claude AND pi, and a pi run is exactly where trust is
+  // scarcest — pi has no state.json to read, so an agent has nothing else to
+  // ask. explain used to 404 here because the handler consulted only the claude
+  // SessionRegistry; it now falls back to the pi spawn log's own door.
+  it("explains a pi session from the spawn log instead of 404ing", async () => {
     const piStub = newPiStub()
     piStub.sessions.set(
       "aaaa1111",
       makeSession({ short: "aaaa1111", state: "working", source: "pi-spawn-log", harness: "pi" }),
     )
     const res = await requestOn({ path: "/aaaa1111/explain", piStub })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      short: string
+      state: string
+      source: string
+      stateFilePresent: boolean
+      reasons: string[]
+    }
+    expect(body.short).toBe("aaaa1111")
+    expect(body.state).toBe("working")
+    expect(body.source).toBe("pi-spawn-log")
+    expect(body.stateFilePresent).toBe(false)
+    expect(body.reasons.some((r) => r.includes("pi spawn log"))).toBe(true)
+    // The limit that matters most to a caller polling for a stuck run.
+    expect(body.reasons.some((r) => r.includes("needs_input"))).toBe(true)
+  })
+
+  it("still 404s for a short neither registry knows", async () => {
+    const res = await requestOn({ path: "/aaaa1111/explain", piStub: newPiStub() })
     await expectJson(res, { status: 404, body: { error: "not_found", short: "aaaa1111" } })
+  })
+
+  // A claude session wins the lookup: the registry is asked first, so a short
+  // that somehow exists in both is explained as the claude session it is.
+  it("prefers the claude registry when a short exists in both", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "ab12",
+      makeSession({ short: "ab12", state: "done", source: "pi-spawn-log", harness: "pi" }),
+    )
+    const res = await requestOn({
+      path: "/ab12/explain",
+      sessions: oneSession({ state: "working" }),
+      piStub,
+    })
+    const body = (await res.json()) as { source: string }
+    expect(body.source).toBe("state.json")
+  })
+
+  // The pi diagnostics carry the pid probe and the transcript's presence, and
+  // both must reach the explanation — they are the only hard evidence a pi run
+  // has.
+  it("carries the pi pid probe and transcript facts into the reasons", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "bbbb2222",
+      makeSession({ short: "bbbb2222", state: "failed", source: "pi-spawn-log", harness: "pi" }),
+    )
+    piStub.diagnostics.set("bbbb2222", { pidAlive: false, piTranscriptPresent: false })
+    const res = await requestOn({ path: "/bbbb2222/explain", piStub })
+    const body = (await res.json()) as { pidAlive: boolean; reasons: string[] }
+    expect(body.pidAlive).toBe(false)
+    expect(body.reasons.some((r) => r.includes("no supervisor"))).toBe(true)
+    expect(body.reasons.some((r) => r.includes("no transcript"))).toBe(true)
+  })
+
+  it("reports the screen for a pi session the same way it does for claude", async () => {
+    const piStub = newPiStub()
+    piStub.sessions.set(
+      "cccc3333",
+      makeSession({ short: "cccc3333", state: "done", source: "pi-spawn-log", harness: "pi" }),
+    )
+    const res = await requestOn({
+      path: "/cccc3333/explain",
+      piStub,
+      readTerminalState: readerFor({ "session:cccc3333": "working" }),
+    })
+    const body = (await res.json()) as {
+      screenDisagrees: boolean
+      terminal: { state: string }
+      reasons: string[]
+    }
+    expect(body.terminal.state).toBe("working")
+    expect(body.screenDisagrees).toBe(true)
+    // ...and the "nothing corroborates this" reason retires once it does.
+    expect(body.reasons.some((r) => r.includes("no independent observation"))).toBe(false)
   })
 })
 

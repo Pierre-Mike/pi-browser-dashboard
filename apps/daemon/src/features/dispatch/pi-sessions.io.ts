@@ -24,6 +24,29 @@ export type PiSessionsConfig = {
   readonly isPidAlive: (pid: number) => boolean
 }
 
+/**
+ * What `GET /sessions/:id/explain` needs beyond the `SessionState` itself, in
+ * the same shape the claude registry's `diagnostics` returns — so the route can
+ * hand either one to the shared explanation builder without branching on which
+ * harness it got.
+ *
+ * Two fields are constants here rather than probes, and that is the point:
+ * `stateFilePresent` is always `false` because pi writes no per-session status
+ * file, and `lastEventAtMs` is always `undefined` because the daemon keeps no
+ * event history for a pi short. Reporting them as unknown-shaped facts is what
+ * stops the explanation from implying a file-based provenance pi never had.
+ */
+export type PiSessionDiagnostics = {
+  readonly session: SessionState
+  readonly updatedAtMs: number | undefined
+  readonly lastEventAtMs: undefined
+  readonly pidAlive: boolean
+  readonly stateFilePresent: false
+  // pi's transcript is the only artifact pi itself produces; its absence means
+  // the state rests on the pid probe alone.
+  readonly piTranscriptPresent: boolean
+}
+
 export type PiSessionsApi = {
   readonly config: PiSessionsConfig
   readonly record: (spawn: PiSpawnRecord) => void
@@ -32,6 +55,9 @@ export type PiSessionsApi = {
   // was actually dropped.
   readonly remove: (short: string) => boolean
   readonly getOne: (short: string) => SessionState | undefined
+  // Same short/id resolution as getOne. `undefined` when this daemon never
+  // spawned the run.
+  readonly diagnostics: (short: string) => PiSessionDiagnostics | undefined
 }
 
 export class PiSessionsIo extends Context.Tag("PiSessionsIo")<PiSessionsIo, PiSessionsApi>() {}
@@ -134,6 +160,21 @@ export const makePiSessionsApi = (config: PiSessionsConfig): PiSessionsApi => {
     getOne: (short) => {
       const spawn = spawns.find((s) => matches(s, short))
       return spawn ? sessionFor(config, spawn) : undefined
+    },
+    diagnostics: (short) => {
+      const spawn = spawns.find((s) => matches(s, short))
+      if (!spawn) return undefined
+      const session = sessionFor(config, spawn)
+      return {
+        session,
+        updatedAtMs: session.updatedAt === undefined ? undefined : Date.parse(session.updatedAt),
+        lastEventAtMs: undefined,
+        // Probed here rather than reused from sessionFor's own probe: a stale
+        // boolean is exactly the thing this endpoint exists to not hand out.
+        pidAlive: config.isPidAlive(spawn.pid),
+        stateFilePresent: false,
+        piTranscriptPresent: findTranscript(config, spawn) !== undefined,
+      }
     },
   }
 }

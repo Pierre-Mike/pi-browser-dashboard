@@ -74,7 +74,228 @@ describe("explainSession — pi-spawn-log source", () => {
     })
     expect(out.stateFilePresent).toBe(false)
     expect(out.reasons.some((r) => r.includes("no longer on disk"))).toBe(false)
-    expect(out.reasons).toHaveLength(1)
+  })
+
+  // Every pi explanation carries the limit, not just the ones where it bites:
+  // the two states the daemon can never derive for pi are exactly the ones a
+  // caller polls for when a run seems stuck, so their absence must be stated
+  // rather than read as "pi is definitely not waiting on you".
+  test("states which slugs the daemon can never derive for a pi run", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+      terminal: { state: "working", matcher: "pi-working", evidence: "⠇", atMs: NOW - 100 },
+    })
+    const limits = out.reasons.find((r) => r.includes("needs_input"))
+    expect(limits).toBeDefined()
+    expect(limits).toContain("blocked")
+  })
+
+  // Observed live twice over: a dispatched pi run whose transcript ends with an
+  // assistant message reads "done" while pi is still running — once resting at
+  // its prompt, once mid-tool-call with the screen reading "working". Saying
+  // only "done" there would be this endpoint's worst lie.
+  test("says a live pid under a 'done' state means the run has not ended", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+    })
+    const reason = out.reasons.find((r) => r.includes("has NOT ended"))
+    expect(reason).toBeDefined()
+    expect(reason).toContain("transcript")
+    // Must not narrow to "resting at the prompt": a busy pi mid-tool-call
+    // reads "done" the same way.
+    expect(reason).toContain("mid-turn with a tool call in flight")
+  })
+
+  test("says nothing of the sort once the pi process is gone", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: false,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+    })
+    expect(out.reasons.some((r) => r.includes("has NOT ended"))).toBe(false)
+  })
+
+  // The same live-pid fact under a claude "done" is unremarkable — the
+  // supervisor wrote that state itself.
+  test("never claims it for a claude session", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: true,
+    })
+    expect(out.reasons.some((r) => r.includes("has NOT ended"))).toBe(false)
+  })
+
+  // A dead pi pid is the end of the run: nothing respawns it, so the claude
+  // wording ("the supervisor respawns it on the next attach or peek") would be
+  // an outright false promise here.
+  test("does not promise a respawn for a dead pi pid", () => {
+    const out = explainSession({
+      session: makeSession({ state: "failed", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: false,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+    })
+    const reason = out.reasons.find((r) => r.includes("no longer alive"))
+    expect(reason).toBeDefined()
+    // The claude promise — that something picks the worker back up — must not
+    // be made for a pi run, in either direction of phrasing.
+    expect(reason).not.toContain("the supervisor respawns it")
+    expect(reason).toContain("nothing will respawn it")
+    expect(reason).toContain("no supervisor")
+  })
+
+  // For a claude session state.json is an independent report by the session
+  // itself; for pi there is no such report, so an unclassified pane leaves the
+  // whole explanation resting on the daemon's own inference.
+  test("says an unclassified pane leaves a pi state with no independent evidence", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: false,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+      terminal: undefined,
+    })
+    expect(out.reasons.some((r) => r.includes("no independent observation"))).toBe(true)
+  })
+
+  // Found by running this endpoint against a real dispatched pi run: the poller
+  // HAD classified the pane, as `unknown` — no matcher fired. A record that
+  // asserts nothing corroborates nothing, so the reason must still fire.
+  test("still says so when the pane was classified but no matcher fired", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+      terminal: { state: "unknown", matcher: undefined, evidence: undefined, atMs: NOW - 100 },
+    })
+    const reason = out.reasons.find((r) => r.includes("no independent observation"))
+    expect(reason).toBeDefined()
+    // ...and it names what the screen actually said, rather than claiming
+    // nothing was looked at.
+    expect(reason).toContain('classified "unknown"')
+  })
+
+  test("stays quiet about independent evidence once the pane has been classified", () => {
+    const out = explainSession({
+      session: makeSession({ state: "done", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: false,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+      terminal: { state: "idle", matcher: "prompt-resting", evidence: "❯", atMs: NOW - 100 },
+    })
+    expect(out.reasons.some((r) => r.includes("no independent observation"))).toBe(false)
+  })
+
+  // A claude session's unclassified pane is NOT evidence-free — state.json is
+  // the session's own report — so this reason must never fire for one.
+  test("never claims a claude session has no independent evidence", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: true,
+      terminal: undefined,
+    })
+    expect(out.reasons.some((r) => r.includes("no independent observation"))).toBe(false)
+  })
+
+  test("reports a run pi has written no transcript for as resting on the pid alone", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: false,
+    })
+    const reason = out.reasons.find((r) => r.includes("no transcript"))
+    expect(reason).toBeDefined()
+    expect(reason).toContain("pid probe alone")
+  })
+
+  test("says nothing about a missing transcript once pi has written one", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - 1_000,
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+    })
+    expect(out.reasons.some((r) => r.includes("no transcript"))).toBe(false)
+  })
+
+  // `stale` is still computed for pi — the transcript mtime is real evidence
+  // of when pi last did something — but the sentence must name the transcript,
+  // because the state.json it would otherwise cite never existed.
+  test("blames the transcript, not state.json, for a stale pi run", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - (STALE_ACTIVE_MS + 1),
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: true,
+    })
+    expect(out.stale).toBe(true)
+    const reason = out.reasons.find((r) => r.toLowerCase().includes("stale"))
+    expect(reason).toContain("transcript")
+    expect(reason).not.toContain("state.json")
+  })
+
+  // With no transcript, `updatedAt` is the spawn time — so the stale sentence
+  // must not claim pi touched anything at all.
+  test("blames the spawn record when a stale pi run has no transcript", () => {
+    const out = explainSession({
+      session: makeSession({ state: "working", source: "pi-spawn-log" }),
+      now: NOW,
+      updatedAtMs: NOW - (STALE_ACTIVE_MS + 1),
+      lastEventAtMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      piTranscriptPresent: false,
+    })
+    const reason = out.reasons.find((r) => r.toLowerCase().includes("stale"))
+    expect(reason).toContain("spawn record")
+    expect(reason).not.toContain("state.json")
   })
 
   // The same missing-file fact for a claude session (state.json / roster-seed
@@ -179,6 +400,9 @@ describe("explainSession — staleness boundary", () => {
     expect(staleReason).toBeDefined()
     expect(staleReason).toContain(String(STALE_ACTIVE_MS + 1))
     expect(staleReason).toContain("working")
+    // The evidence a claude session's staleness is measured against, named
+    // explicitly — pi's is its transcript, and the two must not be confused.
+    expect(staleReason).toContain("state.json")
   })
 
   test.each([

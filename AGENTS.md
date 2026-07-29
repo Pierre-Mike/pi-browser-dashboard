@@ -139,7 +139,8 @@ hc<AppType>  ──POST──>  /dispatch
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why,
                                                 + the screen's own reading and whether
-                                                  it contradicts the supervisor)
+                                                  it contradicts the supervisor;
+                                                  claude AND pi shorts)
                         /terminal/states  (current agent-state per known terminal,
                                            attached WS or polled screen dump)
                         /sessions/:id/brainstorms  (drawings in the session's worktree)
@@ -1286,7 +1287,9 @@ pid [--help] [--url <base>]
   headline, the reason is the argument. `screenDisagrees` is never recomputed
   here: the daemon owns the table of which screen state agrees with which
   session state (`SCREEN_AGREES_WITH`), and a second implementation would be a
-  second answer.
+  second answer. That headline attributes the claim to `source`, not to the
+  literal string `state.json` — `pid explain <pi-short>` works now, and a pi run
+  has no `state.json` to blame.
 - `pid terminals` reads `GET /terminal/states` — the screen classification
   ("Terminal agent-state detection" above) for every terminal the daemon has
   looked at, whether over an attached WS bridge or the unattended poller. It
@@ -1536,6 +1539,54 @@ Purity: `sessions-explain.core.ts` takes the screen as **plain input fields**
 `../terminal/*`. The route reads the record through the same injected
 `readTerminalState` port the waits use, and does the `Date.parse` itself so the
 core keeps its no-clock rule.
+
+One subtlety that only showed up against a real daemon: "no screen reading" is
+not the same as "no screen record". A pi pane resting at its prompt was
+classified `unknown` — a record present, no matcher fired, asserting nothing.
+`screenAssertion()` is therefore the single definition of *did the screen say
+anything*, and both the disagreement check and the pi no-corroboration reason go
+through it. Keying either off the record's mere existence claims corroboration
+that does not exist.
+
+#### `explain` answers for pi too, and says what it cannot know
+
+`explain` used to 404 for a pi short: the handler consulted only
+`SessionRegistry.diagnostics()`, and a pi run is in no supervisor roster at all.
+That left the one command built for trust blind to half the sessions this
+dashboard spawns — and pi is where trust is scarcest, because **pi writes no
+per-session `state.json`**. `PiSessionsApi.diagnostics()`
+(`features/dispatch/pi-sessions.io.ts`) is the door that closes the gap; it
+returns the same shape the registry does, so the route is a `??` and every
+harness difference lives in the pure core where the sentences are written.
+
+A pi session's `state` is not a report — it is the daemon's inference from the
+tail of pi's transcript plus a probe of the pid recorded at spawn
+(`derivePiState`). So the explanation refuses to imply file-based provenance,
+and states the limits instead of omitting them:
+
+| claude wording | why it would be a lie for pi |
+|---|---|
+| "state.json is no longer on disk" | pi never had one — already suppressed |
+| "the supervisor respawns it on the next attach or peek" | nothing respawns a pi run; a dead pid means the run is over |
+| "state.json has not been updated in Nms" | staleness is measured against pi's transcript, or the spawn record when pi has written no transcript at all |
+| `state.json says "x"` in the CLI conflict headline | attributed to `source` now, so a pi run is credited to `pi-spawn-log` |
+
+And three facts a pi explanation always volunteers:
+
+- `blocked`/`needs_input` are **unreachable** for a pi run — `derivePiState`
+  emits only `done`/`working`/`failed`, so a pi session at a permission prompt
+  still reads `working` or `done`. Only the screen can show one waiting.
+  `platform/agent-skill.test.ts` checks this claim against `derivePiState`
+  itself over its whole input space, not against a string.
+- `done` means the transcript's last entry is an assistant message, **not** that
+  pi exited. Verified live twice: once with pi resting at its prompt, and once
+  **mid-tool-call** — an assistant tool-use message is the last entry until the
+  result comes back, so a busy pi reads `done` with the screen reading `working`
+  and `screenDisagrees: true`. Never read a pi `done` as a finished run without
+  `pidAlive` and the screen.
+- `stateFilePresent` is always `false` and `lastEventAgeMs` always absent (the
+  daemon keeps no event history for a pi short). Both are reported as the
+  unknowns they are rather than quietly omitted.
 
 ### 2. Orchestrator role — dispatcher via `claude --bg`
 

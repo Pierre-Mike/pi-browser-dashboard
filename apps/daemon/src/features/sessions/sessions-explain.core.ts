@@ -28,6 +28,12 @@ export type ExplainInput = {
   // Absent when the poller has never classified this session's pane — the
   // supervisor-only explanation every caller got before this field existed.
   readonly terminal?: ScreenFacts | undefined
+  // pi only: whether pi has written its transcript for this run yet. pi keeps no
+  // per-session status file, so the transcript is the only artifact pi itself
+  // produces — a pi `state` is the daemon reading its tail plus probing the pid
+  // it recorded at spawn. Absent (`undefined`) for a claude session, where
+  // `stateFilePresent` already reports the file the state came from.
+  readonly piTranscriptPresent?: boolean | undefined
 }
 
 export type Explanation = {
@@ -91,11 +97,95 @@ const SOURCE_REASON: Record<SessionState["source"], string> = {
   "roster-seed":
     "State came from the roster seed, not state.json — the supervisor listed this worker but its state.json hasn't been parsed yet, so intent/cwd/sessionId are roster-derived and everything else is unknown.",
   "pi-spawn-log":
-    "State came from the daemon's pi spawn log, not a supervisor state.json — pi has no per-session status file, so the staleness and pid-liveness facts below don't carry the same meaning they do for a claude session.",
+    "State came from the daemon's own pi spawn log, not a supervisor state.json: pi writes no per-session status file, so this state is not a report pi made — it is the daemon's inference from the two things it can see, the tail of pi's transcript and a probe of the pid it recorded at spawn.",
 }
 
 const sourceReason = (session: Pick<SessionState, "source">): string =>
   SOURCE_REASON[session.source]
+
+// --- What a pi explanation cannot claim ---------------------------------
+//
+// Everything below fires only for `pi-spawn-log` provenance, and every sentence
+// exists because the claude-shaped answer would be wrong rather than merely
+// incomplete. Kept as predicates in the same style as the ones above so
+// `buildReasons` stays one array literal.
+
+const isPi = (source: SessionState["source"]): boolean => source === "pi-spawn-log"
+
+// `derivePiState` (features/dispatch/pi-sessions.core.ts) can only ever return
+// done / working / failed. The two slugs it cannot reach are precisely the ones
+// a caller polls for when a run looks stuck, so their absence has to be stated:
+// silence would read as "pi is definitely not waiting on you".
+const PI_UNREACHABLE_STATES_REASON =
+  'pi never reports that it is waiting on you, so "blocked" and "needs_input" are states this daemon cannot derive for a pi run at all — a pi session sitting at a permission prompt still reads "working" or "done" here. Only the screen classification can show one waiting.'
+
+const piUnreachableStatesReason = (source: SessionState["source"]): string | undefined =>
+  isPi(source) ? PI_UNREACHABLE_STATES_REASON : undefined
+
+// Both halves of this were observed live against dispatched pi runs, and the
+// second is why the sentence does not simply say "resting at its prompt":
+//
+//   1. pi finishes a turn, writes an assistant message as the transcript's last
+//      entry, and keeps running at its prompt — "done" with a live process.
+//   2. pi is MID-TURN with a tool call in flight. The assistant's tool-use
+//      message is already the transcript's last entry (the tool result arrives
+//      as the next, user-role, entry), so a busy pi reads "done" too — caught
+//      on the second poll of a four-tool-call run, screen reading "working".
+//
+// So a live pid under "done" means the run has not ended, and nothing narrower
+// than that is safe to claim.
+const piDoneButAliveReason = ({
+  source,
+  state,
+  pidAlive,
+}: {
+  readonly source: SessionState["source"]
+  readonly state: SessionStateSlug
+  readonly pidAlive: boolean | undefined
+}): string | undefined => {
+  if (!isPi(source) || state !== "done" || pidAlive !== true) return undefined
+  return "The \"done\" above is the shape of pi's transcript, not an exit: its last entry is an assistant message. The pi process is still alive, so this run has NOT ended — it is either resting at pi's prompt after a finished turn, or still mid-turn with a tool call in flight, which also leaves an assistant message last until the result comes back. The screen tells these apart; the transcript cannot."
+}
+
+// For a claude session an unclassified pane costs nothing: state.json is the
+// session's own independent report. A pi state has no such second source, so
+// without a screen reading the whole explanation is one observer talking to
+// itself, and that is worth saying out loud.
+//
+// "Without a screen reading" is NOT the same as "without a screen record":
+// observed live against a dispatched pi run resting at its prompt, the poller
+// had classified the pane as `unknown` — a record present, no matcher fired,
+// asserting nothing (see SCREEN_AGREES_WITH). Keying this off the record's mere
+// existence would have quietly claimed corroboration that did not exist, which
+// is the exact failure this endpoint is supposed to catch.
+const piNoCorroborationReason = ({
+  source,
+  terminal,
+}: {
+  readonly source: SessionState["source"]
+  readonly terminal: ScreenFacts | undefined
+}): string | undefined => {
+  if (!isPi(source) || screenAssertion(terminal) !== undefined) return undefined
+  const observed =
+    terminal === undefined
+      ? "Nothing has classified this pane"
+      : `The pane was classified "${terminal.state}", which asserts nothing about the session`
+  return `${observed}, so no independent observation backs this state: every field above comes from the daemon's own spawn log, transcript read and pid probe.`
+}
+
+// No transcript yet means the tail-read half of the inference had nothing to
+// read, and `updatedAt` fell back to the spawn instant — so the age reported
+// above is the age of the launch, not of any pi activity.
+const piNoTranscriptReason = ({
+  source,
+  piTranscriptPresent,
+}: {
+  readonly source: SessionState["source"]
+  readonly piTranscriptPresent: boolean | undefined
+}): string | undefined =>
+  isPi(source) && piTranscriptPresent === false
+    ? "pi has written no transcript for this run yet, so this state rests on the pid probe alone, and the updated age above is the age of the spawn rather than of anything pi did."
+    : undefined
 
 const degradedReason = (degradedFrom: string | undefined): string | undefined =>
   degradedFrom === undefined
@@ -117,10 +207,25 @@ const missingStateFileReason = ({
   return "state.json is no longer on disk."
 }
 
-const deadPidReason = (pidAlive: boolean | undefined): string | undefined =>
-  pidAlive === false
-    ? "The worker pid is no longer alive; the supervisor respawns it on the next attach or peek."
-    : undefined
+// A dead claude worker gets picked back up; a dead pi process does not — there
+// is nothing in pi's world that would respawn it. One table so the promise is
+// made only where it can be kept.
+const DEAD_PID_REASON: Record<SessionState["source"], string> = {
+  "state.json":
+    "The worker pid is no longer alive; the supervisor respawns it on the next attach or peek.",
+  "roster-seed":
+    "The worker pid is no longer alive; the supervisor respawns it on the next attach or peek.",
+  "pi-spawn-log":
+    "The pi process is no longer alive, and nothing will respawn it — pi has no supervisor. This run is over; the state above is the daemon's reading of how it ended, from the transcript pi left behind.",
+}
+
+const deadPidReason = ({
+  source,
+  pidAlive,
+}: {
+  readonly source: SessionState["source"]
+  readonly pidAlive: boolean | undefined
+}): string | undefined => (pidAlive === false ? DEAD_PID_REASON[source] : undefined)
 
 // --- Screen agreement ----------------------------------------------------
 //
@@ -148,6 +253,16 @@ export const SCREEN_AGREES_WITH: Readonly<Record<string, ReadonlyArray<string>>>
   unknown: [],
 }
 
+// The slugs the screen is actually asserting, or `undefined` when it asserts
+// nothing at all — no record, an empty row (`unknown`), or a state this table
+// predates. One definition, because "the screen said something" is a question
+// two reasons ask: whether it contradicts `state`, and (for pi) whether
+// anything independent backs `state` in the first place.
+const screenAssertion = (terminal: ScreenFacts | undefined): ReadonlyArray<string> | undefined => {
+  const agrees = terminal === undefined ? undefined : SCREEN_AGREES_WITH[terminal.state]
+  return agrees === undefined || agrees.length === 0 ? undefined : agrees
+}
+
 const computeScreenDisagrees = ({
   state,
   terminal,
@@ -155,9 +270,8 @@ const computeScreenDisagrees = ({
   readonly state: SessionStateSlug
   readonly terminal: ScreenFacts | undefined
 }): boolean => {
-  const agrees = terminal === undefined ? undefined : SCREEN_AGREES_WITH[terminal.state]
-  if (agrees === undefined || agrees.length === 0) return false
-  return !agrees.includes(state)
+  const agrees = screenAssertion(terminal)
+  return agrees === undefined ? false : !agrees.includes(state)
 }
 
 // The parenthetical that lets a human check the claim instead of taking it:
@@ -195,17 +309,36 @@ const screenConflictReason = ({
   return `The screen disagrees: state claims "${state}", but the classified terminal reads "${terminal.state}"${screenProvenance({ terminal, ageMs })}. The screen is a direct reading of the pane rather than something the agent reported, so treat "${state}" as unconfirmed.`
 }
 
+// What the staleness clock is actually reading. A claude session writes
+// state.json; pi writes only its transcript, and before pi has written even
+// that, `updatedAt` is the spawn instant. Naming the wrong file here is the
+// difference between a diagnosis and a fabrication.
+const staleEvidence = ({
+  source,
+  piTranscriptPresent,
+}: {
+  readonly source: SessionState["source"]
+  readonly piTranscriptPresent: boolean | undefined
+}): string => {
+  if (!isPi(source)) return "state.json"
+  return piTranscriptPresent === false
+    ? "the spawn record (pi has written no transcript at all)"
+    : "pi's transcript"
+}
+
 const staleReason = ({
   stale,
   state,
   updatedAtAgeMs,
+  evidence,
 }: {
   readonly stale: boolean
   readonly state: SessionStateSlug
   readonly updatedAtAgeMs: number | undefined
+  readonly evidence: string
 }): string | undefined =>
   stale
-    ? `Stale: state claims "${state}" but state.json has not been updated in ${updatedAtAgeMs}ms, past the ${STALE_ACTIVE_MS}ms active-session threshold.`
+    ? `Stale: state claims "${state}" but ${evidence} has not been updated in ${updatedAtAgeMs}ms, past the ${STALE_ACTIVE_MS}ms active-session threshold.`
     : undefined
 
 const buildReasons = ({
@@ -214,6 +347,7 @@ const buildReasons = ({
   pidAlive,
   stale,
   updatedAtAgeMs,
+  piTranscriptPresent,
   screen,
 }: {
   readonly session: SessionState
@@ -221,23 +355,37 @@ const buildReasons = ({
   readonly pidAlive: boolean | undefined
   readonly stale: boolean
   readonly updatedAtAgeMs: number | undefined
+  readonly piTranscriptPresent: boolean | undefined
   readonly screen: {
     readonly disagrees: boolean
     readonly terminal: ScreenFacts | undefined
     readonly ageMs: number | undefined
   }
 }): ReadonlyArray<string> => {
+  const source = session.source
   const conditional = [
+    // The pi limits come first among the conditionals: they qualify every fact
+    // that follows, so a reader hitting the dead-pid or stale line below
+    // already knows what kind of evidence produced it.
+    piUnreachableStatesReason(source),
+    piNoTranscriptReason({ source, piTranscriptPresent }),
+    piDoneButAliveReason({ source, state: session.state, pidAlive }),
     degradedReason(session.degradedFrom),
-    missingStateFileReason({ source: session.source, stateFilePresent }),
-    deadPidReason(pidAlive),
-    staleReason({ stale, state: session.state, updatedAtAgeMs }),
+    missingStateFileReason({ source, stateFilePresent }),
+    deadPidReason({ source, pidAlive }),
+    staleReason({
+      stale,
+      state: session.state,
+      updatedAtAgeMs,
+      evidence: staleEvidence({ source, piTranscriptPresent }),
+    }),
     screenConflictReason({
       disagrees: screen.disagrees,
       state: session.state,
       terminal: screen.terminal,
       ageMs: screen.ageMs,
     }),
+    piNoCorroborationReason({ source, terminal: screen.terminal }),
   ]
   return [sourceReason(session), ...conditional.filter((r): r is string => r !== undefined)]
 }
@@ -250,6 +398,7 @@ export const explainSession = ({
   pidAlive,
   stateFilePresent,
   terminal,
+  piTranscriptPresent,
 }: ExplainInput): Explanation => {
   const updatedAtAgeMs = ageMs({ now, createdAtMs: updatedAtMs })
   const lastEventAgeMs = ageMs({ now, createdAtMs: lastEventAtMs })
@@ -282,6 +431,7 @@ export const explainSession = ({
       pidAlive,
       stale,
       updatedAtAgeMs,
+      piTranscriptPresent,
       screen: { disagrees: screenDisagrees, terminal, ageMs: screenAgeMs },
     }),
   }

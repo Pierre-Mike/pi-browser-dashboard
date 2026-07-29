@@ -26,6 +26,9 @@ import {
   WAIT_VIA_VALUES,
 } from "@pid/shared"
 import { app } from "../api"
+// The authority for the pi-explain claims below: the pure functions that decide
+// what a pi session's state and provenance actually are.
+import { derivePiState, piSpawnToSession } from "../features/dispatch/pi-sessions.core"
 // The terminal slice mints the pane key this doc quotes. Imported here rather
 // than retyped for the same reason every other vocabulary in this file is read
 // from its owner: a hand-copied key shape is exactly the drift this test exists
@@ -196,6 +199,50 @@ describe("agent-skill.md: pane rows", () => {
       heading: "### Which observation settles it",
     })
     expect(section).toContain("while a session has more than")
+  })
+})
+
+// The pi-explain section makes a falsifiable claim: two state slugs are
+// unreachable for a pi run. That is not a style opinion, it is a property of
+// derivePiState — the only function that assigns a pi session its state — so it
+// is checked against that function over its entire input space rather than
+// trusted. Widen derivePiState to emit `blocked` one day and this test names the
+// paragraph that just became a lie.
+describe("agent-skill.md: pi explain limits", () => {
+  const PI_STATES = new Set(
+    [true, false].flatMap((endedClean) =>
+      [true, false].map((pidAlive) => derivePiState({ endedClean, pidAlive })),
+    ),
+  )
+
+  it("claims blocked/needs_input are unreachable for pi, and they are", () => {
+    const section = sectionBody({ doc: AGENT_SKILL_MD, heading: "### explain a pi session" })
+    expect(section).toContain("`blocked` and `needs_input` are unreachable")
+    expect(PI_STATES.has("blocked")).toBe(false)
+    expect(PI_STATES.has("needs_input")).toBe(false)
+  })
+
+  // The other half of the same claim: the states pi CAN reach must all be
+  // real slugs, so the section never discusses a state the daemon cannot emit.
+  it("only reasons about states pi can actually reach", () => {
+    for (const state of PI_STATES) {
+      expect(KNOWN_STATES).toContain(state)
+    }
+    expect(PI_STATES).toEqual(new Set(["done", "working", "failed"]))
+  })
+
+  // pi's provenance label is the hinge of the whole section: `source` is what
+  // tells a reader none of this came from pi itself. Read off a real pi session
+  // rather than retyped, so renaming the label fails here.
+  it("names the provenance label the daemon actually stamps on a pi session", () => {
+    const { source } = piSpawnToSession({
+      spawn: { id: "aaaa1111-2222", pid: 1, cwd: "/tmp", intent: "x", spawnedAt: "2026-07-29" },
+      state: "working",
+      lastAssistantText: undefined,
+      updatedAt: undefined,
+    })
+    const section = sectionBody({ doc: AGENT_SKILL_MD, heading: "### explain a pi session" })
+    expect(section).toContain(`\`${source}\``)
   })
 })
 
