@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test"
 
 // Dashboard root (the "/" route) mirrors the project dashboard layout —
-// content is organized as tabs. Default tab is Terminal, which hosts a
-// WebSocket-backed xterm bound to zellij session "default".
+// content is organized as tabs. Default tab is Activity (the `projects` key),
+// and it is the leftmost one; Terminal hosts a WebSocket-backed xterm bound to
+// zellij session "default" once you pick it.
 test("dashboard root exposes Projects / Terminal tabs", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 })
@@ -12,22 +13,26 @@ test("dashboard root exposes Projects / Terminal tabs", async ({ page }) => {
   await expect(projectsTab).toBeVisible()
   await expect(terminalTab).toBeVisible()
 
-  // Default tab is Terminal.
-  await expect(terminalTab).toHaveAttribute("data-active", "true")
-  await expect(page.getByTestId("global-terminal")).toBeVisible()
-  await expect(page.getByTestId("dashboard-tab-panel-projects")).toBeHidden()
-
-  // Switch to Projects.
-  await projectsTab.click()
+  // Default tab is Activity, and it leads the dock.
   await expect(projectsTab).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("dashboard-tabs").getByRole("tab").first()).toHaveAttribute(
+    "data-testid",
+    "dashboard-tab-projects",
+  )
   await expect(page.getByTestId("dashboard-tab-panel-projects")).toBeVisible()
   await expect(page.getByTestId("global-terminal")).toBeHidden()
 
-  // Back to Terminal.
+  // Switch to Terminal.
   await terminalTab.click()
   await expect(terminalTab).toHaveAttribute("data-active", "true")
   await expect(page.getByTestId("global-terminal")).toBeVisible()
   await expect(page.getByTestId("dashboard-tab-panel-projects")).toBeHidden()
+
+  // Back to Activity.
+  await projectsTab.click()
+  await expect(projectsTab).toHaveAttribute("data-active", "true")
+  await expect(page.getByTestId("dashboard-tab-panel-projects")).toBeVisible()
+  await expect(page.getByTestId("global-terminal")).toBeHidden()
 })
 
 // The Orchestration tab is global — one voice supervisor for all projects —
@@ -39,7 +44,7 @@ test("dashboard exposes a global Orchestration tab with its own terminal", async
   const orchestrationTab = page.getByTestId("dashboard-tab-orchestration")
   await expect(orchestrationTab).toBeVisible()
 
-  // Default is Terminal — orchestration panel hidden (and unmounted) until picked.
+  // Default is Activity — orchestration panel hidden (and unmounted) until picked.
   await expect(page.getByTestId("orchestration-terminal")).toBeHidden()
 
   await orchestrationTab.click()
