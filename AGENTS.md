@@ -1174,11 +1174,11 @@ recoverable; a burst of `keys` actions with both loop breakers reset is not.
   (see "SSE surface" below).
 - **`keys`** — `{ action: "keys", sequence: NamedKey[], confirm: true }`. The
   same 15-name vocabulary "Named key vocabulary" above documents (no `text`
-  steps, no `repeat` — just names); resolved through the REAL
-  `sessions-keys.core.ts` vocabulary at the wire boundary, not the rules
-  slice's own mirrored copy, so a vocabulary drift would surface as a runtime
-  error rather than silently sending the wrong bytes. **`confirm: true` is
-  mandatory to ever actually fire** — see "Safety" above.
+  steps, no `repeat` — just names), validated against the one `NAMED_KEYS`
+  declaration in `shared/`; `api.ts` resolves the sequence to bytes through the
+  same `parseKeysRequest` the HTTP endpoint uses, so a rule's keystrokes and a
+  caller's take one code path rather than two encoders that could disagree.
+  **`confirm: true` is mandatory to ever actually fire** — see "Safety" above.
 - **`stop`** — `{ action: "stop" }`. Ends the session the supported way
   (`ShellIo.stop`, the same call `POST /sessions/:id/stop` makes).
 

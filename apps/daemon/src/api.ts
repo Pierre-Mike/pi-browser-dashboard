@@ -107,11 +107,11 @@ const fleetRunPorts: FleetRunPorts = {
 // standalone `notification` event (not `rules.fired`, which the engine
 // itself already publishes for every outcome as its own audit trail) so a
 // future web toast/notifier has one simple, human-facing event to listen
-// for. `sendKeys` re-resolves the named sequence through the REAL
-// sessions-keys vocabulary (`parseKeysRequest`) rather than trusting
-// rules.core's mirrored copy at the wire boundary — a mismatch here would
-// only mean the two vocabularies have drifted, which
-// scripts/mirrored-constants.test.ts exists to catch before this ever runs.
+// for. `sendKeys` re-resolves the named sequence through the same
+// `parseKeysRequest` the HTTP endpoint uses rather than encoding bytes here, so
+// a rule's keystrokes and a caller's take one code path. Both ends now validate
+// against the one `NAMED_KEYS` declaration in `@pid/shared`, so this is no
+// longer guarding against a drifted copy — it is reusing the resolver.
 const rulesPorts: RulesPorts = {
   now: () => Date.now(),
   notify: async ({ short, rule, message }) => {
