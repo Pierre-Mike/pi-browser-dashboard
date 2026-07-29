@@ -137,7 +137,8 @@ hc<AppType>  ──POST──>  /dispatch
                         /sessions/:id/wait   (server-owned wait on session state)
              ──GET───>  /sessions, /sessions/:id, /sessions/:id/transcript
                         /sessions/:id/explain  (state provenance: source, staleness, why)
-                        /terminal/states  (current agent-state per known terminal)
+                        /terminal/states  (current agent-state per known terminal,
+                                           attached WS or polled screen dump)
                         /sessions/:id/brainstorms  (drawings in the session's worktree)
              ──SSE───<  /events  (live deltas, single stream)
 ```
@@ -259,12 +260,80 @@ guessed `idle`.
   event per keystroke), throttled to at most one classification pass per
   400ms per connection so a fast-redrawing spinner doesn't cost a regex pass
   per chunk.
-- **Real limitation**: classification only runs while a browser is attached
-  to that terminal's WS — the daemon has no other way to see its bytes. A
-  `claude` running unattended inside a zellij session nobody has opened in
-  the dashboard stays unclassified. The natural follow-up is polling a
-  zellij screen dump (`zellij action dump-screen`) for sessions with no
-  attached WS, which this feature does not implement.
+- Two producers write the same map and the same event. The WS tap above covers
+  every terminal a browser is looking at; the **unattended poller** below covers
+  the rest.
+
+#### Unattended sessions: the screen-dump poller (`terminal-poll.*`)
+
+A `claude` or `pi` inside a zellij session nobody has opened in the dashboard
+produces no WS bytes, so for a while it was invisible: no chip, and nothing for
+`features/rules/` or `POST /sessions/:id/wait` to react to. The worst case was a
+dispatched pi run — `features/dispatch/pi.io.ts` creates those *detached*
+(`zellij -n <layout> attach -b <name>`), so one was never classified at all
+unless a human opened its terminal tab.
+
+`terminal-poll.io.ts` closes that: every `PID_TERMINAL_POLL_MS` it dumps the
+screen of each zellij session this daemon owns that has **no** attached WS, and
+folds the result through the *same* pure `stripAnsi` / `appendTail` /
+`classifyTail` / `decideTransition` the WS tap uses, into the same
+`terminalStates` map and the same `terminal.state` SSE event. No client change
+was needed.
+
+- **The incantation matters.** `zellij --session <n> action dump-screen` returns
+  an EMPTY string and exit 0 when no client is attached — it dumps the *focused*
+  pane, and a client-less session has no focused pane. Adding
+  `--pane-id terminal_0` returns the real screen. Verified against zellij 0.44.3
+  on both client-less shapes: a session created with `attach -b` and never
+  attached, and one whose client attached and then went away. The dump is live,
+  not frozen at detach time. That is why the poller spends a `zellij action
+  list-panes` first, keeps only `TYPE=terminal` rows (the daemon's layouts wrap
+  every content pane in tab-bar/status-bar *plugin* panes) and dumps the
+  lowest-indexed one.
+- **A dump is a snapshot, not a chunk**, so it *replaces* the rolling tail rather
+  than appending to it. Appending would keep every earlier screen inside the
+  window, and since `classifyTail` is first-match-wins over the whole tail, one
+  answered `"Do you want to proceed?"` would outrank the live spinner for the
+  rest of the daemon's life. `foldScreenDump` passes an empty prior tail to
+  `appendTail`, which reuses that helper unchanged for the one thing still
+  wanted: keep the LAST `maxChars`, i.e. the bottom of the screen.
+- **Ownership is by derivation, not by name shape.** With the default empty
+  `PID_ZELLIJ_PREFIX` this daemon's session names are user-global on purpose (see
+  below), so nothing about the string `default` says who owns it.
+  `selectPollTargets` therefore intersects the daemon's OWN candidate list —
+  global, orchestrator, every project, every roster short, every `pi-<short>`,
+  each name built through `prefixedZellijSession` — with what `zellij
+  list-sessions` reports as live and not `EXITED`. A session this daemon never
+  derived is never dumped, so a second daemon's namespaced sessions and the
+  user's hand-made ones are untouched.
+- **No double classification.** A terminal with a live WS bridge is already
+  classified byte-accurately, so the poller skips it. Tracked by zellij *session
+  name* (refcounted, because StrictMode double-mounts overlap two bridges), not
+  by `scope:id`, since one session can be reached under more than one URL id.
+- **Off switch and cost.** `PID_TERMINAL_POLL_MS` (read in
+  `platform/config.io.ts`, the config funnel; default **15000**). `0` disables
+  the poller entirely — no timer, and the refresh-on-read hook goes inert too.
+  It is deliberately lazier than the attached path's 400ms throttle because each
+  polled session costs TWO subprocess spawns per pass (`list-panes` +
+  `dump-screen`), where the attached path costs a regex over bytes it already
+  has. Passes are sequential, never fanned out, and one session dying mid-pass
+  does not abort the rest.
+- **Not just the interval.** This daemon has lost every `setInterval` in the
+  process on a long uptime while its sockets stayed alive (the session registry
+  refreshes on read for exactly that reason), so `GET /terminal/states` also
+  calls `terminalPoller.refreshIfStale()` — a no-op unless polling is on and the
+  last pass is older than the interval. Fire-and-forget: the response is the map
+  as it stands, and the new pass arrives over SSE rather than making a chip
+  request block on 2N spawns.
+- Constructed at module load but **inert**; only `server.ts`'s `startDaemon()`
+  calls `start()`. Importing `api.ts` must never begin spawning `zellij` against
+  a user's live sessions — the same construct-then-start split the rules engine
+  uses.
+- **Still not covered**: a polled `pi`/`claude` whose zellij session the daemon
+  cannot name (started by hand outside the dashboard's naming scheme); panes
+  beyond the first terminal pane in a session; and a session drill-in exposed
+  under a `daemonShort` alias, whose polled record is keyed by the canonical
+  roster short, so the chip appears under that id rather than the alias.
 - Evidence for every VERIFIED row is one of two kinds, named in the row's own
   comment: bytes captured from a real pty run, or a literal read straight out
   of the shipped CLI — `strings -a` on the Claude Code binary

@@ -121,6 +121,11 @@ const rulesPorts: RulesPorts = {
 // calls `rulesEngine.start()`. See rules.io.ts's own header for why.
 export const rulesEngine = createRulesEngine({ ports: rulesPorts })
 
+// Same construct-then-start split, same reason: the unattended terminal-state
+// poller spawns `zellij` against the user's live sessions, so importing this
+// module must not arm it. Only server.ts's startDaemon() calls start().
+export const terminalPoller = terminalRoute.terminalPoller
+
 // Minimal content-type map for extension static assets (iframe tier).
 const EXT_MIME_BY_EXT: Record<string, string> = {
   js: "text/javascript; charset=utf-8",

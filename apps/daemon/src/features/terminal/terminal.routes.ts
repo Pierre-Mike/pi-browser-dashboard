@@ -33,6 +33,14 @@ import {
   zellijSessionName,
 } from "./terminal.core"
 import {
+  type PollCandidate,
+  type TerminalScope,
+  zellijDumpScreenArgv,
+  zellijListPanesArgv,
+  zellijListSessionsArgv,
+} from "./terminal-poll.core"
+import { createTerminalPoller } from "./terminal-poll.io"
+import {
   appendTail,
   classifyTail,
   decideTransition,
@@ -50,6 +58,10 @@ type Bridge = {
   // alongside the rest of this connection's resources so a closed WS can't
   // leave a dangling setTimeout.
   classifierDispose: () => void
+  // The zellij session this bridge is attached to, released on close so the
+  // unattended poller can take the terminal back over. Null when the resolver
+  // could not name one.
+  sessionName: string | null
 }
 
 // Minimal child interface for testing closeChildBridge in isolation.
@@ -88,10 +100,10 @@ export const closeChildBridge = async (args: {
 
 const bridges = new WeakMap<object, Bridge>()
 
-// The four terminal kinds this route mounts. "global" and "orchestrator" have
-// no id segment in the URL (one fixed zellij session each), so their own
-// scope name doubles as the id — see idForScope below.
-type TerminalScope = "global" | "orchestrator" | "project" | "session"
+// The four terminal kinds this route mounts ("global" and "orchestrator" have
+// no id segment in the URL — one fixed zellij session each — so their own scope
+// name doubles as the id; see idForScope below) come from terminal-poll.core.ts,
+// so the WS bridge and the unattended poller share one vocabulary.
 
 type TerminalStateRecord = {
   readonly scope: TerminalScope
@@ -103,10 +115,48 @@ type TerminalStateRecord = {
 }
 
 // Last known classification per terminal, keyed by terminalStateKey(scope,
-// id). Populated only while a browser is attached (see the module doc in
-// terminal-state.core.ts) — GET /terminal/states lets a client that connects
-// late render a chip immediately instead of waiting for the next transition.
+// id). Written by two producers: the per-connection classifier tap below while
+// a browser is attached, and the unattended poller (terminal-poll.io.ts) for
+// owned zellij sessions that have no bridge. GET /terminal/states lets a client
+// that connects late render a chip immediately instead of waiting for the next
+// transition.
 const terminalStates = new Map<string, TerminalStateRecord>()
+
+// Zellij session names with a live WS bridge right now, refcounted: React
+// StrictMode double-mounts TerminalView and the daemon keeps the previous child
+// for a 1s grace, so two bridges for one session name legitimately overlap and
+// a plain Set would be released by whichever closed first. The poller reads
+// these names to stay off terminals the bridge is already classifying
+// byte-accurately.
+const attachedSessions = new Map<string, number>()
+
+const retainAttachedSession = (name: string | null): void => {
+  if (name === null) return
+  attachedSessions.set(name, (attachedSessions.get(name) ?? 0) + 1)
+}
+
+const releaseAttachedSession = (name: string | null): void => {
+  if (name === null) return
+  const remaining = (attachedSessions.get(name) ?? 0) - 1
+  if (remaining > 0) attachedSessions.set(name, remaining)
+  else attachedSessions.delete(name)
+}
+
+// The single writer for terminalStates + the terminal.state SSE event. Shared
+// by the WS classifier tap and the unattended poller so the two producers can
+// never drift on the record shape or forget to publish. `at` is stamped here —
+// the poller's own pure fold has no clock.
+const publishTerminalState = (input: {
+  readonly scope: TerminalScope
+  readonly id: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+  readonly evidence: string | undefined
+}): void => {
+  const record: TerminalStateRecord = { ...input, at: new Date().toISOString() }
+  terminalStates.set(terminalStateKey({ scope: input.scope, id: input.id }), record)
+  sseBus.publish({ type: "terminal.state", data: record })
+}
 
 // Trailing throttle for classification, distinct from the byte-forward path:
 // a "thinking" spinner redraws several times a second (verified capture:
@@ -144,16 +194,13 @@ const makeClassifierTap = (args: { readonly scope: TerminalScope; readonly id: s
     const next = classifyTail({ tail })
     if (!decideTransition({ prior: priorState, next }).publish) return
     priorState = next.state
-    const record: TerminalStateRecord = {
+    publishTerminalState({
       scope: args.scope,
       id: args.id,
       state: next.state,
       matcher: next.matcher,
       evidence: next.evidence,
-      at: new Date().toISOString(),
-    }
-    terminalStates.set(terminalStateKey(args), record)
-    sseBus.publish({ type: "terminal.state", data: record })
+    })
   }
 
   return {
@@ -338,6 +385,9 @@ const makeWsHandler = ({ resolveCommand, pty = false, scope }: BridgeOpts) =>
           }
         }, HEARTBEAT_INTERVAL_MS)
         const classifierTap = makeClassifierTap({ scope, id: idForScope({ scope, c }) })
+        // Claim the zellij session for the byte-accurate path for as long as
+        // this bridge lives; the poller leaves claimed sessions alone.
+        retainAttachedSession(resolved.sessionName)
         bridges.set(tokenKey, {
           child,
           drainAbort,
@@ -345,6 +395,7 @@ const makeWsHandler = ({ resolveCommand, pty = false, scope }: BridgeOpts) =>
           sizedir,
           heartbeat,
           classifierDispose: classifierTap.dispose,
+          sessionName: resolved.sessionName,
         })
 
         const send = (bytes: Uint8Array) => {
@@ -449,6 +500,7 @@ const makeWsHandler = ({ resolveCommand, pty = false, scope }: BridgeOpts) =>
         const b = bridges.get(tokenKey)
         if (!b) return
         bridges.delete(tokenKey)
+        releaseAttachedSession(b.sessionName)
         clearInterval(b.heartbeat)
         b.classifierDispose()
         b.drainAbort.abort()
@@ -665,6 +717,120 @@ const resolveSessionKillName = async (args: {
 
 const zellijPrefix = readZellijPrefix()
 
+// --- unattended terminal state polling ---------------------------------------
+//
+// Everything below feeds terminal-poll.io.ts's ports. It lives here rather than
+// in the poller because this module already owns the four name-derivation rules
+// (and the prefix), already holds the shared terminalStates map, and already
+// imports the registries a candidate list needs — so the poller stays a pure-ish
+// scheduler over injected functions and the import arrow points one way.
+
+// The two terminals with no id segment: one fixed zellij session each.
+const fixedPollCandidates = (): ReadonlyArray<PollCandidate> => [
+  {
+    scope: "global",
+    id: "global",
+    sessionName: prefixedZellijSession({ prefix: zellijPrefix, name: GLOBAL_ZELLIJ_SESSION }),
+  },
+  {
+    scope: "orchestrator",
+    id: "orchestrator",
+    sessionName: prefixedZellijSession({ prefix: zellijPrefix, name: ORCHESTRATOR_ZELLIJ_SESSION }),
+  },
+]
+
+// A project terminal is a bare shell — precisely where a user runs `claude` by
+// hand, which is the case terminal-state detection exists for.
+const projectPollCandidates = async (): Promise<ReadonlyArray<PollCandidate>> => {
+  const projects = await appRuntime.runPromise(Effect.flatMap(ProjectsService, (svc) => svc.list()))
+  return projects.flatMap((project) => {
+    const raw = zellijSessionName(project.id)
+    if (raw === null) return []
+    return [
+      {
+        scope: "project" as const,
+        id: project.id,
+        sessionName: prefixedZellijSession({ prefix: zellijPrefix, name: raw }),
+      },
+    ]
+  })
+}
+
+// Claude drill-ins live in a zellij session named after the roster short; a
+// dispatched pi run lives in `pi-<short>` (created detached by
+// features/dispatch/pi.io.ts with `attach -b`, so until this poller existed
+// nobody had ever classified one).
+const sessionPollCandidates = async (): Promise<ReadonlyArray<PollCandidate>> => {
+  const { shorts, piShorts } = await appRuntime.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* SessionRegistry
+      const piRepo = yield* PiSessionsIo
+      const sessions = yield* Effect.promise(() => registry.snapshot())
+      return { shorts: sessions.map((s) => s.short), piShorts: piRepo.list().map((p) => p.short) }
+    }),
+  )
+  const claude = shorts.flatMap((short) => {
+    const raw = zellijSessionName(short)
+    if (raw === null) return []
+    return [
+      {
+        scope: "session" as const,
+        id: short,
+        sessionName: prefixedZellijSession({ prefix: zellijPrefix, name: raw }),
+      },
+    ]
+  })
+  const pi = piShorts.map((short) => ({
+    scope: "session" as const,
+    id: short,
+    sessionName: prefixedZellijSession({
+      prefix: zellijPrefix,
+      name: piZellijSessionName(short),
+    }),
+  }))
+  return [...claude, ...pi]
+}
+
+const listPollCandidates = async (): Promise<ReadonlyArray<PollCandidate>> => {
+  const [projects, sessions] = await Promise.all([projectPollCandidates(), sessionPollCandidates()])
+  return [...fixedPollCandidates(), ...projects, ...sessions]
+}
+
+// Read-only `zellij` invocation: capture stdout, ignore stderr (an absent or
+// just-died session writes a human message there and the empty stdout already
+// says everything the caller acts on), never throw on a non-zero exit.
+//
+// Deliberately does NOT scrub the environment through cleanZellijEnv. That
+// scrub exists because a daemon running inside a zellij pane leaks
+// ZELLIJ_SESSION_NAME into a child, and `zellij attach` then panics on the
+// nesting. These calls never attach: they name their target with an explicit
+// `--session`, which was verified to work with a *different* session's
+// ZELLIJ_SESSION_NAME still set in the environment.
+const runZellijRead = async (argv: ReadonlyArray<string>): Promise<string> => {
+  const proc = Bun.spawn([...argv], { stdout: "pipe", stderr: "ignore" })
+  const text = await new Response(proc.stdout).text()
+  await proc.exited
+  return text
+}
+
+// Constructed at module load but INERT: no timer, no subprocess, until
+// server.ts's startDaemon() calls start() with the configured interval. See
+// terminal-poll.io.ts's header.
+export const terminalPoller = createTerminalPoller({
+  ports: {
+    listCandidates: listPollCandidates,
+    listSessions: () => runZellijRead(zellijListSessionsArgv()),
+    listPanes: ({ sessionName }) => runZellijRead(zellijListPanesArgv({ sessionName })),
+    dumpScreen: ({ sessionName, paneId }) =>
+      runZellijRead(zellijDumpScreenArgv({ sessionName, paneId })),
+    attachedSessionNames: () => [...attachedSessions.keys()],
+    priorState: ({ key }) => terminalStates.get(key)?.state,
+    publish: publishTerminalState,
+    now: () => Date.now(),
+  },
+  tailMaxChars: TERMINAL_STATE_TAIL_MAX_CHARS,
+})
+
 const app = new Hono()
   .get(
     "/global",
@@ -716,7 +882,16 @@ const app = new Hono()
   // (or reconnects) late render a chip immediately instead of waiting for the
   // next transition. Registered ahead of the `/:id` catch-all below so a
   // terminal id can never literally be "states" and shadow this route.
-  .get("/states", (c) => c.json(Object.fromEntries(terminalStates)))
+  .get("/states", (c) => {
+    // Refresh-on-read: a long-lived Bun daemon has lost every setInterval in
+    // this process before while its sockets stayed alive, so the poller's timer
+    // is not allowed to be the only thing keeping unattended state fresh. A
+    // no-op unless polling is enabled AND the last pass is older than the
+    // interval; fire-and-forget, so this response is the map as it stands and
+    // the pass's results arrive over the terminal.state SSE event.
+    terminalPoller.refreshIfStale()
+    return c.json(Object.fromEntries(terminalStates))
+  })
   .get(
     "/:id",
     makeWsHandler({
