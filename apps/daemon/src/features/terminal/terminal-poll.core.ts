@@ -93,20 +93,33 @@ const paneIndex = (id: string): number => {
   return digits === undefined ? Number.MAX_SAFE_INTEGER : Number.parseInt(digits, 10)
 }
 
+// One `TYPE=terminal` row. The title is everything after the type column with
+// its whitespace normalised to single spaces — enough to compare against a name
+// the daemon minted itself (`terminal-panes.core.ts`), which is the only thing
+// that reads it; a title carrying runs of spaces would not round-trip.
+export type ZellijPaneRow = {
+  readonly paneId: string
+  readonly title: string
+}
+
 // Ascending pane index, so the layout's original content pane (`terminal_0`)
-// sorts ahead of any pane the user opened later — the poller dumps the first.
-export const parseTerminalPaneIds = (raw: string): ReadonlyArray<string> => {
-  const ids: string[] = []
+// sorts ahead of any pane the user opened later.
+export const parseTerminalPaneRows = (raw: string): ReadonlyArray<ZellijPaneRow> => {
+  const rows: ZellijPaneRow[] = []
   for (const line of stripAnsi(raw).split("\n")) {
     const cols = line.trim().split(/\s+/)
     // The header row's second column is the literal "TYPE", so it falls out
     // here with no special case.
     if (cols[1] !== "terminal") continue
-    const id = cols[0]
-    if (id !== undefined && id !== "") ids.push(id)
+    const paneId = cols[0]
+    if (paneId === undefined || paneId === "") continue
+    rows.push({ paneId, title: cols.slice(2).join(" ") })
   }
-  return ids.sort((a, b) => paneIndex(a) - paneIndex(b))
+  return rows.sort((a, b) => paneIndex(a.paneId) - paneIndex(b.paneId))
 }
+
+export const parseTerminalPaneIds = (raw: string): ReadonlyArray<string> =>
+  parseTerminalPaneRows(raw).map((row) => row.paneId)
 
 // ---- how many panes, and in what order ----------------------------------
 

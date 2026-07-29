@@ -85,6 +85,79 @@ describe("GET /terminal/states", () => {
   })
 })
 
+// The daemon's only write surface into zellij. These cases are the ones that
+// must never reach a subprocess at all: a malformed body, and a close for a pane
+// the daemon has no record of creating (which is also every close after a
+// restart). The refusals that need zellij's own state are covered against a fake
+// zellij in terminal-panes.io.test.ts.
+describe("POST /terminal/panes", () => {
+  const post = (input: { readonly path: string; readonly body: unknown }) =>
+    app.request(input.path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input.body),
+    })
+
+  it("rejects a body with no target, before deriving or spawning anything", async () => {
+    const res = await post({ path: "/panes", body: {} })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe("bad_request")
+    expect(body.message).toContain("scope")
+  })
+
+  it("rejects a scope this daemon does not have", async () => {
+    const res = await post({ path: "/panes", body: { scope: "everything", id: "ab12" } })
+    expect(res.status).toBe(400)
+  })
+
+  it("rejects a command that is not an argv array — there is no shell to fall back on", async () => {
+    const res = await post({
+      path: "/panes",
+      body: { scope: "session", id: "ab12", command: "rm -rf /" },
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain("command")
+  })
+
+  it("is matched ahead of the /:id WebSocket route", async () => {
+    // If registration order regressed, this POST would fall through to a route
+    // that treats "panes" as a terminal id.
+    const res = await post({ path: "/panes", body: {} })
+    expect(res.headers.get("content-type")).toContain("application/json")
+  })
+})
+
+describe("POST /terminal/panes/close", () => {
+  const post = (body: unknown) =>
+    app.request("/panes/close", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+
+  it("rejects a close with no pane id", async () => {
+    const res = await post({ scope: "session", id: "ab12" })
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toContain("paneId")
+  })
+
+  it("rejects a plugin pane id — this surface only ever touches terminal panes", async () => {
+    const res = await post({ scope: "session", id: "ab12", paneId: "plugin_1" })
+    expect(res.status).toBe(400)
+  })
+
+  // The bookkeeping is the permission, and it lives in memory: a freshly loaded
+  // module has no records, which is exactly the state a restarted daemon is in.
+  it("refuses a pane it has no record of creating, with 409 and a reason", async () => {
+    const res = await post({ scope: "session", id: "ab12", paneId: "terminal_1" })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.error).toBe("not_created_here")
+    expect(body.message).toContain("never closes one it did not create")
+  })
+})
+
 // The published door other slices read the polled screen state through — the
 // sessions slice's waits and `explain` receive it as an injected port from
 // api.ts rather than importing this module. It must never throw or invent a

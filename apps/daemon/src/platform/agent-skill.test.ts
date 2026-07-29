@@ -36,6 +36,7 @@ import { derivePiState, piSpawnToSession } from "../features/dispatch/pi-session
 // than retyped for the same reason every other vocabulary in this file is read
 // from its owner: a hand-copied key shape is exactly the drift this test exists
 // to catch.
+import { PANE_REFUSALS, refusalStatus } from "../features/terminal/terminal-panes.core"
 import { terminalPaneRowId } from "../features/terminal/terminal-state.core"
 import { buildDiscovery } from "./agent-discovery.core"
 import { AGENT_SKILL_MD } from "./agent-skill"
@@ -294,6 +295,40 @@ describe("agent-skill.md: pi explain limits", () => {
     })
     const section = sectionBody({ doc: AGENT_SKILL_MD, heading: "### explain a pi session" })
     expect(section).toContain(`\`${source}\``)
+  })
+})
+
+// The pane write surface answers a refusal with a reason slug an agent is meant
+// to branch on, so the doc must name every one the daemon can produce and none
+// it cannot. The 409 subset is derived from the daemon's own status mapping
+// rather than re-listed here — that is what makes this a drift guard and not a
+// second copy of the vocabulary.
+describe("agent-skill.md: pane refusals", () => {
+  it("documents the whole 409 refusal vocabulary in its table, and nothing else", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "## Panes: make your own workspace, and clean it up",
+    })
+    const refused409 = PANE_REFUSALS.filter((reason) => refusalStatus(reason) === 409)
+    expect(refused409.length).toBeGreaterThan(0)
+    expect(backtickTokensInTableRows(section)).toEqual(new Set([...refused409, "cwd_missing"]))
+  })
+
+  it("names the two 404 refusals somewhere too — an agent has to tell them apart", () => {
+    for (const reason of PANE_REFUSALS.filter((r) => refusalStatus(r) === 404)) {
+      expect(AGENT_SKILL_MD).toContain(reason)
+    }
+  })
+
+  // The promise the whole surface rests on. If either verb ever appeared here,
+  // the doc would be advertising a session teardown.
+  it("promises no session-ending verb", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "## Panes: make your own workspace, and clean it up",
+    })
+    expect(section).toContain("Nothing here can end a session")
+    expect(section).not.toContain("DELETE /terminal")
   })
 })
 

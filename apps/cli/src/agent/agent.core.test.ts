@@ -4,6 +4,8 @@ import {
   buildDispatchRequestBody,
   buildFleetRunRequestBody,
   buildKeysRequestBody,
+  buildPaneCloseBody,
+  buildPaneNewBody,
   buildSendRequestBody,
   buildWaitRequestBody,
   DEFAULT_PID_URL,
@@ -11,6 +13,7 @@ import {
   exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
+  exitCodeForPaneStatus,
   exitCodeForRulesErrors,
   exitCodeForTerminalLookup,
   exitCodeForUsage,
@@ -25,6 +28,8 @@ import {
   formatFleetRuns,
   formatFleets,
   formatKeysSent,
+  formatPaneClosed,
+  formatPaneCreated,
   formatRemoved,
   formatRulesPreview,
   formatRulesStatus,
@@ -47,6 +52,7 @@ import {
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
+  parsePaneResponse,
   parseRulesPreviewResponse,
   parseRulesStatusResponse,
   parseSendResponse,
@@ -789,6 +795,247 @@ describe("parseAgentArgv", () => {
         "terminals: unexpected argument: session:cd34",
       )
     })
+  })
+
+  // The daemon's only write surface into zellij, so the CLI's job is to make the
+  // target unambiguous and the command argv literal.
+  describe("pane new", () => {
+    it("takes a terminal key and nothing else", () => {
+      expect(right(parseAgentArgv(["pane", "new", "session:ab12"]))).toEqual({
+        _tag: "PaneNew",
+        key: "session:ab12",
+        cwd: undefined,
+        command: undefined,
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("takes --cwd and a command after --", () => {
+      expect(
+        right(
+          parseAgentArgv([
+            "pane",
+            "new",
+            "session:ab12",
+            "--cwd",
+            "/repo",
+            "--json",
+            "--",
+            "bun",
+            "run",
+            "test",
+          ]),
+        ),
+      ).toEqual({
+        _tag: "PaneNew",
+        key: "session:ab12",
+        cwd: "/repo",
+        command: ["bun", "run", "test"],
+        json: true,
+        url: undefined,
+      })
+    })
+
+    // Everything after `--` belongs to the pane's command, flags included: the
+    // alternative is a CLI that steals `--json` from the program being run.
+    it("keeps flag-shaped tokens after -- as part of the command", () => {
+      expect(
+        right(parseAgentArgv(["pane", "new", "session:ab12", "--", "bun", "test", "--json"])),
+      ).toEqual({
+        _tag: "PaneNew",
+        key: "session:ab12",
+        cwd: undefined,
+        // `--json` here belongs to `bun test`, not to pid.
+        command: ["bun", "test", "--json"],
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("rejects a bare short — the key must name its scope, as for terminals", () => {
+      expect(left(parseAgentArgv(["pane", "new", "ab12"])).message).toContain(
+        "is not a terminal key",
+      )
+    })
+
+    it("requires a key", () => {
+      expect(left(parseAgentArgv(["pane", "new"])).message).toContain("requires a <scope>:<id>")
+    })
+
+    it("rejects an unknown pane subcommand, naming the two that exist", () => {
+      expect(left(parseAgentArgv(["pane", "resize", "session:ab12"])).message).toBe(
+        "pane: unknown subcommand: resize (expected new|close)",
+      )
+      expect(left(parseAgentArgv(["pane"])).message).toBe(
+        "pane: unknown subcommand (expected new|close)",
+      )
+    })
+  })
+
+  describe("pane close", () => {
+    it("takes a terminal key and a pane id", () => {
+      expect(right(parseAgentArgv(["pane", "close", "session:ab12", "terminal_3"]))).toEqual({
+        _tag: "PaneClose",
+        key: "session:ab12",
+        paneId: "terminal_3",
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("accepts the bare pane number a pane's own ZELLIJ_PANE_ID carries", () => {
+      expect(right(parseAgentArgv(["pane", "close", "session:ab12", "3"]))).toEqual({
+        _tag: "PaneClose",
+        key: "session:ab12",
+        paneId: "3",
+        json: false,
+        url: undefined,
+      })
+    })
+
+    it("requires both the key and the pane id", () => {
+      expect(left(parseAgentArgv(["pane", "close", "session:ab12"])).message).toContain(
+        "requires a <scope>:<id> and a pane id",
+      )
+    })
+
+    it("rejects a third positional", () => {
+      expect(
+        left(parseAgentArgv(["pane", "close", "session:ab12", "terminal_3", "extra"])).message,
+      ).toContain("unexpected argument")
+    })
+  })
+})
+
+describe("buildPaneNewBody / buildPaneCloseBody", () => {
+  it("splits the key into the scope and id the daemon expects", () => {
+    expect(buildPaneNewBody({ key: "session:ab12", cwd: undefined, command: undefined })).toEqual({
+      scope: "session",
+      id: "ab12",
+    })
+  })
+
+  it("keeps a colon inside the id — a project id may contain one", () => {
+    expect(buildPaneNewBody({ key: "project:a:b", cwd: undefined, command: undefined })).toEqual({
+      scope: "project",
+      id: "a:b",
+    })
+  })
+
+  it("omits cwd and command rather than sending nulls", () => {
+    const body = buildPaneNewBody({ key: "session:ab12", cwd: "/repo", command: ["bun", "test"] })
+    expect(body).toEqual({ scope: "session", id: "ab12", cwd: "/repo", command: ["bun", "test"] })
+  })
+
+  // Read from the caller's own environment by main.ts (a sanctioned composition
+  // root) and sent so the daemon can refuse a self-close. Untrusted by
+  // construction: they can only ever make the daemon say no.
+  it("carries the caller's own pane and session when the environment has them", () => {
+    expect(
+      buildPaneCloseBody({
+        key: "session:ab12",
+        paneId: "terminal_3",
+        callerPaneId: "3",
+        callerSessionName: "ab12",
+      }),
+    ).toEqual({
+      scope: "session",
+      id: "ab12",
+      paneId: "terminal_3",
+      callerPaneId: "3",
+      callerSessionName: "ab12",
+    })
+  })
+
+  it("omits them entirely outside a zellij pane", () => {
+    expect(
+      buildPaneCloseBody({
+        key: "session:ab12",
+        paneId: "terminal_3",
+        callerPaneId: undefined,
+        callerSessionName: undefined,
+      }),
+    ).toEqual({ scope: "session", id: "ab12", paneId: "terminal_3" })
+  })
+})
+
+// The daemon answers a refusal with its own reason slug and a status; the CLI's
+// exit code is what an orchestrating shell actually branches on.
+describe("exitCodeForPaneStatus", () => {
+  it("is 0 for a created or closed pane", () => {
+    expect(exitCodeForPaneStatus(200)).toBe(0)
+  })
+
+  // A terminal the daemon never derived, or whose session is not running: the
+  // same "no such thing" every other command reports as 6.
+  it("is 6 when the daemon has no such terminal", () => {
+    expect(exitCodeForPaneStatus(404)).toBe(6)
+  })
+
+  // A refusal is not a transport failure and not a timeout: the request was
+  // understood and the answer is no, which is the caller's mistake to fix.
+  it("is 2 for a refusal and for a bad request", () => {
+    expect(exitCodeForPaneStatus(409)).toBe(2)
+    expect(exitCodeForPaneStatus(400)).toBe(2)
+  })
+
+  it("is 1 when zellij itself failed", () => {
+    expect(exitCodeForPaneStatus(502)).toBe(1)
+    expect(exitCodeForPaneStatus(500)).toBe(1)
+  })
+})
+
+describe("formatPaneCreated / formatPaneClosed", () => {
+  it("names the pane, its zellij session and the key its screen appears under", () => {
+    const line = formatPaneCreated({
+      scope: "session",
+      id: "ab12",
+      paneId: "terminal_3",
+      paneName: "pid-pane-1",
+      sessionName: "ab12",
+      key: "session:ab12#terminal_3",
+    })
+    expect(line).toContain("terminal_3")
+    expect(line).toContain("session:ab12#terminal_3")
+    expect(line).toContain("pid-pane-1")
+  })
+
+  it("distinguishes a pane this call closed from one that had already gone", () => {
+    expect(formatPaneClosed({ paneId: "terminal_3", closed: true })).toContain("closed")
+    expect(formatPaneClosed({ paneId: "terminal_3", closed: false })).toContain("already gone")
+  })
+})
+
+describe("parsePaneResponse", () => {
+  it("reads the created pane's fields off the daemon's reply", () => {
+    const parsed = parsePaneResponse({
+      ok: true,
+      scope: "session",
+      id: "ab12",
+      paneId: "terminal_3",
+      paneName: "pid-pane-1",
+      sessionName: "ab12",
+      key: "session:ab12#terminal_3",
+    })
+    expect(right(parsed).paneId).toBe("terminal_3")
+    expect(right(parsed).key).toBe("session:ab12#terminal_3")
+  })
+
+  it("reads a close reply, whose only extra field is `closed`", () => {
+    const parsed = parsePaneResponse({
+      ok: true,
+      scope: "session",
+      id: "ab12",
+      paneId: "terminal_3",
+      closed: false,
+    })
+    expect(right(parsed).closed).toBe(false)
+  })
+
+  it("rejects a reply with no pane id — there is nothing to report", () => {
+    expect(left(parsePaneResponse({ ok: true })).message).toContain("paneId")
+    expect(left(parsePaneResponse("nope")).message).toContain("object")
   })
 })
 
