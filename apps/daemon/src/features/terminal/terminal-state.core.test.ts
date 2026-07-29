@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test"
+import { TERMINAL_MATCHER_NAMES } from "@pid/shared"
 import {
   appendTail,
   classifyTail,
   decideTransition,
   stripAnsi,
+  TERMINAL_MATCHER_ORDER,
   terminalPaneKeyPrefix,
   terminalPaneRowId,
   terminalStateKey,
@@ -843,6 +845,7 @@ describe("terminalStateKey", () => {
   })
 })
 
+<<<<<<< HEAD
 // A pane is addressed as a terminal in its own right: the same `<scope>:<id>`
 // key with the zellij pane id appended. That is what lets one session's second
 // pane have its own entry in GET /terminal/states without a second key format,
@@ -880,5 +883,34 @@ describe("terminalPaneRowId / terminalPaneKeyPrefix", () => {
       id: terminalPaneRowId({ id: "ab12x", paneId: "terminal_0" }),
     })
     expect(other.startsWith(prefix)).toBe(false)
+=======
+// A rules file may target one matcher BY NAME, so the name vocabulary is a wire
+// contract and lives in `@pid/shared`. The compiler already refuses a row named
+// off-vocabulary (`Matcher.name` is the shared union); this closes the other
+// direction — a name in the published list with no row behind it would validate
+// happily in a rules file and then never fire.
+describe("the matcher table against the published name vocabulary", () => {
+  it("has exactly one row per published matcher name", () => {
+    expect(new Set(TERMINAL_MATCHER_ORDER)).toEqual(new Set(TERMINAL_MATCHER_NAMES))
+    expect(TERMINAL_MATCHER_ORDER).toHaveLength(TERMINAL_MATCHER_NAMES.length)
+  })
+
+  // Ordering is priority, and two orderings are load-bearing enough to be
+  // documented in prose on the rows themselves — assert them, so a careless
+  // reshuffle fails here rather than by misclassifying a live pane.
+  it("keeps every blocked row ahead of tool-call-waiting", () => {
+    const waiting = TERMINAL_MATCHER_ORDER.indexOf("tool-call-waiting")
+    for (const blocked of [
+      "permission-prompt",
+      "permission-prompt-reject-option",
+      "workspace-trust-prompt",
+    ] as const) {
+      expect(TERMINAL_MATCHER_ORDER.indexOf(blocked)).toBeLessThan(waiting)
+    }
+  })
+
+  it("keeps prompt-resting last", () => {
+    expect(TERMINAL_MATCHER_ORDER.at(-1)).toBe("prompt-resting")
+>>>>>>> fc9a73b (feat(rules): trigger rules on the screen reading, not just the supervisor's)
   })
 })

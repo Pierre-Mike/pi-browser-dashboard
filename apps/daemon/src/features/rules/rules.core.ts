@@ -1,10 +1,15 @@
 import {
   isNamedKey,
   isSessionStateSlug,
+  isTerminalMatcherName,
+  isTerminalStateSlug,
   type NamedKey,
-  SESSION_STATE_SLUGS,
   type SessionStateSlug,
   STALE_ACTIVE_MS,
+  TERMINAL_MATCHER_NAMES,
+  TERMINAL_STATE_SLUGS,
+  type TerminalMatcherName,
+  type TerminalStateSlug,
 } from "@pid/shared"
 // Pure schema, validation and decision logic for state-change automation
 // rules (<claudeConfigDir>/pid-dashboard/rules.json). No I/O — reading the
@@ -28,43 +33,54 @@ import {
 //     per-session ceiling on actions across every rule combined
 //     (CEILING_MAX_ACTIONS_PER_SESSION per CEILING_WINDOW_MS). A trip is
 //     reported as a first-class `Suppressed` outcome, not silence.
+//
+// TWO READINGS, TWO TRIGGER SOURCES. A session has an independent supervisor
+// reading (`state.json`, republished as `session.state`) and screen reading (the
+// classifier's verdict on the pane itself, republished as `terminal.state`), and
+// they disagree in exactly the cases automation is for: a permission prompt
+// nobody answers, a folder-trust dialog, a pane that went quiet while
+// `state.json` still claims `working`. `POST /sessions/:id/wait` already lets an
+// agent pick its reading with `via`; a rule picks its reading by which key its
+// `when` sets — `state` (supervisor) or `screen` (classifier). Every safety
+// property above applies identically to both: the same file-wide `enabled`, the
+// same per-rule `confirm` for `keys`, and the same cooldown/ceiling history,
+// which is keyed by (rule, short) and therefore counts a supervisor firing
+// against a screen rule's budget for the same session, and vice versa.
 
 import { Either } from "effect"
 
-// --- Mirrored vocabulary -----------------------------------------------------
+// --- Borrowed vocabulary -----------------------------------------------------
 //
-// Mirrors `KNOWN_STATES` (sessions.core.ts), `NAMED_KEYS`
-// (sessions-keys.core.ts), the `harness` field (sessions.core.ts's
-// `SessionState.harness`) and `STALE_ACTIVE_MS` (sessions-explain.core.ts) as
-// LITERAL copies rather than imports: this file lives in `features/rules/`,
-// and `bun run axiom-debt`'s cross-slice-import counter fails the build on
-// any NEW violation of "a slice may only import another slice's *published*
-// door, never its internals" — sessions.core / sessions-keys.core /
-// sessions-explain.core are internals, not a door. `fleet.core.ts` and
-// `apps/cli/src/agent/agent.core.ts` hit the identical constraint and keep
-// the same kind of literal copy — see those files' own comments for the
-// precedent. Kept honest by scripts/mirrored-constants.test.ts, which
-// imports the real values and asserts these copies still match.
-// The state vocabulary is a published contract in `@pid/shared`, importable
-// from a pure core at zero cross-slice debt — which is why this file no longer
-// carries a literal copy of it (see the note above).
+// Every vocabulary this file validates against is imported from `@pid/shared`,
+// not copied: the session-state slugs, the named keys, the staleness threshold,
+// and (for screen triggers) the terminal-state slugs and the classifier's matcher
+// names. That is only possible because each of them lives in `shared/`. This file
+// is in `features/rules/`, and `bun run axiom-debt`'s cross-slice-import counter
+// fails the build on any NEW violation of "a slice may only import another
+// slice's *published* door, never its internals" — `sessions.core`,
+// `sessions-keys.core`, `sessions-explain.core` and `terminal-state.core` are
+// internals, not doors. The alternative used to be a literal copy behind a drift
+// guard, and there were five of them in this repo; see AGENTS.md's "Contracts
+// live in `shared/`" axiom for what that cost.
+//
+// Two narrowings below are genuinely this slice's own decisions rather than
+// borrowed vocabulary, which is why they are declared here: which states a rule
+// may trigger on, and the two-valued spelling of `harness`.
 
-// Not exported — nothing outside this file needs the predicate itself, only
-// the `SessionStateSlug` type it narrows to (which rules.io.ts does import).
-
-// The subset of states a rule's `when.state` may target. `working` is
+// The subset of session states a rule's `when.state` may target. `working` is
 // excluded — a session actively working needs no automation reacting to it —
 // and so is `stopped`: that session was already ended deliberately (a human,
-// or `pid stop`), so nothing should react to it on its own. Not exported —
-// see `SESSION_STATE_SLUGS`'s comment above.
+// or `pid stop`), so nothing should react to it on its own. (`when.screen` is
+// deliberately NOT narrowed this way — see ScreenWhen.)
 const RULE_TRIGGER_STATES = ["blocked", "needs_input", "done", "failed", "idle", "unknown"] as const
 export type RuleTriggerState = (typeof RULE_TRIGGER_STATES)[number]
 
 const isRuleTriggerState = (s: string): s is RuleTriggerState =>
   (RULE_TRIGGER_STATES as readonly string[]).includes(s)
 
-// Mirrors sessions.core.ts's `SessionState.harness?: "pi"` (absent = claude).
-// Not exported — see `SESSION_STATE_SLUGS`'s comment above.
+// The two-valued form of sessions.core.ts's `SessionState.harness?: "pi"`
+// (absent = claude): a rule author writes `claude` explicitly rather than
+// expressing "the claude case" as an absent field.
 const HARNESS_VALUES = ["claude", "pi"] as const
 export type Harness = (typeof HARNESS_VALUES)[number]
 
@@ -74,9 +90,10 @@ const ACTIVE_STATES: ReadonlySet<SessionStateSlug> = new Set(["working", "blocke
 
 // Same verdict sessions-explain.core.ts's `computeStale` produces, recomputed
 // here from data rules.io.ts pulls off the SSE bus payload itself (this
-// slice cannot import that core's version — see the mirrored-vocabulary note
-// above). `updatedAtAgeMs` is resolved by the shell (rules.io.ts), same
-// contract as `ageMs` below.
+// slice cannot import that core's version — see the borrowed-vocabulary note
+// above; the THRESHOLD it compares against is shared, only this two-line
+// comparison is restated). `updatedAtAgeMs` is resolved by the shell
+// (rules.io.ts), same contract as `ageMs` below.
 export const computeStale = ({
   state,
   updatedAtAgeMs,
@@ -124,7 +141,8 @@ export const CEILING_MAX_ACTIONS_PER_SESSION = 5
 
 // --- Schema ----------------------------------------------------------------
 
-export type RuleWhen = {
+export type SupervisorWhen = {
+  readonly source: "supervisor"
   readonly state: RuleTriggerState
   // Present: a dwell condition ("state held for at least forMs"). Absent: a
   // transition condition ("just entered state").
@@ -132,6 +150,33 @@ export type RuleWhen = {
   readonly harness: Harness | undefined
   readonly stale: boolean | undefined
 }
+
+export type ScreenWhen = {
+  readonly source: "screen"
+  // Every slug the classifier can report is a legal trigger, `working`
+  // included — deliberately NOT narrowed the way RULE_TRIGGER_STATES is. "The
+  // screen has read working for four hours" is a stuck-loop condition no
+  // supervisor reading can express (state.json is not rewritten during a long
+  // turn, so even `stale` misses it), and refusing it here would forbid the one
+  // rule the screen uniquely makes possible.
+  readonly screen: TerminalStateSlug
+  // Which classifier row fired. A `blocked` screen is a tool-permission dialog
+  // OR a folder-trust dialog, and those want different answers, so a rule that
+  // sends keystrokes should almost always name the matcher it means. Absent
+  // means "any matcher for this state".
+  readonly matcher: TerminalMatcherName | undefined
+  // Same two readings as SupervisorWhen.forMs, measured against the screen's
+  // own dwell: present = "has read this for at least forMs", absent = "just
+  // started reading this".
+  readonly forMs: number | undefined
+}
+
+// `source` is DERIVED, not authored: a rules file sets `when.state` or
+// `when.screen` and the parser tags which one it saw. It is part of the parsed
+// shape (so `GET /rules` shows a reader which reading each rule watches) and the
+// discriminant `evaluate` / `evaluateScreen` filter on, so neither evaluator can
+// read a screen observation through a supervisor rule.
+export type RuleWhen = SupervisorWhen | ScreenWhen
 
 export type NotifyAction = {
   readonly action: "notify"
@@ -239,21 +284,111 @@ const validateWhenStale = ({ raw, label }: WhenCtx): readonly RuleError[] => {
     : [ruleErr({ rule: label, message: "when.stale must be a boolean" })]
 }
 
-const validateWhen = ({ raw, label }: WhenCtx): readonly RuleError[] => [
+const validateWhenScreenState = ({ raw, label }: WhenCtx): readonly RuleError[] =>
+  isTerminalStateSlug(raw.screen)
+    ? []
+    : [
+        ruleErr({
+          rule: label,
+          message: `when.screen must be one of: ${TERMINAL_STATE_SLUGS.join(", ")}`,
+        }),
+      ]
+
+const validateWhenMatcher = ({ raw, label }: WhenCtx): readonly RuleError[] => {
+  if (raw.matcher === undefined) return []
+  if (!isTerminalMatcherName(raw.matcher)) {
+    return [
+      ruleErr({
+        rule: label,
+        message: `when.matcher must be one of: ${TERMINAL_MATCHER_NAMES.join(", ")}`,
+      }),
+    ]
+  }
+  // `unknown` IS "no matcher fired", so the pair describes a screen that cannot
+  // exist. Rejecting it at parse time beats a rule that quietly never fires.
+  return raw.screen === "unknown"
+    ? [
+        ruleErr({
+          rule: label,
+          message:
+            'when.matcher cannot be combined with when.screen "unknown" — an unclassified screen has no matcher',
+        }),
+      ]
+    : []
+}
+
+// A field that belongs to the OTHER source is an error, never a silent no-op:
+// an author who writes `harness` on a screen rule believes the rule is narrower
+// than it is, and would only find out by watching it fire on the wrong session.
+const wrongSourceFields = ({
+  raw,
+  label,
+  fields,
+  belongsTo,
+}: WhenCtx & {
+  readonly fields: ReadonlyArray<string>
+  readonly belongsTo: "supervisor" | "screen"
+}): readonly RuleError[] =>
+  fields
+    .filter((field) => raw[field] !== undefined)
+    .map((field) =>
+      ruleErr({
+        rule: label,
+        message: `when.${field} applies to a ${belongsTo} trigger only`,
+      }),
+    )
+
+const validateSupervisorWhen = ({ raw, label }: WhenCtx): readonly RuleError[] => [
   ...validateWhenState({ raw, label }),
   ...validateWhenForMs({ raw, label }),
   ...validateWhenHarness({ raw, label }),
   ...validateWhenStale({ raw, label }),
+  ...wrongSourceFields({ raw, label, fields: ["matcher"], belongsTo: "screen" }),
 ]
+
+// `harness` and `stale` are supervisor-only by nature, not by omission:
+// `harness` comes off a `session.state` payload the screen path never sees, and
+// `stale` is a verdict about how long ago state.json was written — the screen
+// classification is itself the better answer to that question.
+const validateScreenWhen = ({ raw, label }: WhenCtx): readonly RuleError[] => [
+  ...validateWhenScreenState({ raw, label }),
+  ...validateWhenMatcher({ raw, label }),
+  ...validateWhenForMs({ raw, label }),
+  ...wrongSourceFields({ raw, label, fields: ["harness", "stale"], belongsTo: "supervisor" }),
+]
+
+const validateWhen = ({ raw, label }: WhenCtx): readonly RuleError[] => {
+  const hasState = raw.state !== undefined
+  const hasScreen = raw.screen !== undefined
+  if (hasState === hasScreen) {
+    return [
+      ruleErr({
+        rule: label,
+        message:
+          "when must set exactly one of state (the supervisor's reading) or screen (the classifier's reading)",
+      }),
+    ]
+  }
+  return hasScreen ? validateScreenWhen({ raw, label }) : validateSupervisorWhen({ raw, label })
+}
 
 // Safe only once validateWhen (above) has already confirmed every field's
 // shape — mirrors fleet.core.ts's buildStep.
-const buildWhen = (raw: Record<string, unknown>): RuleWhen => ({
-  state: raw.state as RuleTriggerState,
-  forMs: raw.forMs as number | undefined,
-  harness: raw.harness as Harness | undefined,
-  stale: raw.stale as boolean | undefined,
-})
+const buildWhen = (raw: Record<string, unknown>): RuleWhen =>
+  raw.screen === undefined
+    ? {
+        source: "supervisor",
+        state: raw.state as RuleTriggerState,
+        forMs: raw.forMs as number | undefined,
+        harness: raw.harness as Harness | undefined,
+        stale: raw.stale as boolean | undefined,
+      }
+    : {
+        source: "screen",
+        screen: raw.screen as TerminalStateSlug,
+        matcher: raw.matcher as TerminalMatcherName | undefined,
+        forMs: raw.forMs as number | undefined,
+      }
 
 // --- `do` validation -------------------------------------------------------
 
@@ -529,6 +664,35 @@ export const decodeSessionRemovedPayload = (payload: unknown): string | undefine
   return isNonEmptyString(short) ? short : undefined
 }
 
+export type DecodedTerminalState = {
+  // `terminal.state` is keyed by `{ scope, id }`; only `scope: "session"` makes
+  // `id` a session short, which is the only thing a rule can address.
+  readonly short: string
+  readonly state: TerminalStateSlug
+  // Kept as an opaque string rather than narrowed to `TerminalMatcherName`, on
+  // purpose: a matcher name this build does not know does not make the STATE
+  // untrustworthy, so the observation is still worth having — a matcher-scoped
+  // rule simply will not match it, which is the correct outcome. Narrowing here
+  // would instead discard the whole event.
+  readonly matcher: string | undefined
+}
+
+// The screen half of the bus decoding, same discipline as the two decoders above
+// (`undefined` on anything unexpected, never a cast, never a throw). The payload
+// is the record `terminal.routes.ts`'s single writer `publishTerminalState`
+// publishes: `{ scope, id, state, matcher?, evidence?, at }`. `evidence` — a line
+// of raw screen text — is deliberately dropped here: no rule condition reads it,
+// and not carrying it into the engine's retained per-session view is one less
+// place terminal contents can leak out of.
+export const decodeTerminalStatePayload = (payload: unknown): DecodedTerminalState | undefined => {
+  if (!isPlainObject(payload)) return undefined
+  const { scope, id, state, matcher } = payload
+  if (scope !== "session") return undefined
+  if (!isNonEmptyString(id)) return undefined
+  if (!isTerminalStateSlug(state)) return undefined
+  return { short: id, state, matcher: isNonEmptyString(matcher) ? matcher : undefined }
+}
+
 // --- Session-view bookkeeping (pure) -----------------------------------------
 //
 // rules.io.ts keeps one SessionView per short, updated on every decoded
@@ -577,6 +741,63 @@ export const applyStateEvent = ({
       harness,
       stateEnteredAt: transitioned ? now : (existing?.stateEnteredAt ?? now),
       updatedAtMs,
+    },
+    prior,
+    transitioned,
+  }
+}
+
+// The screen equivalent, kept in its own map by rules.io.ts rather than folded
+// into SessionView. Two reasons, both about honesty: a `terminal.state` event
+// carries no supervisor state or harness, so merging would mean inventing one for
+// a pane whose session has never published a `session.state`; and the two
+// readings have independent dwell anchors — a pane can go quiet while state.json
+// keeps claiming `working`, which is the whole condition screen rules exist for.
+export type ScreenView = {
+  readonly short: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+  readonly stateEnteredAt: number
+}
+
+export type ApplyScreenEventResult = {
+  readonly view: ScreenView
+  readonly prior: TerminalStateSlug | undefined
+  readonly transitioned: boolean
+}
+
+// Mirrors applyStateEvent. Note what a same-state observation does and does not
+// change: the matcher is always the newest evidence, so it is taken every time,
+// while `stateEnteredAt` only moves on a real transition.
+//
+// A known, deliberate limit of that: the poller publishes only on a STATE change
+// (`decideTransition` in terminal-state.core.ts — a matcher swap inside one state
+// is not a transition, and gating it otherwise would mean an SSE event per
+// spinner frame). So if a pane's matcher changes while its state does not, this
+// engine keeps the matcher it last SAW. For `blocked` — the state matcher-scoped
+// rules are actually written against — that means a rule keys on whichever dialog
+// first blocked the pane, which is also the dialog a human would answer first.
+export const applyScreenEvent = ({
+  existing,
+  short,
+  state,
+  matcher,
+  now,
+}: {
+  readonly existing: ScreenView | undefined
+  readonly short: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+  readonly now: number
+}): ApplyScreenEventResult => {
+  const prior = existing?.state
+  const transitioned = prior !== state
+  return {
+    view: {
+      short,
+      state,
+      matcher,
+      stateEnteredAt: transitioned ? now : (existing?.stateEnteredAt ?? now),
     },
     prior,
     transitioned,
@@ -636,13 +857,26 @@ export type EvaluateInput = {
   readonly history: ReadonlyArray<FiringRecord>
 }
 
+// Shared by both sources: `forMs` present is a dwell condition, absent is a
+// transition condition. Callers pass `prior === current` on a periodic sweep so a
+// transition-only rule cannot re-fire on every tick.
+const timingMatches = ({
+  forMs,
+  dwellMs,
+  entered,
+}: {
+  readonly forMs: number | undefined
+  readonly dwellMs: number
+  readonly entered: boolean
+}): boolean => (forMs !== undefined ? dwellMs >= forMs : entered)
+
 const whenMatches = ({
   when,
   session,
   prior,
   dwellMs,
 }: {
-  readonly when: RuleWhen
+  readonly when: SupervisorWhen
   readonly session: SessionSnapshot
   readonly prior: SessionStateSlug | undefined
   readonly dwellMs: number
@@ -650,7 +884,28 @@ const whenMatches = ({
   if (session.state !== when.state) return false
   if (when.harness !== undefined && when.harness !== session.harness) return false
   if (when.stale !== undefined && when.stale !== session.stale) return false
-  return when.forMs !== undefined ? dwellMs >= when.forMs : prior !== session.state
+  return timingMatches({ forMs: when.forMs, dwellMs, entered: prior !== session.state })
+}
+
+// The matcher comparison is what makes `permission-prompt` and
+// `workspace-trust-prompt` different rules. It also means a matcher-scoped rule
+// can never match an `unknown` screen: that classification carries no matcher, so
+// there is no evidence to act on — the state may well still be blocked, and the
+// rule still declines. That asymmetry is the point, not an oversight.
+const screenWhenMatches = ({
+  when,
+  screen,
+  prior,
+  dwellMs,
+}: {
+  readonly when: ScreenWhen
+  readonly screen: ScreenSnapshot
+  readonly prior: TerminalStateSlug | undefined
+  readonly dwellMs: number
+}): boolean => {
+  if (screen.state !== when.screen) return false
+  if (when.matcher !== undefined && when.matcher !== screen.matcher) return false
+  return timingMatches({ forMs: when.forMs, dwellMs, entered: prior !== screen.state })
 }
 
 const lastFiredAt = ({
@@ -699,35 +954,39 @@ const suppressionFor = ({
   return undefined
 }
 
-const evaluateRule = ({
+// The half both sources share once matching is settled: a matched rule is either
+// Fired or Suppressed-with-a-reason, and nothing else. Keeping this source-blind
+// is what makes "every safety property applies identically to a screen rule" a
+// structural fact rather than a promise — there is only one place that decides.
+const outcomeFor = ({
   rule,
-  session,
-  prior,
-  dwellMs,
+  short,
+  matched,
   now,
   history,
 }: {
   readonly rule: Rule
-  readonly session: SessionSnapshot
-  readonly prior: SessionStateSlug | undefined
-  readonly dwellMs: number
+  readonly short: string
+  readonly matched: boolean
   readonly now: number
   readonly history: ReadonlyArray<FiringRecord>
 }): RuleOutcome | undefined => {
-  if (!whenMatches({ when: rule.when, session, prior, dwellMs })) return undefined
-  const reason = suppressionFor({ rule, short: session.short, now, history })
+  if (!matched) return undefined
+  const reason = suppressionFor({ rule, short, now, history })
   if (reason !== undefined) {
-    return { _tag: "Suppressed", rule: rule.name, short: session.short, action: rule.do, reason }
+    return { _tag: "Suppressed", rule: rule.name, short, action: rule.do, reason }
   }
-  return { _tag: "Fired", rule: rule.name, short: session.short, action: rule.do }
+  return { _tag: "Fired", rule: rule.name, short, action: rule.do }
 }
 
-// One session against every rule in the file. Only rules whose `when`
-// actually matched appear in the result — a rule that matches nothing is not
-// an error and produces no entry (see this file's header). rules.io.ts calls
-// this once per session per bus event (a real transition) and once per
-// session per tick (dwell sweep, with `prior` set to `session.state` so a
-// transition-only rule cannot re-fire on every tick).
+// One session's SUPERVISOR reading against every rule in the file. Screen rules
+// are skipped by their `source` tag — a screen rule's condition is not a claim
+// about `session.state` and must not be tested against one. Only rules whose
+// `when` actually matched appear in the result: a rule that matches nothing is
+// not an error and produces no entry (see this file's header). rules.io.ts calls
+// this once per session per bus event (a real transition) and once per session
+// per tick (dwell sweep, with `prior` set to `session.state` so a transition-only
+// rule cannot re-fire on every tick).
 export const evaluate = ({
   rules,
   session,
@@ -737,6 +996,48 @@ export const evaluate = ({
   history,
 }: EvaluateInput): ReadonlyArray<RuleOutcome> =>
   rules.rules.flatMap((rule) => {
-    const outcome = evaluateRule({ rule, session, prior, dwellMs, now, history })
+    const matched =
+      rule.when.source === "supervisor" && whenMatches({ when: rule.when, session, prior, dwellMs })
+    const outcome = outcomeFor({ rule, short: session.short, matched, now, history })
+    return outcome === undefined ? [] : [outcome]
+  })
+
+export type ScreenSnapshot = {
+  readonly short: string
+  readonly state: TerminalStateSlug
+  readonly matcher: string | undefined
+}
+
+export type EvaluateScreenInput = {
+  readonly rules: RulesFile
+  readonly screen: ScreenSnapshot
+  // The screen state immediately before this evaluation — `undefined` for a pane
+  // this engine has never classified, which counts as "just started reading
+  // this". Pass `screen.state` on a dwell sweep, same contract as EvaluateInput.
+  readonly prior: TerminalStateSlug | undefined
+  readonly dwellMs: number
+  readonly now: number
+  // The SAME history `evaluate` reads. Deliberately not a separate screen
+  // history: the cooldown is per (rule, short) and the ceiling is per short, so a
+  // supervisor rule that already fired for this session spends the budget a
+  // screen rule would otherwise have.
+  readonly history: ReadonlyArray<FiringRecord>
+}
+
+// One session's SCREEN reading against every rule in the file — the mirror of
+// `evaluate`, sharing its suppression path wholesale.
+export const evaluateScreen = ({
+  rules,
+  screen,
+  prior,
+  dwellMs,
+  now,
+  history,
+}: EvaluateScreenInput): ReadonlyArray<RuleOutcome> =>
+  rules.rules.flatMap((rule) => {
+    const matched =
+      rule.when.source === "screen" &&
+      screenWhenMatches({ when: rule.when, screen, prior, dwellMs })
+    const outcome = outcomeFor({ rule, short: screen.short, matched, now, history })
     return outcome === undefined ? [] : [outcome]
   })
