@@ -222,9 +222,12 @@ export const ProjectDashboard = ({ project }: Props) => {
   const pidApps = pidAppsQ.data ?? []
 
   const tabs: readonly Tab[] = useMemo(() => {
+    // Activity leads the dock because it is also the default tab (see the
+    // `tab = "sessions"` fallback below): opening a project puts you on the
+    // leftmost tab, so first and default never disagree.
     const base: Tab[] = [
-      { key: "terminal", label: "Terminal" },
       { key: "sessions", label: `Activity${sessions.length ? ` · ${sessions.length}` : ""}` },
+      { key: "terminal", label: "Terminal" },
     ]
     if (project.githubUrl) base.push({ key: "github", label: "GitHub" })
     base.push(

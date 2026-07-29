@@ -44,6 +44,11 @@ test("project dashboard exposes Sessions / GitHub / Terminal / Files tabs", asyn
 
     // Default tab is Activity (sessions) — the session feed is visible, other panels hidden.
     await expect(sessionsTab).toHaveAttribute("data-active", "true")
+    // …and it is the leftmost tab in the dock, so the default is where the eye lands.
+    await expect(page.getByTestId("project-tabs").getByRole("tab").first()).toHaveAttribute(
+      "data-testid",
+      "project-tab-sessions",
+    )
     await waitForCard({ page, short, timeout: 20_000 })
     await expect(cardLocator(page, short)).toBeVisible()
     await expect(page.getByTestId("github-panel")).toBeHidden()
