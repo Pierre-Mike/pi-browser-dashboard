@@ -247,7 +247,15 @@ const readerFor =
   ({ scope, id }) => {
     const state = records[`${scope}:${id}`]
     if (state === undefined) return undefined
-    return { state, matcher: "prompt-resting", evidence: "❯", at: "2026-07-28T00:00:00.000Z" }
+    return {
+      state,
+      matcher: "prompt-resting",
+      evidence: "❯",
+      // Read seconds ago, unchanged for a quarter of an hour — the two facts a
+      // record carries separately.
+      screenReadAt: "2026-07-28T00:15:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
+    }
   }
 
 const buildHarness = ({
@@ -513,15 +521,25 @@ describe("GET /sessions/:id/explain", () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       screenDisagrees: boolean
-      terminal: { state: string; matcher: string; evidence: string; ageMs: number }
+      terminal: {
+        state: string
+        matcher: string
+        evidence: string
+        readAgeMs: number
+        unchangedForMs: number
+      }
       reasons: string[]
     }
     expect(body.screenDisagrees).toBe(true)
     expect(body.terminal.state).toBe("idle")
     expect(body.terminal.matcher).toBe("prompt-resting")
     expect(body.terminal.evidence).toBe("❯")
-    // Age is computed from the record's own `at`, so it must be a real number.
-    expect(typeof body.terminal.ageMs).toBe("number")
+    // Both ages are derived from the record's own two stamps, so both must be
+    // real numbers — and the reading's freshness must not be reported as its
+    // dwell: the stub was read 15 minutes after its classification last changed.
+    expect(typeof body.terminal.readAgeMs).toBe("number")
+    expect(typeof body.terminal.unchangedForMs).toBe("number")
+    expect(body.terminal.unchangedForMs - body.terminal.readAgeMs).toBe(15 * 60_000)
     expect(body.reasons.some((r) => r.toLowerCase().includes("screen"))).toBe(true)
   })
 

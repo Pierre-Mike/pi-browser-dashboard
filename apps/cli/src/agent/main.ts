@@ -137,7 +137,11 @@ the dashboard. That is a different question from a session's roster state
 covers a claude or pi a human started by hand. With no argument it prints
 every terminal; with a <scope>:<id> key (session:ab12, project:my-app,
 global:global, orchestrator:orchestrator) it prints just that one, and exits 6
-if that terminal has no classification yet.
+if that terminal has no classification yet. Each row carries two ages, because
+a reading has two: "for 2h" is how long that terminal has looked like this, and
+"read 7s" is how long ago the daemon last read the pane. A row reading
+"idle  for 2h  read 7s" is current evidence about a pane that has been resting
+all morning — not a two-hour-old guess.
 
 pid pane new opens a pane in a terminal this daemon derived and owns, and
 pid pane close closes one it opened itself. The target is the same
@@ -715,7 +719,10 @@ const toTerminalRow = (e: TerminalStateEntry): TerminalRow => ({
   state: e.state,
   matcher: e.matcher,
   evidence: e.evidence,
-  atMs: e.at === undefined ? undefined : Date.parse(e.at),
+  // Two stamps, two ages: parsed here (the shell) and never conflated in the
+  // core, which prints them as "read <age>" and "for <age>".
+  screenReadAtMs: e.screenReadAt === undefined ? undefined : Date.parse(e.screenReadAt),
+  stateChangedAtMs: e.stateChangedAt === undefined ? undefined : Date.parse(e.stateChangedAt),
 })
 
 // GET /terminal/states answers with a map, so "verbatim" here means the raw

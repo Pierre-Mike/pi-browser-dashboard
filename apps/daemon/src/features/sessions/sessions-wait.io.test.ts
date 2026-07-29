@@ -60,7 +60,8 @@ const readerFor =
       state: record.state,
       matcher: undefined,
       evidence: undefined,
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:15.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     }
   }
 
@@ -111,7 +112,13 @@ const publishTerminal = (data: {
 }): void => {
   sseBus.publish({
     type: "terminal.state",
-    data: { ...data, matcher: "prompt-resting", evidence: "❯", at: new Date().toISOString() },
+    data: {
+      ...data,
+      matcher: "prompt-resting",
+      evidence: "❯",
+      screenReadAt: new Date().toISOString(),
+      stateChangedAt: new Date().toISOString(),
+    },
   })
 }
 

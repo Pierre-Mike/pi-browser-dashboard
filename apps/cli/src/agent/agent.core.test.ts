@@ -1433,7 +1433,8 @@ describe("parseExplainResponse", () => {
       state: "blocked",
       matcher: "permission-prompt",
       evidence: "Do you want to proceed?",
-      ageMs: 1_500,
+      readAgeMs: 1_500,
+      unchangedForMs: 90_000,
     },
     screenDisagrees: false,
     reasons: ["a", "b"],
@@ -1465,7 +1466,8 @@ describe("parseExplainResponse", () => {
       state: "idle",
       matcher: undefined,
       evidence: undefined,
-      ageMs: undefined,
+      readAgeMs: undefined,
+      unchangedForMs: undefined,
     })
   })
 
@@ -1557,7 +1559,8 @@ describe("parseTerminalStatesResponse", () => {
             scope: "global",
             id: "global",
             state: "unknown",
-            at: "2026-01-01T00:00:00.000Z",
+            screenReadAt: "2026-01-01T00:00:30.000Z",
+            stateChangedAt: "2026-01-01T00:00:00.000Z",
           },
           "session:ab12": {
             scope: "session",
@@ -1565,7 +1568,8 @@ describe("parseTerminalStatesResponse", () => {
             state: "idle",
             matcher: "prompt-resting",
             evidence: "❯",
-            at: "2026-01-01T00:00:01.000Z",
+            screenReadAt: "2026-01-01T00:00:31.000Z",
+            stateChangedAt: "2026-01-01T00:00:01.000Z",
           },
         }),
       ),
@@ -1575,14 +1579,16 @@ describe("parseTerminalStatesResponse", () => {
         state: "unknown",
         matcher: undefined,
         evidence: undefined,
-        at: "2026-01-01T00:00:00.000Z",
+        screenReadAt: "2026-01-01T00:00:30.000Z",
+        stateChangedAt: "2026-01-01T00:00:00.000Z",
       },
       {
         key: "session:ab12",
         state: "idle",
         matcher: "prompt-resting",
         evidence: "❯",
-        at: "2026-01-01T00:00:01.000Z",
+        screenReadAt: "2026-01-01T00:00:31.000Z",
+        stateChangedAt: "2026-01-01T00:00:01.000Z",
       },
     ])
   })
@@ -1601,7 +1607,8 @@ describe("parseTerminalStatesResponse", () => {
         state: "unknown",
         matcher: undefined,
         evidence: undefined,
-        at: undefined,
+        screenReadAt: undefined,
+        stateChangedAt: undefined,
       },
     ])
   })
@@ -1613,14 +1620,16 @@ describe("filterTerminalsByKey / exitCodeForTerminalLookup", () => {
     state: "idle" as const,
     matcher: undefined,
     evidence: undefined,
-    at: undefined,
+    screenReadAt: undefined,
+    stateChangedAt: undefined,
   }
   const project = {
     key: "project:pwui",
     state: "working" as const,
     matcher: undefined,
     evidence: undefined,
-    at: undefined,
+    screenReadAt: undefined,
+    stateChangedAt: undefined,
   }
   const entries = [session, project]
 
@@ -1648,7 +1657,7 @@ describe("formatTerminalStates", () => {
     expect(formatTerminalStates({ terminals: [], now: 0 })).toBe("no terminal states")
   })
 
-  it("formats one row with its age, matcher and evidence", () => {
+  it("formats one row with both ages, the matcher and the evidence", () => {
     expect(
       formatTerminalStates({
         terminals: [
@@ -1657,12 +1666,35 @@ describe("formatTerminalStates", () => {
             state: "idle",
             matcher: "prompt-resting",
             evidence: "❯",
-            atMs: undefined,
+            screenReadAtMs: undefined,
+            stateChangedAtMs: undefined,
           },
         ],
         now: 1_000_000,
       }),
-    ).toBe("session:ab12  idle        —  prompt-resting  ❯")
+    ).toBe("session:ab12  idle     for —    read —    prompt-resting  ❯")
+  })
+
+  // The bug this pair of columns exists for: on the live daemon 38 of 51 rows
+  // showed a 105-minute age while the same panes were being dumped every 15s, so
+  // every reader discounted a reading that was current. Both numbers are now on
+  // the row, and neither can be mistaken for the other.
+  it("shows a seconds-old read of a pane that has been resting for hours", () => {
+    expect(
+      formatTerminalStates({
+        terminals: [
+          {
+            key: "session:ab12",
+            state: "idle",
+            matcher: "prompt-resting",
+            evidence: "❯",
+            screenReadAtMs: 10_000_000 - 7_000,
+            stateChangedAtMs: 10_000_000 - 7_200_000,
+          },
+        ],
+        now: 10_000_000,
+      }),
+    ).toBe("session:ab12  idle     for 2h   read 7s   prompt-resting  ❯")
   })
 
   it("aligns columns, truncates long evidence and blanks a missing matcher", () => {
@@ -1674,20 +1706,22 @@ describe("formatTerminalStates", () => {
             state: "unknown",
             matcher: undefined,
             evidence: undefined,
-            atMs: 1_000_000 - 65_000,
+            screenReadAtMs: 1_000_000 - 65_000,
+            stateChangedAtMs: 1_000_000 - 65_000,
           },
           {
             key: "session:ab12",
             state: "working",
             matcher: "thinking-gerund",
             evidence: "x".repeat(60),
-            atMs: 1_000_000 - 5_000,
+            screenReadAtMs: 1_000_000 - 5_000,
+            stateChangedAtMs: 1_000_000 - 5_000,
           },
         ],
         now: 1_000_000,
       }),
     ).toBe(
-      `global:global  unknown    1m  \nsession:ab12   working    5s  thinking-gerund  ${"x".repeat(47)}…`,
+      `global:global  unknown  for 1m   read 1m   \nsession:ab12   working  for 5s   read 5s   thinking-gerund  ${"x".repeat(47)}…`,
     )
   })
 
@@ -1700,12 +1734,13 @@ describe("formatTerminalStates", () => {
             state: "working",
             matcher: "pi-working",
             evidence: undefined,
-            atMs: 0,
+            screenReadAtMs: 0,
+            stateChangedAtMs: 0,
           },
         ],
         now: 0,
       }),
-    ).toBe("project:a  working    0s  pi-working")
+    ).toBe("project:a  working  for 0s   read 0s   pi-working")
   })
 })
 
@@ -2199,13 +2234,14 @@ describe("formatExplain", () => {
           state: "blocked",
           matcher: "permission-prompt",
           evidence: "Do you want to proceed?",
-          ageMs: 1_000,
+          readAgeMs: 1_000,
+          unchangedForMs: 45_000,
         },
         screenDisagrees: false,
         reasons: [],
       }),
     ).toBe(
-      'cd34  blocked\nscreen: blocked  matcher "permission-prompt"  matched "Do you want to proceed?"  1s ago\nsource: state.json\nupdated: 1s ago\nlast event: 1s ago',
+      'cd34  blocked\nscreen: blocked  matcher "permission-prompt"  matched "Do you want to proceed?"  read 1s ago  unchanged 45s\nsource: state.json\nupdated: 1s ago\nlast event: 1s ago',
     )
   })
 
@@ -2226,14 +2262,20 @@ describe("formatExplain", () => {
         state: "idle",
         matcher: "prompt-resting",
         evidence: "❯",
-        ageMs: 3_000,
+        readAgeMs: 3_000,
+        unchangedForMs: 7_200_000,
       },
       screenDisagrees: true,
       reasons: ["State came from state.json, the session's own status file."],
     }).split("\n")
     expect(lines[0]).toBe("ab12  working (stale)")
     expect(lines[1]).toBe('!! screen disagrees: state.json says "working", the screen reads "idle"')
-    expect(lines[2]).toBe('screen: idle  matcher "prompt-resting"  matched "❯"  3s ago')
+    // Both ages, and the freshness first: a reading taken 3s ago off a pane that
+    // has been resting for two hours is current evidence, and the old single
+    // "3s ago"/"2h ago" line could only ever say one of those.
+    expect(lines[2]).toBe(
+      'screen: idle  matcher "prompt-resting"  matched "❯"  read 3s ago  unchanged 2h',
+    )
   })
 
   // `pid explain <pi-short>` reaches this printer now that the daemon answers
@@ -2251,7 +2293,13 @@ describe("formatExplain", () => {
       pidAlive: true,
       stateFilePresent: false,
       stale: false,
-      terminal: { state: "working", matcher: "pi-working", evidence: "⠇ Working...", ageMs: 2_000 },
+      terminal: {
+        state: "working",
+        matcher: "pi-working",
+        evidence: "⠇ Working...",
+        readAgeMs: 2_000,
+        unchangedForMs: 2_000,
+      },
       screenDisagrees: true,
       reasons: ["State came from the daemon's own pi spawn log, not a supervisor state.json: …"],
     }).split("\n")
@@ -2260,7 +2308,9 @@ describe("formatExplain", () => {
       '!! screen disagrees: pi-spawn-log says "done", the screen reads "working"',
     )
     expect(lines[1]).not.toContain("state.json says")
-    expect(lines[2]).toBe('screen: working  matcher "pi-working"  matched "⠇ Working..."  2s ago')
+    expect(lines[2]).toBe(
+      'screen: working  matcher "pi-working"  matched "⠇ Working..."  read 2s ago  unchanged 2s',
+    )
   })
 
   // The whole pi block a human sees, locked end to end: no pid line is omitted,
@@ -2278,16 +2328,22 @@ describe("formatExplain", () => {
         pidAlive: true,
         stateFilePresent: false,
         stale: false,
-        terminal: { state: "unknown", matcher: undefined, evidence: undefined, ageMs: 6_727 },
+        terminal: {
+          state: "unknown",
+          matcher: undefined,
+          evidence: undefined,
+          readAgeMs: 6_727,
+          unchangedForMs: 6_727,
+        },
         screenDisagrees: false,
         reasons: ["one reason"],
       }),
     ).toBe(
-      "fd1ac052  done\nscreen: unknown  6s ago\nsource: pi-spawn-log\nupdated: 6m ago\nlast event: — ago\npid alive: true\n- one reason",
+      "fd1ac052  done\nscreen: unknown  read 6s ago  unchanged 6s\nsource: pi-spawn-log\nupdated: 6m ago\nlast event: — ago\npid alive: true\n- one reason",
     )
   })
 
-  it("drops the matcher, evidence and age from the screen line when absent", () => {
+  it("drops the matcher, evidence and both ages from the screen line when absent", () => {
     expect(
       formatExplain({
         short: "cd34",
@@ -2299,7 +2355,13 @@ describe("formatExplain", () => {
         pidAlive: undefined,
         stateFilePresent: true,
         stale: false,
-        terminal: { state: "unknown", matcher: undefined, evidence: undefined, ageMs: undefined },
+        terminal: {
+          state: "unknown",
+          matcher: undefined,
+          evidence: undefined,
+          readAgeMs: undefined,
+          unchangedForMs: undefined,
+        },
         screenDisagrees: false,
         reasons: [],
       }),

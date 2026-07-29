@@ -4,6 +4,7 @@ import {
   app,
   type ChildBridgeForTest,
   closeChildBridge,
+  markTerminalScreenRead,
   readTerminalState,
   resolveClaudeSession,
   resolvePiSession,
@@ -176,6 +177,26 @@ describe("readTerminalState", () => {
     // pair, so neither can answer for the other.
     expect(readTerminalState({ scope: "session", id: "global" })).toBeUndefined()
     expect(readTerminalState({ scope: "global", id: "global" })).toBeUndefined()
+  })
+})
+
+// The slice's silent writer: a re-read that found the same classification moves
+// `screenReadAt` and nothing else. Both invariants here are about what it must
+// NOT do — the whole reason it is separate from publishTerminalState.
+describe("markTerminalScreenRead", () => {
+  it("puts no event on the SSE bus — ~50 unchanged rows per interval is not news", () => {
+    const busEvents: string[] = []
+    const off = sseBus.subscribe((e) => busEvents.push(e.type))
+    markTerminalScreenRead({ scope: "session", id: "ab12" })
+    off()
+    expect(busEvents).not.toContain("terminal.state")
+  })
+
+  it("invents no row for a terminal nothing has classified", () => {
+    markTerminalScreenRead({ scope: "session", id: "never-classified" })
+    // Still absent: a read with no classification is not a reading, and every
+    // consumer relies on `undefined` meaning "nobody has looked".
+    expect(readTerminalState({ scope: "session", id: "never-classified" })).toBeUndefined()
   })
 })
 

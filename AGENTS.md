@@ -155,7 +155,8 @@ session.state        ← state.json changed; payload = parsed state
 session.created      ← id appeared in roster (derived from roster.changed)
 session.removed      ← id left roster   (derived from roster.changed)
 terminal.state       ← a terminal's classified agent state changed; payload =
-                        { scope, id, state, matcher, evidence, at }
+                        { scope, id, state, matcher, evidence,
+                          screenReadAt, stateChangedAt }
 fleet.run            ← a fleet run or one of its steps changed status; payload =
                         the run summary (see "Fleet recipes" below)
 rules.fired          ← a rule matched (on either reading — session.state or
@@ -479,17 +480,35 @@ components in pi's `dist/`, so anchoring on that hint would swap one wrong answe
 for an unknown number of them. Own change, own captures.
 
 - `GET /terminal/states` — `{ "<scope>:<id>": { scope, id, state, matcher,
-  evidence, at } }` for every terminal classified so far, so a client that
-  connects late can render a chip immediately. `pid terminals` (see
-  "Agent-facing CLI" below) is the same map for an agent, so this classification
-  is not browser-only.
+  evidence, screenReadAt, stateChangedAt } }` for every terminal classified so
+  far, so a client that connects late can render a chip immediately.
+  `pid terminals` (see "Agent-facing CLI" below) is the same map for an agent, so
+  this classification is not browser-only.
+- **Every record carries two timestamps, and they answer different questions.**
+  `screenReadAt` is when that row's screen was last actually read — the freshness
+  of the evidence; `stateChangedAt` is when the classification last changed — the
+  dwell. On a resting pane they are routinely hours apart, and the single `at`
+  they replaced held the CHANGE time while `explain` rendered it as
+  "observed <age> ago": measured live, 38 of 51 rows claimed a 105-minute-old
+  observation while `wait --until-output` matched off a dump of the same panes
+  taken 7s earlier. A reader deciding how much to believe a reading was being
+  handed the one number that could not answer that. Every consumer now names
+  which it means (`readAgeMs` / `unchangedForMs` on explain, `read 7s` / `for 2h`
+  in `pid terminals`).
 - `terminal.state` SSE event — published only on an actual state change (no
   event per keystroke), throttled to at most one classification pass per
   400ms per connection so a fast-redrawing spinner doesn't cost a regex pass
-  per chunk.
+  per chunk. **A re-read that found the same thing publishes nothing**: it moves
+  `screenReadAt` in the map through `markTerminalScreenRead` and stays off the
+  bus, because ~50 identical rows per interval to every connected browser is
+  worse than the staleness it would cure. The cost is explicit: a client that
+  only listens to SSE sees its `screenReadAt` age until the next transition, so
+  anything judging freshness re-reads `GET /terminal/states` (which also kicks a
+  refresh-on-read pass) or `GET /sessions/:id/explain`.
 - Two producers write the same map and the same event. The WS tap above covers
   every terminal a browser is looking at; the **unattended poller** below covers
-  the rest.
+  the rest. Both also stamp `screenReadAt` on an unchanged reading — the tap once
+  per throttle window, the poller once per pass per row.
 - Three consumers read that event: the web chip, `sessions-wait` (`via screen` /
   `untilOutput`), and the rules engine's screen triggers (see "State-change
   rules"). None of them imports this slice — they all decode the bus payload — so
@@ -1707,6 +1726,13 @@ pid [--help] [--url <base>]
   *pane* shows, which is the only way an agent can see a `claude` or `pi` a
   human started by hand. States are the four screen slugs (`working`,
   `blocked`, `idle`, `unknown`), never the 8 session slugs.
+  - Each row prints BOTH of the reading's ages — `for 2h` (how long that
+    terminal has looked like this) and `read 7s` (how long ago the daemon last
+    read the pane) — because a listing that shows only one of them is where this
+    surface last lied: the single age column was the dwell, so 38 of 51 rows
+    looked two hours stale while the poller was dumping those panes every 15s.
+    A row reading `idle  for 2h  read 7s` is current evidence about a pane that
+    has been resting all morning.
   - With no argument it prints every terminal, one row per key. With a
     `<scope>:<id>` key (`session:ab12`, `project:my-app`, `global:global`,
     `orchestrator:orchestrator` — `terminalStateKey` in
@@ -1927,10 +1953,14 @@ Provenance from `state.json` alone can only ever report what the supervisor
 said about itself. The polled screen classification is a second, independent
 observation, and `explain` now reports it alongside:
 
-- `terminal: { state, matcher, evidence, ageMs } | undefined` — the pane's last
-  classification, which rule fired, the exact line it matched, and how long ago
-  it was sampled. `undefined` when the poller has never classified this
-  session's terminal.
+- `terminal: { state, matcher, evidence, readAgeMs, unchangedForMs } | undefined`
+  — the pane's last classification, which rule fired, the exact line it matched,
+  and BOTH of the reading's ages: `readAgeMs` is how long ago the pane was read
+  (how fresh this evidence is), `unchangedForMs` is how long it has been reading
+  this way. `undefined` when the poller has never classified this session's
+  terminal. The reason sentence spells the pair out too — "read 7000ms ago,
+  unchanged for 7200000ms" — because the single "observed <age> ago" it replaced
+  reported the dwell and made current evidence look abandoned.
 - `screenDisagrees: boolean` — whether that reading actually contradicts
   `state`, plus a `reasons[]` sentence naming both slugs and the matcher when
   it does. This is the `4d76edc1` case: `state.json` said `working` for 24

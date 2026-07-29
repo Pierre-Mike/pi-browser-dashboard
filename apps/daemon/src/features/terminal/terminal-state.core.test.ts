@@ -4,6 +4,7 @@ import {
   appendTail,
   classifyTail,
   decideTransition,
+  freshenScreenRead,
   stripAnsi,
   TERMINAL_MATCHER_ORDER,
   terminalPaneKeyPrefix,
@@ -953,6 +954,47 @@ describe("decideTransition", () => {
     expect(decideTransition({ prior: undefined, next: classification("idle") })).toEqual({
       publish: true,
     })
+  })
+})
+
+// The other half of `decideTransition`: what happens to a stored reading when
+// the pane WAS read and said the same thing. Publishing nothing is right; also
+// recording nothing is what made every reader report a two-hour-old observation
+// off a pane that had been dumped seven seconds earlier.
+describe("freshenScreenRead", () => {
+  const record = {
+    scope: "session",
+    id: "ab12",
+    state: "idle" as const,
+    matcher: "prompt-resting",
+    evidence: "❯",
+    screenReadAt: "2026-07-29T10:00:00.000Z",
+    stateChangedAt: "2026-07-29T08:00:00.000Z",
+  }
+
+  it("moves screenReadAt to the new read", () => {
+    expect(freshenScreenRead({ record, readAt: "2026-07-29T10:00:15.000Z" })?.screenReadAt).toBe(
+      "2026-07-29T10:00:15.000Z",
+    )
+  })
+
+  it("leaves stateChangedAt where it was — a re-read is not a change", () => {
+    expect(freshenScreenRead({ record, readAt: "2026-07-29T10:00:15.000Z" })?.stateChangedAt).toBe(
+      "2026-07-29T08:00:00.000Z",
+    )
+  })
+
+  it("carries every other field through untouched", () => {
+    expect(freshenScreenRead({ record, readAt: "2026-07-29T10:00:15.000Z" })).toEqual({
+      ...record,
+      screenReadAt: "2026-07-29T10:00:15.000Z",
+    })
+  })
+
+  it("invents nothing for a terminal nothing has classified", () => {
+    expect(
+      freshenScreenRead({ record: undefined, readAt: "2026-07-29T10:00:15.000Z" }),
+    ).toBeUndefined()
   })
 })
 

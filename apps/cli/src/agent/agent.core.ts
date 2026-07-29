@@ -1870,7 +1870,12 @@ export type ExplainTerminalFacts = {
   readonly state: string
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  readonly ageMs: number | undefined
+  // The reading's two ages, and they are routinely hours apart: `readAgeMs` is
+  // how long ago the daemon last read that pane (how fresh this evidence is) and
+  // `unchangedForMs` is how long it has been reading this way. The single `ageMs`
+  // these replaced was the second one printed as if it were the first.
+  readonly readAgeMs: number | undefined
+  readonly unchangedForMs: number | undefined
 }
 
 export type ExplainSummary = {
@@ -1912,7 +1917,8 @@ const parseExplainTerminal = (
     state: state.right,
     matcher: optionalString(value.matcher),
     evidence: optionalString(value.evidence),
-    ageMs: optionalNumber(value.ageMs),
+    readAgeMs: optionalNumber(value.readAgeMs),
+    unchangedForMs: optionalNumber(value.unchangedForMs),
   })
 }
 
@@ -1969,10 +1975,15 @@ export type TerminalStateEntry = {
   // `unknown` classification (nothing matched, so there is nothing to quote).
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  // Raw ISO string as the daemon stamped it; the core does not read a clock,
-  // so turning it into an age is the shell's job (see TerminalRow below, the
+  // Raw ISO strings as the daemon stamped them; the core does not read a clock,
+  // so turning them into ages is the shell's job (see TerminalRow below, the
   // same split SessionListEntry/SessionRow uses for `createdAt`).
-  readonly at: string | undefined
+  //
+  // `screenReadAt` is when that pane's screen was last read; `stateChangedAt` is
+  // when its classification last changed. A daemon older than these fields sends
+  // neither, which decodes to `undefined` and prints as "—" rather than failing.
+  readonly screenReadAt: string | undefined
+  readonly stateChangedAt: string | undefined
 }
 
 // A slug this CLI doesn't know degrades to `unknown` rather than failing the
@@ -1994,7 +2005,8 @@ const parseTerminalStateItem = ({
         state: normalizeTerminalState(value.state),
         matcher: optionalString(value.matcher),
         evidence: optionalString(value.evidence),
-        at: optionalString(value.at),
+        screenReadAt: optionalString(value.screenReadAt),
+        stateChangedAt: optionalString(value.stateChangedAt),
       }
     : undefined
 
@@ -2998,14 +3010,18 @@ export const formatSessions = ({
   return sessions.map((row) => formatSessionRow({ row, now, shortWidth, stateWidth })).join("\n")
 }
 
-// A terminal row ready for column formatting — `atMs` is the shell's
-// `Date.parse` of the entry's raw ISO `at`, the same split SessionRow uses.
+// A terminal row ready for column formatting — both `*Ms` fields are the shell's
+// `Date.parse` of the entry's raw ISO stamps, the same split SessionRow uses.
 export type TerminalRow = {
   readonly key: string
   readonly state: TerminalStateSlug
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  readonly atMs: number | undefined
+  // When this row's screen was last read, and when its classification last
+  // changed. Printed as two separate ages because they answer different
+  // questions and are routinely hours apart on a resting pane.
+  readonly screenReadAtMs: number | undefined
+  readonly stateChangedAtMs: number | undefined
 }
 
 // The daemon caps evidence at 200 chars; a terminal row is one line, so cap it
@@ -3022,6 +3038,23 @@ const formatTerminalDetail = (row: TerminalRow): string =>
     .filter((part): part is string => part !== undefined)
     .join("  ")
 
+// The two ages of one reading, labelled so a bare pair of numbers can never be
+// read the wrong way round: `for 2h` is how long the terminal has looked like
+// this (it follows the state, and reads as "idle for 2h"), `read 7s` is how long
+// ago the daemon last looked. A row whose read age is seconds while its dwell is
+// hours is the normal, healthy case for an unattended pane — the old single age
+// column printed the dwell alone and made every such row look abandoned.
+const formatTerminalAges = ({
+  row,
+  now,
+}: {
+  readonly row: TerminalRow
+  readonly now: number
+}): ReadonlyArray<string> => [
+  `for ${formatAge(ageMs({ now, sinceMs: row.stateChangedAtMs })).padEnd(3)}`,
+  `read ${formatAge(ageMs({ now, sinceMs: row.screenReadAtMs })).padEnd(3)}`,
+]
+
 const formatTerminalRow = ({
   row,
   now,
@@ -3036,7 +3069,7 @@ const formatTerminalRow = ({
   [
     padEndTo({ text: row.key, width: keyWidth }),
     padEndTo({ text: row.state, width: stateWidth }),
-    formatAge(ageMs({ now, sinceMs: row.atMs })).padStart(4),
+    ...formatTerminalAges({ row, now }),
     formatTerminalDetail(row),
   ].join("  ")
 
@@ -3056,15 +3089,26 @@ export const formatTerminalStates = ({
 }
 
 // The screen's own reading, with the provenance that lets a reader check the
-// claim instead of taking it: which matcher fired, the line it matched, and how
-// old the observation is. Each part is dropped when absent rather than printed
+// claim instead of taking it: which matcher fired, the line it matched, and BOTH
+// of the reading's ages. Each part is dropped when absent rather than printed
 // as "undefined".
+//
+// "read 7s ago" and "unchanged 2h" are printed separately, and never as one
+// "observed <age> ago", because that is the sentence that made a current reading
+// look two hours stale: the age it carried was the dwell.
+const screenAgeParts = (terminal: ExplainTerminalFacts): ReadonlyArray<string | undefined> => [
+  terminal.readAgeMs === undefined ? undefined : `read ${formatAge(terminal.readAgeMs)} ago`,
+  terminal.unchangedForMs === undefined
+    ? undefined
+    : `unchanged ${formatAge(terminal.unchangedForMs)}`,
+]
+
 const screenFactParts = (terminal: ExplainTerminalFacts): ReadonlyArray<string> =>
   [
     terminal.state,
     terminal.matcher === undefined ? undefined : `matcher "${terminal.matcher}"`,
     terminal.evidence === undefined ? undefined : `matched "${terminal.evidence}"`,
-    terminal.ageMs === undefined ? undefined : `${formatAge(terminal.ageMs)} ago`,
+    ...screenAgeParts(terminal),
   ].filter((part): part is string => part !== undefined)
 
 // Unlike the `pid alive` line below, this one is printed even when there is

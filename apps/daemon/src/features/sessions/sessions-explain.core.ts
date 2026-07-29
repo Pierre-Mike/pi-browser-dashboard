@@ -15,7 +15,22 @@ export type ScreenFacts = {
   readonly state: string
   readonly matcher: string | undefined
   readonly evidence: string | undefined
-  readonly atMs: number | undefined // Date.parse of the record's `at`, by the shell
+  // The record's two timestamps, `Date.parse`d by the shell (this file reads no
+  // clock and no date format). They mean different things and both are reported:
+  // `screenReadAtMs` is when the pane was last actually read — the freshness of
+  // the evidence — and `stateChangedAtMs` is when this classification last
+  // changed. See TerminalStateRecord in features/terminal/terminal.routes.ts.
+  readonly screenReadAtMs: number | undefined
+  readonly stateChangedAtMs: number | undefined
+}
+
+// The two facts above turned into durations against `now`, computed once and
+// passed around together so no helper can take one for the other:
+//   - `readAgeMs`      — how long ago the pane was last read (evidence freshness)
+//   - `unchangedForMs` — how long it has been reading this way (dwell)
+type ScreenAges = {
+  readonly readAgeMs: number | undefined
+  readonly unchangedForMs: number | undefined
 }
 
 export type ExplainInput = {
@@ -46,14 +61,21 @@ export type Explanation = {
   readonly pidAlive: boolean | undefined
   readonly stateFilePresent: boolean
   readonly stale: boolean
-  // What the pane itself last showed, and how long ago it was observed.
-  // `undefined` when nothing has classified it.
+  // What the pane itself last showed, with BOTH of its ages — `undefined` when
+  // nothing has classified it.
+  //
+  // `readAgeMs` is how long ago the pane was last read, i.e. how fresh this
+  // evidence is; `unchangedForMs` is how long it has been reading this way. The
+  // single `ageMs` these replaced carried the change time under a name every
+  // reader printed as "observed <age> ago", which understated the reading's own
+  // freshness by hours on a pane resting all morning.
   readonly terminal:
     | {
         readonly state: string
         readonly matcher: string | undefined
         readonly evidence: string | undefined
-        readonly ageMs: number | undefined
+        readonly readAgeMs: number | undefined
+        readonly unchangedForMs: number | undefined
       }
     | undefined
   // Whether that reading actually contradicts `state` — the machine-readable
@@ -274,20 +296,36 @@ const computeScreenDisagrees = ({
   return agrees === undefined ? false : !agrees.includes(state)
 }
 
+// The two ages, spelled so neither can be mistaken for the other. "read" is the
+// freshness of the evidence; "unchanged for" is dwell. The sentence used to carry
+// one number as "observed <age> ago" and that number was the dwell — so a reading
+// taken seconds ago read as two hours stale, in the field a reader leans on
+// hardest when deciding whether to believe the rest.
+const screenAgeParts = ({
+  readAgeMs,
+  unchangedForMs,
+}: {
+  readonly readAgeMs: number | undefined
+  readonly unchangedForMs: number | undefined
+}): ReadonlyArray<string | undefined> => [
+  readAgeMs === undefined ? undefined : `read ${readAgeMs}ms ago`,
+  unchangedForMs === undefined ? undefined : `unchanged for ${unchangedForMs}ms`,
+]
+
 // The parenthetical that lets a human check the claim instead of taking it:
-// which matcher fired and the exact line it matched, plus how old the reading
-// is. Each part is dropped rather than printed as "undefined" when absent.
+// which matcher fired, the exact line it matched, and both ages of the reading.
+// Each part is dropped rather than printed as "undefined" when absent.
 const screenProvenance = ({
   terminal,
-  ageMs,
+  ages,
 }: {
   readonly terminal: ScreenFacts
-  readonly ageMs: number | undefined
+  readonly ages: ScreenAges
 }): string => {
   const parts = [
     terminal.matcher === undefined ? undefined : `matcher "${terminal.matcher}"`,
     terminal.evidence === undefined ? undefined : `matched "${terminal.evidence}"`,
-    ageMs === undefined ? undefined : `observed ${ageMs}ms ago`,
+    ...screenAgeParts(ages),
   ].filter((part): part is string => part !== undefined)
   return parts.length === 0 ? "" : ` (${parts.join(", ")})`
 }
@@ -298,15 +336,15 @@ const screenConflictReason = ({
   disagrees,
   state,
   terminal,
-  ageMs,
+  ages,
 }: {
   readonly disagrees: boolean
   readonly state: SessionStateSlug
   readonly terminal: ScreenFacts | undefined
-  readonly ageMs: number | undefined
+  readonly ages: ScreenAges
 }): string | undefined => {
   if (!disagrees || terminal === undefined) return undefined
-  return `The screen disagrees: state claims "${state}", but the classified terminal reads "${terminal.state}"${screenProvenance({ terminal, ageMs })}. The screen is a direct reading of the pane rather than something the agent reported, so treat "${state}" as unconfirmed.`
+  return `The screen disagrees: state claims "${state}", but the classified terminal reads "${terminal.state}"${screenProvenance({ terminal, ages })}. The screen is a direct reading of the pane rather than something the agent reported, so treat "${state}" as unconfirmed.`
 }
 
 // What the staleness clock is actually reading. A claude session writes
@@ -359,7 +397,7 @@ const buildReasons = ({
   readonly screen: {
     readonly disagrees: boolean
     readonly terminal: ScreenFacts | undefined
-    readonly ageMs: number | undefined
+    readonly ages: ScreenAges
   }
 }): ReadonlyArray<string> => {
   const source = session.source
@@ -383,7 +421,7 @@ const buildReasons = ({
       disagrees: screen.disagrees,
       state: session.state,
       terminal: screen.terminal,
-      ageMs: screen.ageMs,
+      ages: screen.ages,
     }),
     piNoCorroborationReason({ source, terminal: screen.terminal }),
   ]
@@ -403,7 +441,12 @@ export const explainSession = ({
   const updatedAtAgeMs = ageMs({ now, createdAtMs: updatedAtMs })
   const lastEventAgeMs = ageMs({ now, createdAtMs: lastEventAtMs })
   const stale = computeStale({ state: session.state, updatedAtAgeMs })
-  const screenAgeMs = ageMs({ now, createdAtMs: terminal?.atMs })
+  // Both ages, from the record's two stamps. Neither is derivable from the other:
+  // a pane read 7s ago may have been reading the same way for two hours.
+  const ages: ScreenAges = {
+    readAgeMs: ageMs({ now, createdAtMs: terminal?.screenReadAtMs }),
+    unchangedForMs: ageMs({ now, createdAtMs: terminal?.stateChangedAtMs }),
+  }
   const screenDisagrees = computeScreenDisagrees({ state: session.state, terminal })
   return {
     short: session.short,
@@ -422,7 +465,7 @@ export const explainSession = ({
             state: terminal.state,
             matcher: terminal.matcher,
             evidence: terminal.evidence,
-            ageMs: screenAgeMs,
+            ...ages,
           },
     screenDisagrees,
     reasons: buildReasons({
@@ -432,7 +475,7 @@ export const explainSession = ({
       stale,
       updatedAtAgeMs,
       piTranscriptPresent,
-      screen: { disagrees: screenDisagrees, terminal, ageMs: screenAgeMs },
+      screen: { disagrees: screenDisagrees, terminal, ages },
     }),
   }
 }

@@ -22,7 +22,8 @@ describe("terminalStateTitle", () => {
       state: "working",
       matcher: "thinking-gerund",
       evidence: "Burrowing…(3s · ↓4 tokens)",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(title).toBe("thinking-gerund: Burrowing…(3s · ↓4 tokens)")
   })
@@ -33,7 +34,8 @@ describe("terminalStateTitle", () => {
       id: "global",
       state: "idle",
       matcher: "turn-complete",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(title).toBe("turn-complete")
   })
@@ -43,7 +45,8 @@ describe("terminalStateTitle", () => {
       scope: "orchestrator",
       id: "orchestrator",
       state: "unknown",
-      at: "2026-07-28T00:00:00.000Z",
+      screenReadAt: "2026-07-28T00:00:00.000Z",
+      stateChangedAt: "2026-07-28T00:00:00.000Z",
     })
     expect(title).toBe("unknown — no matcher has fired yet")
   })
@@ -60,7 +63,8 @@ describe("terminalStateAddsInfo", () => {
     id: "abc123",
     state,
     matcher: "thinking-gerund",
-    at: "2026-07-29T00:00:00.000Z",
+    screenReadAt: "2026-07-29T00:00:00.000Z",
+    stateChangedAt: "2026-07-29T00:00:00.000Z",
   })
 
   it("is false when the daemon has never classified this terminal", () => {

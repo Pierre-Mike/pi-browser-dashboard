@@ -35,9 +35,12 @@ type Forgotten = {
   readonly keepPaneIds: ReadonlyArray<string>
 }
 
+type Read = { readonly scope: string; readonly id: string }
+
 type Harness = {
   readonly ports: TerminalPollPorts
   readonly published: Published[]
+  readonly reads: Read[]
   readonly noted: ScreenText[]
   readonly dumped: string[]
   readonly paneListed: string[]
@@ -52,6 +55,7 @@ type Harness = {
 
 const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   const published: Published[] = []
+  const reads: Read[] = []
   const noted: ScreenText[] = []
   const dumped: string[] = []
   const paneListed: string[] = []
@@ -87,6 +91,9 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     noteScreen: (screen) => {
       noted.push(screen)
     },
+    noteRead: (input) => {
+      reads.push({ scope: input.scope, id: input.id })
+    },
     forgetPaneStates: (input) => {
       forgotten.push({ scope: input.scope, id: input.id, keepPaneIds: [...input.keepPaneIds] })
     },
@@ -97,6 +104,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   return {
     ports,
     published,
+    reads,
     noted,
     dumped,
     paneListed,
@@ -216,6 +224,41 @@ describe("createTerminalPoller.tick", () => {
     // Second pass: same screen, so nothing published — but still noted.
     expect(h.published).toHaveLength(2)
     expect(h.noted).toHaveLength(4)
+  })
+
+  // The freshness half of the same split. `publish` is gated on a state change
+  // and must stay that way (an SSE event per pass, per row, to every browser
+  // carries no information); the READ itself happened on every pass, and a reader
+  // that cannot see that reported a two-hour-old reading off a pane dumped
+  // seconds earlier.
+  it("records a read for the session row on every pass, changed or not", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    expect(h.reads).toEqual([
+      { scope: "global", id: "global" },
+      { scope: "session", id: "abcd1234" },
+    ])
+    await poller.tick()
+    // Same screen: nothing new published, but both panes were read again.
+    expect(h.published).toHaveLength(2)
+    expect(h.reads).toHaveLength(4)
+  })
+
+  it("records no read for an empty dump — nothing was actually read", async () => {
+    const h = makeHarness({ dumpScreen: async () => "" })
+    await makePoller(h).tick()
+    expect(h.reads).toEqual([])
+  })
+
+  it("records no read for a session whose pane list could not be read", async () => {
+    const h = makeHarness({
+      listPanes: async () => {
+        throw new Error("session died mid-tick")
+      },
+    })
+    await makePoller(h).tick()
+    expect(h.reads).toEqual([])
   })
 
   it("notes the ANSI-stripped text against the same scope and id it publishes", async () => {
@@ -368,6 +411,19 @@ describe("createTerminalPoller.tick over several panes", () => {
     const session = h.noted.filter((n) => n.scope === "session" && n.id === "abcd1234")
     expect(session.map((n) => n.paneId)).toEqual(["terminal_0", "terminal_1"])
     expect(session[1]?.text).toContain("42 passed")
+  })
+
+  // Every row that has its own entry in the map needs its own freshness stamp,
+  // pane rows included — `pid terminals` prints one line per row and each line
+  // has to answer "how old is this reading" for itself.
+  it("records a read for each pane row and for the session row", async () => {
+    const h = twoPaneHarness()
+    await makePoller(h).tick()
+    expect(h.reads.filter((r) => r.scope === "session")).toEqual([
+      { scope: "session", id: "abcd1234#terminal_0" },
+      { scope: "session", id: "abcd1234#terminal_1" },
+      { scope: "session", id: "abcd1234" },
+    ])
   })
 
   // A pane the user closed must not leave a row behind: a stale `blocked` row is

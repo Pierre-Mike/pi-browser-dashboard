@@ -484,6 +484,29 @@ export const decideTransition = (input: {
   publish: input.prior !== input.next.state,
 })
 
+// The freshness half of a stored reading — see TerminalStateRecord in
+// terminal.routes.ts for why a record carries two timestamps and not one.
+export type ScreenReadStamped = { readonly screenReadAt: string }
+
+// Stamp "the screen was read again just now" onto a record whose CLASSIFICATION
+// did not change, leaving every other field — the state, the matcher, the
+// evidence, and `stateChangedAt` — exactly as it was.
+//
+// Two rules, both load-bearing:
+//   - Nothing else moves. A re-read that found the same thing is new evidence
+//     about freshness only; rewriting `stateChangedAt` here would erase how long
+//     the pane has been sitting in this state, which is the other half of what a
+//     reader needs.
+//   - An absent record stays absent (`undefined` in, `undefined` out). "Nothing
+//     has classified this terminal" is a real answer that `readTerminalState`,
+//     `explain` and `pid terminals` all rely on, so a read that found no
+//     classification must not invent a row with no state in it.
+export const freshenScreenRead = <T extends ScreenReadStamped>(input: {
+  readonly record: T | undefined
+  readonly readAt: string
+}): T | undefined =>
+  input.record === undefined ? undefined : { ...input.record, screenReadAt: input.readAt }
+
 // Registry key for GET /terminal/states and the terminal.state SSE payload —
 // centralised so the route and any consumer agree on the same shape.
 export const terminalStateKey = (input: { readonly scope: string; readonly id: string }): string =>

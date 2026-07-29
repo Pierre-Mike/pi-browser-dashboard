@@ -11,7 +11,19 @@ export type TerminalStateEvent = {
   readonly state: TerminalStateSlug
   readonly matcher?: string
   readonly evidence?: string
-  readonly at: string
+  // The record's two ISO stamps (see TerminalStateRecord in the daemon's
+  // terminal.routes.ts). `screenReadAt` is when the daemon last read that pane;
+  // `stateChangedAt` is when this classification last changed. Nothing in the UI
+  // renders either yet — the chip shows the reading, not its age — but they are
+  // part of the payload, and a chip that ever grows a freshness hint must use
+  // `screenReadAt`: `stateChangedAt` on a pane resting since this morning is
+  // hours old while the reading behind it is seconds old.
+  //
+  // Note the SSE stream only carries these on an actual state CHANGE, so a
+  // long-lived tab's cached `screenReadAt` ages until the next transition;
+  // GET /terminal/states (the mount-time read) is the fresh one.
+  readonly screenReadAt: string
+  readonly stateChangedAt: string
 }
 
 // Matches terminalStateKey in the daemon core — the SSE payload and
