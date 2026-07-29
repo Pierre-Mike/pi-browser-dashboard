@@ -130,6 +130,12 @@ done/failed/stopped/needs_input can never be satisfied. --until-output needs
 the daemon's screen poller: with PID_TERMINAL_POLL_MS=0 it exits 8 at once
 rather than waiting for a timeout that would read like "not yet".
 
+A screen wait will not settle itself from a stale reading: if the daemon has not
+read that pane in the last 60s it keeps waiting rather than answering off an old
+record, so a timeout here means "nothing current said so", not "it never will".
+When one times out against a session you expected it to settle on, pid explain
+shows how old the pane's reading actually is.
+
 pid terminals reports what the daemon last read off each terminal's screen —
 working, blocked, idle or unknown — including sessions nobody has opened in
 the dashboard. That is a different question from a session's roster state

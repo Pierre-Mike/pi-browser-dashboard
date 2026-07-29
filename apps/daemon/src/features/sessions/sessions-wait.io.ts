@@ -14,6 +14,8 @@ import {
   decodeTerminalStateEvent,
   evaluateScreenObservation,
   evaluateWaitEvent,
+  type InitialScreenReading,
+  screenLook,
   sessionSlugFromTerminalState,
   type WaitEvent,
   type WaitRequest,
@@ -30,9 +32,15 @@ export type TerminalStateFacts = {
   readonly matcher: string | undefined
   readonly evidence: string | undefined
   // The record's two ISO stamps: when the pane's screen was last read, and when
-  // the classification last changed. A wait reads neither — `decideInitial` asks
-  // only what the screen says — but they are part of the door's shape, and the
-  // same reader serves `GET /sessions/:id/explain`, which reports both.
+  // the classification last changed.
+  //
+  // A wait reads `screenReadAt` and only that one — it is what says how fresh
+  // this reading is, and the initial check refuses to settle a wait from a
+  // reading older than `SCREEN_READING_MAX_AGE_MS`. `stateChangedAt` is dwell,
+  // which says nothing about trustworthiness (a pane resting all morning is read
+  // every pass), so no wait decision may ever be taken on it. It is part of the
+  // door's shape because the same reader serves `GET /sessions/:id/explain`,
+  // which reports both ages.
   readonly screenReadAt: string
   readonly stateChangedAt: string
 }
@@ -64,6 +72,23 @@ export type TerminalScreensPort = {
       readonly text: string
     }) => void,
   ) => () => void
+  // "Take a pass now if the last one is stale." Called once, at the start of any
+  // wait that admits screen evidence, so the reading the initial check judges is
+  // as current as the daemon can cheaply make it — this daemon has lost its whole
+  // timer subsystem on a long uptime before, and a wait that trusted only the
+  // interval would then be judging a reading nothing was refreshing.
+  //
+  // Safe to call per wait because the poller's own `refreshIfStale` is bounded
+  // three ways and this port must keep it that way: it is inert when polling is
+  // disabled, inert when the last pass is younger than the interval, and
+  // overlapping calls share the single in-flight pass. So N concurrent waits cost
+  // at most one pass per interval, not N passes — a wait must never turn into two
+  // `zellij` spawns of its own.
+  //
+  // Fire-and-forget by construction (returns void): the pass lands after this
+  // wait has subscribed, so its result arrives as a `terminal.state` event rather
+  // than by blocking the request on a subprocess.
+  readonly refreshIfStale: () => void
 }
 
 export type WaitOutcome =
@@ -222,18 +247,46 @@ const waitForEvent = ({
     })
   })
 
-// The screen's current reading for one session short, already translated into
-// the session vocabulary — `undefined` when no reader was injected, nothing has
-// classified this terminal yet, or the classification was `unknown`.
-const currentScreenSlug = ({
+// How long ago that reading's pane was actually read, in ms — the impure half of
+// the freshness judgement (`Date.parse` + the clock live here; the ceiling itself
+// is pure, in `isScreenReadingFresh`).
+//
+// `screenReadAt`, never `stateChangedAt`: a pane resting since this morning is
+// re-read every poll pass, so the change time would report it as hours old and
+// throw away a current reading — the exact confusion this pair of stamps was
+// split to end. A stamp that will not parse yields `undefined`, which the core
+// treats as "not fresh".
+const screenReadAgeMs = ({
+  readAt,
+  now,
+}: {
+  readonly readAt: string
+  readonly now: number
+}): number | undefined => {
+  const parsed = Date.parse(readAt)
+  return Number.isNaN(parsed) ? undefined : Math.max(0, now - parsed)
+}
+
+// The screen's stored reading for one session short, translated into the session
+// vocabulary and carrying its own age — `undefined` when no reader was injected,
+// nothing has classified this terminal yet, or the classification was `unknown`.
+//
+// The age travels with the state because `decideInitial` refuses to settle a wait
+// from a reading it cannot date or that is past the ceiling.
+const currentScreenReading = ({
   short,
   readTerminalState,
+  now,
 }: {
   readonly short: string
   readonly readTerminalState: TerminalStateReader | undefined
-}): SessionStateSlug | undefined => {
+  readonly now: number
+}): InitialScreenReading | undefined => {
   const facts = readTerminalState?.({ scope: "session", id: short })
-  return facts ? sessionSlugFromTerminalState(facts.state) : undefined
+  if (!facts) return undefined
+  const state = sessionSlugFromTerminalState(facts.state)
+  if (state === undefined) return undefined
+  return { state, readAgeMs: screenReadAgeMs({ readAt: facts.screenReadAt, now }) }
 }
 
 // An output pattern can only ever be satisfied by a poller pass, so a request
@@ -251,6 +304,14 @@ const screenPollingUnavailable = ({
   return terminalScreens === undefined || !terminalScreens.enabled()
 }
 
+// Does anything about this request depend on the screen? `untilOutput` resolves
+// off poller passes; `via: screen`/`either` may be settled by a classification.
+// Either way the pane wants reading, so a stale poller is worth nudging — and a
+// supervisor-only wait must not nudge it, because it would be paying subprocess
+// budget for evidence it is not allowed to use.
+const requestUsesScreen = (request: WaitRequest): boolean =>
+  request.untilOutput !== undefined || request.via !== "supervisor"
+
 const buildApi = (registry: SessionRegistryApi): SessionWaitApi => ({
   wait: ({ short, request, pinnedSessionId, readTerminalState, terminalScreens }) =>
     Effect.gen(function* () {
@@ -258,11 +319,17 @@ const buildApi = (registry: SessionRegistryApi): SessionWaitApi => ({
       if (screenPollingUnavailable({ request, terminalScreens })) {
         return { _tag: "ScreenPollingDisabled" as const }
       }
+      // Nudge the poller BEFORE reading the stored classification, so the reading
+      // the ceiling judges is the freshest the daemon can cheaply offer. Bounded
+      // by the port's own contract (inert when disabled or recently passed,
+      // coalesced when concurrent), and fire-and-forget: the pass's own result
+      // reaches this wait as a `terminal.state` event after it subscribes below.
+      if (requestUsesScreen(request)) terminalScreens?.refreshIfStale()
       // getOne() also drives the registry's refresh-on-read pass — needed so
       // a wait started right after a state change observes it immediately
       // rather than depending on the (occasionally timer-starved) poll loop.
       const current = yield* Effect.promise(() => registry.getOne(short))
-      const terminal = currentScreenSlug({ short, readTerminalState })
+      const terminal = currentScreenReading({ short, readTerminalState, now: Date.now() })
       const initial = decideInitial({ request, current, terminal })
       if (initial._tag === "NotFound") return { _tag: "NotFound" as const }
       if (initial._tag === "Satisfied") {
@@ -274,9 +341,44 @@ const buildApi = (registry: SessionRegistryApi): SessionWaitApi => ({
         }
       }
       const target: WaitTarget = { short, sessionId: pinnedSessionId ?? current?.sessionId }
-      return yield* waitForEvent({ target, request, startedAt, terminalScreens })
+      const outcome = yield* waitForEvent({ target, request, startedAt, terminalScreens })
+      if (outcome._tag !== "Timeout") return outcome
+      // One last look at the stored reading before giving up. A poller pass that
+      // re-read the pane and found the same classification freshened
+      // `screenReadAt` without publishing anything — by design — so a wait that
+      // declined a stale reading and then watched that reading be CONFIRMED had
+      // nothing to hear. See `screenLook` for why this is screen-only.
+      return finalScreenLook({ request, short, readTerminalState, startedAt }) ?? outcome
     }),
 })
+
+// The last look, as an outcome or `undefined` to keep the timeout. Reads the map
+// once — no I/O, no extra subprocess — and reports the elapsed time honestly:
+// `waitedMs` is how long the caller actually waited, not zero, because this
+// reading was confirmed at the end of the wait rather than at its start.
+const finalScreenLook = ({
+  request,
+  short,
+  readTerminalState,
+  startedAt,
+}: {
+  readonly request: WaitRequest
+  readonly short: string
+  readonly readTerminalState: TerminalStateReader | undefined
+  readonly startedAt: number
+}): WaitOutcome | undefined => {
+  const decision = screenLook({
+    request,
+    terminal: currentScreenReading({ short, readTerminalState, now: Date.now() }),
+  })
+  if (decision._tag !== "Satisfied") return undefined
+  return {
+    _tag: "Satisfied",
+    state: decision.state,
+    via: decision.via,
+    waitedMs: Date.now() - startedAt,
+  }
+}
 
 export const SessionWaitIoLive: Layer.Layer<SessionWaitIo, never, SessionRegistry> = Layer.effect(
   SessionWaitIo,

@@ -239,13 +239,61 @@ prompt — no supervisor-sourced wait could ever have noticed, which is why
 - `decideInitial` consults the **current** screen too, not just later
   transitions: a pane already `blocked` when the wait starts satisfies
   immediately rather than hanging for the full timeout.
+- **...and only when that stored reading is fresh** (`SCREEN_READING_MAX_AGE_MS`,
+  60s — four default poll intervals). The initial check reads `screenReadAt`, the
+  time the pane was last *read*, never `stateChangedAt`: a pane resting all
+  morning is re-read every pass, so judging it on dwell would discard current
+  evidence. Past the ceiling — or with a `screenReadAt` that will not parse, which
+  counts as not fresh — the reading is dropped and the wait stays `Pending`.
+  - Why this matters: before the ceiling, a daemon with `PID_TERMINAL_POLL_MS=0`
+    (or one whose timers had died, which has happened here) would answer
+    `reached "idle" via screen` from a record nobody had refreshed since boot. An
+    agent that blocks on the screen and is handed a two-hour-old answer is worse
+    off than one that timed out, **because it proceeds**.
+  - Stale is not refused, it is unsatisfied: the wait keeps listening until its
+    timeout, because with a poller armed a fresh reading may be one pass away.
+    So a `timeout` from a screen wait means "nothing current said so", never "it
+    never will". There is deliberately no new outcome tag for it — the diagnosis
+    lives in `pid explain`, which prints both ages of the reading.
+  - **One last look before giving up.** On timeout — and only on timeout, never
+    over an `OccupantChanged`/`Removed`/matched outcome — the shell re-reads the
+    stored classification and applies the same `screenLook` the initial check
+    used. This closes a gap the ceiling opens by itself: a poller pass that
+    re-reads a pane and finds the SAME classification publishes nothing (that is
+    `markTerminalScreenRead`, and it is silent on purpose), so a wait that
+    declined a stale reading and then watched that very reading be *confirmed*
+    would have nothing to hear on the bus and would time out on a screen that had
+    just been read and did match. The last look is one map read, no I/O, and it
+    reports the real elapsed `waitedMs` rather than 0 — "confirmed at the end of
+    the wait" is a different claim from "already true when it started". It is
+    screen-only for the same reason the ceiling exists: `current` (the
+    supervisor's state) is a snapshot from when the wait STARTED, so satisfying
+    from it at the end would answer off data as old as the wait itself.
+  - A wait that admits screen evidence (`via` screen/either, or `untilOutput`)
+    first calls the poller's `refreshIfStale` through the `terminalScreens` port,
+    so the reading it judges is as current as the daemon can cheaply make it. That
+    call is bounded by the poller: inert when polling is disabled, inert when the
+    last pass is younger than the interval, and overlapping calls share the single
+    in-flight pass — N concurrent waits cost at most one pass, never N. A
+    supervisor-only wait never makes the call at all.
+  - A classification arriving on the bus **during** the wait carries no age and no
+    ceiling: it was published the instant the screen changed, so it is fresh by
+    construction. Only the stored reading is bounded.
+  - `via: "screen"` with polling off is still NOT refused up front, unlike
+    `untilOutput`'s 409 `screen_polling_disabled`, and the asymmetry is
+    deliberate: `untilOutput` resolves off poller passes and nothing else
+    (`noteScreen` has exactly one caller), whereas a `terminal.state` event has a
+    second, independent producer — the WS classifier tap, which keeps any pane a
+    browser is attached to current whatever the poller is doing. Refusing would
+    claim impossibility that does not hold.
 - `session.removed` settles `Removed` under every `via` — a deleted session is
   not an observation about state, it is the end of the thing observed.
 - **How the screen reaches this slice.** The terminal slice publishes one door,
   `readTerminalState({ scope, id })` over its own `terminalStates` map;
   `api.ts` passes it as an injected port into `buildSessionsApp` and into the
-  fleet run ports. `sessions-wait.core.ts` only ever sees plain data (a
-  `SessionStateSlug | undefined`), and neither the core nor
+  fleet run ports. `sessions-wait.core.ts` only ever sees plain data (an
+  `InitialScreenReading | undefined` — the slug plus how long ago the pane was
+  read, so the ceiling above is a pure decision), and neither the core nor
   `sessions-wait.io.ts` imports the terminal slice. It is a port rather than a
   `Context.Tag` for a concrete reason: `terminal.routes.ts` imports
   `platform/runtime.ts`, so a Layer dependency would close an import cycle
@@ -1677,7 +1725,12 @@ pid [--help] [--url <base>]
     agent reported idle" and a caller acting on the answer needs to know which
     it got. Only `working`/`blocked`/`idle` have screen evidence at all, so a
     `--via screen` wait naming only `done`/`failed`/`stopped`/`needs_input`
-    times out by construction.
+    times out by construction. A `--via screen`/`either` wait will not settle
+    itself from a screen reading older than 60s (`SCREEN_READING_MAX_AGE_MS`); it
+    keeps waiting instead, so a timeout means "nothing current said so", not "it
+    never will". Reach for `pid explain <short>`, whose `read`/`unchanged` ages
+    show exactly how old the pane's reading is, when a screen wait times out
+    against a session you expected it to settle on.
   - `--until-output <text> [--anchor anywhere|line-start|line-end|line]` — the
     screen-text condition, a **literal** substring capped at 200 characters
     (never a regex — see "`untilOutput`" above for the ReDoS argument). Both

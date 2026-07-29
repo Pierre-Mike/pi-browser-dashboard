@@ -160,6 +160,13 @@ export const terminalPoller = terminalRoute.terminalPoller
 const terminalScreens = {
   enabled: () => terminalRoute.terminalPoller.isEnabled(),
   subscribe: terminalRoute.subscribeTerminalScreens,
+  // The same refresh-on-read hook GET /terminal/states uses, for the same
+  // reason: a wait that is about to judge how fresh a stored reading is should
+  // first give the poller the chance to take a pass it has fallen behind on.
+  // Bounded by the poller itself — inert when disabled or recently passed, and
+  // overlapping calls share one in-flight pass — so this cannot turn a burst of
+  // waits into a burst of `zellij` spawns.
+  refreshIfStale: () => terminalRoute.terminalPoller.refreshIfStale(),
 }
 
 // Minimal content-type map for extension static assets (iframe tier).
