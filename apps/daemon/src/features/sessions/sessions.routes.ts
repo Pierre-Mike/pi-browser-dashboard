@@ -19,7 +19,12 @@ import { SessionRegistry } from "./sessions.io"
 import { explainSession, type ScreenFacts } from "./sessions-explain.core"
 import { type KeyStep, parseKeysRequest } from "./sessions-keys.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
-import { SessionWaitIo, type TerminalStateReader, type WaitOutcome } from "./sessions-wait.io"
+import {
+  SessionWaitIo,
+  type TerminalScreensPort,
+  type TerminalStateReader,
+  type WaitOutcome,
+} from "./sessions-wait.io"
 
 const MAX_TRANSCRIPT_LINES = 500
 
@@ -134,6 +139,12 @@ const waitOutcomeBody = ({ outcome, short }: { outcome: WaitOutcome; short: stri
         via: outcome.via,
         waitedMs: outcome.waitedMs,
       }
+    // A pattern match reports no `state` — there is none to report — so a
+    // caller distinguishes the two successes by which field is present.
+    case "OutputMatched":
+      return { ok: true, short, matched: outcome.matched, waitedMs: outcome.waitedMs }
+    case "ScreenPollingDisabled":
+      return { ok: false, reason: "screen_polling_disabled", short }
     case "Timeout":
       return { ok: false, reason: "timeout", short, waitedMs: outcome.waitedMs }
     case "OccupantChanged":
@@ -159,12 +170,14 @@ const sendAndMaybeWait = async ({
   keys,
   waitRequest,
   readTerminalState,
+  terminalScreens,
 }: {
   runtime: SessionsRouteRuntime
   id: string
   keys: string
   waitRequest: WaitRequest | undefined
   readTerminalState: TerminalStateReader | undefined
+  terminalScreens: TerminalScreensPort | undefined
 }): Promise<SendOutcome> => {
   // Capture the occupant's sessionId *before* sending, so a requested wait is
   // pinned to whoever held the session at request time — not whoever (if
@@ -180,7 +193,13 @@ const sendAndMaybeWait = async ({
   if (!waitRequest) return { _tag: "Sent", wait: undefined }
   const outcome = await runtime.runPromise(
     Effect.flatMap(SessionWaitIo, (svc) =>
-      svc.wait({ short: id, request: waitRequest, pinnedSessionId, readTerminalState }),
+      svc.wait({
+        short: id,
+        request: waitRequest,
+        pinnedSessionId,
+        readTerminalState,
+        terminalScreens,
+      }),
     ),
   )
   return { _tag: "Sent", wait: outcome }
@@ -218,9 +237,16 @@ const sessionFsRoute = async (
 export type SessionsRouteDeps = {
   readonly runtime: SessionsRouteRuntime
   readonly readTerminalState?: TerminalStateReader | undefined
+  // The screen-text channel an `untilOutput` wait resolves off. Absent means no
+  // channel is wired, which such a request is refused for.
+  readonly terminalScreens?: TerminalScreensPort | undefined
 }
 
-export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDeps) =>
+export const buildSessionsApp = ({
+  runtime,
+  readTerminalState,
+  terminalScreens,
+}: SessionsRouteDeps) =>
   new Hono()
     .get("/", async (c) => {
       const list = await runtime.runPromise(
@@ -454,6 +480,7 @@ export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDe
         keys: body.keys as string,
         waitRequest,
         readTerminalState,
+        terminalScreens,
       })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
@@ -493,7 +520,14 @@ export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDe
         waitRequest = parsedWait.right
       }
       const { keys, resolved } = parsedKeys.right
-      const outcome = await sendAndMaybeWait({ runtime, id, keys, waitRequest, readTerminalState })
+      const outcome = await sendAndMaybeWait({
+        runtime,
+        id,
+        keys,
+        waitRequest,
+        readTerminalState,
+        terminalScreens,
+      })
       if (outcome._tag === "SendFailed") {
         return c.json({ error: "send_failed", short: id }, 500)
       }
@@ -510,10 +544,24 @@ export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDe
       }
       const outcome = await runtime.runPromise(
         Effect.flatMap(SessionWaitIo, (svc) =>
-          svc.wait({ short: id, request: parsed.right, readTerminalState }),
+          svc.wait({ short: id, request: parsed.right, readTerminalState, terminalScreens }),
         ),
       )
       if (outcome._tag === "NotFound") return c.json({ error: "not_found", short: id }, 404)
+      // 409, not 400: the request is well-formed and would be valid on a daemon
+      // with screen polling armed. The fault is this daemon's configuration, so
+      // it gets its own status rather than being confused with a bad pattern.
+      if (outcome._tag === "ScreenPollingDisabled") {
+        return c.json(
+          {
+            error: "screen_polling_disabled",
+            short: id,
+            message:
+              "untilOutput needs the terminal screen poller, which is disabled on this daemon (set PID_TERMINAL_POLL_MS to a positive number of milliseconds)",
+          },
+          409,
+        )
+      }
       return c.json(waitOutcomeBody({ outcome, short: id }))
     })
 
