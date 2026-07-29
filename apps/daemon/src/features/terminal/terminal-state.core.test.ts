@@ -4,6 +4,8 @@ import {
   classifyTail,
   decideTransition,
   stripAnsi,
+  terminalPaneKeyPrefix,
+  terminalPaneRowId,
   terminalStateKey,
 } from "./terminal-state.core"
 
@@ -838,5 +840,45 @@ describe("decideTransition", () => {
 describe("terminalStateKey", () => {
   it("joins scope and id with a colon", () => {
     expect(terminalStateKey({ scope: "session", id: "ab12cd34" })).toBe("session:ab12cd34")
+  })
+})
+
+// A pane is addressed as a terminal in its own right: the same `<scope>:<id>`
+// key with the zellij pane id appended. That is what lets one session's second
+// pane have its own entry in GET /terminal/states without a second key format,
+// a second map or a second SSE event type.
+describe("terminalPaneRowId / terminalPaneKeyPrefix", () => {
+  it("appends the pane id to the terminal's own id", () => {
+    expect(terminalPaneRowId({ id: "ab12cd34", paneId: "terminal_1" })).toBe("ab12cd34#terminal_1")
+  })
+
+  it("composes with terminalStateKey into the pane's registry key", () => {
+    const key = terminalStateKey({
+      scope: "session",
+      id: terminalPaneRowId({ id: "ab12cd34", paneId: "terminal_1" }),
+    })
+    expect(key).toBe("session:ab12cd34#terminal_1")
+    expect(key.startsWith(terminalPaneKeyPrefix({ scope: "session", id: "ab12cd34" }))).toBe(true)
+  })
+
+  // The prefix is how the poller finds the rows belonging to one terminal in
+  // order to drop the ones whose pane is gone. It must not match the
+  // session-level row itself — that row is written by two producers (the WS tap
+  // as well as the poller) and pruning it would blank a live chip.
+  it("does not match the session-level row it derives from", () => {
+    const prefix = terminalPaneKeyPrefix({ scope: "session", id: "ab12cd34" })
+    expect(prefix).toBe("session:ab12cd34#")
+    expect(terminalStateKey({ scope: "session", id: "ab12cd34" }).startsWith(prefix)).toBe(false)
+  })
+
+  // `session:ab12` must not be a prefix of the pane rows of `session:ab12x`,
+  // or one terminal's prune would delete another's rows.
+  it("cannot match a longer id that merely starts with the same characters", () => {
+    const prefix = terminalPaneKeyPrefix({ scope: "session", id: "ab12" })
+    const other = terminalStateKey({
+      scope: "session",
+      id: terminalPaneRowId({ id: "ab12x", paneId: "terminal_0" }),
+    })
+    expect(other.startsWith(prefix)).toBe(false)
   })
 })

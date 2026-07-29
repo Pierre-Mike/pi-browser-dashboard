@@ -478,8 +478,45 @@ was needed.
   attached, and one whose client attached and then went away. The dump is live,
   not frozen at detach time. That is why the poller spends a `zellij action
   list-panes` first, keeps only `TYPE=terminal` rows (the daemon's layouts wrap
-  every content pane in tab-bar/status-bar *plugin* panes) and dumps the
-  lowest-indexed one.
+  every content pane in tab-bar/status-bar *plugin* panes) and dumps each one by
+  id.
+- **Every pane, not only the first.** A zellij session can hold more than one
+  terminal pane, and an agent running in the second one used to be invisible to
+  chips, `wait --via screen`, `explain`, `pid terminals` and rules all at once —
+  every screen-derived feature reported on one pane and called it the session.
+  Each pane now gets its own row in the same registry, keyed
+  `<scope>:<id>#<paneId>` (`terminalPaneRowId`), beside the unchanged
+  session-level `<scope>:<id>` row that every one of those features addresses.
+  Pane rows exist only while a session has MORE THAN ONE terminal pane — for the
+  ordinary one-content-pane session a pane row would just duplicate the session
+  row — and the poller drops a pane's row as soon as `list-panes` stops reporting
+  it (`stalePaneKeys`, which by construction can never touch the session-level row
+  or another terminal's). Rows are dropped server-side with no SSE event: no
+  client renders pane rows, since the browser looks its chips up by exact
+  `<scope>:<id>`.
+- **When panes disagree, the session row reports the most attention-worthy pane:
+  `blocked` > `working` > `idle` > `unknown`.** The two candidate answers fail
+  asymmetrically. A session-level `working` that hides one pane sitting at an
+  unanswered prompt hides a stall NOTHING will clear on its own: the wait built to
+  notice it never fires, the rule built to answer it never runs, and the cost is
+  unbounded time. A session-level `blocked` that hides two generating panes costs
+  one wasted look — the next pass corrects it the moment the prompt is answered,
+  and the working panes have their own rows in the same map. `working` outranks
+  `idle` one step down for the same reason: `idle` is what
+  `wait --until idle --via screen` settles on, so a resting shell beside a
+  generating agent would report a session as finished mid-run. `unknown` ranks
+  last because no matcher firing is the absence of evidence, not a state.
+  `foldPaneReadings` returns the winning pane's reading VERBATIM — matcher,
+  matched line and `paneId` — so a session row is a citation of a real screen,
+  never a synthesized state no pane was in. Ties go to the lowest pane index, so
+  an unchanging screen yields an unchanging row.
+- **The session row now says which pane it read.** `paneId` on the record (and on
+  the `terminal.state` SSE payload) is the fold's provenance; it is `undefined`
+  only from the WS classifier tap, which sees one byte stream for the whole
+  session and no pane ids at all. A screen observation (`wait --until-output`)
+  keeps the SESSION's id whichever pane it came off — a pattern on any pane is a
+  pattern on that session's screen, which is the point — and carries `paneId`
+  alongside.
 - **A dump is a snapshot, not a chunk**, so it *replaces* the rolling tail rather
   than appending to it. Appending would keep every earlier screen inside the
   window, and since `classifyTail` is first-match-wins over the whole tail, one
@@ -504,10 +541,26 @@ was needed.
   `platform/config.io.ts`, the config funnel; default **15000**). `0` disables
   the poller entirely — no timer, and the refresh-on-read hook goes inert too.
   It is deliberately lazier than the attached path's 400ms throttle because each
-  polled session costs TWO subprocess spawns per pass (`list-panes` +
-  `dump-screen`), where the attached path costs a regex over bytes it already
-  has. Passes are sequential, never fanned out, and one session dying mid-pass
-  does not abort the rest.
+  polled session costs a `list-panes` spawn plus one `dump-screen` spawn PER
+  PANE, where the attached path costs a regex over bytes it already has. Two
+  constants bound that, and both are in the pure core with their arithmetic:
+  `MAX_PANES_PER_SESSION` (4) stops one tiled session consuming a pass, and
+  `MAX_DUMPS_PER_PASS` (64) bounds the whole pass by a constant instead of by how
+  many sessions the user happens to have open (39 live ones on the box this was
+  measured on). A `dump-screen` spawn measures ~38ms wall, so a worst-case pass is
+  64 dumps ≈ 2.4s plus one `list-panes` per session — under a fifth of the default
+  interval — and with the ordinary one-pane session those 64 dumps cover 64
+  terminals. Passes are sequential, never fanned out, and coalesced (one in flight
+  at a time), so a pass that did overrun would cost freshness rather than pile
+  subprocesses up. The budget skips WHOLE sessions, never half of one: a fold over
+  a partial pane set could report `working` for a session whose unread pane is
+  blocked, which is exactly what the ordering exists to prevent. And because a
+  budget that always truncated the same tail would make those terminals
+  permanently invisible — the very blind spot per-pane polling removes — each pass
+  starts where the last one stopped (`rotateTargets` / `advancePassOffset`),
+  turning truncation into bounded staleness. One session dying mid-pass does not
+  abort the rest, and one unreadable pane costs only its own contribution to the
+  fold.
 - **Not just the interval.** This daemon has lost every `setInterval` in the
   process on a long uptime while its sockets stayed alive (the session registry
   refreshes on read for exactly that reason), so `GET /terminal/states` also
@@ -520,10 +573,14 @@ was needed.
   a user's live sessions — the same construct-then-start split the rules engine
   uses.
 - **Still not covered**: a polled `pi`/`claude` whose zellij session the daemon
-  cannot name (started by hand outside the dashboard's naming scheme); panes
-  beyond the first terminal pane in a session; and a session drill-in exposed
-  under a `daemonShort` alias, whose polled record is keyed by the canonical
-  roster short, so the chip appears under that id rather than the alias.
+  cannot name (started by hand outside the dashboard's naming scheme); panes past
+  `MAX_PANES_PER_SESSION` in one session; a session drill-in exposed under a
+  `daemonShort` alias, whose polled record is keyed by the canonical roster short,
+  so the chip appears under that id rather than the alias; and pane rows of a
+  session a browser is attached to — the WS tap owns the session row while the
+  bridge lives and cannot attribute bytes to a pane, so the pane rows stop being
+  refreshed (their `at` shows it) until the bridge closes and the next pass prunes
+  or refreshes them.
 - Evidence for every VERIFIED row is one of three kinds, named in the row's own
   comment: bytes captured from a real pty run, a live `dump-screen` of a real
   session, or a literal read straight out of the shipped CLI — `strings -a` on

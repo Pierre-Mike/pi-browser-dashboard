@@ -26,6 +26,11 @@ import {
   WAIT_VIA_VALUES,
 } from "@pid/shared"
 import { app } from "../api"
+// The terminal slice mints the pane key this doc quotes. Imported here rather
+// than retyped for the same reason every other vocabulary in this file is read
+// from its owner: a hand-copied key shape is exactly the drift this test exists
+// to catch.
+import { terminalPaneRowId } from "../features/terminal/terminal-state.core"
 import { buildDiscovery } from "./agent-discovery.core"
 import { AGENT_SKILL_MD } from "./agent-skill"
 
@@ -171,6 +176,28 @@ const exitCodeRows = (section: string): ReadonlyMap<number, string> =>
       )
       .map((row) => [row.code, row.meaning] as const),
   )
+
+// The doc tells an agent it can address a single pane as `<scope>:<id>#<paneId>`,
+// which is only true for as long as that is the key the terminal slice actually
+// mints. Checked against the minting function rather than against a hand-copied
+// string, the same policy as every other claim in this file.
+describe("agent-skill.md: pane rows", () => {
+  it("spells the pane key exactly the way the terminal slice mints it", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "### Which observation settles it",
+    })
+    expect(section).toContain(`session:${terminalPaneRowId({ id: "ab12", paneId: "terminal_1" })}`)
+  })
+
+  it("does not promise pane rows for every session — they exist only past one pane", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "### Which observation settles it",
+    })
+    expect(section).toContain("while a session has more than")
+  })
+})
 
 describe("agent-skill.md: pid exit codes", () => {
   it("matches AGENTS.md's Exit codes table for every code", () => {

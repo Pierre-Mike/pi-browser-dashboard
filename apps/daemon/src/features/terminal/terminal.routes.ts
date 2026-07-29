@@ -34,6 +34,7 @@ import {
 } from "./terminal.core"
 import {
   type PollCandidate,
+  stalePaneKeys,
   type TerminalScope,
   zellijDumpScreenArgv,
   zellijListPanesArgv,
@@ -112,6 +113,12 @@ export type TerminalStateRecord = {
   readonly matcher: string | undefined
   readonly evidence: string | undefined
   readonly at: string
+  // Which zellij pane the reading came off, when the producer knows. The poller
+  // always does — on a pane row (where `id` carries it too) and on a
+  // session-level row, where it names the pane whose screen the session's state
+  // was folded from. The WS classifier tap does not: it sees one byte stream for
+  // the whole session and no pane ids at all.
+  readonly paneId: string | undefined
 }
 
 // Last known classification per terminal, keyed by terminalStateKey(scope,
@@ -122,6 +129,13 @@ export type TerminalStateRecord = {
 // transition.
 const terminalStates = new Map<string, TerminalStateRecord>()
 
+// A zellij session's second pane is a terminal of its own, and it gets its own
+// entry here: `<scope>:<id>#<paneId>` (see terminalPaneKeyPrefix). The
+// session-level `<scope>:<id>` entry stays exactly what it always was — every
+// wait, rule, chip and `pid terminals` call addresses it — and now says which
+// pane it was read from. Pane rows exist only while a session has more than one
+// terminal pane, and the poller drops them as panes close.
+//
 // This slice's published door onto that map: one terminal's last known
 // classification, or `undefined` when nothing has classified it. Read-only by
 // construction, and the only way another slice is allowed to learn what the
@@ -145,6 +159,10 @@ type TerminalScreen = {
   readonly scope: string
   readonly id: string
   readonly text: string
+  // The pane it came off. `id` is the SESSION's id even for a second pane's
+  // screen: an output wait matches a pattern against a roster short, and text on
+  // any pane of that session is text on that session's screen.
+  readonly paneId?: string | undefined
 }
 
 type ScreenObserver = (screen: TerminalScreen) => void
@@ -213,10 +231,35 @@ const publishTerminalState = (input: {
   readonly state: TerminalStateSlug
   readonly matcher: string | undefined
   readonly evidence: string | undefined
+  readonly paneId?: string | undefined
 }): void => {
-  const record: TerminalStateRecord = { ...input, at: new Date().toISOString() }
+  const record: TerminalStateRecord = {
+    ...input,
+    paneId: input.paneId,
+    at: new Date().toISOString(),
+  }
   terminalStates.set(terminalStateKey({ scope: input.scope, id: input.id }), record)
   sseBus.publish({ type: "terminal.state", data: record })
+}
+
+// Drop the rows of panes that are gone, so a pane the user closed cannot leave a
+// stale `blocked` behind in `GET /terminal/states` forever. Called by the poller
+// with the pane ids that should still have a row — empty for a session that is
+// back to one pane, which has no pane rows at all. `stalePaneKeys` is what
+// guarantees this can never touch the session-level row (two producers write
+// that one) or another terminal's rows.
+//
+// Server-side only: no SSE event is published for a removal, because no client
+// renders pane rows — the browser looks its chips up by exact `<scope>:<id>` key,
+// so a pane row it never reads going stale in its cache is invisible.
+const forgetPaneStates = (input: {
+  readonly scope: TerminalScope
+  readonly id: string
+  readonly keepPaneIds: ReadonlyArray<string>
+}): void => {
+  for (const key of stalePaneKeys({ keys: [...terminalStates.keys()], ...input })) {
+    terminalStates.delete(key)
+  }
 }
 
 // Trailing throttle for classification, distinct from the byte-forward path:
@@ -888,6 +931,7 @@ export const terminalPoller = createTerminalPoller({
     priorState: ({ key }) => terminalStates.get(key)?.state,
     publish: publishTerminalState,
     noteScreen: noteTerminalScreen,
+    forgetPaneStates,
     now: () => Date.now(),
   },
   tailMaxChars: TERMINAL_STATE_TAIL_MAX_CHARS,
