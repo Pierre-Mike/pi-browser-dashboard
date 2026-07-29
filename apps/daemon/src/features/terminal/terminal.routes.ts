@@ -105,7 +105,7 @@ const bridges = new WeakMap<object, Bridge>()
 // name doubles as the id; see idForScope below) come from terminal-poll.core.ts,
 // so the WS bridge and the unattended poller share one vocabulary.
 
-type TerminalStateRecord = {
+export type TerminalStateRecord = {
   readonly scope: TerminalScope
   readonly id: string
   readonly state: TerminalStateSlug
@@ -121,6 +121,21 @@ type TerminalStateRecord = {
 // that connects late render a chip immediately instead of waiting for the next
 // transition.
 const terminalStates = new Map<string, TerminalStateRecord>()
+
+// This slice's published door onto that map: one terminal's last known
+// classification, or `undefined` when nothing has classified it. Read-only by
+// construction, and the only way another slice is allowed to learn what the
+// screen says — the sessions slice's waits and `GET /sessions/:id/explain`
+// receive this function as a port injected by api.ts rather than importing
+// this module, so the dependency stays a door and not a back-channel.
+//
+// `scope` is typed `string`, not `TerminalScope`, deliberately: a caller in
+// another slice must not have to import this slice's vocabulary to ask a
+// question, and an unrecognized scope simply finds nothing.
+export const readTerminalState = (input: {
+  readonly scope: string
+  readonly id: string
+}): TerminalStateRecord | undefined => terminalStates.get(terminalStateKey(input))
 
 // Zellij session names with a live WS bridge right now, refcounted: React
 // StrictMode double-mounts TerminalView and the daemon keeps the previous child

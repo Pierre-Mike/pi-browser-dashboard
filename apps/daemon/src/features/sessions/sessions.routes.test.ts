@@ -9,7 +9,12 @@ import { FilesError, FilesService, type FilesServiceApi, type WorktreeDiff } fro
 import { SessionRegistry, type SessionRegistryApi } from "./sessions.io"
 import { buildSessionsApp } from "./sessions.routes"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
-import { type SessionWaitApi, SessionWaitIo, type WaitOutcome } from "./sessions-wait.io"
+import {
+  type SessionWaitApi,
+  SessionWaitIo,
+  type TerminalStateReader,
+  type WaitOutcome,
+} from "./sessions-wait.io"
 
 type SessionState = Awaited<ReturnType<SessionRegistryApi["snapshot"]>>[number]
 
@@ -157,7 +162,11 @@ type WaitSpy = {
     readonly short: string
     readonly until: readonly string[]
     readonly timeoutMs: number
+    readonly via: string
     readonly pinnedSessionId: string | undefined
+    // Whether the route handed the wait service a screen-state reader at all —
+    // the injected port api.ts wires to the terminal slice's door.
+    readonly gotReader: boolean
     readonly sawSendFirst: boolean
   }>
   outcome: WaitOutcome
@@ -165,7 +174,7 @@ type WaitSpy = {
 
 const newWaitSpy = (): WaitSpy => ({
   calls: [],
-  outcome: { _tag: "Satisfied", state: "done", waitedMs: 0 },
+  outcome: { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 0 },
 })
 
 const buildWaitLayer = ({
@@ -176,12 +185,14 @@ const buildWaitLayer = ({
   shellSpy: ShellSpy
 }): Layer.Layer<SessionWaitIo> => {
   const api: SessionWaitApi = {
-    wait: ({ short, request, pinnedSessionId }) => {
+    wait: ({ short, request, pinnedSessionId, readTerminalState }) => {
       spy.calls.push({
         short,
         until: request.until,
         timeoutMs: request.timeoutMs,
+        via: request.via,
         pinnedSessionId,
+        gotReader: readTerminalState !== undefined,
         sawSendFirst: shellSpy.calls.some((c) => c.op === "send"),
       })
       return Effect.succeed(spy.outcome)
@@ -190,6 +201,18 @@ const buildWaitLayer = ({
   return Layer.succeed(SessionWaitIo, api)
 }
 
+// Stands in for the door terminal.routes.ts publishes and api.ts injects: the
+// polled screen classification for one terminal, keyed as GET /terminal/states
+// keys it. `undefined` (the default) is a daemon where nothing has been
+// classified yet.
+const readerFor =
+  (records: Record<string, string>): TerminalStateReader =>
+  ({ scope, id }) => {
+    const state = records[`${scope}:${id}`]
+    if (state === undefined) return undefined
+    return { state, matcher: "prompt-resting", evidence: "❯", at: "2026-07-28T00:00:00.000Z" }
+  }
+
 const buildHarness = ({
   sessions,
   spy,
@@ -197,6 +220,7 @@ const buildHarness = ({
   piStub = newPiStub(),
   waitStub = newWaitSpy(),
   diagnosticsOverrides,
+  readTerminalState,
 }: {
   sessions: Map<string, SessionState>
   spy: ShellSpy
@@ -204,6 +228,7 @@ const buildHarness = ({
   piStub?: PiStub
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
+  readTerminalState?: TerminalStateReader
 }) => {
   const layer = Layer.mergeAll(
     buildRegistryLayer(sessions, diagnosticsOverrides),
@@ -213,7 +238,7 @@ const buildHarness = ({
     buildWaitLayer({ spy: waitStub, shellSpy: spy }),
   )
   const runtime = ManagedRuntime.make(layer)
-  const app = buildSessionsApp(runtime)
+  const app = buildSessionsApp({ runtime, readTerminalState })
   return { app, runtime, filesStub, piStub, waitStub, dispose: () => runtime.dispose() }
 }
 
@@ -229,6 +254,7 @@ const requestOn = async ({
   piStub,
   waitStub,
   diagnosticsOverrides,
+  readTerminalState,
 }: {
   path: string
   init?: RequestInit
@@ -238,6 +264,7 @@ const requestOn = async ({
   piStub?: PiStub
   waitStub?: WaitSpy
   diagnosticsOverrides?: Map<string, DiagnosticsStub>
+  readTerminalState?: TerminalStateReader
 }): Promise<Response> => {
   const { app, dispose } = buildHarness({
     sessions,
@@ -246,6 +273,7 @@ const requestOn = async ({
     piStub,
     waitStub,
     diagnosticsOverrides,
+    readTerminalState,
   })
   try {
     return await app.request(path, init)
@@ -966,7 +994,7 @@ describe("POST /sessions/:id/keys", () => {
   it("sends the resolved keys, then embeds the wait outcome pinned to the pre-send occupant", async () => {
     const spy = newSpy()
     const waitStub = newWaitSpy()
-    waitStub.outcome = { _tag: "Satisfied", state: "done", waitedMs: 12 }
+    waitStub.outcome = { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 12 }
     const sessions = oneSession({ sessionId: "sess-1" })
     const { app, dispose } = buildHarness({ sessions, spy, waitStub })
     try {
@@ -985,7 +1013,7 @@ describe("POST /sessions/:id/keys", () => {
           short: "ab12",
           resolved: ["down", "enter"],
           bytes: 4,
-          wait: { ok: true, short: "ab12", state: "done", waitedMs: 12 },
+          wait: { ok: true, short: "ab12", state: "done", via: "supervisor", waitedMs: 12 },
         },
       })
     } finally {
@@ -1063,11 +1091,11 @@ describe("POST /sessions/:id/wait", () => {
   it("returns 200 with the Satisfied payload", async () => {
     const res = await waitRes({
       id: "ab12",
-      outcome: { _tag: "Satisfied", state: "done", waitedMs: 42 },
+      outcome: { _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 42 },
     })
     await expectJson(res, {
       status: 200,
-      body: { ok: true, short: "ab12", state: "done", waitedMs: 42 },
+      body: { ok: true, short: "ab12", state: "done", via: "supervisor", waitedMs: 42 },
     })
   })
 
@@ -1082,6 +1110,93 @@ describe("POST /sessions/:id/wait", () => {
   it("returns 200 with the Removed payload", async () => {
     const res = await waitRes({ id: "ab12", outcome: { _tag: "Removed" } })
     await expectJson(res, { status: 200, body: { ok: false, reason: "removed", short: "ab12" } })
+  })
+
+  it("defaults via to supervisor when the body omits it", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done"] }),
+      },
+      waitStub,
+    })
+    expect(waitStub.calls[0]?.via).toBe("supervisor")
+  })
+
+  it.each(["screen", "either"] as const)("forwards via %s to the wait service", async (via) => {
+    const waitStub = newWaitSpy()
+    const res = await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via }),
+      },
+      waitStub,
+    })
+    expect(res.status).toBe(200)
+    expect(waitStub.calls[0]).toMatchObject({ short: "ab12", until: ["idle"], via })
+  })
+
+  it("rejects an unknown via with 400 bad_request", async () => {
+    const waitStub = newWaitSpy()
+    const res = await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["done"], via: "telepathy" }),
+      },
+      waitStub,
+    })
+    expect(res.status).toBe(400)
+    expect(waitStub.calls).toEqual([])
+  })
+
+  // The route is where the terminal slice's door reaches the wait service.
+  // Without this the screen sources would only ever see mid-wait transitions,
+  // never the classification that was already on screen when the wait started.
+  it("hands the injected screen-state reader to the wait service", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via: "screen" }),
+      },
+      waitStub,
+      readTerminalState: readerFor({ "session:ab12": "idle" }),
+    })
+    expect(waitStub.calls[0]?.gotReader).toBe(true)
+  })
+
+  it("passes no reader when the composition root injected none", async () => {
+    const waitStub = newWaitSpy()
+    await requestOn({
+      path: "/ab12/wait",
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ until: ["idle"], via: "screen" }),
+      },
+      waitStub,
+    })
+    expect(waitStub.calls[0]?.gotReader).toBe(false)
+  })
+
+  it("reports a screen-satisfied wait with via: screen", async () => {
+    const res = await waitRes({
+      id: "ab12",
+      outcome: { _tag: "Satisfied", state: "blocked", via: "screen", waitedMs: 7 },
+    })
+    await expectJson(res, {
+      status: 200,
+      body: { ok: true, short: "ab12", state: "blocked", via: "screen", waitedMs: 7 },
+    })
   })
 })
 

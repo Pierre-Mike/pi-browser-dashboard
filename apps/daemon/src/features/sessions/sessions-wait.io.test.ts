@@ -5,7 +5,12 @@ import type { SessionState } from "./sessions.core"
 import { SessionRegistry } from "./sessions.io"
 import { makeSessionState as makeSession } from "./sessions.testFixtures"
 import type { WaitRequest } from "./sessions-wait.core"
-import { SessionWaitIo, SessionWaitIoLive, type WaitOutcome } from "./sessions-wait.io"
+import {
+  SessionWaitIo,
+  SessionWaitIoLive,
+  type TerminalStateReader,
+  type WaitOutcome,
+} from "./sessions-wait.io"
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -36,14 +41,31 @@ const runWait = (input: {
   readonly short: string
   readonly request: WaitRequest
   readonly pinnedSessionId?: string | undefined
+  readonly readTerminalState?: TerminalStateReader | undefined
 }): Promise<WaitOutcome> => {
   if (!runtime) throw new Error("runtime not started")
   return runtime.runPromise(Effect.flatMap(SessionWaitIo, (api) => api.wait(input)))
 }
 
+// Stands in for the door terminal.routes.ts publishes and api.ts injects: one
+// screen classification, keyed the way GET /terminal/states keys it.
+const readerFor =
+  (records: Record<string, { readonly state: string }>): TerminalStateReader =>
+  ({ scope, id }) => {
+    const record = records[`${scope}:${id}`]
+    if (!record) return undefined
+    return {
+      state: record.state,
+      matcher: undefined,
+      evidence: undefined,
+      at: "2026-07-28T00:00:00.000Z",
+    }
+  }
+
 const defaultRequest = (overrides: Partial<WaitRequest> = {}): WaitRequest => ({
   until: ["done"],
   timeoutMs: 2_000,
+  via: "supervisor",
   ...overrides,
 })
 
@@ -61,7 +83,7 @@ describe("SessionWaitIo — immediate resolution", () => {
     const sessions = new Map([["ab12", makeSession({ short: "ab12", state: "done" })]])
     startRuntime(sessions)
     const outcome = await runWait({ short: "ab12", request: defaultRequest() })
-    expect(outcome).toEqual({ _tag: "Satisfied", state: "done", waitedMs: 0 })
+    expect(outcome).toEqual({ _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 0 })
     expect(sseBus.subscriberCount()).toBe(before)
   })
 })
@@ -78,6 +100,18 @@ const publishRemoved = (short: string): void => {
   sseBus.publish({ type: "session.removed", data: { short } })
 }
 
+// The exact payload publishTerminalState puts on the bus.
+const publishTerminal = (data: {
+  readonly scope: string
+  readonly id: string
+  readonly state: string
+}): void => {
+  sseBus.publish({
+    type: "terminal.state",
+    data: { ...data, matcher: "prompt-resting", evidence: "❯", at: new Date().toISOString() },
+  })
+}
+
 // Seeds a single "ab12" session, starts the runtime, kicks off a wait against
 // it, and gives the subscription time to attach — every bus-driven test below
 // needs exactly this before it can safely publish.
@@ -85,6 +119,7 @@ const beginWait = async (input: {
   readonly session?: Partial<SessionState>
   readonly request?: Partial<WaitRequest>
   readonly pinnedSessionId?: string
+  readonly readTerminalState?: TerminalStateReader
 }): Promise<{ readonly before: number; readonly promise: Promise<WaitOutcome> }> => {
   const before = sseBus.subscriberCount()
   const sessions = new Map([["ab12", makeSession({ short: "ab12", ...input.session })]])
@@ -93,6 +128,7 @@ const beginWait = async (input: {
     short: "ab12",
     request: defaultRequest(input.request),
     pinnedSessionId: input.pinnedSessionId,
+    readTerminalState: input.readTerminalState,
   })
   await sleep(30) // let the wait subscribe before the caller publishes
   return { before, promise }
@@ -106,6 +142,7 @@ describe("SessionWaitIo — bus-driven resolution", () => {
     expect(outcome._tag).toBe("Satisfied")
     if (outcome._tag === "Satisfied") {
       expect(outcome.state).toBe("done")
+      expect(outcome.via).toBe("supervisor")
       expect(outcome.waitedMs).toBeGreaterThanOrEqual(0)
     }
     expect(sseBus.subscriberCount()).toBe(before)
@@ -154,7 +191,112 @@ describe("SessionWaitIo — bus-driven resolution", () => {
     publishState({ short: "ab12", sessionId: "sess-1", state: "working" })
     publishState({ short: "ab12", sessionId: "sess-1", state: "done" })
     const outcome = await promise
-    expect(outcome).toEqual({ _tag: "Satisfied", state: "done", waitedMs: expect.any(Number) })
+    expect(outcome).toEqual({
+      _tag: "Satisfied",
+      state: "done",
+      via: "supervisor",
+      waitedMs: expect.any(Number),
+    })
     expect(sseBus.subscriberCount()).toBe(before)
+  })
+})
+
+// The reason this slice grew a second event source at all: session 4d76edc1
+// sat at `working` in state.json for 24 hours while its screen showed an empty
+// prompt. No supervisor-sourced wait could ever have noticed.
+describe("SessionWaitIo — screen-derived resolution", () => {
+  it("resolves Satisfied from a terminal.state event when via is screen", async () => {
+    const { before, promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["idle"], via: "screen" },
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "idle" })
+    const outcome = await promise
+    expect(outcome).toEqual({
+      _tag: "Satisfied",
+      state: "idle",
+      via: "screen",
+      waitedMs: expect.any(Number),
+    })
+    expect(sseBus.subscriberCount()).toBe(before)
+  })
+
+  it("resolves Satisfied from a terminal.state event when via is either", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["blocked"], via: "either" },
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "blocked" })
+    expect(await promise).toMatchObject({ _tag: "Satisfied", state: "blocked", via: "screen" })
+  })
+
+  it("ignores terminal.state entirely under the default via, timing out instead", async () => {
+    const { before, promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["idle"], timeoutMs: 120 },
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "idle" })
+    expect(await promise).toMatchObject({ _tag: "Timeout" })
+    expect(sseBus.subscriberCount()).toBe(before)
+  })
+
+  it("ignores a supervisor session.state event when via is screen", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["done"], timeoutMs: 120, via: "screen" },
+    })
+    publishState({ short: "ab12", sessionId: "sess-1", state: "done" })
+    expect(await promise).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("ignores a terminal.state event for a non-session scope", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["idle"], timeoutMs: 120, via: "screen" },
+    })
+    publishTerminal({ scope: "project", id: "ab12", state: "idle" })
+    expect(await promise).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("ignores an unknown screen classification — it is not evidence of a state", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working", sessionId: "sess-1" },
+      request: { until: ["idle", "working", "blocked"], timeoutMs: 120, via: "screen" },
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "unknown" })
+    expect(await promise).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("satisfies immediately from the CURRENT screen, without waiting for a transition", async () => {
+    const before = sseBus.subscriberCount()
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["blocked"], via: "screen" }),
+      readTerminalState: readerFor({ "session:ab12": { state: "blocked" } }),
+    })
+    expect(outcome).toEqual({ _tag: "Satisfied", state: "blocked", via: "screen", waitedMs: 0 })
+    // Settled before subscribing at all — no transition was ever needed.
+    expect(sseBus.subscriberCount()).toBe(before)
+  })
+
+  it("does not consult the current screen when via is supervisor", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["blocked"], timeoutMs: 120 }),
+      readTerminalState: readerFor({ "session:ab12": { state: "blocked" } }),
+    })
+    expect(outcome).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("keeps listening when the reader has no record for this short", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working" },
+      request: { until: ["idle"], via: "screen" },
+      readTerminalState: readerFor({ "session:cd34": { state: "idle" } }),
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "idle" })
+    expect(await promise).toMatchObject({ _tag: "Satisfied", state: "idle", via: "screen" })
   })
 })
