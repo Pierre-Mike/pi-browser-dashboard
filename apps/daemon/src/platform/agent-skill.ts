@@ -242,7 +242,7 @@ export const AGENT_SKILL_MD: string = [
   "| 3 | wait timed out |",
   "| 4 | `occupant_changed` — the session was replaced under the wait |",
   "| 5 | `removed` — the session went away |",
-  "| 6 | not found (daemon returned 404) |",
+  "| 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key |",
   "| 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |",
   "",
   "## Honest limits",
