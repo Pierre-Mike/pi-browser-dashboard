@@ -11,15 +11,45 @@ old hand-written `light dark:` pairs.
 ### Choosing a theme
 
 `src/lib/ui/theme.core.ts` is the catalog and every decision (`THEME_FAMILIES`,
-`THEME_MODES` = `system | light | dark`, `resolveTheme`, `parseStoredTheme`,
+`THEME_MODES` = `system | light | dark`, `resolveTheme`, `resolveThemeChoice`,
 `schemeForThemeName`). `src/lib/ui/useTheme.ts` is the only I/O edge: it reads
 `localStorage["pid:ui:theme"]` (encoded `"<family>:<mode>"`), subscribes to
 `prefers-color-scheme` for `system` mode, and writes `data-theme` +
 `style.colorScheme` onto `<html>`. `darkMode` is
 `["selector", '[data-theme$="dark"]']`, so the `dark:` variant follows the
 *resolved theme name*, not the OS — which is also why every family's dark
-variant must keep the `dark` suffix. The choice is per-browser; promoting it to a
-machine-wide default in the global-settings file is not done yet.
+variant must keep the `dark` suffix.
+
+**Two sources, one precedence.** The choice resolves as **this browser's pick →
+the machine-wide default → `pid` + `system`**, per *half* rather than per source,
+so a stored `"vaporwave:dark"` still contributes its mode. The machine default is
+the `ui: { themeFamily, themeMode }` section of the global-settings file; both
+halves are opaque strings there, and `""` or a family this build does not ship
+both mean "offer nothing" — the daemon is not the catalog's judge, because the
+catalog is coupled to `tailwind.config.js`.
+
+The browser value is an **override, not a cache**: `publishThemeChoice` is the
+only path that writes localStorage, so `applyMachineTheme` adopting a new default
+cannot overrule a browser whose user already chose. That is also what avoids a
+first-paint flash — localStorage is synchronous and painted at *import* time,
+while the daemon value arrives a round-trip later and, for anyone with a pick,
+changes nothing visible. `useMachineTheme()` (called once, from `__root.tsx`, not
+from the Settings tab — the second device is the point and may never open it)
+feeds it in.
+
+The Appearance section therefore has two halves that persist to different places:
+the two selects save on pick with no daemon round-trip, and a separate **"Set as
+this machine's default"** button writes the `ui` section. Separate on purpose — if
+every pick rewrote the file, "override" would mean nothing and the default would
+just be whatever device changed it last. The section also sits outside the form's
+`error` branch, so a daemon that is down cannot also cost you the ability to
+switch to a readable theme; `GlobalSettingsView.test.tsx` pins that, and the
+form's `toFormPatch` excludes `ui` so a Save cannot revert a default set after
+the draft was seeded.
+
+The theme is also reachable from the command palette (`Theme: next family`,
+`Theme: Light` …) — `THEME_PALETTE_ACTIONS` / `themeCommandFor` in the core,
+registered as `kind: "action"` rows in `features/palette/palette.ts`.
 
 Because `base: false`, **the app shell paints the page**, not daisyUI. That is
 `routes/__root.tsx` (`bg-gradient-to-b from-base-100 to-base-200

@@ -30,6 +30,7 @@ describe("parseGlobalSettings", () => {
         maxParallel: 8,
       },
       network: { projectsRoot: "/code", appPort: 9090, tunnelPort: 4000 },
+      ui: { themeFamily: "terminal", themeMode: "dark" },
       skillGroups: [{ name: "TDD flow", skills: ["tdd", "ts-axioms", "pr-automerge"] }],
     }
     expect(parseGlobalSettings(JSON.stringify(full))).toEqual(full)
@@ -142,6 +143,59 @@ describe("serializeGlobalSettings", () => {
   it("emits a document the shared contract accepts", () => {
     const wire: unknown = JSON.parse(serializeGlobalSettings(DEFAULT_GLOBAL_SETTINGS))
     expect(decodeGlobalSettings(wire)).toEqual(DEFAULT_GLOBAL_SETTINGS)
+  })
+})
+
+describe("ui (machine-wide theme default)", () => {
+  it("defaults to both halves unset, so a browser with no pick decides for itself", () => {
+    expect(DEFAULT_GLOBAL_SETTINGS.ui).toEqual({ themeFamily: "", themeMode: "" })
+    expect(parseGlobalSettings(null).ui).toEqual({ themeFamily: "", themeMode: "" })
+  })
+
+  it("reads a stored choice", () => {
+    expect(parseGlobalSettings('{"ui":{"themeFamily":"sunset","themeMode":"light"}}').ui).toEqual({
+      themeFamily: "sunset",
+      themeMode: "light",
+    })
+  })
+
+  // The daemon is not the theme catalog's judge: the vocabulary lives in
+  // apps/web next to tailwind.config.js, so an unknown name is stored verbatim
+  // and the *reader* falls back. Rejecting it here would break a web-only rename.
+  it("stores an unrecognised family verbatim rather than second-guessing apps/web", () => {
+    expect(
+      parseGlobalSettings('{"ui":{"themeFamily":"vaporwave","themeMode":"sepia"}}').ui,
+    ).toEqual({ themeFamily: "vaporwave", themeMode: "sepia" })
+  })
+
+  it("ignores wrong-typed halves independently", () => {
+    expect(parseGlobalSettings('{"ui":{"themeFamily":42,"themeMode":"dark"}}').ui).toEqual({
+      themeFamily: "",
+      themeMode: "dark",
+    })
+  })
+
+  it("ignores a non-object ui section", () => {
+    expect(parseGlobalSettings('{"ui":"piddark"}').ui).toEqual(DEFAULT_GLOBAL_SETTINGS.ui)
+  })
+
+  it("accepts an empty half as a deliberate clear", () => {
+    const set = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: { ui: { themeFamily: "mono", themeMode: "dark" } },
+    })
+    expect(set.ui).toEqual({ themeFamily: "mono", themeMode: "dark" })
+    const cleared = mergeGlobalSettings({ current: set, patch: { ui: { themeFamily: "" } } })
+    expect(cleared.ui).toEqual({ themeFamily: "", themeMode: "dark" })
+  })
+
+  it("leaves ui untouched when a patch omits it", () => {
+    const set = mergeGlobalSettings({
+      current: DEFAULT_GLOBAL_SETTINGS,
+      patch: { ui: { themeFamily: "mono", themeMode: "light" } },
+    })
+    const next = mergeGlobalSettings({ current: set, patch: { git: { defaultBranch: "dev" } } })
+    expect(next.ui).toEqual({ themeFamily: "mono", themeMode: "light" })
   })
 })
 

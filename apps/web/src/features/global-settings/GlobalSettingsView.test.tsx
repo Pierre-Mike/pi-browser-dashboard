@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { THEME_FAMILIES, type ThemeSelection } from "../../lib/ui/theme.core"
+import type { SaveMachineDefault } from "./AppearanceFieldset"
 import { GlobalSettingsView } from "./GlobalSettingsView"
 import type { GlobalSettingsForm } from "./useGlobalSettingsForm"
 
@@ -16,6 +17,7 @@ const draft = {
     maxParallel: 10,
   },
   network: { projectsRoot: "/code", appPort: 8787, tunnelPort: 5173 },
+  ui: { themeFamily: "", themeMode: "" },
   skillGroups: [],
 }
 
@@ -36,16 +38,48 @@ const form = (over: Partial<GlobalSettingsForm> = {}): GlobalSettingsForm => ({
 const theme = (over: Partial<ThemeSelection> = {}): ThemeSelection => ({
   choice: { family: "pid", mode: "system" },
   resolved: "pidlight",
+  machine: {},
   setFamily: () => {},
   setMode: () => {},
   ...over,
 })
 
+const saveDefault = (over: Partial<SaveMachineDefault> = {}): SaveMachineDefault => ({
+  saving: false,
+  failed: false,
+  run: () => {},
+  ...over,
+})
+
 const render = (over: Partial<GlobalSettingsForm> = {}): string =>
-  renderToStaticMarkup(createElement(GlobalSettingsView, { form: form(over), theme: theme() }))
+  renderToStaticMarkup(
+    createElement(GlobalSettingsView, {
+      form: form(over),
+      theme: theme(),
+      saveDefault: saveDefault(),
+    }),
+  )
 
 const renderTheme = (over: Partial<ThemeSelection>): string =>
-  renderToStaticMarkup(createElement(GlobalSettingsView, { form: form(), theme: theme(over) }))
+  renderToStaticMarkup(
+    createElement(GlobalSettingsView, {
+      form: form(),
+      theme: theme(over),
+      saveDefault: saveDefault(),
+    }),
+  )
+
+const renderSaveDefault = (
+  over: Partial<SaveMachineDefault>,
+  themeOver: Partial<ThemeSelection> = {},
+): string =>
+  renderToStaticMarkup(
+    createElement(GlobalSettingsView, {
+      form: form(),
+      theme: theme(themeOver),
+      saveDefault: saveDefault(over),
+    }),
+  )
 
 describe("GlobalSettingsView", () => {
   test("shows the managed global file path", () => {
@@ -126,17 +160,50 @@ describe("GlobalSettingsView", () => {
       expect(html).not.toContain('<option value="pid" selected="">')
     })
 
-    test("says the choice is per-browser and names the active theme", () => {
+    // The hint has to describe *both* halves now, or it lies: the selects are
+    // still this browser's, but what they do is override a machine-wide default
+    // that a different browser would follow.
+    test("says the choice is this browser's, overriding the machine default", () => {
       const html = renderTheme({ resolved: "sunsetdark" })
       expect(html).toContain('data-testid="gs-appearance-hint"')
       expect(html).toContain("this browser")
+      expect(html).toContain("machine")
       expect(html).toContain("sunsetdark")
     })
 
-    test("appearance survives a settings load failure — it is not part of the file", () => {
+    test("names the stored machine default, and says so when there is none", () => {
+      expect(renderTheme({ machine: { family: "terminal", mode: "dark" } })).toContain("Terminal")
+      expect(renderTheme({ machine: {} })).toContain("not set")
+    })
+
+    test("offers to store the current choice as the machine default", () => {
+      expect(render()).toContain('data-testid="gs-appearance-set-default"')
+      expect(renderSaveDefault({ saving: true })).toContain("Saving…")
+    })
+
+    // Setting it again would post a write that changes nothing.
+    test("the control is disabled once the machine default already matches", () => {
+      const matching = renderSaveDefault({}, { machine: { family: "pid", mode: "system" } })
+      expect(matching).toMatch(/data-testid="gs-appearance-set-default"[^>]*disabled/)
+      const differing = renderSaveDefault({}, { machine: { family: "mono", mode: "dark" } })
+      expect(differing).not.toMatch(/data-testid="gs-appearance-set-default"[^>]*disabled/)
+    })
+
+    test("a failed machine-default write is reported next to its own button", () => {
+      expect(renderSaveDefault({ failed: true })).toContain(
+        'data-testid="gs-appearance-save-error"',
+      )
+    })
+
+    // The reason Appearance sits outside `form` and outside its error branch: a
+    // daemon that is down must not also cost you the ability to switch to a
+    // readable theme. Only the machine-default half needs the round-trip.
+    test("appearance survives a settings load failure — the picker is not part of the file", () => {
       const html = render({ error: true })
       expect(html).toContain('data-testid="global-settings-error"')
       expect(html).toContain('data-testid="gs-appearance-family"')
+      expect(html).toContain('data-testid="gs-appearance-mode"')
+      expect(html).toContain('data-testid="gs-appearance-set-default"')
     })
   })
 })

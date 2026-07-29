@@ -60,6 +60,30 @@ export const NetworkSettings = S.Struct({
 export type NetworkSettings = S.Schema.Type<typeof NetworkSettings>
 
 /**
+ * The machine-wide UI default: which theme a browser that has never picked one
+ * should show. A browser's own pick lives in `localStorage["pid:ui:theme"]` and
+ * overrides this; see `apps/web/src/lib/ui/theme.core.ts` for the precedence.
+ *
+ * Both halves are opaque `String`s here, and that is deliberate. The theme
+ * vocabulary — which families exist, which modes — is declared in
+ * `apps/web/src/lib/ui/theme.core.ts` alongside `tailwind.config.js`, because a
+ * family only exists if daisyUI emits it. The daemon stores the choice; it has no
+ * business validating it, and a build that renames a family must not need a
+ * daemon release. So the file may legitimately name a family this build does not
+ * ship, and the reader falls back per half rather than wedging.
+ *
+ * `""` means *unset*, the same convention `orchestration.defaultAgent` uses:
+ * offer nothing and let the next source in the precedence decide.
+ */
+export const UiSettings = S.Struct({
+  /** Theme family id, e.g. `"pid"`. Empty = no machine-wide default. */
+  themeFamily: S.String,
+  /** `"system" | "light" | "dark"` as far as the web app is concerned. Empty = unset. */
+  themeMode: S.String,
+})
+export type UiSettings = S.Schema.Type<typeof UiSettings>
+
+/**
  * A named, reusable set of skills (slash-commands) the spawn modal applies in
  * one click. Stored globally so the same preset is offered in every project.
  */
@@ -76,6 +100,7 @@ export const GlobalSettings = S.Struct({
   library: LibrarySettings,
   orchestration: OrchestrationSettings,
   network: NetworkSettings,
+  ui: UiSettings,
   /**
    * A list, not a section: a patch that includes it replaces the whole set, and
    * omitting it leaves the stored groups untouched.
@@ -113,5 +138,6 @@ export type GlobalSettingsPatch = {
   readonly library?: Partial<LibrarySettings>
   readonly orchestration?: Partial<OrchestrationSettings>
   readonly network?: Partial<NetworkSettings>
+  readonly ui?: Partial<UiSettings>
   readonly skillGroups?: readonly SkillGroup[]
 }

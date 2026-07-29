@@ -68,7 +68,7 @@ export const PaletteModal = ({ open, entries, query, onQueryChange, onSelect, on
               onClose()
             }
           }}
-          placeholder="Jump to project…"
+          placeholder="Jump to a project, or run a command…"
           autoComplete="off"
           spellCheck={false}
           className={PALETTE_INPUT}
