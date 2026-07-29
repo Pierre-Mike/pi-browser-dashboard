@@ -294,8 +294,13 @@ export type AppType = typeof app
 // the Cloudflare-tunnel dev proxy. SSE stays unprefixed everywhere (sse.ts
 // always hits "/events" directly), so it's aliased at the bare path too.
 // Call AFTER mountExtensions(app) so extension routes are captured below.
+// The prefix the API moves to when the SPA owns "/". Exported because a
+// spawned session has to be told where /agent-skill.md really answers
+// (server.ts's armAgentDiscovery), and a second literal would be free to drift.
+export const API_PREFIX = "/__api"
+
 export const buildApp = (staticDir?: string): Hono => {
-  const wrapper = new Hono().route("/__api", app)
+  const wrapper = new Hono().route(API_PREFIX, app)
   if (!staticDir) return wrapper.route("/", app)
   return wrapper.route("/events", eventsRoute.app).route("/", buildStaticApp(staticDir))
 }

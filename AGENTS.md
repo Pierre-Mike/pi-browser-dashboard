@@ -1140,6 +1140,68 @@ fleet run` itself never calls `worstExitCode` (each run only has one
 outcome), but 7 sits at this point in the ranking so the severity table
 stays total.
 
+### Spawn-time discovery (`PID_URL`, `PID_SKILL_URL`, `PID_BIN`)
+
+Everything above only ever got used when a human pasted instructions into a
+session: nothing told a spawned session which port the daemon bound, and the
+`pid` binary was on no PATH it could see. Every session the daemon spawns now
+carries three variables — `PID_URL` (the daemon's root url, what `pid --url`
+takes), `PID_SKILL_URL` (this daemon's own `/agent-skill.md`, prefixed
+correctly for how *this* process serves the API) and `PID_BIN` (absolute path
+to a runnable `pid`) — plus a shim at `<claudeConfigDir>/pid-dashboard/bin/pid`
+that `PID_BIN` points at.
+
+`platform/agent-discovery.core.ts` builds all of it as plain data;
+`platform/agent-discovery.io.ts` resolves the `pid` command, writes the shim
+and holds the one snapshot both dispatch paths read; `server.ts` arms it AFTER
+`Bun.serve` so the url is the port actually bound (`--port`, `PORT` and
+`port: 0` are all correct) and with `API_PREFIX` when a `staticDir` moved the
+API — under the single-port layout the SPA owns `/` and 404s
+`/agent-skill.md`, so the bare path would be a dead url. Until armed, the
+snapshot is `undefined` and every spawn is byte-identical to what it was
+before this existed.
+
+**The two spawn paths need different carriers, and this is not a style choice.**
+`claude --bg` does not run the session as its child: the supervisor claims a
+pre-warmed `claude bg-spare` process whose environment predates the dispatch
+(`ps` shows the pool; a spare's env is the supervisor's). Verified live — a var
+set on the `claude --bg` invocation is invisible inside the session, while the
+same var passed as `--settings '{"env":{…}}'` is visible, and the supervisor
+records that flag in `respawnFlags`, so it survives a respawn. So the claude
+path carries discovery as settings JSON on argv (`claudeDiscoveryFlags`, placed
+before the variadic `--tools` and its `--` terminator), and the pi path — whose
+zellij session the daemon spawns itself with an env it builds byte-for-byte —
+carries it as ordinary env plus a PATH prepend (`discoveryChildEnv`).
+
+**PATH is honestly one-sided.** In a pi pane the shim dir is on PATH, so the
+bare name `pid` resolves. In a claude background session it cannot be:
+settings `env` values are literal (verified — `${PATH}` arrives as the four
+characters `${PA…`), so the only way to add a directory would be to overwrite
+the whole variable with a value this daemon guessed, which would change how an
+existing spawn behaves. `"$PID_BIN"` is the contract there, and the skill
+document tells an agent the one-line `export PATH="$(dirname "$PID_BIN"):$PATH"`
+if it wants the bare name. Nothing is ever written outside
+`<claudeConfigDir>/pid-dashboard/` — a symlink into `~/.local/bin` would be a
+machine-wide install the user never asked for.
+
+The shim resolves the invocation for whichever install shape is running, in
+order: this monorepo checkout (`bun apps/cli/src/agent/main.ts`), the packed
+`pid-dashboard` bundle (`bun <dist>/agent/main.js`, the sibling `bun build`
+emits for `bin.pid`), then an already-installed `pid` on the daemon's own PATH
+(a global install, or `bunx pid-dashboard`, which puts the package's bins
+there). It execs through `process.execPath`, so the session does not need `bun`
+on its PATH. If none resolve, or the shim cannot be written, `PID_BIN` is
+absent and the url variables are still published — a session then talks HTTP
+rather than being handed a path that does not run.
+
+**`PID_AGENT_POINTER=1` (default off)** adds ONE sentence to a dispatched
+claude session's *system* prompt (`--append-system-prompt`) naming the skill
+url and `PID_BIN`. Env vars and a shim are inert until an agent looks for them,
+and an agent that was never told has no reason to look — the pointer is what
+actually closes that loop — but it changes what every session this daemon
+spawns is told, so it is opt-in and the user's own prompt is never touched. pi
+has no `--append-system-prompt` equivalent, so the pointer is claude-only.
+
 ## Frontend skeleton
 
 ```
