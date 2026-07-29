@@ -560,7 +560,10 @@ was needed.
   polled session costs a `list-panes` spawn plus one `dump-screen` spawn PER
   PANE, where the attached path costs a regex over bytes it already has. Two
   constants bound that, and both are in the pure core with their arithmetic:
-  `MAX_PANES_PER_SESSION` (4) stops one tiled session consuming a pass, and
+  `MAX_PANES_PER_SESSION` (4) stops one tiled session consuming a pass — and is
+  the same ceiling the write surface enforces when a caller asks for a new pane
+  (see "Panes: the daemon's only write surface into zellij" below), so raising
+  it raises both — and
   `MAX_DUMPS_PER_PASS` (64) bounds the whole pass by a constant instead of by how
   many sessions the user happens to have open (39 live ones on the box this was
   measured on). A `dump-screen` spawn measures ~38ms wall, so a worst-case pass is

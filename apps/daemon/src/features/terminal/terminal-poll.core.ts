@@ -129,6 +129,12 @@ export const parseTerminalPaneIds = (raw: string): ReadonlyArray<string> =>
 // able to consume the whole pass. Four covers what a human actually builds — an
 // agent, a shell, a log tail, a spare — and keeps one session's worst case at
 // five spawns (`list-panes` + four dumps).
+//
+// This constant has a SECOND consumer, and raising it raises both: the write
+// surface refuses to open a pane in a session that already holds this many
+// (`decideCreatePane`'s `pane_budget` refusal in terminal-panes.core.ts). A pane
+// past the cap would never be classified, so creating one would hand a caller a
+// pane nothing can observe — which is the opposite of what panes are for here.
 export const MAX_PANES_PER_SESSION = 4
 
 // Whole-pass dump budget, so the cost is bounded by a constant instead of by
