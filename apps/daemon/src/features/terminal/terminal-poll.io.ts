@@ -61,8 +61,10 @@ export type TerminalPollPorts = {
 }
 
 export type TerminalPollerApi = {
-  // Arms the interval. `intervalMs <= 0` disables the poller completely — no
-  // timer, and `refreshIfStale` stays inert too. Idempotent.
+  // Arms the interval. `intervalMs <= 0` — or a non-finite one, which is what a
+  // typo'd PID_TERMINAL_POLL_MS becomes on the way through Number() — disables
+  // the poller completely: no timer, and `refreshIfStale` stays inert too.
+  // Idempotent.
   readonly start: (input: { readonly intervalMs: number }) => void
   readonly stop: () => void
   // One full pass. Overlapping calls share the in-flight pass rather than
@@ -149,7 +151,11 @@ export const createTerminalPoller = (input: {
   }
 
   const start = (args: { readonly intervalMs: number }): void => {
-    if (args.intervalMs <= 0 || timer !== undefined) return
+    // `!(x > 0)` rather than `x <= 0` so NaN lands on the disabled side: NaN
+    // fails every comparison, and setInterval reads a NaN delay as 0, so the
+    // looser guard would turn one typo'd env var into a continuous zellij spawn
+    // loop against the user's live sessions.
+    if (!(args.intervalMs > 0) || timer !== undefined) return
     intervalMs = args.intervalMs
     void tick()
     timer = setInterval(() => {

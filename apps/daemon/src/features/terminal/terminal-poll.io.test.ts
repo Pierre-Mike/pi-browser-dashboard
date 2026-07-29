@@ -203,6 +203,26 @@ describe("createTerminalPoller.start", () => {
     poller.stop()
     expect(h.published.length).toBeGreaterThan(0)
   })
+
+  // PID_TERMINAL_POLL_MS reaches this through Number(), so a typo ("15s", "on")
+  // arrives as NaN — which fails every `<= 0` guard while setInterval treats a
+  // NaN delay as 0. Unchecked, one bad env var becomes an unbounded `zellij`
+  // spawn loop against the user's live sessions. A non-finite interval must read
+  // as "off", exactly like 0.
+  it("treats a non-finite interval as off rather than as zero delay", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    poller.start({ intervalMs: Number.NaN })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(h.dumped).toEqual([])
+    // The refresh-on-read hook must not resurrect it either.
+    h.setNow(9_999_999)
+    poller.refreshIfStale()
+    await Promise.resolve()
+    expect(h.dumped).toEqual([])
+    poller.stop()
+  })
 })
 
 // This daemon has lost its entire timer subsystem on a long uptime before
