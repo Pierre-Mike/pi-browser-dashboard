@@ -29,3 +29,15 @@ export const useTerminalState = (input: {
   })
   return data?.[terminalStateKey(input)]
 }
+
+// The whole map, for views that render many terminals at once (the activity
+// feed's session cards). Same cache entry as useTerminalState, so mounting both
+// costs one request and both see the SSE patches.
+export const useTerminalStates = (): Readonly<Record<string, TerminalStateEvent>> | undefined => {
+  const { data } = useQuery<Record<string, TerminalStateEvent>>({
+    queryKey: TERMINAL_STATES_QUERY_KEY,
+    queryFn: fetchTerminalStates,
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+  return data
+}
