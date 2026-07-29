@@ -1,4 +1,5 @@
 import type { Project, SessionState } from "../../lib/types"
+import { type TerminalStateEvent, terminalStateKey } from "../terminal/terminalState"
 import { RECENT_LIMIT, recentSessions } from "./recentActivity"
 import { SessionCard } from "./SessionCard"
 
@@ -9,6 +10,10 @@ type Props = {
   // Cross-project views label each row with its owning project; a single-project
   // view (e.g. a project's Activity tab) sets this false to drop the redundant tag.
   showProjectName?: boolean
+  // GET /terminal/states, keyed `<scope>:<id>` — passed in rather than read from
+  // a hook in here so this component stays props-only and its tests need no
+  // network. Absent means no chips, which is also what an older daemon yields.
+  terminalStates?: Readonly<Record<string, TerminalStateEvent>>
 }
 
 // Cross-project activity feed: the newest sessions across every project, newest
@@ -19,6 +24,7 @@ export const RecentSessionsFeed = ({
   sessions,
   limit = RECENT_LIMIT,
   showProjectName = true,
+  terminalStates,
 }: Props) => {
   const items = recentSessions({ projects, sessions, limit })
 
@@ -55,7 +61,12 @@ export const RecentSessionsFeed = ({
               </div>
             ) : null}
             <div className="min-w-0 flex-1">
-              <SessionCard session={session} />
+              <SessionCard
+                session={session}
+                terminal={
+                  terminalStates?.[terminalStateKey({ scope: "session", id: session.short })]
+                }
+              />
             </div>
           </div>
         ))}

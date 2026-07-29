@@ -23,6 +23,7 @@ import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
 import { SidebarReopenButton } from "../sessions/sidebarRail"
 import { useSessions } from "../sessions/useSessions"
+import { useTerminalStates } from "../terminal/useTerminalState"
 import { CollapsibleRail, RailExpandButton } from "./CollapsibleRail"
 import { FileTree } from "./FileTree"
 import { GithubPanel } from "./GithubPanel"
@@ -194,6 +195,9 @@ const ProjectIdentity = ({
 
 export const ProjectDashboard = ({ project }: Props) => {
   const sessionsQ = useSessions()
+  // Screen classification for this project's sessions, including ones nobody has
+  // opened (the daemon's unattended poller). Cards show it only on disagreement.
+  const terminalStates = useTerminalStates()
   const extensionsQ = useExtensions()
   const pidAppsQ = usePidApps(project.id)
   const pull = useProjectGitPull(project.id)
@@ -357,6 +361,7 @@ export const ProjectDashboard = ({ project }: Props) => {
             sessions={sessions}
             showProjectName={false}
             limit={Number.POSITIVE_INFINITY}
+            terminalStates={terminalStates}
           />
         )}
       </div>

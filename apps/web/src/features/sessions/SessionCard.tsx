@@ -1,17 +1,33 @@
 import { useState } from "react"
 import { ageStr, cwdTail, stateColor } from "../../lib/format"
 import type { SessionState } from "../../lib/types"
+import {
+  type TerminalStateEvent,
+  terminalStateAddsInfo,
+  terminalStateTitle,
+} from "../terminal/terminalState"
 import { SessionCardActions } from "./SessionCardActions"
 import { SessionReplyModal } from "./SessionReplyModal"
 
-type Props = { session: SessionState }
+type Props = {
+  session: SessionState
+  // What the session's zellij screen last classified as, from GET
+  // /terminal/states — for a session nobody has open, this comes from the
+  // unattended poller. Undefined until the daemon has classified it at all.
+  terminal?: TerminalStateEvent
+}
 
 const SURFACE_CLS =
   "flex flex-col gap-1.5 text-left -m-1 p-1 rounded cursor-pointer hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-primary"
 
-export const SessionCard = ({ session }: Props) => {
+export const SessionCard = ({ session, terminal }: Props) => {
   const tone = stateColor(session.state)
   const [replyOpen, setReplyOpen] = useState(false)
+  // Only when the screen contradicts the supervisor — otherwise the card would
+  // carry two chips saying the same word.
+  const screenTone = terminalStateAddsInfo({ sessionState: session.state, terminal })
+    ? stateColor(terminal?.state ?? "idle")
+    : null
   // The reply modal drives claude's pty (attach → write keys) — a pi run has
   // no supervisor pty to reply into, so its surface stays inert.
   const canReply = session.harness !== "pi"
@@ -51,6 +67,16 @@ export const SessionCard = ({ session }: Props) => {
                   className="badge badge-sm badge-outline badge-secondary font-mono normal-case"
                 >
                   pi
+                </span>
+              ) : null}
+              {screenTone && terminal ? (
+                <span
+                  data-testid="session-card-terminal-state"
+                  data-terminal-state={terminal.state}
+                  title={`terminal: ${terminalStateTitle(terminal)}`}
+                  className={`badge badge-sm badge-outline uppercase tracking-wide font-semibold ${screenTone.text}`}
+                >
+                  {screenTone.label}
                 </span>
               ) : null}
               <span

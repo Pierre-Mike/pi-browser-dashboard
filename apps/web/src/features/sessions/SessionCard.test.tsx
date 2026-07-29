@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { SessionState } from "../../lib/types"
+import type { TerminalStateEvent } from "../terminal/terminalState"
 import { SessionCard } from "./SessionCard"
 
 const sampleSession: SessionState = {
@@ -19,12 +20,21 @@ const sampleSession: SessionState = {
   linkScanPath: "/repo/worktree",
 }
 
-const renderCard = (session: SessionState): string => {
+const renderCardWith = (input: {
+  readonly session: SessionState
+  readonly terminal?: TerminalStateEvent
+}): string => {
   const qc = new QueryClient()
   return renderToStaticMarkup(
-    createElement(QueryClientProvider, { client: qc }, createElement(SessionCard, { session })),
+    createElement(
+      QueryClientProvider,
+      { client: qc },
+      createElement(SessionCard, { session: input.session, terminal: input.terminal }),
+    ),
   )
 }
+
+const renderCard = (session: SessionState): string => renderCardWith({ session })
 
 // Counts the deepest run of currently-open <button> tags. >1 means a <button>
 // is nested inside another <button> — invalid HTML that React rejects with
@@ -79,6 +89,42 @@ describe("SessionCard markup", () => {
     expect(html).toContain('data-testid="send-toggle"')
     expect(html).toContain('data-testid="stop"')
     expect(html).toContain('data-testid="delete"')
+  })
+
+  // The unattended poller classifies the zellij screen of a session nobody has
+  // opened, which is only worth pixels on a card when it contradicts the
+  // supervisor's own badge — see terminalStateAddsInfo.
+  test("shows a terminal chip when the screen disagrees with the supervisor", () => {
+    const html = renderCardWith({
+      session: { ...sampleSession, state: "idle" },
+      terminal: {
+        scope: "session",
+        id: sampleSession.short,
+        state: "working",
+        matcher: "thinking-gerund",
+        evidence: "Burrowing…",
+        at: "2026-07-29T00:00:00.000Z",
+      },
+    })
+    expect(html).toContain('data-testid="session-card-terminal-state"')
+    // The tooltip names the screen as the source and carries the matcher, so a
+    // human can tell which of the two chips came from where.
+    expect(html).toContain("terminal: thinking-gerund: Burrowing…")
+  })
+
+  test("stays silent when the screen agrees, or has never been classified", () => {
+    const agreeing = renderCardWith({
+      session: sampleSession,
+      terminal: {
+        scope: "session",
+        id: sampleSession.short,
+        state: "working",
+        matcher: "pi-working",
+        at: "2026-07-29T00:00:00.000Z",
+      },
+    })
+    expect(agreeing).not.toContain('data-testid="session-card-terminal-state"')
+    expect(renderCard(sampleSession)).not.toContain('data-testid="session-card-terminal-state"')
   })
 
   test("merges the detail and cwd · age lines onto one row", () => {

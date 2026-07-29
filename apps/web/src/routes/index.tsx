@@ -12,6 +12,7 @@ import { useProjects } from "../features/projects/useProjects"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
 import { SidebarReopenButton } from "../features/sessions/sidebarRail"
 import { useSessions } from "../features/sessions/useSessions"
+import { useTerminalStates } from "../features/terminal/useTerminalState"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
 import { EXT_ICON, TAB_ICONS, tabButtonClass, tabDockNavClass } from "../lib/tabDock"
 import { coerceExtTab } from "../lib/tabParams"
@@ -68,6 +69,10 @@ export const Route = createFileRoute("/")({
 const ProjectsPanel = () => {
   const sessionsQ = useSessions()
   const projectsQ = useProjects()
+  // Terminal classification for sessions nobody has opened — the daemon's
+  // unattended poller fills this in, and a card shows it only when it
+  // contradicts the supervisor's own state.
+  const terminalStates = useTerminalStates()
 
   if (sessionsQ.isLoading || projectsQ.isLoading) {
     return <div className="text-sm text-slate-500">Loading…</div>
@@ -107,7 +112,9 @@ const ProjectsPanel = () => {
       </div>
     )
   }
-  return <RecentSessionsFeed projects={projects} sessions={sessions} />
+  return (
+    <RecentSessionsFeed projects={projects} sessions={sessions} terminalStates={terminalStates} />
+  )
 }
 
 function IndexPage() {
