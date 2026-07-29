@@ -329,10 +329,11 @@ status-line and dialog shapes — Claude Code's rotating status line
 (`<Gerund>…` plus a live elapsed-time reading) while generating, a dispatched
 tool's pending marker mid-tool-call, a finished turn's `<PastVerb> for <N>s`,
 a permission dialog's question line *together with its option list* while
-blocked on a permission decision; pi's braille spinner plus its working
-literal — against a per-connection rolling tail, stripped of ANSI first.
-States: `working`, `blocked`, `idle`, `unknown` — `unknown` is the honest
-default when nothing matches, not a guessed `idle`.
+blocked on a permission decision, the workspace-trust dialog's own option line
+while blocked before the session has started at all; pi's braille spinner plus
+its working literal — against a per-connection rolling tail, stripped of ANSI
+first. States: `working`, `blocked`, `idle`, `unknown` — `unknown` is the
+honest default when nothing matches, not a guessed `idle`.
 
 **Every shape above is described here with placeholders, deliberately.** These
 matchers read screens, and this file gets displayed on screens: paste a complete
@@ -363,10 +364,28 @@ newline**: a dump separates them with `\n`, while the attached WS path carries
 zellij's redraw, which jumps rows with an absolute cursor CSI and pads with
 spaces — after `stripAnsi` both sit on ONE line, 97 spaces apart in the measured
 capture. A matcher anchored on a line break passes on dumps and silently misses
-every attached terminal, so the row tolerates either. Two live-captured gaps
-remain documented in the row itself: the workspace-trust dialog wraps its
-question mid-line and still reads `unknown`, and so would a pane narrow enough
-to wrap the question.
+every attached terminal, so the row tolerates either. One live-captured gap
+remains documented in the row itself: a pane narrow enough to wrap the question
+would break that adjacency.
+
+**The workspace-trust dialog is a second, different block**, and it gets its own
+row rather than a widened permission pattern. Before a `claude` in a directory
+with no trust record will run anything it asks whether the folder is trusted, and
+waits — as blocked on a human as any permission decision, and previously reported
+as `unknown`, so a session parked there looked like a session with nothing to say.
+Captured at 50 and 120 columns plus raw redraw bytes; two measurements decided the
+shape:
+
+- **Its question never ends its row.** At both widths the prose that follows runs
+  on the same line, so the permission row's "question, then option list" shape can
+  never see this dialog. That is why it was a documented gap and not a one-line
+  addition to that row.
+- **Question-to-option distance was 845 characters** on the attached path (padding
+  runs of 7, 146, 179 and 226 between rows at 120 columns) and it scales with pane
+  width, so any bounded conjunct would go quiet on a wider terminal. The row rests
+  on the first option line alone — list number plus the label, starting its row —
+  which holds at every width. Evidence is that option line, because it says what
+  answering the dialog means.
 
 The three `working` rows were anchored the same way, and for the same reason:
 measuring the blocked fix caught a live pane reading `working` purely because the
@@ -511,10 +530,11 @@ was needed.
 - **Self-reference is a live failure mode of screen scraping, not a curiosity.**
   Any matcher keyed on a bare sentence fires on a terminal that is merely
   *discussing* that sentence — an agent editing this table, reviewing its diff or
-  displaying this file. Six of the seven rows are anchored against it now: the
-  two `blocked` rows (question + option list, option label + list number), the
-  three `working` rows (elapsed-time reading, own-line pending marker, braille
-  spinner) and `prompt-resting`, which is a whole-line pattern to begin with. The
+  displaying this file. Seven of the eight rows are anchored against it now: the
+  three `blocked` rows (question + option list, option label + list number,
+  own-row trust option), the three `working` rows (elapsed-time reading, own-line
+  pending marker, braille spinner) and `prompt-resting`, which is a whole-line
+  pattern to begin with. The
   holdout is `turn-complete`, flagged in its own comment. Two habits keep it from
   coming back: **anchor on a rendered shape, never a bare sentence**, and **write
   placeholders in comments and docs, never a complete rendered line**. A

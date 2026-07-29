@@ -141,12 +141,10 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // Evidence stays the header line: the option list is required through a
     // lookahead, so `found[0]` is one readable line for a chip tooltip.
     //
-    // Known gaps, both live-captured rather than assumed: the workspace-trust
-    // dialog ("Quick safety check: Is this a project you created or one you
-    // trust?" + "❯ 1. Yes, I trust this folder") wraps its question mid-line,
-    // so it does not match and a session parked on it still reads `unknown`;
-    // and a pane narrow enough to wrap the header itself would break the
-    // same way.
+    // Known gap, live-captured rather than assumed: a pane narrow enough to wrap
+    // the question itself would break this row's adjacency requirement. The
+    // workspace-trust dialog wraps its question at EVERY width and so could never
+    // match here — it gets its own row below rather than a widened pattern here.
     pattern: /(?:^|[^\S\n])(?:Do you want to [^\n]*?\?)(?=\s{0,500}?(?:❯[^\S\n]*)?1\.[^\S\n]+\S)/m,
   },
   {
@@ -162,6 +160,40 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // merely *printing* the label: a rendered option carries its list number,
     // a source listing or a doc paragraph does not.
     pattern: /(?:^|[^\S\n])\d+\.[^\S\n]+No, and tell Claude what to do differently/m,
+  },
+  {
+    name: "workspace-trust-prompt",
+    state: "blocked",
+    // Verified by LIVE RENDER at two widths, 2026-07-29. Before a `claude` in a
+    // directory with no trust record will run anything, it asks whether the folder
+    // is trusted, and waits. That is as blocked on a human as a permission dialog
+    // is — a session parked here makes zero progress and, until this row existed,
+    // reported `unknown`, so nothing upstream could tell.
+    //
+    // Captured from a session created for it, in a directory with no trust record,
+    // at 50 and 120 columns plus the raw redraw bytes. Anchored on the first
+    // OPTION line (`<N>. Yes, I trust this folder`), not on the question, and the
+    // width is why:
+    //  - The question never ends its row. At both captured widths the prose that
+    //    follows it continues on the same line, so the "question line, then the
+    //    option list" shape the permission row uses cannot see this dialog at all.
+    //    That is what made it a documented gap rather than a quick copy of that
+    //    row.
+    //  - The distance from question to option list was MEASURED at 845 characters
+    //    on the attached path (padding runs of 7, 146, 179 and 226 between the
+    //    rows, 120-col pane), and it scales with pane width — so any bounded
+    //    "question … then option" conjunct would false-negative on a wider
+    //    terminal. Better one anchor that holds at every width than two that
+    //    silently stop holding at 160 columns.
+    //
+    // The list number and the row boundary are what keep this from firing on a
+    // screen that merely mentions the label: a rendered option starts its row
+    // (line start, or a run of padding on the collapsed attached path), while a
+    // quotation sits mid-sentence behind a delimiter. Residual, and inherent: a
+    // doc that pastes the rendered option list verbatim as a numbered list is
+    // indistinguishable from the dialog. Hence the house rule — placeholders in
+    // prose, renders only in fixtures.
+    pattern: /(?:^|\n[^\S\n]*|[^\S\n]{2,})(?:❯[^\S\n]*)?1\.[^\S\n]+Yes, I trust this folder/,
   },
   // The three rows below are `working`, and they were anchored on 2026-07-29 for
   // the same reason the two above were: a bare literal is a string any terminal

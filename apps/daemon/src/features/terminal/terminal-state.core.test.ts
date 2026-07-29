@@ -180,6 +180,77 @@ const PERMISSION_DIALOG_WRITE_DUMP = [
 const PERMISSION_DIALOG_WS_BYTES =
   "Do you want to proceed?                                                                                                \x1b[29;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249m❯\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m1.\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249mYes\x1b[m\x1b]8;;\x1b\\                                                                                                               \x1b[30;1H\x1b[m\x1b[m\x1b]8;;\x1b\\   \x1b[38;2;153;153;153m2.\x1b[m\x1b]8;;\x1b\\ No                         "
 
+// ---- live workspace-trust captures (2026-07-29) -------------------------
+//
+// A different dialog, and a different kind of block: before a `claude` in an
+// unfamiliar directory will do anything at all, it asks whether the folder is
+// trusted. A session parked here makes zero progress and nothing upstream can
+// tell — it read `unknown` until this row existed.
+//
+// Captured from `polltest-trust23` (cwd /private/tmp/trustprobe23, a directory
+// with no trust record) at TWO widths on purpose, because the wrap point is what
+// makes this dialog different from the permission one: the question runs into the
+// prose that follows it on the same row at both widths, so a matcher anchored on
+// "question line, then options" cannot ever see it.
+const TRUST_DIALOG_DUMP = [
+  "──────────────────────────────────────────────────",
+  " Accessing workspace:",
+  "",
+  " /private/tmp/trustprobe23",
+  "",
+  " Quick safety check: Is this a project you",
+  " created or one you trust? (Like your own code, a",
+  " well-known open source project, or work from",
+  " your team). If not, take a moment to review",
+  " what's in this folder first.",
+  "",
+  " Claude Code'll be able to read, edit, and",
+  " execute files here.",
+  "",
+  " Security guide",
+  "",
+  " ❯ 1. Yes, I trust this folder",
+  "   2. No, exit",
+  "",
+  " Enter to confirm · Esc to cancel",
+].join("\n")
+
+// The same dialog at 120 columns. The question still does not end its line.
+const TRUST_DIALOG_WIDE_DUMP = [
+  " Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source",
+  " project, or work from your team). If not, take a moment to review what's in this folder first.",
+  "",
+  " Claude Code'll be able to read, edit, and execute files here.",
+  "",
+  " Security guide",
+  "",
+  " ❯ 1. Yes, I trust this folder",
+  "   2. No, exit",
+  "",
+  " Enter to confirm · Esc to cancel",
+].join("\n")
+
+// The WS/attached shape of that same screen, and the reason this row anchors on
+// the option line rather than on the question: `stripAnsi` of the raw redraw
+// capture puts the whole dialog on ONE line, and the padding runs between the
+// rows were MEASURED at 7, 146, 179 and 226 characters (120-col pane), putting
+// 845 characters between the question and the option label. That distance scales
+// with pane width, so any bounded "question … then options" conjunct would
+// false-negative on a wider terminal — hence the option line carries the row on
+// its own. Space runs are written as explicit repeats so the measurement is
+// visible instead of hiding in a wall of whitespace.
+const TRUST_DIALOG_WS_ONE_LINE = [
+  "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source",
+  " ".repeat(7),
+  "project, or work from your team). If not, take a moment to review what's in this folder first.",
+  " ".repeat(146),
+  "Claude Code'll be able to read, edit, and execute files here.",
+  " ".repeat(179),
+  "Security guide",
+  " ".repeat(226),
+  "❯ 1. Yes, I trust this folder",
+].join("")
+
 // A screen that merely DISPLAYS this matcher table and the AGENTS.md paragraph
 // about it — captured live from a zellij session (`polltest-selfref19`) that ran
 // `sed -n` over those two files and then idled. Under the pre-2026-07-29 rows
@@ -477,6 +548,48 @@ describe("classifyTail", () => {
   it("reports blocked, not working, when the dialog sits under a live tool-call line", () => {
     expect(PERMISSION_DIALOG_BASH_DUMP).toContain("⎿ \u00a0Waiting…")
     expect(classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP }).matcher).toBe("permission-prompt")
+  })
+
+  it("classifies the workspace-trust dialog as blocked at both captured widths", () => {
+    for (const dump of [TRUST_DIALOG_DUMP, TRUST_DIALOG_WIDE_DUMP]) {
+      const result = classifyTail({ tail: dump })
+      expect(result.state).toBe("blocked")
+      expect(result.matcher).toBe("workspace-trust-prompt")
+      // Evidence is the option line, because it says what answering means.
+      expect(result.evidence).toBe("❯ 1. Yes, I trust this folder")
+    }
+  })
+
+  it("classifies the trust dialog on the attached path, where the screen is one line", () => {
+    const result = classifyTail({ tail: TRUST_DIALOG_WS_ONE_LINE })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("workspace-trust-prompt")
+  })
+
+  it("does not report blocked for prose that quotes the trust option", () => {
+    // The rendered option starts its row; a quotation sits mid-sentence behind a
+    // delimiter. Both forms below are lines this repo actually contains.
+    expect(
+      classifyTail({
+        tail: "  dialog (`Quick safety check: … trust?` + `❯ 1. Yes, I trust this folder`)",
+      }).state,
+    ).toBe("unknown")
+    expect(classifyTail({ tail: "answer Yes, I trust this folder to continue" }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("keeps the trust row above the working rows and below the permission rows", () => {
+    // Ordering is priority here as everywhere. A trust dialog with a stale
+    // spinner still in the window is blocked, not working…
+    expect(classifyTail({ tail: `${THINKING_FIXTURE}\n${TRUST_DIALOG_DUMP}` }).matcher).toBe(
+      "workspace-trust-prompt",
+    )
+    // …and a permission dialog is still reported as the permission dialog, not
+    // mistaken for a trust prompt, when both are somehow in the tail.
+    expect(
+      classifyTail({ tail: `${TRUST_DIALOG_DUMP}\n${PERMISSION_DIALOG_BASH_DUMP}` }).matcher,
+    ).toBe("permission-prompt")
   })
 
   it("classifies a numbered reject option as blocked when the header scrolled out", () => {
