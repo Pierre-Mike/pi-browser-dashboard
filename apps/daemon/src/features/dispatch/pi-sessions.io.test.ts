@@ -108,3 +108,51 @@ describe("PiSessionsApi", () => {
     expect(h.api.list()).toEqual([])
   })
 })
+
+// The provenance facts GET /sessions/:id/explain needs. This is the door that
+// route goes through — before it existed, explain had only the claude
+// SessionRegistry to ask and 404'd every pi short.
+describe("PiSessionsApi.diagnostics", () => {
+  it("is undefined for a short that was never spawned", () => {
+    expect(h.api.diagnostics("nope")).toBeUndefined()
+  })
+
+  it("reports the live pid probe and the transcript pi has written", () => {
+    h.alivePids.add(4242)
+    h.api.record(spawnA())
+    h.writeTranscript(ID_A, finishedTranscript)
+    const diag = h.api.diagnostics("aaaa1111")
+    expect(diag).toMatchObject({
+      session: { state: "done", source: "pi-spawn-log" },
+      pidAlive: true,
+      piTranscriptPresent: true,
+      // Never true for a pi run: the field exists so the shared explanation
+      // builder can take pi and claude diagnostics through one shape.
+      stateFilePresent: false,
+    })
+    // The transcript's mtime — the only "when did pi last do something" the
+    // daemon has.
+    expect(typeof diag?.updatedAtMs).toBe("number")
+  })
+
+  it("reports a dead pid and an unwritten transcript", () => {
+    h.api.record(spawnA())
+    expect(h.api.diagnostics("aaaa1111")).toMatchObject({
+      pidAlive: false,
+      piTranscriptPresent: false,
+      // With no transcript, `updatedAt` falls back to the spawn instant, so the
+      // age explain reports is the age of the launch.
+      updatedAtMs: Date.parse("2026-07-08T00:00:00.000Z"),
+    })
+  })
+
+  it("keeps no event history for a pi run, and says so with undefined", () => {
+    h.api.record(spawnA())
+    expect(h.api.diagnostics("aaaa1111")?.lastEventAtMs).toBeUndefined()
+  })
+
+  it("resolves the full session id as well as the exposed short", () => {
+    h.api.record(spawnA())
+    expect(h.api.diagnostics(ID_A)?.session.short).toBe("aaaa1111")
+  })
+})

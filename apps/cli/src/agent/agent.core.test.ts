@@ -1964,6 +1964,57 @@ describe("formatExplain", () => {
     expect(lines[2]).toBe('screen: idle  matcher "prompt-resting"  matched "❯"  3s ago')
   })
 
+  // `pid explain <pi-short>` reaches this printer now that the daemon answers
+  // for pi. The conflict headline must name the provenance it actually has:
+  // saying "state.json says …" about a pi run would invent the one file pi
+  // never writes.
+  it("names the real provenance in the conflict headline, not state.json", () => {
+    const lines = formatExplain({
+      short: "fd1ac052",
+      state: "done",
+      source: "pi-spawn-log",
+      degradedFrom: undefined,
+      updatedAtAgeMs: 4_000,
+      lastEventAgeMs: undefined,
+      pidAlive: true,
+      stateFilePresent: false,
+      stale: false,
+      terminal: { state: "working", matcher: "pi-working", evidence: "⠇ Working...", ageMs: 2_000 },
+      screenDisagrees: true,
+      reasons: ["State came from the daemon's own pi spawn log, not a supervisor state.json: …"],
+    }).split("\n")
+    expect(lines[0]).toBe("fd1ac052  done")
+    expect(lines[1]).toBe(
+      '!! screen disagrees: pi-spawn-log says "done", the screen reads "working"',
+    )
+    expect(lines[1]).not.toContain("state.json says")
+    expect(lines[2]).toBe('screen: working  matcher "pi-working"  matched "⠇ Working..."  2s ago')
+  })
+
+  // The whole pi block a human sees, locked end to end: no pid line is omitted,
+  // the unknown source prints verbatim, and `last event: — ago` is honest —
+  // the daemon keeps no event history for a pi short.
+  it("prints a pi explanation with an absent last-event age", () => {
+    expect(
+      formatExplain({
+        short: "fd1ac052",
+        state: "done",
+        source: "pi-spawn-log",
+        degradedFrom: undefined,
+        updatedAtAgeMs: 377_856,
+        lastEventAgeMs: undefined,
+        pidAlive: true,
+        stateFilePresent: false,
+        stale: false,
+        terminal: { state: "unknown", matcher: undefined, evidence: undefined, ageMs: 6_727 },
+        screenDisagrees: false,
+        reasons: ["one reason"],
+      }),
+    ).toBe(
+      "fd1ac052  done\nscreen: unknown  6s ago\nsource: pi-spawn-log\nupdated: 6m ago\nlast event: — ago\npid alive: true\n- one reason",
+    )
+  })
+
   it("drops the matcher, evidence and age from the screen line when absent", () => {
     expect(
       formatExplain({

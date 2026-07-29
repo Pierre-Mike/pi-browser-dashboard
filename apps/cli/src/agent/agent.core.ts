@@ -2770,9 +2770,15 @@ const formatExplainScreen = (terminal: ExplainTerminalFacts | undefined): string
 // header rather than at the end of the reason list. The daemon also spells the
 // contradiction out in full among `reasons` (with provenance and what to
 // distrust); this is the headline, that is the argument.
+//
+// The claim is attributed to `source`, not to "state.json": a pi run's state
+// comes from the daemon's own spawn log and pi writes no status file at all, so
+// naming the file here would invent provenance for exactly the sessions with the
+// least of it. For a claude session `source` IS "state.json", so its headline is
+// unchanged.
 const formatExplainConflict = (explanation: ExplainSummary): string | undefined =>
   explanation.screenDisagrees && explanation.terminal !== undefined
-    ? `!! screen disagrees: state.json says "${explanation.state}", the screen reads "${explanation.terminal.state}"`
+    ? `!! screen disagrees: ${explanation.source} says "${explanation.state}", the screen reads "${explanation.terminal.state}"`
     : undefined
 
 // Identity, then the contradiction if there is one, then what the screen says —
