@@ -43,15 +43,109 @@ const TURN_COMPLETE_FIXTURE =
 const PI_WORKING_FIXTURE =
   "\x1b[2K \x1b[38;2;138;190;183m⠋\x1b[39m \x1b[38;2;128;128;128mWorking...\x1b[39m"
 
-// NOT a captured render — these two are read directly out of the shipped
-// Claude Code 2.1.220 binary (`strings -a` on
-// ~/.local/share/claude/versions/2.1.220), which is how permission-prompt
-// and permission-prompt-reject-option in the matcher table are verified.
-// See the module comment and each matcher's own comment for the full
-// evidence trail. Plain strings (no ANSI) because that's exactly what
-// `strings` extracts — the CLI never rendered this text to a live terminal
-// during this investigation (auto-approved past the dialog every time).
-const PERMISSION_PROMPT_LITERAL = "Do you want to proceed?"
+// ---- live permission-dialog captures (2026-07-29) -----------------------
+//
+// These are RENDERS, not `strings` output. A `claude` 2.1.220 was started
+// inside a zellij session created for this purpose (`polltest-perm19`, cwd
+// /private/tmp/permprobe19) under `--permission-mode manual` plus
+// `--settings '{"permissions":{"ask":["Bash"]}}'` / `["Write"]`, so the tool
+// call it was asked to make had to stop at a real dialog instead of being
+// auto-approved by the box's broad user-level Bash allow-list — the exact
+// obstacle that left these rows unrendered the first time round. Each fixture
+// below is verbatim `zellij action dump-screen --pane-id terminal_0` output.
+//
+// Every space in the dialog is an ORDINARY space — checked, not assumed.
+// Hexdump of the header plus both option lines of the Bash dialog:
+//   20 44 6f 20 79 6f 75 20 77 61 6e 74 20 74 6f 20 70 72 6f 63 65 65 64 3f 0a
+//   20 e2 9d af 20 31 2e 20 59 65 73 0a
+//   20 20 20 32 2e 20 4e 6f 0a
+// i.e. `␠Do you want to proceed?\n␠❯␠1.␠Yes\n␠␠␠2.␠No\n` — no U+00A0 here,
+// unlike the resting prompt line below, so these fixtures need no escapes.
+const PERMISSION_DIALOG_BASH_DUMP = [
+  "❯ Run the bash command: touch /tmp/permprobe19/hello.txt -- nothing else, no explanation.",
+  "",
+  "⏺ Bash(touch /tmp/permprobe19/hello.txt)",
+  "  ⎿  Waiting…",
+  "",
+  "────────────────────────────────────────────────────────────────────────",
+  " Bash command",
+  "",
+  "   touch /tmp/permprobe19/hello.txt",
+  "   Create empty file hello.txt",
+  "",
+  " Permission rule Bash requires confirmation for this command.",
+  " /permissions to update rules",
+  "",
+  " Do you want to proceed?",
+  " ❯ 1. Yes",
+  "   2. No",
+  "",
+  " Esc to cancel · Tab to amend · ctrl+e to explain",
+].join("\n")
+
+// The SAME dialog machinery for a Write tool call, captured the same way from
+// `polltest-perm19b`. Its header is not "Do you want to proceed?" at all — it
+// names the action — which is why matching that one sentence missed this whole
+// class of live blocked screen (it read `unknown` before this change).
+const PERMISSION_DIALOG_WRITE_DUMP = [
+  "⏺ Write(hello2.txt)",
+  "",
+  "──────────────────────────────────────────────────",
+  " Create file",
+  " hello2.txt",
+  "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+  "  1 hi",
+  "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+  " Do you want to create hello2.txt?",
+  " ❯ 1. Yes",
+  "   2. Yes, allow all edits during this session",
+  "      (shift+tab)",
+  "   3. No",
+  "",
+  " Esc to cancel · Tab to amend",
+].join("\n")
+
+// The byte stream, not the settled screen: 428 bytes copied verbatim out of the
+// pty log of that same dialog (a forked pty ran `zellij attach polltest-perm19`
+// and logged every byte). This is the shape the WS tap sees, and it is NOT the
+// dump's shape — the TUI moves to the next row with an absolute cursor-position
+// CSI (`\x1b[29;1H`) and pads with spaces instead of emitting `\n`, and wraps
+// every word in an OSC 8 hyperlink reset. After stripAnsi the header and its
+// option list therefore end up on ONE line separated by 97 spaces, so a matcher
+// anchored on a line break between them fires on the dump and silently misses
+// every attached terminal.
+const PERMISSION_DIALOG_WS_BYTES =
+  "Do you want to proceed?                                                                                                \x1b[29;1H\x1b[m\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249m❯\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m1.\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;177;185;249mYes\x1b[m\x1b]8;;\x1b\\                                                                                                               \x1b[30;1H\x1b[m\x1b[m\x1b]8;;\x1b\\   \x1b[38;2;153;153;153m2.\x1b[m\x1b]8;;\x1b\\ No                         "
+
+// A screen that merely DISPLAYS this matcher table and the AGENTS.md paragraph
+// about it — captured live from a zellij session (`polltest-selfref19`) that ran
+// `sed -n` over those two files and then idled. Under the pre-2026-07-29 rows
+// this classified `blocked`, which is how the self-referential false positive
+// was found: every agent editing, diffing or documenting this file looked like
+// an agent waiting on a permission decision.
+const SELF_REFERENCE_DUMP = [
+  "    // has binary-string evidence but no captured live-render evidence.",
+  "    pattern: /Do you want to proceed\\?/,",
+  "  },",
+  "  {",
+  '    name: "permission-prompt-reject-option",',
+  '    state: "blocked",',
+  "    // Verified the same way, same binary offsets: the dialog's third option",
+  '    // literal, "No, and tell Claude what to do differently". Covers the case',
+  "    // where the tail window caught only the bottom of a long dialog and the",
+  '    // "Do you want to proceed?" header already scrolled out of the',
+  "    pattern: /No, and tell Claude what to do differently/,",
+  "  },",
+  'ends, `"Do you want to proceed?"` (or its reject option) while blocked on a',
+  'permission decision; pi\'s `"Working..."` spinner — against a per-connection',
+].join("\n")
+
+// Read out of the shipped binary, NOT rendered: `strings -a` on
+// ~/.local/share/claude/versions/2.1.220 contains this option label four
+// times, but neither live dialog above used it — 2.1.220 renders a bare "No".
+// It stays as a bottom-of-dialog fallback for the variant that does render it,
+// and the `3.` prefix is the part that makes it a rendered option line rather
+// than a string anyone can print.
 const PERMISSION_REJECT_OPTION_LITERAL = "No, and tell Claude what to do differently"
 
 // A real `zellij action dump-screen` of a Claude Code session RESTING at its
@@ -195,7 +289,9 @@ describe("classifyTail", () => {
   })
 
   it("still reports blocked when the prompt box shares the frame with a permission dialog", () => {
-    const result = classifyTail({ tail: `${PERMISSION_PROMPT_LITERAL}\n${PROMPT_RESTING_DUMP}` })
+    const result = classifyTail({
+      tail: `${PERMISSION_DIALOG_BASH_DUMP}\n${PROMPT_RESTING_DUMP}`,
+    })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt")
   })
@@ -214,18 +310,70 @@ describe("classifyTail", () => {
     expect(result.evidence).toBe("Working...")
   })
 
-  it("classifies the Claude Code permission-prompt header as blocked", () => {
-    const result = classifyTail({ tail: PERMISSION_PROMPT_LITERAL })
+  it("classifies a live-captured Bash permission dialog as blocked", () => {
+    const result = classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("permission-prompt")
+    // Evidence is the header line only — the option list is required by a
+    // lookahead, so a chip tooltip stays one readable line.
+    expect(result.evidence).toBe("Do you want to proceed?")
+  })
+
+  it("classifies a live-captured Write permission dialog as blocked, header and all", () => {
+    // The old row matched the single sentence "Do you want to proceed?", which
+    // this real dialog never prints: it read `unknown` on a live box.
+    const result = classifyTail({ tail: PERMISSION_DIALOG_WRITE_DUMP })
+    expect(result.state).toBe("blocked")
+    expect(result.matcher).toBe("permission-prompt")
+    expect(result.evidence).toBe("Do you want to create hello2.txt?")
+  })
+
+  it("classifies the dialog from raw WS bytes, where the redraw emits no newline", () => {
+    // The attached path never sees the dump's line breaks (see the fixture
+    // comment): header and options arrive on one line, 97 spaces apart.
+    const result = classifyTail({ tail: PERMISSION_DIALOG_WS_BYTES })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt")
   })
 
-  it("classifies the permission-prompt reject option as blocked on its own", () => {
-    // Simulates the tail catching only the bottom of a long dialog — the
-    // header has already scrolled out of the bounded window.
-    const result = classifyTail({ tail: PERMISSION_REJECT_OPTION_LITERAL })
+  // The bug this row was rewritten for: the header is a sentence any terminal
+  // can print — an agent editing this table, reviewing the diff or reading
+  // AGENTS.md printed it and was classified as blocked on a human.
+  it("does not report blocked for a screen that merely displays the header text", () => {
+    expect(classifyTail({ tail: "Do you want to proceed?" }).state).toBe("unknown")
+    // Asserted as "not blocked" rather than "unknown" on purpose: the same
+    // AGENTS.md paragraph quotes `"⎿ Waiting…"` and pi's `"Working..."` too, so
+    // this screen still trips a `working` row (`tool-call-waiting` first, then
+    // `pi-working`) and reads `working`. That is the identical self-reference
+    // class in the `working` rows — out of scope here (this change is about the
+    // `blocked` rows, the ones `wait --until blocked` and the auto-answer rules
+    // key off), and recorded so the next person anchors those rows against a
+    // fresh capture rather than on speculation.
+    expect(classifyTail({ tail: SELF_REFERENCE_DUMP }).state).not.toBe("blocked")
+  })
+
+  // Ordering, not the pattern: the real dialog above is drawn UNDER a still-live
+  // "⎿  Waiting…" tool line, so the tail carries a working match too. Only
+  // first-match-wins with the blocked rows on top keeps this blocked.
+  it("reports blocked, not working, when the dialog sits under a live tool-call line", () => {
+    expect(PERMISSION_DIALOG_BASH_DUMP).toContain("⎿  Waiting…")
+    expect(classifyTail({ tail: PERMISSION_DIALOG_BASH_DUMP }).matcher).toBe("permission-prompt")
+  })
+
+  it("classifies a numbered reject option as blocked when the header scrolled out", () => {
+    // Simulates the tail catching only the bottom of a long dialog. The `3.` is
+    // load-bearing: it is what a rendered option list has and a source listing
+    // does not.
+    const result = classifyTail({ tail: `   3. ${PERMISSION_REJECT_OPTION_LITERAL} (esc)` })
     expect(result.state).toBe("blocked")
     expect(result.matcher).toBe("permission-prompt-reject-option")
+  })
+
+  it("does not report blocked for the bare reject-option label with no option number", () => {
+    expect(classifyTail({ tail: PERMISSION_REJECT_OPTION_LITERAL }).state).toBe("unknown")
+    expect(classifyTail({ tail: `pattern: /${PERMISSION_REJECT_OPTION_LITERAL}/,` }).state).toBe(
+      "unknown",
+    )
   })
 
   it("returns unknown — not a guess — when nothing recognizable is in the tail", () => {
@@ -234,7 +382,7 @@ describe("classifyTail", () => {
   })
 
   it("prefers blocked over a stale working line still inside the window", () => {
-    const tail = `${THINKING_FIXTURE} Do you want to proceed?`
+    const tail = `${THINKING_FIXTURE}\n${PERMISSION_DIALOG_BASH_DUMP}`
     expect(classifyTail({ tail }).state).toBe("blocked")
   })
 

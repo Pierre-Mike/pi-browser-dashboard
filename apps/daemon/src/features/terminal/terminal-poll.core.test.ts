@@ -153,7 +153,11 @@ describe("foldScreenDump", () => {
   // would let one stale permission prompt outrank the live spinner forever.
   it("treats each dump as a whole snapshot, so a stale screen cannot outrank the current one", () => {
     const blocked = foldScreenDump({
-      dump: "Do you want to proceed?",
+      // The dialog's question line AND its option list — the header alone is a
+      // sentence any screen can print, so it no longer classifies as blocked.
+      // These two lines are verbatim from the live capture kept in
+      // terminal-state.core.test.ts.
+      dump: " Do you want to proceed?\n ❯ 1. Yes\n   2. No",
       prior: undefined,
       maxChars,
     })

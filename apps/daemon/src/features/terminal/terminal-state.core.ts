@@ -4,17 +4,23 @@
 // an integration — a `claude` the user started themselves in a plain zellij
 // pane is just as classifiable as one the daemon spawned.
 //
-// Every VERIFIED row in MATCHERS below rests on one of two evidence sources,
+// Every VERIFIED row in MATCHERS below rests on one of three evidence sources,
 // named in the row's own comment:
 //   - a captured pty run: a throwaway driver forked a real pty, ran an
 //     actual `claude` (2.1.220) or `pi` (0.80.3) CLI inside it, and logged
 //     the raw bytes while it answered a prompt / invoked a tool.
+//   - a live screen dump: `zellij action dump-screen --pane-id terminal_0`
+//     against a real session, which is the exact text the unattended poller
+//     folds through this module (`terminal-poll.io.ts`).
 //   - the shipped CLI's own source: Claude Code ships as a single compiled
 //     binary (`strings -a` on `~/.local/share/claude/versions/2.1.220`,
 //     a Mach-O executable) with its UI copy embedded as literal strings;
 //     `pi` ships unminified JS (`@earendil-works/pi-coding-agent`'s `dist/`),
 //     so the literal is readable straight from source, file:line included.
-// A row with neither is marked unverified in its own comment.
+// A row with neither is marked unverified in its own comment. The two shapes
+// are not interchangeable: a binary literal proves the string EXISTS, only a
+// render proves it reaches a screen, and only a render shows what surrounds it.
+// The permission rows were rewritten on 2026-07-29 for exactly that reason.
 
 export type TerminalStateSlug = "working" | "blocked" | "idle" | "unknown"
 
@@ -95,28 +101,67 @@ const MATCHERS: ReadonlyArray<Matcher> = [
   {
     name: "permission-prompt",
     state: "blocked",
-    // Verified against the shipped binary: `strings -a` on
-    // `~/.local/share/claude/versions/2.1.220` (Claude Code 2.1.220, Mach-O
-    // arm64) contains the literal "Do you want to proceed?" five times, each
-    // adjacent to unambiguous tool-approval identifiers — "Bash command
-    // (unsandboxed)", "PowerShell command (unsandboxed)", "accept-once",
-    // "accept-session", "reject", "confirm:yes", "confirm:no" — confirming
-    // it is the dialog's own copy, not a comment or doc string. Could not
-    // additionally confirm by *rendering* it: every attempt to trigger the
-    // dialog against a real `claude` process in this sandbox auto-approved
-    // the tool call first (a broad user-level Bash allow-list), so this row
-    // has binary-string evidence but no captured live-render evidence.
-    pattern: /Do you want to proceed\?/,
+    // Verified by LIVE RENDER, 2026-07-29, and that is what this pattern's
+    // shape is for. Two real dialogs were captured with `zellij action
+    // dump-screen --pane-id terminal_0` against sessions created for the
+    // purpose, plus the raw pty byte stream of the first one:
+    //
+    //    Do you want to proceed?          |   Do you want to create hello2.txt?
+    //    ❯ 1. Yes                         |   ❯ 1. Yes
+    //      2. No                          |     2. Yes, allow all edits during …
+    //                                     |     3. No
+    //
+    // Getting them on screen took `--permission-mode manual` plus an explicit
+    // `--settings '{"permissions":{"ask":["Bash"]}}'`; without the `ask` rule
+    // the box's broad user-level allow-list auto-approves the call and no
+    // dialog is ever drawn, which is why the first version of this row had
+    // only `strings -a` evidence from the shipped 2.1.220 binary.
+    //
+    // Both captures corrected a claim the binary strings could not:
+    //  - The header is NOT one fixed sentence. A Write approval says "Do you
+    //    want to create hello2.txt?" and never prints "proceed", so matching
+    //    that sentence read a genuinely blocked live screen as `unknown`.
+    //    Hence `Do you want to …?` as a shape.
+    //  - A header alone is a sentence ANY terminal can print. Matching it
+    //    self-referentially classified every agent that edited this table,
+    //    reviewed the diff or displayed AGENTS.md as blocked on a human
+    //    (caught live 2026-07-29 on a session that only ran `sed` over these
+    //    two files). So the header only counts when the dialog's own option
+    //    list follows it: `1.` is always the first item, whichever option the
+    //    `❯` cursor sits on.
+    //
+    // The gap between header and option list is whitespace-only but NOT
+    // reliably a newline: the dump has `\n`, while the attached WS path gets
+    // zellij's redraw, which jumps rows with an absolute cursor CSI
+    // (`\x1b[29;1H`) and pads with spaces, so after stripAnsi both live on one
+    // line 97 spaces apart (measured, 120-col pane). `\s{0,500}?` covers a
+    // newline and up to ~two rows of padding on a wide pane; a rendered dialog
+    // has nothing but padding in there.
+    //
+    // Evidence stays the header line: the option list is required through a
+    // lookahead, so `found[0]` is one readable line for a chip tooltip.
+    //
+    // Known gaps, both live-captured rather than assumed: the workspace-trust
+    // dialog ("Quick safety check: Is this a project you created or one you
+    // trust?" + "❯ 1. Yes, I trust this folder") wraps its question mid-line,
+    // so it does not match and a session parked on it still reads `unknown`;
+    // and a pane narrow enough to wrap the header itself would break the
+    // same way.
+    pattern: /(?:^|[^\S\n])(?:Do you want to [^\n]*?\?)(?=\s{0,500}?(?:❯[^\S\n]*)?1\.[^\S\n]+\S)/m,
   },
   {
     name: "permission-prompt-reject-option",
     state: "blocked",
-    // Verified the same way, same binary offsets: the dialog's third option
-    // literal, "No, and tell Claude what to do differently". Covers the case
-    // where the tail window caught only the bottom of a long dialog and the
-    // "Do you want to proceed?" header already scrolled out of the
-    // (bounded) tail.
-    pattern: /No, and tell Claude what to do differently/,
+    // Binary-string evidence only, and now said plainly: `strings -a` on the
+    // shipped 2.1.220 binary carries the option label "No, and tell Claude
+    // what to do differently" four times, but NEITHER live dialog captured
+    // above rendered it — 2.1.220 drew a bare "No" in both. Kept as the
+    // bottom-of-dialog fallback for the variant that does render it (the tail
+    // is 8k chars against a ~2.7k screen, so in practice the header is still
+    // in the window), and unlike before it cannot fire on a screen that is
+    // merely *printing* the label: a rendered option carries its list number,
+    // a source listing or a doc paragraph does not.
+    pattern: /(?:^|[^\S\n])\d+\.[^\S\n]+No, and tell Claude what to do differently/m,
   },
   {
     name: "tool-call-waiting",
