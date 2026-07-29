@@ -6,7 +6,7 @@ import { Effect, Exit } from "effect"
 import { discoveryChildEnv } from "../../platform/agent-discovery.core"
 import { createAgentDiscovery } from "../../platform/agent-discovery.io"
 import { ShellError } from "../../platform/shell.io"
-import { spawnLaunchChecked } from "./pi.io"
+import { piDispatchSessionName, spawnLaunchChecked } from "./pi.io"
 
 const scratch = mkdtempSync(join(tmpdir(), "pi-repo-test-"))
 let n = 0
@@ -36,6 +36,37 @@ const runWithEnv = (args: {
     ),
   }
 }
+
+// The name a dispatched pi run is CREATED under has to be the name the attach
+// path and the screen poller RESOLVE. It wasn't: this side minted a bare
+// `pi-<short>` while both readers ran it through `prefixedZellijSession`, so on
+// any daemon with PID_ZELLIJ_PREFIX set the dispatch created a session neither
+// could see. Observed on a prefixed daemon before this existed: the poller had
+// no terminal-state row at all (so `explain` reported `terminal: undefined`,
+// removing the only independent evidence a pi session has), `DELETE /terminal/
+// <short>` answered `{"ok":false}` and left the session running, and attaching
+// resurrected a SECOND pi on the same session id under the prefixed name — two
+// processes, one transcript.
+describe("piDispatchSessionName", () => {
+  it("prefixes the created name, so the readers resolve the session that exists", () => {
+    expect(piDispatchSessionName({ short: "a98713f5", prefix: "polltest" })).toBe(
+      "polltest-pi-a98713f5",
+    )
+  })
+
+  // The default and the user's own daemon: an empty prefix must leave the name
+  // byte-identical to what every already-running session was created under, so
+  // this fix cannot orphan one.
+  it("is a no-op for the empty prefix every default daemon runs with", () => {
+    expect(piDispatchSessionName({ short: "a98713f5", prefix: "" })).toBe("pi-a98713f5")
+  })
+
+  // The stronger property — that this agrees with what the terminal slice's
+  // readers actually compose, for every prefix — cannot be asserted from inside
+  // this slice: it would mean importing that slice's internals. It lives in
+  // scripts/mirrored-constants.test.ts, the file that exists for exactly this
+  // (two boundaries that must agree, neither able to import the other).
+})
 
 describe("spawnLaunchChecked", () => {
   it("fails with the child's stderr when it dies non-zero inside the launch window", async () => {

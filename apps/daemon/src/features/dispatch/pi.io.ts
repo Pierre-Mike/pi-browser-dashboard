@@ -6,10 +6,12 @@ import { discoveryChildEnv } from "../../platform/agent-discovery.core"
 import { agentDiscovery } from "../../platform/agent-discovery.io"
 import { resolveSpawnCwd, runCommand, ShellError } from "../../platform/shell.io"
 import { sseBus } from "../../platform/sse-bus"
+import { readZellijPrefix } from "../../platform/zellij-prefix"
 import {
   cleanZellijEnv,
   piBackgroundLayoutKdl,
   piZellijSessionName,
+  prefixedZellijSession,
 } from "../terminal/terminal.core"
 import {
   buildPiLauncherScript,
@@ -120,6 +122,38 @@ export const spawnLaunchChecked = (
         : new ShellError({ message: `spawn failed: ${input.cmd.join(" ")}`, cause }),
   })
 
+/**
+ * The zellij session name a dispatched pi run is CREATED under.
+ *
+ * Named, exported and tested rather than composed inline, because composing it
+ * inline is exactly how it went wrong: this side minted the bare
+ * `piZellijSessionName` form of the short, while the two readers — the attach
+ * path (`resolvePiSession`) and the screen poller (`sessionPollCandidates`),
+ * both in `features/terminal/terminal.routes.ts` — each ran that name through
+ * `prefixedZellijSession`. With `PID_ZELLIJ_PREFIX` set, the dispatch therefore
+ * created a session neither reader could ever address, and every symptom was
+ * silent:
+ *
+ *   - the poller had no terminal-state row for the session at all, so
+ *     `GET /sessions/:id/explain` reported `terminal: undefined` — removing the
+ *     only independent evidence a pi session has;
+ *   - `DELETE /terminal/<short>` answered `{"ok":false}` and left the session
+ *     running, so the daemon could not kill what it had just started;
+ *   - attaching took `zellijAttachOrCreate`'s create branch and resurrected a
+ *     SECOND pi on the same session id under the prefixed name — two processes
+ *     appending to one transcript, with the real run left invisible.
+ *
+ * Fixed here, where the name is minted, rather than by teaching the readers to
+ * guess at a second candidate: the prefix is a property of the daemon, so every
+ * name it derives must carry it, and one of the four call sites disagreeing is
+ * the bug class itself.
+ */
+export const piDispatchSessionName = (input: {
+  readonly short: string
+  readonly prefix: string
+}): string =>
+  prefixedZellijSession({ prefix: input.prefix, name: piZellijSessionName(input.short) })
+
 const LIST_MODELS_TIMEOUT_MS = 30_000
 // Window for `zellij … attach -b` to return non-zero (bad layout, zellij
 // missing). Detached creation returns 0 within tens of ms, so this only bounds
@@ -134,8 +168,14 @@ export const PiIoLive: Layer.Layer<PiIo, never, PiSessionsIo> = Layer.effect(
   PiIo,
   Effect.gen(function* () {
     const piSessions = yield* PiSessionsIo
+    // Resolved once when the layer is built, like `piSessions` above: the prefix
+    // comes from the typed config funnel (platform/zellij-prefix reads
+    // PID_ZELLIJ_PREFIX through ConfigService) and cannot change under a
+    // running daemon.
+    const zellijPrefix = readZellijPrefix()
     return {
-      // Launch pi INSIDE a detached zellij session named `pi-<short>` so the
+      // Launch pi INSIDE a detached zellij session (see piDispatchSessionName
+      // for the name, and for what went wrong when it wasn't prefixed) so the
       // dashboard terminal can attach to a live, interactive run — the old
       // `pi -p` detached child was headless and had nothing to attach to. The
       // daemon writes a launcher script + layout to a temp dir, creates the
@@ -146,7 +186,7 @@ export const PiIoLive: Layer.Layer<PiIo, never, PiSessionsIo> = Layer.effect(
           const sessionId = crypto.randomUUID()
           const cwd = resolveSpawnCwd(input.cwd, process.env)
           const short = piShort(sessionId)
-          const sessionName = piZellijSessionName(short)
+          const sessionName = piDispatchSessionName({ short, prefix: zellijPrefix })
           const dir = mkdtempSync(join(tmpdir(), `pid-pi-${short}-`))
           const pidPath = join(dir, "pid")
           const stderrPath = join(dir, "pi-stderr.log")
