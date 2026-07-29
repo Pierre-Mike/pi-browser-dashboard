@@ -77,7 +77,7 @@ export const ExcalidrawBoard = ({ short, path, label }: Props) => {
   return (
     <div
       data-testid="excalidraw-board"
-      className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-base-300"
+      className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-box border border-base-300"
     >
       <BoardHeader label={label} status={status} />
       <div className="relative min-h-0 min-w-0 flex-1">

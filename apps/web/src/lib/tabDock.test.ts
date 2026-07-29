@@ -20,10 +20,25 @@ describe("shared tab dock", () => {
     expect(src).not.toMatch(/export const Icon\b/)
   })
 
-  it("frames the dock as a rounded, scrollable bar tinted by base-200", () => {
-    expect(tabDockNavClass).toContain("rounded-xl")
+  it("frames the dock as a scrollable bar tinted by base-200, shaped by the theme", () => {
+    // Was pinned to `rounded-xl`. That literal was the bug: the dock is the
+    // most-looked-at chrome in the app, and it stayed soft-cornered in the
+    // fully-square `terminal` family because its radius was a component
+    // decision rather than a theme one. `rounded-box` reads `--rounded-box`.
+    expect(tabDockNavClass).toContain("rounded-box")
     expect(tabDockNavClass).toContain("bg-base-200/60")
     expect(tabDockNavClass).toContain("overflow-x-auto")
+  })
+
+  it("shapes the dock's controls from the theme too, not from a fixed radius", () => {
+    // The rail and the reopen chip are the same surface returning, so they take
+    // the same two tokens: `--rounded-box` for a panel, `--rounded-btn` for a
+    // control. semanticRadius.test.ts enforces this across the whole app; these
+    // assertions pin the specific tokens this module chose.
+    expect(subTabRailClass).toContain("rounded-box")
+    expect(tabButtonClass(false)).toContain("rounded-btn")
+    expect(subTabButtonClass(false)).toContain("rounded-btn")
+    expect(railExpandBtnClass).toContain("rounded-btn")
   })
 
   it("fills the active tab with daisyUI primary and mutes idle tabs", () => {

@@ -84,7 +84,7 @@ const ToolbarButton = ({
   title?: string
 }) => {
   const cls =
-    "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-base-300 hover:bg-base-200 text-base-content/80"
+    "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-btn border border-base-300 hover:bg-base-200 text-base-content/80"
   if (href) {
     return (
       <a
@@ -268,7 +268,7 @@ const FilePreview = ({ resource, path }: { resource: FileResource; path: string 
             <span data-testid="file-name" className="font-mono text-sm truncate text-base-content">
               {basenameOf(f.path)}
             </span>
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-base-300 text-base-content/80">
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-badge bg-base-300 text-base-content/80">
               {kind}
             </span>
           </div>
@@ -556,7 +556,7 @@ export const FileTree = ({ resource }: { resource: FileResource }) => {
   return (
     <div
       data-testid="project-file-tree"
-      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-base-300 rounded-xl overflow-hidden bg-base-100/60 shadow-sm flex-1 min-h-0"
+      className="grid grid-cols-1 md:grid-cols-[minmax(240px,320px)_1fr] gap-0 border border-base-300 rounded-box overflow-hidden bg-base-100/60 shadow-sm flex-1 min-h-0"
     >
       <FileTreeSidebar
         resource={resource}

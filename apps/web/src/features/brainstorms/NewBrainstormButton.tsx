@@ -60,7 +60,7 @@ export const NewBrainstormButton = ({ short, kind = "canvas", onCreated }: Props
         aria-label={ui.title}
         title={ui.title}
         onClick={() => setOpen(true)}
-        className="shrink-0 inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-medium text-base-content/60 transition-colors hover:bg-base-300/70 hover:text-base-content"
+        className="shrink-0 inline-flex items-center justify-center rounded-btn px-2.5 py-1.5 text-xs font-medium text-base-content/60 transition-colors hover:bg-base-300/70 hover:text-base-content"
       >
         {ui.face}
       </button>
@@ -83,7 +83,7 @@ export const NewBrainstormButton = ({ short, kind = "canvas", onCreated }: Props
         }}
         placeholder="board-name"
         disabled={create.isPending}
-        className="w-32 rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-xs outline-none focus:border-primary disabled:opacity-50"
+        className="w-32 rounded-btn border border-base-300 bg-base-100 px-2 py-1 text-xs outline-none focus:border-primary disabled:opacity-50"
       />
       {create.isError ? (
         <span data-testid={`${ui.testid}-error`} className="text-[10px] text-error">

@@ -229,12 +229,12 @@ export const TerminalView = (props: Props) => {
       <div
         ref={hostRef}
         data-testid="terminal-host"
-        className="flex-1 min-h-0 rounded-lg p-2 shadow-inner"
+        className="flex-1 min-h-0 rounded-box p-2 shadow-inner"
         style={{ backgroundColor: terminalTheme(scheme).background }}
       />
       <div className="flex items-center gap-2 px-1 pt-1.5 text-[10px] text-base-content/60">
         <span
-          className={`px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold ${
+          className={`px-1.5 py-0.5 rounded-badge uppercase tracking-wide font-semibold ${
             status === "open"
               ? "bg-success/15 text-success"
               : status === "connecting"
@@ -250,7 +250,7 @@ export const TerminalView = (props: Props) => {
           data-testid="terminal-restart"
           onClick={onRestart}
           disabled={restarting}
-          className="ml-auto rounded border border-error/30 text-error px-2 py-0.5 hover:bg-error/15 disabled:opacity-50"
+          className="ml-auto rounded-btn border border-error/30 text-error px-2 py-0.5 hover:bg-error/15 disabled:opacity-50"
           title="Kill the zellij session on the daemon and reconnect"
         >
           {restarting ? "Restarting…" : "Restart"}
@@ -258,7 +258,7 @@ export const TerminalView = (props: Props) => {
         <button
           type="button"
           onClick={() => setReconnectKey((k) => k + 1)}
-          className="rounded border border-base-300 px-2 py-0.5 hover:bg-base-200"
+          className="rounded-btn border border-base-300 px-2 py-0.5 hover:bg-base-200"
           title={reconnectTitle}
         >
           Reconnect

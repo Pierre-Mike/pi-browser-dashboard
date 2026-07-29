@@ -30,7 +30,7 @@ const MessageBody = ({ message, loading }: { message: LastMessage | null; loadin
         <span className="text-[10px] uppercase tracking-wide text-base-content/60">
           {roleLabel[message.role]}
         </span>
-        <div className="rounded-lg border border-base-300 bg-base-200 p-3 text-sm text-base-content/80 whitespace-pre-wrap max-h-72 overflow-y-auto">
+        <div className="rounded-box border border-base-300 bg-base-200 p-3 text-sm text-base-content/80 whitespace-pre-wrap max-h-72 overflow-y-auto">
           {message.text}
         </div>
       </>

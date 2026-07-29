@@ -11,7 +11,34 @@ export default {
   // letting the media query decide behind the app's back.
   darkMode: ["selector", '[data-theme$="dark"]'],
   theme: {
-    extend: {},
+    extend: {
+      // Shape is a theme property, so every corner in the app has to be sized
+      // from a theme var. daisyUI's own `utils` layer only emits the
+      // whole-element `.rounded-box` / `.rounded-btn` / `.rounded-badge`, which
+      // cannot express a single corner — and the app does need that (a panel
+      // header rounding only its top, a chat bubble squaring off its tail).
+      //
+      // Registering the three names in Tailwind's *borderRadius scale* instead
+      // makes Tailwind generate the whole family: `rounded-box`,
+      // `rounded-t-box`, `rounded-tr-btn`, `rounded-bl-badge`, … all reading
+      // the same var. Verified in built CSS, not assumed.
+      //
+      // daisyUI 4 happens to register the same three names itself (its
+      // `src/lib/utility-classes.js` is merged through the plugin's own
+      // `theme.extend`), so this is belt *and* braces — deliberately. The
+      // contract the whole UI is now written against should be declared in this
+      // repo's config, not inherited from a dependency's internal file: daisyUI
+      // 5 renames these vars to `--radius-box` / `--radius-field`, and when we
+      // upgrade, this block is the one place that has to change.
+      //
+      // The fallbacks match daisyUI's own, so a theme that forgets a token
+      // degrades to a sane radius rather than to `border-radius: ;`.
+      borderRadius: {
+        box: "var(--rounded-box, 1rem)",
+        btn: "var(--rounded-btn, 0.5rem)",
+        badge: "var(--rounded-badge, 1.9rem)",
+      },
+    },
   },
   plugins: [daisyui],
   // daisyUI gives us a coherent component layer (btn / tab / menu / badge /
@@ -27,9 +54,21 @@ export default {
   // every theme also emitted as `[data-theme=…]`. So pidlight/piddark must stay
   // first and stay in that order: they are the no-JS fallback.
   //
-  // `--rounded-*` and `--animation-btn` are deliberately identical across all
-  // eight themes: a family changes colour only. Per-family radius is a separate
-  // change, so a shape regression is never confused with a palette one.
+  // A family owns its **shape** as well as its colour. `--rounded-box` sizes
+  // panels/cards/modals/code blocks, `--rounded-btn` sizes buttons, inputs and
+  // small controls, `--rounded-badge` sizes chips; `theme.extend.borderRadius`
+  // above turns each into a full set of Tailwind utilities, corner-specific
+  // ones included, and `lib/ui/semanticRadius.test.ts` fails on any component
+  // that hardcodes a radius instead of using them. Adding a shape to a family
+  // is therefore a change to these four lines and nothing else.
+  //
+  // `pid` is byte-frozen — it is the default and must keep looking exactly as
+  // it did before shape was tokenized. The other three differ on purpose:
+  // mono is tight and technical, terminal is fully square (and drops the button
+  // transition to 0s: a CRT does not ease), sunset is soft.
+  //
+  // The two variants of a family always share one shape. Light and dark are the
+  // same design in two lightings, not two designs.
   daisyui: {
     base: false,
     styled: true,
@@ -98,10 +137,12 @@ export default {
           success: "#4d7c0f", // lime-700
           warning: "#a16207", // yellow-700
           error: "#b91c1c", // red-700
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          // Tight and technical: corners present but barely, so the eye reads
+          // the content and not the frame. Snappier button transition to match.
+          "--rounded-box": "0.25rem",
+          "--rounded-btn": "0.125rem",
+          "--rounded-badge": "0.25rem",
+          "--animation-btn": "0.1s",
         },
       },
       {
@@ -119,10 +160,10 @@ export default {
           success: "#a3e635", // lime-400
           warning: "#fbbf24", // amber-400
           error: "#fb7185", // rose-400
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          "--rounded-box": "0.25rem",
+          "--rounded-btn": "0.125rem",
+          "--rounded-badge": "0.25rem",
+          "--animation-btn": "0.1s",
         },
       },
       {
@@ -142,10 +183,13 @@ export default {
           success: "#15803d", // green-700
           warning: "#a16207", // yellow-700
           error: "#b91c1c", // red-700
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          // Fully square: a character cell has no corner radius, and neither
+          // should anything framing one. `--animation-btn: 0s` for the same
+          // reason — a CRT does not ease, it switches.
+          "--rounded-box": "0",
+          "--rounded-btn": "0",
+          "--rounded-badge": "0",
+          "--animation-btn": "0s",
         },
       },
       {
@@ -163,10 +207,10 @@ export default {
           success: "#4ade80", // green-400
           warning: "#fde047", // yellow-300
           error: "#fca5a5", // red-300
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          "--rounded-box": "0",
+          "--rounded-btn": "0",
+          "--rounded-badge": "0",
+          "--animation-btn": "0s",
         },
       },
       {
@@ -188,10 +232,12 @@ export default {
           success: "#15803d", // green-700
           warning: "#b45309", // amber-700
           error: "#be123c", // rose-700
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          // Soft: generous corners, and pill-shaped badges (2rem exceeds any
+          // chip's height, so `--rounded-badge` fully rounds the ends).
+          "--rounded-box": "1rem",
+          "--rounded-btn": "0.75rem",
+          "--rounded-badge": "2rem",
+          "--animation-btn": "0.3s",
         },
       },
       {
@@ -209,10 +255,10 @@ export default {
           success: "#6ee7b7", // emerald-300
           warning: "#fcd34d", // amber-300
           error: "#fda4af", // rose-300
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
+          "--rounded-box": "1rem",
+          "--rounded-btn": "0.75rem",
+          "--rounded-badge": "2rem",
+          "--animation-btn": "0.3s",
         },
       },
     ],

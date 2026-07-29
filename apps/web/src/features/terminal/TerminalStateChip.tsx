@@ -17,7 +17,7 @@ export const TerminalStateChip = ({
     <span
       data-testid="terminal-state-chip"
       title={terminalStateTitle(event)}
-      className={`px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
+      className={`px-1.5 py-0.5 rounded-badge uppercase tracking-wide font-semibold ${tone.bg} ${tone.text}`}
     >
       {tone.label}
     </span>

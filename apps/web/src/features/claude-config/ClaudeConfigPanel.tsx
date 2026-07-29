@@ -66,7 +66,7 @@ export const ClaudeConfigPanel = (props: Props) => {
         <CountChip n={bundle.hookScripts.length} label="scripts" />
       </header>
       {isEmpty ? (
-        <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg bg-base-200/40">
+        <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-box bg-base-200/40">
           No Claude config found at <span className="font-mono">{bundle.root}</span>.
         </div>
       ) : null}
@@ -139,18 +139,18 @@ const eventTone: Record<string, string> = {
 const HookCard = ({ hook }: { hook: HookEntry }) => (
   <div
     data-testid="claude-config-hook"
-    className="rounded-lg border border-base-300 bg-base-100 p-2 flex flex-col gap-1 shadow-sm"
+    className="rounded-box border border-base-300 bg-base-100 p-2 flex flex-col gap-1 shadow-sm"
   >
     <div className="flex flex-wrap items-center gap-1.5">
       <span
-        className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${
+        className={`text-[10px] uppercase tracking-wide rounded-badge px-1.5 py-0.5 font-medium ${
           eventTone[hook.event] ?? "bg-base-200 text-base-content/80"
         }`}
       >
         {hook.event}
       </span>
       {hook.matcher ? (
-        <span className="text-[10px] font-mono rounded bg-base-200 text-base-content/80 px-1.5 py-0.5">
+        <span className="text-[10px] font-mono rounded-badge bg-base-200 text-base-content/80 px-1.5 py-0.5">
           matcher: {hook.matcher}
         </span>
       ) : null}
@@ -158,7 +158,7 @@ const HookCard = ({ hook }: { hook: HookEntry }) => (
         <span className="text-[10px] text-base-content/60">timeout {hook.timeout}s</span>
       ) : null}
       {hook.async ? (
-        <span className="text-[10px] rounded bg-secondary/15 text-secondary px-1.5 py-0.5">
+        <span className="text-[10px] rounded-badge bg-secondary/15 text-secondary px-1.5 py-0.5">
           async
         </span>
       ) : null}
@@ -168,7 +168,7 @@ const HookCard = ({ hook }: { hook: HookEntry }) => (
         </span>
       ) : null}
     </div>
-    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-base-200/60 rounded p-2 max-h-32 overflow-auto">
+    <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-base-200/60 rounded-box p-2 max-h-32 overflow-auto">
       {hook.command}
     </pre>
   </div>
@@ -203,7 +203,7 @@ const HooksTab = ({ bundle }: { bundle: ScopeBundle }) => {
             {bundle.hookScripts.map((s: HookScript) => (
               <li
                 key={s.path}
-                className="text-xs flex items-center justify-between gap-2 rounded-lg border border-base-300 bg-base-100 px-2 py-1"
+                className="text-xs flex items-center justify-between gap-2 rounded-btn border border-base-300 bg-base-100 px-2 py-1"
               >
                 <span className="font-mono">{s.name}</span>
                 <span className="text-base-content/60 tabular-nums">{s.bytes} B</span>
@@ -237,7 +237,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
                 type="button"
                 data-testid={`claude-config-skill-${s.id}`}
                 onClick={() => setSelected(s.id)}
-                className={`w-full text-left text-xs rounded-lg px-2 py-1.5 border transition-colors ${
+                className={`w-full text-left text-xs rounded-btn px-2 py-1.5 border transition-colors ${
                   active
                     ? "border-primary bg-primary/10 shadow-sm"
                     : "border-base-300 hover:bg-base-200/60 hover:border-base-300"
@@ -263,7 +263,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
       </ul>
       <div className="md:col-span-2 flex flex-col min-h-0">
         {selected === null ? (
-          <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-lg py-8 text-center bg-base-200/40">
+          <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-box py-8 text-center bg-base-200/40">
             Select a skill to view its SKILL.md.
           </div>
         ) : detailQ.isLoading ? (
@@ -276,8 +276,8 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
             {detailQ.error instanceof Error ? detailQ.error.message : "failed"}
           </div>
         ) : detailQ.data ? (
-          <article className="flex flex-col min-h-0 rounded-lg border border-base-300 bg-base-100 shadow-sm">
-            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-base-300 bg-base-200/40 rounded-t-lg">
+          <article className="flex flex-col min-h-0 rounded-box border border-base-300 bg-base-100 shadow-sm">
+            <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-base-300 bg-base-200/40 rounded-t-box">
               <h4 className="text-sm font-semibold">{detailQ.data.name}</h4>
               <span className="text-[10px] text-base-content/60 font-mono truncate">
                 {detailQ.data.path}
@@ -297,7 +297,7 @@ const SkillsTab = ({ bundle, projectId }: SkillsTabProps) => {
 }
 
 const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsSummary }) => (
-  <section className="rounded-lg border border-base-300 overflow-hidden bg-base-100 shadow-sm">
+  <section className="rounded-box border border-base-300 overflow-hidden bg-base-100 shadow-sm">
     <header className="flex items-center justify-between px-3 py-1.5 border-b border-base-300 bg-base-200/40">
       <span className="text-xs font-semibold">{title}</span>
       {settings.parseError ? (
@@ -340,7 +340,7 @@ const SettingsBlock = ({ title, settings }: { title: string; settings: SettingsS
     ) : null}
     <details className="px-3 py-2 border-t border-base-300">
       <summary className="cursor-pointer text-xs text-base-content/80">Raw JSON</summary>
-      <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-base-200/60 rounded p-2 mt-1 max-h-80 overflow-auto">
+      <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-base-200/60 rounded-box p-2 mt-1 max-h-80 overflow-auto">
         {settings.raw}
       </pre>
     </details>
@@ -368,7 +368,7 @@ const ClaudeMdTab = ({ bundle }: { bundle: ScopeBundle }) => {
   return (
     <div
       data-testid="claude-config-claude-md"
-      className="flex-1 min-h-0 rounded-lg border border-base-300 bg-base-100 overflow-auto shadow-sm"
+      className="flex-1 min-h-0 rounded-box border border-base-300 bg-base-100 overflow-auto shadow-sm"
     >
       <MarkdownView text={bundle.claudeMd} />
     </div>

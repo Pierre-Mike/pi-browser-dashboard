@@ -81,7 +81,7 @@ export const SpawnSkillPicker = ({ skills, disabled }: Props) => {
             setGroupName("")
           }}
           disabled={disabled || skills.savingGroup || !canSaveGroup}
-          className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 rounded-md border border-base-300 px-2 py-0.5 text-[11px] font-medium normal-case text-base-content/80 hover:border-base-300"
+          className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 border border-base-300 px-2 py-0.5 text-[11px] font-medium normal-case text-base-content/80 hover:border-base-300"
         >
           {skills.savingGroup ? "Saving…" : "Save as group"}
         </button>
@@ -96,7 +96,7 @@ export const SpawnSkillPicker = ({ skills, disabled }: Props) => {
             data-testid="spawn-set-default"
             onClick={skills.saveAsDefault}
             disabled={disabled || skills.savePending || skills.isProjectDefault}
-            className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 rounded-md border border-base-300 px-2 py-0.5 text-[11px] font-medium normal-case text-base-content/80 hover:border-base-300"
+            className="btn btn-xs btn-ghost h-auto min-h-0 shrink-0 gap-1 border border-base-300 px-2 py-0.5 text-[11px] font-medium normal-case text-base-content/80 hover:border-base-300"
           >
             {skills.savePending
               ? "Saving…"

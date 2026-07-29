@@ -239,7 +239,7 @@ export const SessionCardActions = ({ session }: { session: SessionState }) => {
       {a.peekSummary ? (
         <div
           data-testid="peek-summary"
-          className="mt-1 rounded-lg border border-base-300 bg-base-200 p-2 text-xs text-base-content whitespace-pre-wrap"
+          className="mt-1 rounded-box border border-base-300 bg-base-200 p-2 text-xs text-base-content whitespace-pre-wrap"
         >
           {a.peekSummary}
         </div>

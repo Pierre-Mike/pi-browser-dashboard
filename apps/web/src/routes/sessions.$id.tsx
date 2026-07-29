@@ -77,7 +77,7 @@ function SessionDrillIn() {
       {actions.peekSummary ? (
         <div
           data-testid="peek-summary"
-          className="mx-1 rounded-lg border border-base-300 bg-base-200 p-2 text-xs text-base-content/80 whitespace-pre-wrap"
+          className="mx-1 rounded-box border border-base-300 bg-base-200 p-2 text-xs text-base-content/80 whitespace-pre-wrap"
         >
           {actions.peekSummary}
         </div>

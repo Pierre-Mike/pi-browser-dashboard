@@ -41,7 +41,7 @@ const rowClass = ({
   dragging: boolean
 }): string =>
   [
-    "group flex items-center gap-1.5 px-1.5 py-1 rounded",
+    "group flex items-center gap-1.5 px-1.5 py-1 rounded-btn",
     over ? "shadow-[inset_0_2px_0_0] shadow-warning" : "",
     active ? "bg-primary/15 shadow-[inset_2px_0_0_0] shadow-primary" : "hover:bg-base-100",
     dragging ? "opacity-40" : "",
@@ -84,7 +84,7 @@ const CollapseToggle = ({
       aria-expanded={!collapsed}
       title={hint}
       aria-label={hint}
-      className={`shrink-0 inline-flex items-center justify-center w-4 h-4 rounded text-[9px] leading-none text-base-content/60 hover:text-base-content/80 transition-transform duration-200 ${
+      className={`shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-btn text-[9px] leading-none text-base-content/60 hover:text-base-content/80 transition-transform duration-200 ${
         collapsed ? "-rotate-90" : ""
       }`}
     >
@@ -167,7 +167,7 @@ const DefaultTitle = ({ title }: { title: string }) => (
     <span
       title="Sessions not linked to a project"
       aria-label="Sessions not linked to a project"
-      className="text-[9px] uppercase tracking-wide px-1 rounded bg-base-200 text-base-content/60"
+      className="text-[9px] uppercase tracking-wide px-1 rounded-badge bg-base-200 text-base-content/60"
     >
       home
     </span>
@@ -223,7 +223,7 @@ const PinButton = ({
       title={label}
       aria-label={label}
       aria-pressed={pinned}
-      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[11px] leading-none ${cls}`}
+      className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-btn text-[11px] leading-none ${cls}`}
     >
       {pinned ? "★" : "☆"}
     </button>
@@ -246,7 +246,7 @@ const SpawnButton = ({
     data-project-id={project.id}
     title={`Spawn a new session in ${title}`}
     aria-label={`Spawn a new session in ${title}`}
-    className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-sm leading-none text-base-content/60 hover:text-primary hover:bg-primary/15 opacity-60 group-hover:opacity-100 focus:opacity-100"
+    className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-btn text-sm leading-none text-base-content/60 hover:text-primary hover:bg-primary/15 opacity-60 group-hover:opacity-100 focus:opacity-100"
   >
     +
   </button>
@@ -314,7 +314,7 @@ const SessionRow = ({
         // and a matching dot leads the row. Hover (title) spells the status out.
         // Click opens the quick-reply modal instead of navigating to the
         // full session view.
-        className={`relative flex w-full items-center gap-2 pl-2 pr-1.5 py-1 rounded text-left text-[11.5px] leading-tight ${
+        className={`relative flex w-full items-center gap-2 pl-2 pr-1.5 py-1 rounded-btn text-left text-[11.5px] leading-tight ${
           active
             ? "bg-primary/15 text-primary font-medium shadow-[inset_2px_0_0_0] shadow-primary"
             : `${tone.text} hover:bg-base-100`
@@ -382,7 +382,7 @@ const SessionList = ({
             data-testid="sidebar-session-more"
             data-bucket-key={bucket.key}
             data-hidden-count={hiddenCount}
-            className="w-full text-left pl-2 pr-1.5 py-1 rounded text-[11px] leading-tight text-base-content/60 hover:text-primary hover:bg-base-100"
+            className="w-full text-left pl-2 pr-1.5 py-1 rounded-btn text-[11px] leading-tight text-base-content/60 hover:text-primary hover:bg-base-100"
           >
             {sessionMoreLabel(hiddenCount)}
           </button>

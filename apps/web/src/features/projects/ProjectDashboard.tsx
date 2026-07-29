@@ -112,7 +112,8 @@ const pullTitle = (pull: ReturnType<typeof useProjectGitPull>): string => {
   return pull.data.alreadyUpToDate ? "Already up to date." : "Pulled latest changes."
 }
 
-const PULL_BTN_BASE = "text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 hover:opacity-80"
+const PULL_BTN_BASE =
+  "text-[10px] uppercase tracking-wide rounded-btn px-1.5 py-0.5 hover:opacity-80"
 const PULL_BTN_TONE = "bg-neutral text-neutral-content"
 
 // ff-only Pull, sitting beside the top GitHub link.
@@ -146,7 +147,7 @@ const GithubActions = ({
         target="_blank"
         rel="noreferrer"
         title={`${project.githubOwner}/${project.githubRepo} on GitHub`}
-        className="text-[10px] uppercase tracking-wide rounded bg-neutral text-neutral-content px-1.5 py-0.5 hover:opacity-80 shrink-0"
+        className="text-[10px] uppercase tracking-wide rounded-btn bg-neutral text-neutral-content px-1.5 py-0.5 hover:opacity-80 shrink-0"
       >
         GitHub ↗
       </a>
@@ -172,7 +173,7 @@ const ProjectIdentity = ({
     <span className="truncate">{project.name}</span>
     {project.isGitRepo ? null : (
       <span
-        className="text-[10px] uppercase tracking-wide rounded bg-warning/15 text-warning px-1.5 py-0.5 shrink-0"
+        className="text-[10px] uppercase tracking-wide rounded-badge bg-warning/15 text-warning px-1.5 py-0.5 shrink-0"
         title="No git → supervisor cannot isolate worktrees; siblings race on disk"
       >
         ⚠ no isolation
@@ -183,7 +184,7 @@ const ProjectIdentity = ({
         data-testid="project-dashboard-branch"
         data-branch={project.branch}
         title={`current branch: ${project.branch}`}
-        className="inline-flex items-center gap-1 rounded bg-base-200 text-base-content/80 font-mono text-[10px] px-1.5 py-0.5 max-w-[140px] truncate shrink-0"
+        className="inline-flex items-center gap-1 rounded-badge bg-base-200 text-base-content/80 font-mono text-[10px] px-1.5 py-0.5 max-w-[140px] truncate shrink-0"
       >
         <span aria-hidden>⎇</span>
         {project.branch}
@@ -475,7 +476,7 @@ export const ProjectDashboard = ({ project }: Props) => {
 
         <div className="flex flex-1 min-h-0 flex-col">
           {pidApps.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
+            <div className="flex flex-1 items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
               No specs yet — drop an HTML file into{" "}
               <span className="font-mono text-base-content/80">specs/</span> or click{" "}
               <span className="font-medium text-base-content/80">+</span> to create one.

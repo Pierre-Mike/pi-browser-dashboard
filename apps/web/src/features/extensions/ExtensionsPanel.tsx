@@ -63,7 +63,7 @@ const ExtRow = ({ ext }: ExtRowProps) => {
   return (
     <div
       data-testid={`ext-row-${ext.name}`}
-      className="flex flex-col gap-2 rounded-lg border border-base-300 bg-base-100 p-3"
+      className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-3"
     >
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-mono text-sm font-semibold text-base-content">{ext.name}</span>
@@ -140,7 +140,7 @@ export const ExtensionsPanel = () => {
 
   if (exts.length === 0) {
     return (
-      <div className="text-sm text-base-content/50 py-8 text-center border border-dashed border-base-300 rounded-lg">
+      <div className="text-sm text-base-content/50 py-8 text-center border border-dashed border-base-300 rounded-box">
         No extensions installed.
       </div>
     )

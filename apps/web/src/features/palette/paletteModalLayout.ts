@@ -5,7 +5,7 @@
 // document.body, outside the themed root div — without them dark mode renders
 // black-on-dark.
 export const PALETTE_MODAL_SHELL =
-  "w-full max-w-lg rounded-xl border border-base-300 bg-base-100 text-base-content shadow-2xl flex flex-col overflow-hidden"
+  "w-full max-w-lg rounded-box border border-base-300 bg-base-100 text-base-content shadow-2xl flex flex-col overflow-hidden"
 
 // Query input: transparent background over the shell, so it needs its own
 // text + placeholder colors to stay readable in dark mode.

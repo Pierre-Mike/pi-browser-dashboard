@@ -106,7 +106,9 @@ export const components: Components = {
   ),
   // Inline code only — fenced blocks never reach here because `pre` owns them.
   code: ({ children }) => (
-    <code className="px-1 py-0.5 rounded bg-base-300/70 font-mono text-[0.9em]">{children}</code>
+    <code className="px-1 py-0.5 rounded-btn bg-base-300/70 font-mono text-[0.9em]">
+      {children}
+    </code>
   ),
   // Own the whole fenced block so code components are never nested inside <pre>.
   pre: ({ children }) => (

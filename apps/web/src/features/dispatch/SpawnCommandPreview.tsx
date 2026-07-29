@@ -37,7 +37,7 @@ export const SpawnCommandPreview = ({
   return (
     <details data-testid="spawn-command-preview" className="text-xs text-base-content/60">
       <summary className="cursor-pointer font-medium text-base-content/80">Command</summary>
-      <div className="mt-1.5 rounded-lg border border-base-300 bg-base-200 p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
+      <div className="mt-1.5 rounded-box border border-base-300 bg-base-200 p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
         <div>{command}</div>
         {cwd ? <div className="mt-1 text-base-content/50">cwd: {cwd}</div> : null}
       </div>

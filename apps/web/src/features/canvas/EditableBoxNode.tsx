@@ -52,7 +52,7 @@ export const EditableBoxNode = ({ id, data, selected }: NodeProps<BoxNode>) => {
       data-testid="canvas-node-box"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[120px] min-h-[36px] text-left ${borderClass}`}
+      className={`group rounded-box border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full min-w-[120px] min-h-[36px] text-left ${borderClass}`}
       style={
         palette.stroke
           ? {

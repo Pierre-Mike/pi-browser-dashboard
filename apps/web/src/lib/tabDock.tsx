@@ -78,16 +78,17 @@ export const PIDAPP_ICON = (
   <Icon d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" />
 )
 
-// The dock container: a soft rounded bar that scrolls horizontally without a
-// visible scrollbar. Same on every surface.
+// The dock container: a bar that scrolls horizontally without a visible
+// scrollbar. Same on every surface. Its corners come from `--rounded-box`, so
+// the dock is a soft bar in `sunset` and a hard one in `terminal`.
 export const tabDockNavClass =
-  "flex items-center gap-1 overflow-x-auto rounded-xl border border-base-300 bg-base-200/60 px-1.5 py-1 shadow-sm backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  "flex items-center gap-1 overflow-x-auto rounded-box border border-base-300 bg-base-200/60 px-1.5 py-1 shadow-sm backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 
 // One tab button. Active = daisyUI primary fill with a lift; idle = muted,
 // warming on hover.
 export const tabButtonClass = (active: boolean): string =>
   [
-    "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1",
+    "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-btn px-2.5 py-1",
     "text-xs font-medium transition-all duration-150",
     active
       ? "bg-primary text-primary-content shadow-sm shadow-primary/30"
@@ -99,24 +100,24 @@ export const tabButtonClass = (active: boolean): string =>
 // spec/app here). Same base-200 tint + rounding as the horizontal dock so the
 // two navs read as one system.
 export const subTabRailClass =
-  "flex w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-xl border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  "flex w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-box border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 
 // The chip that restores a collapsed left rail (see CollapsibleRail). It rides
 // in the topbar rather than standing where the rail was, so a collapsed rail
 // costs the panel no width at all. Reuses the rail's base-200 tint + rounding so
 // expanding it reads as the same surface returning.
 export const railExpandBtnClass =
-  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-base-300 bg-base-200/60 text-base-content/60 transition-colors hover:bg-base-300/70 hover:text-base-content"
+  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-btn border border-base-300 bg-base-200/60 text-base-content/60 transition-colors hover:bg-base-300/70 hover:text-base-content"
 
 // The small "collapse" affordance tucked into the top of an expanded rail.
 export const railCollapseBtnClass =
-  "shrink-0 rounded p-0.5 text-base-content/50 transition-colors hover:bg-base-300/70 hover:text-base-content"
+  "shrink-0 rounded-btn p-0.5 text-base-content/50 transition-colors hover:bg-base-300/70 hover:text-base-content"
 
 // One left-rail sub-tab. Full-width, left-aligned (a vertical list, not a
 // centred pill) but reusing the dock's active/idle colour language.
 export const subTabButtonClass = (active: boolean): string =>
   [
-    "group inline-flex w-full items-center gap-1.5 truncate rounded-lg px-2.5 py-1.5 text-left",
+    "group inline-flex w-full items-center gap-1.5 truncate rounded-btn px-2.5 py-1.5 text-left",
     "text-xs font-medium transition-all duration-150",
     active
       ? "bg-primary text-primary-content shadow-sm shadow-primary/30"

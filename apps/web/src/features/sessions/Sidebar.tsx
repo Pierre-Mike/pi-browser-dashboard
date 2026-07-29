@@ -106,7 +106,7 @@ export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps) =
         >
           <span
             aria-hidden="true"
-            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary text-primary-content text-[11px] font-black shadow-sm shadow-primary/30 transition-transform group-hover:scale-105"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-btn bg-primary text-primary-content text-[11px] font-black shadow-sm shadow-primary/30 transition-transform group-hover:scale-105"
           >
             π
           </span>
@@ -123,7 +123,7 @@ export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps) =
             onClick={() => setSpawn({ project: null })}
             title="Start a session not tied to a project (lands under Default)"
             aria-label="Start a session not tied to a project (lands under Default)"
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-base-content/60 hover:bg-primary/15 hover:text-primary"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-btn text-base-content/60 hover:bg-primary/15 hover:text-primary"
           >
             <span className="text-sm leading-none" aria-hidden>
               +
@@ -137,7 +137,7 @@ export const Sidebar = ({ variant = "desktop", rail: railProp }: SidebarProps) =
               onClick={rail.toggle}
               title="Collapse sidebar"
               aria-label="Collapse sidebar"
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-base-content/60 hover:bg-base-200 hover:text-base-content"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-btn text-base-content/60 hover:bg-base-200 hover:text-base-content"
             >
               <span aria-hidden>«</span>
             </button>

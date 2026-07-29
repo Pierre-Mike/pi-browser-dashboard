@@ -18,7 +18,7 @@ type Props = {
 }
 
 const SURFACE_CLS =
-  "flex flex-col gap-1.5 text-left -m-1 p-1 rounded cursor-pointer hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-primary"
+  "flex flex-col gap-1.5 text-left -m-1 p-1 rounded-btn cursor-pointer hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-primary"
 
 export const SessionCard = ({ session, terminal }: Props) => {
   const tone = stateColor(session.state)
@@ -49,7 +49,7 @@ export const SessionCard = ({ session, terminal }: Props) => {
         data-testid="session-card"
         data-short={session.short}
         data-state={session.state}
-        className={`group rounded-lg border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
+        className={`group rounded-box border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
       >
         <button
           type="button"

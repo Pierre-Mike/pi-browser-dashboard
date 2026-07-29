@@ -20,7 +20,7 @@ export const MobileNav = ({ children }: { children: ReactNode }) => {
           aria-label="Open navigation"
           aria-expanded={open}
           onClick={() => setOpen(true)}
-          className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 hover:bg-base-200"
+          className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-btn text-base-content/80 hover:bg-base-200"
         >
           <svg
             aria-hidden="true"

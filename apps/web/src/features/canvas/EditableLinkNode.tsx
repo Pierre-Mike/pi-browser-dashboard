@@ -107,7 +107,7 @@ export const EditableLinkNode = ({ id, data, selected }: NodeProps<LinkNode>) =>
       data-testid="canvas-node-link"
       data-node-id={id}
       onDoubleClick={() => setEditing(true)}
-      className={`group rounded-md border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${cardClass(palette, selected)}`}
+      className={`group rounded-box border bg-base-100 px-3 py-2 text-xs shadow-sm w-full h-full text-left ${cardClass(palette, selected)}`}
       style={cardStyle(palette, selected)}
     >
       <NodeResizer

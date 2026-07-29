@@ -54,7 +54,7 @@ export const ExtensionHost = ({ manifest, projectId, cwd }: Props) => {
       sandbox="allow-scripts"
       data-testid={`extension-host-${manifest.name}`}
       data-extension={manifest.name}
-      className="w-full h-full border-0 rounded"
+      className="w-full h-full border-0 rounded-box"
     />
   )
 }

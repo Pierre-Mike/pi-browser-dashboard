@@ -51,7 +51,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
 
   if (bundle.catalog.entries.filter((e) => e.type === category).length === 0) {
     return (
-      <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-lg">
+      <div className="text-sm text-base-content/60 py-6 text-center border border-dashed border-base-300 rounded-box">
         No {category} registered in the catalog.
       </div>
     )
@@ -81,7 +81,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
                   type="button"
                   data-testid={`library-entry-${entry.type}-${entry.name}`}
                   onClick={() => setSelected(entry.name)}
-                  className={`w-full text-left text-xs rounded px-2 py-1.5 border ${
+                  className={`w-full text-left text-xs rounded-btn px-2 py-1.5 border ${
                     active ? "border-primary bg-primary/10" : "border-base-300 hover:bg-base-200"
                   }`}
                 >
@@ -101,7 +101,7 @@ export const CatalogList = ({ bundle, category, projectId, focusName }: Props) =
         </ul>
         <div className="md:col-span-2 min-h-0 overflow-auto">
           {selectedEntry === null ? (
-            <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-lg py-8 text-center">
+            <div className="text-sm text-base-content/60 border border-dashed border-base-300 rounded-box py-8 text-center">
               Select an entry to view details.
             </div>
           ) : (
@@ -158,7 +158,7 @@ const StatusChips = ({ status }: { status: StatusByScope | undefined }) => (
 
 const ScopeChip = ({ label, installed }: { label: string; installed: boolean }) => (
   <span
-    className={`rounded px-1 py-0.5 ${
+    className={`rounded-badge px-1 py-0.5 ${
       installed ? "bg-success/15 text-success" : "bg-base-200 text-base-content/60"
     }`}
   >
@@ -214,12 +214,12 @@ const EntryDetail = ({
   return (
     <article
       data-testid={`library-detail-${entry.type}-${entry.name}`}
-      className="rounded-md border border-base-300 bg-base-100 flex flex-col gap-2"
+      className="rounded-box border border-base-300 bg-base-100 flex flex-col gap-2"
     >
       <header className="flex flex-wrap items-baseline gap-2 px-3 py-2 border-b border-base-300">
         <h4 className="text-sm font-semibold">{entry.name}</h4>
         <span
-          className={`text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium ${badge.tone}`}
+          className={`text-[10px] uppercase tracking-wide rounded-badge px-1.5 py-0.5 font-medium ${badge.tone}`}
         >
           {badge.label}
         </span>
@@ -235,7 +235,10 @@ const EntryDetail = ({
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-base-content/60">requires:</span>
             {entry.requires.map((r) => (
-              <span key={r} className="font-mono text-[10px] rounded bg-base-200 px-1.5 py-0.5">
+              <span
+                key={r}
+                className="font-mono text-[10px] rounded-badge bg-base-200 px-1.5 py-0.5"
+              >
                 {r}
               </span>
             ))}

@@ -48,7 +48,7 @@ const StepRow = ({ step }: { step: StepSummaryWire }) => {
     <div
       data-testid="fleet-run-step"
       data-status={step.status}
-      className="flex flex-col gap-1 rounded border border-base-300/60 p-2"
+      className="flex flex-col gap-1 rounded-box border border-base-300/60 p-2"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs">{step.stepId}</span>
