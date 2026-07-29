@@ -26,7 +26,14 @@ const AGREES_WITH: Record<TerminalStateSlug, readonly string[]> = {
   working: ["working"],
   // "blocked" and the supervisor's "needs_input" are one fact under two names.
   blocked: ["blocked", "needs_input"],
-  idle: ["idle"],
+  // A resting screen agrees with EVERY not-running supervisor state, not just
+  // `idle`. A finished session naturally sits at its prompt, so pairing `done`
+  // with a screen that reads `idle` is confirmation, not news — measured against
+  // the live daemon, treating those as a disagreement put a chip on 14 of 21
+  // cards, 13 of them saying "IDLE" beside "DONE". Restricting it left exactly
+  // the two that matter: a `working` card whose screen is resting (stale or
+  // hung), and a `blocked` card whose screen is still generating.
+  idle: ["idle", "done", "stopped", "failed"],
   // Never reached — an unknown screen is filtered out before the lookup.
   unknown: [],
 }
