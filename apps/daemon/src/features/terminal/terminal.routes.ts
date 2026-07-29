@@ -5,6 +5,7 @@ import { Effect, Either } from "effect"
 import type { Context } from "hono"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
+import { readSpawnConfig } from "../../platform/spawn-config"
 import { sseBus } from "../../platform/sse-bus"
 import { upgradeWebSocket } from "../../platform/ws"
 import { readZellijPrefix } from "../../platform/zellij-prefix"
@@ -14,7 +15,6 @@ import { ProjectsService } from "../projects/projects.io"
 import { SessionRegistry } from "../sessions/sessions.io"
 import {
   buildChildArgv,
-  cleanZellijEnv,
   formatSizeFileContent,
   GLOBAL_ZELLIJ_SESSION,
   globalTerminalCwd,
@@ -381,7 +381,7 @@ const spawnChild = (args: {
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        ...cleanZellijEnv(process.env),
+        ...spawnConfig.childEnv,
         TERM: "xterm-256color",
         // COLUMNS / LINES are still set as a belt-and-braces for any tool that
         // reads them before the first SIGWINCH lands.
@@ -649,7 +649,7 @@ export const resolveClaudeSession = (args: {
   readonly zellijPrefix: string
 }): Resolved => {
   const { session, zellijPrefix } = args
-  const cwd = session.cwd || process.env.HOME || "/"
+  const cwd = session.cwd || spawnConfig.homeDir || "/"
   const rawSessionName = zellijSessionName(session.short)
   if (rawSessionName === null) return { ok: false, reason: "invalid_id" }
   const sessionName = prefixedZellijSession({ prefix: zellijPrefix, name: rawSessionName })
@@ -666,7 +666,7 @@ export const resolvePiSession = (args: {
   readonly zellijPrefix: string
 }): Resolved => {
   const { pi, zellijPrefix } = args
-  const cwd = pi.cwd || process.env.HOME || "/"
+  const cwd = pi.cwd || spawnConfig.homeDir || "/"
   const rawSessionName = piZellijSessionName(pi.short)
   const sessionName = prefixedZellijSession({ prefix: zellijPrefix, name: rawSessionName })
   // sessionId is the full uuid for a pi run; fall back to the short (a partial
@@ -719,7 +719,7 @@ const makeResolveSessionCommand = (args: {
 const makeResolveGlobalCommand =
   (args: { readonly zellijPrefix: string }) =>
   async (_c: Context): Promise<Resolved> => {
-    const cwd = globalTerminalCwd(process.env)
+    const cwd = globalTerminalCwd({ homeDir: spawnConfig.homeDir })
     const sessionName = prefixedZellijSession({
       prefix: args.zellijPrefix,
       name: GLOBAL_ZELLIJ_SESSION,
@@ -741,7 +741,10 @@ const makeResolveOrchestratorCommand =
     // Bail before spawn if the repo dir is missing — spawning into a nonexistent
     // cwd throws synchronously and crashes the daemon. resolveOrchestratorCwd
     // returns a message the WS surfaces instead.
-    const r = resolveOrchestratorCwd({ env: process.env, dirExists: (p) => existsSync(p) })
+    const r = resolveOrchestratorCwd({
+      dir: spawnConfig.orchestratorDir,
+      dirExists: (p) => existsSync(p),
+    })
     if (!r.ok) return { ok: false, reason: r.reason }
     const sessionName = prefixedZellijSession({
       prefix: args.zellijPrefix,
@@ -793,7 +796,7 @@ const killZellijSession = async (sessionName: string | null): Promise<{ ok: bool
     const proc = Bun.spawn(zellijKillSessionArgv(sessionName), {
       stdout: "pipe",
       stderr: "pipe",
-      env: cleanZellijEnv(process.env),
+      env: spawnConfig.childEnv,
     })
     await proc.exited
     return { ok: proc.exitCode === 0 }
@@ -828,6 +831,12 @@ const resolveSessionKillName = async (args: {
 }
 
 const zellijPrefix = readZellijPrefix()
+
+// The three spawn-shaped values this module used to read out of the environment
+// itself: a fallback home directory, the Orchestrator repo path, and the scrubbed
+// environment every child gets. Read once at module load, exactly like the prefix
+// above — see platform/spawn-config.ts.
+const spawnConfig = readSpawnConfig()
 
 // --- unattended terminal state polling ---------------------------------------
 //
@@ -966,16 +975,15 @@ const paneWriter = createPaneWriter({
         return false
       }
     },
-    // Same environment policy as the read path above, and for the same reason:
-    // these calls never attach, they name their target with an explicit
-    // `--session` (built by a pure function whose exact argv a test pins), and
-    // that was verified to work with a *different* session's ZELLIJ_SESSION_NAME
-    // still in the environment. Scrubbing through `cleanZellijEnv` as
-    // belt-and-braces would need one more environment read in a file whose count
-    // the axiom ratchet pins exactly (`bun run axiom-debt`) — a worse trade than
-    // it sounds, because that ratchet is what stops the count drifting anywhere,
-    // and the risk the scrub would cover (an argv that somehow lost its
-    // `--session`) cannot be built here in the first place.
+    // The scrubbed environment, belt-and-braces on the one path that WRITES.
+    // These calls do not attach and they always name their target with an
+    // explicit `--session` (built by a pure function whose exact argv a test
+    // pins), so an ambient ZELLIJ_SESSION_NAME cannot mislead them today. The
+    // scrub is what keeps that true tomorrow: if an argv ever lost its
+    // `--session`, a scrubbed environment makes it a loud failure instead of a
+    // pane opened in whatever session the daemon itself runs inside. It costs
+    // nothing now that the value arrives from the config funnel rather than from
+    // a seventh environment read in this file.
     //
     // No `cwd` is passed to Bun.spawn on purpose. The caller's directory travels
     // as zellij's `--cwd` ARGUMENT, so a path that vanished between the check and
@@ -983,7 +991,11 @@ const paneWriter = createPaneWriter({
     // in this daemon before.
     runZellij: async ({ argv }) => {
       try {
-        const proc = Bun.spawn([...argv], { stdout: "pipe", stderr: "pipe" })
+        const proc = Bun.spawn([...argv], {
+          stdout: "pipe",
+          stderr: "pipe",
+          env: spawnConfig.childEnv,
+        })
         const [out, err] = await Promise.all([
           new Response(proc.stdout).text(),
           new Response(proc.stderr).text(),
