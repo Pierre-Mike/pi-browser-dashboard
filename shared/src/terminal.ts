@@ -65,6 +65,7 @@ export const TERMINAL_MATCHER_NAMES = [
   "thinking-gerund",
   "pi-working",
   "turn-complete",
+  "pi-prompt-resting",
   "prompt-resting",
 ] as const
 
