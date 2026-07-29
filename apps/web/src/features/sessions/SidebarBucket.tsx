@@ -187,9 +187,16 @@ const BucketTitle = ({ bucket, active }: { bucket: Bucket; active: boolean }) =>
     <DefaultTitle title={bucket.title} />
   )
 
+// A circular 18x18 counter, not a chip: `px-1` only lets it grow for a
+// three-digit count, and at one or two digits it is a circle that must stay one
+// in every theme family. Extracted so the opt-out can sit where the ratchet
+// reads it — trailing, on the line carrying the class.
+const SESSION_COUNT_BASE =
+  "shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums font-medium" // design-allow: circular counter, not a pill
+
 const SessionCount = ({ count }: { count: number }) => (
   <span
-    className={`shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums font-medium ${
+    className={`${SESSION_COUNT_BASE} ${
       count > 0 ? "bg-primary/15 text-primary" : "bg-base-200 text-base-content/60"
     }`}
     aria-label={`${count} sessions`}

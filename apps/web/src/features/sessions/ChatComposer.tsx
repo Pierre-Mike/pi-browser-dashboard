@@ -96,7 +96,7 @@ export const ChatComposer = ({ short, disabled }: Props) => {
             data-testid="chat-send"
             onClick={() => void send()}
             disabled={disabled || text.trim().length === 0}
-            className="pointer-events-auto rounded-full bg-primary hover:bg-primary/90 text-primary-content text-xs font-semibold px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex items-center gap-1.5"
+            className="pointer-events-auto rounded-btn bg-primary hover:bg-primary/90 text-primary-content text-xs font-semibold px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm flex items-center gap-1.5"
             title="Send (Enter)"
           >
             <span>Send</span>
