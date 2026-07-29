@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Exit } from "effect"
+import { discoveryChildEnv } from "../../platform/agent-discovery.core"
+import { createAgentDiscovery } from "../../platform/agent-discovery.io"
 import { ShellError } from "../../platform/shell.io"
 import { spawnLaunchChecked } from "./pi.io"
 
@@ -82,6 +84,30 @@ describe("spawnLaunchChecked", () => {
   it("fails with a spawn error for a nonexistent binary", async () => {
     const exit = await run(["definitely-not-a-real-binary-9f8e7d"], 2_000)
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  // A pi dispatch builds its child env itself, so unlike the claude path it can
+  // carry discovery as ordinary env — including the shim dir on PATH, which is
+  // what makes the bare name `pid` resolve inside the pane. Same call the real
+  // dispatch makes (discoveryChildEnv over the cleaned zellij env), proven
+  // against a real child rather than asserted about a string.
+  it("carries discovery env and a PATH-resolvable pid into the child", async () => {
+    const claudeConfigDir = mkdtempSync(join(tmpdir(), "pi-discovery-"))
+    const discovery = createAgentDiscovery({ pidCommand: () => ["/bin/echo", "pid-shim-ran"] })
+    discovery.arm({ port: 18787, apiPrefix: "", claudeConfigDir, withPointer: false })
+    const { path, exit: exitP } = runWithEnv({
+      cmd: ["sh", "-c", 'echo "$PID_URL $(command -v pid)" >&2; exit 3'],
+      windowMs: 2_000,
+      env: discoveryChildEnv({
+        env: { PATH: process.env.PATH ?? "/usr/bin" },
+        discovery: discovery.snapshot(),
+      }),
+    })
+    expect(Exit.isFailure(await exitP)).toBe(true)
+    const stderr = readFileSync(path, "utf8")
+    expect(stderr).toContain("http://localhost:18787")
+    expect(stderr).toContain(join(claudeConfigDir, "pid-dashboard", "bin", "pid"))
+    rmSync(claudeConfigDir, { recursive: true, force: true })
   })
 
   it("passes an explicit env to the child (zellij spawn uses cleanZellijEnv)", async () => {

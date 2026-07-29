@@ -1,8 +1,16 @@
 import { Effect } from "effect"
-import app, { buildApp, mountExtensions, rulesEngine, terminalPoller, websocket } from "./api"
+import app, {
+  API_PREFIX,
+  buildApp,
+  mountExtensions,
+  rulesEngine,
+  terminalPoller,
+  websocket,
+} from "./api"
 import { IssueDriverService } from "./features/issue-driver/issue-driver.io"
 import { SessionRegistry } from "./features/sessions/sessions.io"
 import { TunnelService } from "./features/tunnel/tunnel.io"
+import { agentDiscovery } from "./platform/agent-discovery.io"
 import { ConfigIoLive, ConfigService } from "./platform/config.io"
 import { loadExtensions } from "./platform/extensions/loader"
 import { appRuntime } from "./platform/runtime"
@@ -125,6 +133,34 @@ const startTerminalPoll = (): void => {
   terminalPoller.start({ intervalMs: terminalPollMs })
 }
 
+// Tell every session this daemon spawns from now on where this daemon is:
+// PID_URL / PID_SKILL_URL / PID_BIN, plus a `pid` shim the session can run by
+// absolute path (platform/agent-discovery.io.ts). Armed AFTER Bun.serve so the
+// url names the port actually bound — `--port`, `PORT` and `port: 0` are all
+// correct — and with the api prefix that matches how this process serves the
+// API, since /agent-skill.md only answers behind /__api once the SPA owns "/".
+// Config comes through the same funnel startTerminalPoll uses.
+const armAgentDiscovery = ({
+  port,
+  staticDir,
+}: {
+  readonly port: number
+  readonly staticDir: string | undefined
+}): void => {
+  const { claudeConfigDir, agentPointer } = Effect.runSync(
+    Effect.provide(
+      Effect.flatMap(ConfigService, (s) => s.get()),
+      ConfigIoLive,
+    ),
+  )
+  agentDiscovery.arm({
+    port,
+    apiPrefix: staticDir ? API_PREFIX : "",
+    claudeConfigDir,
+    withPointer: agentPointer,
+  })
+}
+
 // Bring up the Cloudflare quick-tunnel. Failures must never block the daemon.
 const startTunnel = (): void => {
   void appRuntime
@@ -184,10 +220,14 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
   // Inferred: Bun's `Server` is generic over the websocket data type, and
   // Bun.serve already knows it from `websocket`.
   const server = Bun.serve({ port, fetch: finalApp.fetch, websocket, idleTimeout: 0 })
+  armAgentDiscovery({ port: server.port ?? port, staticDir })
   console.error(`daemon up: http://localhost:${server.port}`)
   if (tunnel) startTunnel()
 
   const stop = async (): Promise<void> => {
+    // A stopped daemon must stop advertising itself: the next dispatch (a test
+    // that boots a second daemon, say) arms discovery again with its own port.
+    agentDiscovery.disarm()
     if (issueDriverTimer) clearInterval(issueDriverTimer)
     if (rulesTickTimer) clearInterval(rulesTickTimer)
     terminalPoller.stop()

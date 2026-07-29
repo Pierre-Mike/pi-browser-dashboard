@@ -2,6 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
+import { discoveryChildEnv } from "../../platform/agent-discovery.core"
+import { agentDiscovery } from "../../platform/agent-discovery.io"
 import { resolveSpawnCwd, runCommand, ShellError } from "../../platform/shell.io"
 import { sseBus } from "../../platform/sse-bus"
 import {
@@ -160,13 +162,18 @@ export const PiIoLive: Layer.Layer<PiIo, never, PiSessionsIo> = Layer.effect(
 
           // Fail fast on a zellij-level problem (missing binary, unparseable
           // layout). cleanZellijEnv strips ZELLIJ_SESSION_NAME so a daemon
-          // running inside a zellij pane doesn't self-attach.
+          // running inside a zellij pane doesn't self-attach; discoveryChildEnv
+          // then adds PID_URL / PID_SKILL_URL / PID_BIN and puts the `pid` shim
+          // on the pane's PATH (a no-op until server.ts arms discovery).
           yield* spawnLaunchChecked({
             cmd: piBackgroundSessionArgv({ layoutPath, sessionName }),
             cwd,
             stderrPath: zellijErrPath,
             windowMs: ZELLIJ_CREATE_WINDOW_MS,
-            env: cleanZellijEnv(process.env),
+            env: discoveryChildEnv({
+              env: cleanZellijEnv(process.env),
+              discovery: agentDiscovery.snapshot(),
+            }),
           }).pipe(
             Effect.tapError(() => Effect.sync(() => rmSync(dir, { recursive: true, force: true }))),
           )

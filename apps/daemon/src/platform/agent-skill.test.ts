@@ -26,6 +26,7 @@ import {
   WAIT_TIMEOUT_MAX_MS,
   WAIT_VIA_VALUES,
 } from "../features/sessions/sessions-wait.core"
+import { buildDiscovery } from "./agent-discovery.core"
 import { AGENT_SKILL_MD } from "./agent-skill"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..")
@@ -115,6 +116,36 @@ describe("agent-skill.md: endpoints", () => {
     for (const endpoint of claimed) {
       expect(registered.has(endpoint)).toBe(true)
     }
+  })
+})
+
+// Discovery is worthless if the document names a variable the daemon does not
+// set (an agent looks for it and finds nothing) or omits one it does set (the
+// variable exists and nobody knows it). Both directions are drift, so the real
+// env keys are the authority — same guard as the key/state vocabularies above.
+// Same shape as backtickTokensInTableRows, for the SHOUTY_CASE env names that
+// helper's lowercase vocabulary regex deliberately ignores.
+const envNamesInTableRows = (section: string): ReadonlySet<string> =>
+  new Set(
+    section
+      .split("\n")
+      .filter((line) => line.trim().startsWith("|"))
+      .flatMap((line) => [...line.matchAll(/`([A-Z][A-Z0-9_]+)`/g)])
+      .map((m) => m[1])
+      .filter((token): token is string => token !== undefined),
+  )
+
+describe("agent-skill.md: spawn-time discovery", () => {
+  it("documents exactly the env vars a spawned session actually receives", () => {
+    const { env } = buildDiscovery({
+      baseUrl: "http://localhost:8787",
+      apiPrefix: "",
+      pidBin: "/tmp/pid",
+      shimDir: "/tmp",
+      withPointer: false,
+    })
+    const section = sectionBody({ doc: AGENT_SKILL_MD, heading: "## Finding this daemon" })
+    expect(envNamesInTableRows(section)).toEqual(new Set(Object.keys(env)))
   })
 })
 

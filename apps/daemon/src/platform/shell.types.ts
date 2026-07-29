@@ -14,4 +14,9 @@ export type DispatchInput = {
   // tool" (the CLI's own default, so we omit the flag entirely); an empty
   // array is a deliberate "disable every tool" request (`--tools ""`).
   readonly tools?: readonly string[]
+  // Flags the composition root injects so the spawned session can find this
+  // daemon (see platform/agent-discovery.core.ts's claudeDiscoveryFlags).
+  // Never parsed from the wire — POST /dispatch's parser builds this object
+  // field by field, so a client cannot smuggle claude flags through it.
+  readonly discoveryFlags?: readonly string[]
 }

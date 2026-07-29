@@ -95,6 +95,36 @@ describe("buildDispatchArgs", () => {
     ])
   })
 
+  it("omits discovery flags when the daemon armed no discovery", () => {
+    expect(buildDispatchArgs({ intent: "go", discoveryFlags: [] })).toEqual([
+      "claude",
+      "--bg",
+      "go",
+    ])
+  })
+
+  // The composition root injects these (platform/agent-discovery.core.ts) —
+  // they must land before the variadic --tools and its `--` terminator, or the
+  // terminator stops protecting the trailing intent.
+  it("places injected discovery flags before --tools, its terminator and the intent", () => {
+    expect(
+      buildDispatchArgs({
+        intent: "go",
+        tools: ["Bash"],
+        discoveryFlags: ["--settings", '{"env":{"PID_URL":"http://localhost:8787"}}'],
+      }),
+    ).toEqual([
+      "claude",
+      "--bg",
+      "--settings",
+      '{"env":{"PID_URL":"http://localhost:8787"}}',
+      "--tools",
+      "Bash",
+      "--",
+      "go",
+    ])
+  })
+
   it("places --tools and its -- terminator after the other flags", () => {
     expect(
       buildDispatchArgs({ intent: "go", agent: "reviewer", effort: "max", tools: ["Read"] }),
