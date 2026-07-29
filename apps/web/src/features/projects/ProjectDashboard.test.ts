@@ -31,6 +31,16 @@ describe("ProjectDashboard activity panel", () => {
     expect(src).not.toMatch(/tab\s*=\s*"terminal"\s*\}\s*=\s*route\.useSearch\(\)/)
   })
 
+  it("docks Activity as the FIRST tab, so the default tab is also the leftmost one", () => {
+    // The dock order used to open with Terminal, putting the default (Activity)
+    // second — a project you click lands on a tab that is not where the eye goes.
+    const base = src.match(/const base: Tab\[\] = \[[\s\S]+?\n\s*\]/)
+    expect(base).not.toBeNull()
+    const keys = [...(base?.[0].matchAll(/key:\s*"([a-z]+)"/g) ?? [])].map((m) => m[1])
+    expect(keys[0]).toBe("sessions")
+    expect(keys[1]).toBe("terminal")
+  })
+
   it("does NOT host the Orchestration tab — the supervisor is global, surfaced on the root dashboard, not per-project", () => {
     expect(src).not.toContain("OrchestrationPanel")
     expect(src).not.toMatch(/key:\s*"orchestration"/)
