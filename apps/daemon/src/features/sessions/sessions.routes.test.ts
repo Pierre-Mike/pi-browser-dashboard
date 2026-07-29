@@ -1396,6 +1396,7 @@ describe("POST /sessions/:id/wait", () => {
   const screensPort = ({ enabled = true }: { enabled?: boolean } = {}): TerminalScreensPort => ({
     enabled: () => enabled,
     subscribe: () => () => {},
+    refreshIfStale: () => {},
   })
 
   const postWaitBody = ({

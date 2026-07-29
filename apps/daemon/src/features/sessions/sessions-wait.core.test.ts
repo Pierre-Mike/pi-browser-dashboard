@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { OUTPUT_PATTERN_MAX_CHARS, WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
+import {
+  OUTPUT_PATTERN_MAX_CHARS,
+  SCREEN_READING_MAX_AGE_MS,
+  WAIT_TIMEOUT_DEFAULT_MS,
+  WAIT_TIMEOUT_MAX_MS,
+} from "@pid/shared"
 import { Either } from "effect"
+import type { SessionStateSlug } from "./sessions.core"
 import {
   decideInitial,
   decodeSessionRemovedEvent,
@@ -583,12 +589,23 @@ describe("evaluateWaitEvent — via gating", () => {
 // the wait hangs for the full timeout waiting for a transition that already
 // happened.
 describe("decideInitial — screen sources", () => {
+  // A stored reading, read `readAgeMs` ago. The default is one second: fresher
+  // than the ceiling, so every pre-existing case below keeps asking the question
+  // it was written to ask, and only the freshness cases vary it.
+  const screen = ({
+    state,
+    readAgeMs = 1_000,
+  }: {
+    readonly state: SessionStateSlug
+    readonly readAgeMs?: number | undefined
+  }) => ({ state, readAgeMs })
+
   test("via screen: an already-matching screen satisfies immediately", () => {
     expect(
       decideInitial({
         request: request({ until: ["blocked"], via: "screen" }),
         current: { state: "working" },
-        terminal: "blocked",
+        terminal: screen({ state: "blocked" }),
       }),
     ).toEqual({ _tag: "Satisfied", state: "blocked", via: "screen" })
   })
@@ -598,7 +615,7 @@ describe("decideInitial — screen sources", () => {
       decideInitial({
         request: request({ until: ["done"], via: "screen" }),
         current: { state: "done" },
-        terminal: "working",
+        terminal: screen({ state: "working" }),
       }),
     ).toEqual({ _tag: "Pending" })
   })
@@ -608,7 +625,7 @@ describe("decideInitial — screen sources", () => {
       decideInitial({
         request: request({ until: ["blocked"], via: "supervisor" }),
         current: { state: "working" },
-        terminal: "blocked",
+        terminal: screen({ state: "blocked" }),
       }),
     ).toEqual({ _tag: "Pending" })
   })
@@ -618,7 +635,7 @@ describe("decideInitial — screen sources", () => {
       decideInitial({
         request: request({ until: ["done", "idle"], via: "either" }),
         current: { state: "done" },
-        terminal: "idle",
+        terminal: screen({ state: "idle" }),
       }),
     ).toEqual({ _tag: "Satisfied", state: "done", via: "supervisor" })
   })
@@ -628,7 +645,7 @@ describe("decideInitial — screen sources", () => {
       decideInitial({
         request: request({ until: ["blocked"], via: "either" }),
         current: { state: "working" },
-        terminal: "blocked",
+        terminal: screen({ state: "blocked" }),
       }),
     ).toEqual({ _tag: "Satisfied", state: "blocked", via: "screen" })
   })
@@ -638,7 +655,7 @@ describe("decideInitial — screen sources", () => {
       decideInitial({
         request: request({ until: ["idle"], via: "screen" }),
         current: undefined,
-        terminal: "idle",
+        terminal: screen({ state: "idle" }),
       }),
     ).toEqual({ _tag: "NotFound" })
   })
@@ -649,6 +666,76 @@ describe("decideInitial — screen sources", () => {
         request: request({ until: ["idle"], via: "screen" }),
         current: { state: "working" },
         terminal: undefined,
+      }),
+    ).toEqual({ _tag: "Pending" })
+  })
+})
+
+// The reason the initial screen check needed a ceiling at all: a stored reading
+// has an age, and answering `reached "idle" via screen` off a two-hour-old record
+// leaves the caller worse off than a timeout would, because it proceeds. Only the
+// INITIAL check is bounded — an event arriving mid-wait was published the moment
+// the screen changed and is fresh by construction (see the mid-wait cases above,
+// which carry no age at all).
+describe("decideInitial — screen freshness ceiling", () => {
+  const screenWait = ({ readAgeMs }: { readonly readAgeMs: number | undefined }) =>
+    decideInitial({
+      request: request({ until: ["idle"], via: "screen" }),
+      current: { state: "working" },
+      terminal: { state: "idle", readAgeMs },
+    })
+
+  test("satisfies from a reading taken within the ceiling", () => {
+    expect(screenWait({ readAgeMs: SCREEN_READING_MAX_AGE_MS - 1 })).toEqual({
+      _tag: "Satisfied",
+      state: "idle",
+      via: "screen",
+    })
+  })
+
+  test("refuses to satisfy from a reading older than the ceiling — stays Pending", () => {
+    // Pending, NOT a refusal: with the poller armed a fresh reading may be
+    // seconds away, so the honest answer is to keep listening until the timeout.
+    expect(screenWait({ readAgeMs: SCREEN_READING_MAX_AGE_MS + 1 })).toEqual({ _tag: "Pending" })
+  })
+
+  test("the measured failure: a 105-minute-old reading no longer settles a wait", () => {
+    expect(screenWait({ readAgeMs: 105 * 60_000 })).toEqual({ _tag: "Pending" })
+  })
+
+  test("a reading exactly at the ceiling still counts as fresh", () => {
+    expect(screenWait({ readAgeMs: SCREEN_READING_MAX_AGE_MS })).toEqual({
+      _tag: "Satisfied",
+      state: "idle",
+      via: "screen",
+    })
+  })
+
+  test("an undatable reading is not fresh — an unstamped record is not evidence", () => {
+    // `undefined` is what an unparseable or absent `screenReadAt` becomes. Absence
+    // of a date is the absence of evidence about freshness, and this endpoint's
+    // whole job is not to overstate its evidence.
+    expect(screenWait({ readAgeMs: undefined })).toEqual({ _tag: "Pending" })
+  })
+
+  test("the supervisor half of an `either` wait is unaffected by a stale screen", () => {
+    // The supervisor's state comes from a refresh-on-read registry pass, so it is
+    // fresh by construction and the ceiling must not touch it.
+    expect(
+      decideInitial({
+        request: request({ until: ["done", "idle"], via: "either" }),
+        current: { state: "done" },
+        terminal: { state: "idle", readAgeMs: 105 * 60_000 },
+      }),
+    ).toEqual({ _tag: "Satisfied", state: "done", via: "supervisor" })
+  })
+
+  test("an `either` wait whose only match is a stale screen keeps waiting", () => {
+    expect(
+      decideInitial({
+        request: request({ until: ["idle"], via: "either" }),
+        current: { state: "working" },
+        terminal: { state: "idle", readAgeMs: 105 * 60_000 },
       }),
     ).toEqual({ _tag: "Pending" })
   })

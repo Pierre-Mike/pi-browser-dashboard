@@ -22,6 +22,7 @@ import {
   isTerminalMatcherName,
   SESSION_STATE_SLUGS as KNOWN_STATES,
   NAMED_KEYS,
+  SCREEN_READING_MAX_AGE_MS,
   TERMINAL_MATCHER_NAMES,
   TERMINAL_STATE_SLUGS,
   WAIT_TIMEOUT_DEFAULT_MS,
@@ -105,6 +106,13 @@ describe("agent-skill.md: wait constants", () => {
   it("quotes the real default and max timeout, in milliseconds", () => {
     expect(AGENT_SKILL_MD).toContain(String(WAIT_TIMEOUT_DEFAULT_MS))
     expect(AGENT_SKILL_MD).toContain(String(WAIT_TIMEOUT_MAX_MS))
+  })
+
+  // The doc tells an agent how old a stored screen reading may be before a wait
+  // stops trusting it. A number that drifts from the real ceiling would teach the
+  // wrong thing about the one field that decides whether an answer is believable.
+  it("quotes the real screen-freshness ceiling", () => {
+    expect(AGENT_SKILL_MD).toContain(String(SCREEN_READING_MAX_AGE_MS))
   })
 
   // Same guard as the key/state vocabularies: a `via` this daemon does not

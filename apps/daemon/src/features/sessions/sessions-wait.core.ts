@@ -18,6 +18,7 @@ import {
   OUTPUT_ANCHORS,
   OUTPUT_PATTERN_MAX_CHARS,
   type OutputPattern,
+  SCREEN_READING_MAX_AGE_MS,
   type SessionStateSlug,
   WAIT_TIMEOUT_DEFAULT_MS,
   WAIT_TIMEOUT_MAX_MS,
@@ -396,12 +397,50 @@ const satisfiedInitial = ({
     ? { _tag: "Satisfied", state, via }
     : undefined
 
-// `terminal` is the CURRENT screen classification for this short, already
-// mapped into the session vocabulary by the shell (undefined when nothing has
-// classified it, or when the classification was `unknown`). Consulting it here
-// is what stops a `via: screen` wait against an already-blocked pane from
-// hanging for the whole timeout: the transition it would have waited for
-// happened before the wait started.
+// The stored screen classification for this short as the initial check sees it:
+// the reading, already mapped into the session vocabulary by the shell, plus how
+// long ago that pane was actually READ (`screenReadAt` on the terminal record,
+// not the time its classification last changed — a pane resting all morning is
+// read every poll pass).
+//
+// The age travels with the reading because a reading without its age cannot be
+// judged, and judging it is the whole point: see `isScreenReadingFresh`.
+export type InitialScreenReading = {
+  readonly state: SessionStateSlug
+  readonly readAgeMs: number | undefined
+}
+
+// Is a stored reading recent enough to settle a wait on the spot?
+//
+// `undefined` is NOT fresh. It is what an absent or unparseable `screenReadAt`
+// becomes, and an undatable reading is exactly the thing this ceiling exists to
+// stop being trusted — treating it as current would reopen the hole for the one
+// case where the daemon cannot even say when it looked.
+//
+// Deliberately not exported: `decideInitial` below is the only thing entitled to
+// ask this question, and every branch of it is pinned through that function's own
+// tests. A second caller would be a second place deciding what "fresh" means.
+const isScreenReadingFresh = (input: { readonly readAgeMs: number | undefined }): boolean =>
+  input.readAgeMs !== undefined && input.readAgeMs <= SCREEN_READING_MAX_AGE_MS
+
+// `terminal` is the CURRENT stored screen classification for this short
+// (undefined when nothing has classified it, or when the classification was
+// `unknown`). Consulting it here is what stops a `via: screen` wait against an
+// already-blocked pane from hanging for the whole timeout: the transition it
+// would have waited for happened before the wait started.
+//
+// It is consulted only when it is FRESH. A stored reading has an age, and this
+// check used to ignore it entirely — so on a daemon whose poller is off (or
+// whose timers have died) a screen wait would answer `reached "idle" via screen`
+// off a record nobody had refreshed since boot. That is worse than a timeout,
+// because the caller proceeds on it. Past the ceiling the reading is dropped and
+// the wait stays `Pending`: it is NOT refused, because a fresh reading may be one
+// poll pass away, and "keep listening until the timeout" is the honest answer
+// where "there is nothing here" would be a guess.
+//
+// Only the INITIAL reading is bounded. A classification arriving on the bus
+// during the wait (`evaluateWaitEvent`) was published the instant the screen
+// changed, so it is fresh by construction and carries no age at all.
 export const decideInitial = ({
   request,
   current,
@@ -409,16 +448,49 @@ export const decideInitial = ({
 }: {
   readonly request: WaitRequest
   readonly current: { readonly state: SessionStateSlug } | undefined
-  readonly terminal: SessionStateSlug | undefined
+  readonly terminal: InitialScreenReading | undefined
 }): InitialDecision => {
   if (!current) return { _tag: "NotFound" }
   const supervisor = viaAllowsSupervisor(request.via)
     ? satisfiedInitial({ request, state: current.state, via: "supervisor" })
     : undefined
-  const screen = viaAllowsScreen(request.via)
-    ? satisfiedInitial({ request, state: terminal, via: "screen" })
-    : undefined
-  return supervisor ?? screen ?? { _tag: "Pending" }
+  return supervisor ?? screenLook({ request, terminal })
+}
+
+// One look at the stored screen reading, under the ceiling. Used twice: as the
+// screen half of `decideInitial`, and again by the shell as a LAST look before a
+// wait gives up — so both looks apply identical rules by construction rather than
+// by two authors agreeing.
+//
+// The last look exists because of a gap the ceiling opens on its own. A poller
+// pass that re-reads a pane and finds the same classification publishes NO event
+// (deliberately — see markTerminalScreenRead: ~50 unchanged rows per interval on
+// the bus would be worse than the staleness it cures), it only freshens
+// `screenReadAt`. So a wait that declined a stale reading, nudged the poller, and
+// watched a pass confirm that very reading would have nothing to hear and would
+// time out on a screen that had just been read and did match. Looking once more
+// at the end converts that into the right answer, at the cost of the timeout the
+// caller had already accepted, and costs nothing when the wait settles earlier.
+//
+// Scoped to the screen on purpose: the supervisor's own `current` is a snapshot
+// taken when the wait STARTED, and satisfying from it at the end would be
+// answering off data as old as the wait itself — the very sin the ceiling exists
+// to prevent. A supervisor state change publishes an event, so it needs no
+// second look.
+export const screenLook = ({
+  request,
+  terminal,
+}: {
+  readonly request: WaitRequest
+  readonly terminal: InitialScreenReading | undefined
+}): InitialDecision => {
+  if (!viaAllowsScreen(request.via)) return { _tag: "Pending" }
+  const fresh = terminal !== undefined && isScreenReadingFresh(terminal)
+  return (
+    satisfiedInitial({ request, state: fresh ? terminal?.state : undefined, via: "screen" }) ?? {
+      _tag: "Pending",
+    }
+  )
 }
 
 // --- SSE-bus payload decoders ------------------------------------------------

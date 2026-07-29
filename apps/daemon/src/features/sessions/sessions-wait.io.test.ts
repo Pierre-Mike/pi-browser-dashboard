@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test"
+import { SCREEN_READING_MAX_AGE_MS } from "@pid/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { sseBus } from "../../platform/sse-bus"
 import type { SessionState } from "./sessions.core"
@@ -51,8 +52,16 @@ const runWait = (input: {
 
 // Stands in for the door terminal.routes.ts publishes and api.ts injects: one
 // screen classification, keyed the way GET /terminal/states keys it.
+//
+// `readAgeMs` is how long ago that pane was read, and it defaults to 0 — read
+// just now — because that is the only case in which the initial check is allowed
+// to settle a wait from a stored record. The staleness cases below set it
+// explicitly. `stateChangedAt` is deliberately left far in the past: dwell must
+// have no influence on whether a reading is trusted.
 const readerFor =
-  (records: Record<string, { readonly state: string }>): TerminalStateReader =>
+  (
+    records: Record<string, { readonly state: string; readonly readAgeMs?: number }>,
+  ): TerminalStateReader =>
   ({ scope, id }) => {
     const record = records[`${scope}:${id}`]
     if (!record) return undefined
@@ -60,7 +69,7 @@ const readerFor =
       state: record.state,
       matcher: undefined,
       evidence: undefined,
-      screenReadAt: "2026-07-28T00:00:15.000Z",
+      screenReadAt: new Date(Date.now() - (record.readAgeMs ?? 0)).toISOString(),
       stateChangedAt: "2026-07-28T00:00:00.000Z",
     }
   }
@@ -313,21 +322,256 @@ describe("SessionWaitIo — screen-derived resolution", () => {
   })
 })
 
+// The hole this closes: the initial check consulted the stored reading without
+// ever asking how old it was, so a daemon with its poller off (or its timers
+// dead) would answer `reached "idle" via screen` from a record nobody had
+// refreshed since boot. An agent that blocks on the screen and gets a two-hour-old
+// answer is worse off than one that timed out, because it proceeds.
+describe("SessionWaitIo — stale screen readings", () => {
+  // One screen-only wait against a session whose pane reads `idle`, with the
+  // reading's age as the only variable — every case below asks "how old may the
+  // record be", so the setup is shared and each test states just the age.
+  const screenWaitOnIdleReading = ({
+    readAgeMs,
+    reader,
+  }: {
+    readonly readAgeMs?: number
+    readonly reader?: TerminalStateReader
+  }): Promise<WaitOutcome> => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    return runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "screen", timeoutMs: 120 }),
+      readTerminalState: reader ?? readerFor({ "session:ab12": { state: "idle", readAgeMs } }),
+    })
+  }
+
+  it("does not satisfy from a reading older than the ceiling", async () => {
+    // Timeout, not ScreenPollingDisabled: with a poller armed a fresh reading may
+    // be one pass away, so the honest answer is to wait rather than to refuse.
+    expect(
+      await screenWaitOnIdleReading({ readAgeMs: SCREEN_READING_MAX_AGE_MS + 1_000 }),
+    ).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("the measured failure: a 105-minute-old reading no longer settles a wait", async () => {
+    expect(await screenWaitOnIdleReading({ readAgeMs: 105 * 60_000 })).toMatchObject({
+      _tag: "Timeout",
+    })
+  })
+
+  it("still satisfies from a reading taken within the ceiling", async () => {
+    // The other side of the boundary, so the ceiling cannot become "never trust
+    // the stored record" by accident — that would silently undo the
+    // immediate-satisfy behaviour a screen wait exists for.
+    expect(await screenWaitOnIdleReading({ readAgeMs: 1_000 })).toEqual({
+      _tag: "Satisfied",
+      state: "idle",
+      via: "screen",
+      waitedMs: 0,
+    })
+  })
+
+  // The other half of "keep listening": having discarded the stale record, the
+  // wait must still settle on the next real reading — a stale record must not
+  // poison the wait it declined to satisfy.
+  it("still settles on a fresh classification that arrives during the wait", async () => {
+    const { promise } = await beginWait({
+      session: { state: "working" },
+      request: { until: ["idle"], via: "screen" },
+      readTerminalState: readerFor({
+        "session:ab12": { state: "idle", readAgeMs: 105 * 60_000 },
+      }),
+    })
+    publishTerminal({ scope: "session", id: "ab12", state: "idle" })
+    expect(await promise).toMatchObject({ _tag: "Satisfied", state: "idle", via: "screen" })
+  })
+
+  it("a stale screen never blocks the supervisor half of an `either` wait", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "done" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["done"], via: "either" }),
+      readTerminalState: readerFor({
+        "session:ab12": { state: "idle", readAgeMs: 105 * 60_000 },
+      }),
+    })
+    expect(outcome).toEqual({ _tag: "Satisfied", state: "done", via: "supervisor", waitedMs: 0 })
+  })
+
+  // An unparseable stamp is the one case where the daemon cannot say when it
+  // looked, which is precisely when a reading must not be trusted.
+  it("does not satisfy from a reading whose read stamp will not parse", async () => {
+    const outcome = await screenWaitOnIdleReading({
+      reader: () => ({
+        state: "idle",
+        matcher: undefined,
+        evidence: undefined,
+        screenReadAt: "not a date",
+        stateChangedAt: "not a date",
+      }),
+    })
+    expect(outcome).toMatchObject({ _tag: "Timeout" })
+  })
+})
+
+// The gap the ceiling opens on its own, and the last look that closes it. A poller
+// pass that re-reads a pane and finds the SAME classification freshens
+// `screenReadAt` and publishes nothing (markTerminalScreenRead is silent by
+// design), so a wait that declined a stale reading and then watched that very
+// reading be confirmed has nothing to hear on the bus. Looking once more at the
+// stored record before giving up turns that timeout into the right answer.
+describe("SessionWaitIo — the last look before giving up", () => {
+  // A reader that is stale on its first call and fresh afterwards: exactly what a
+  // nudged poller pass does to the map mid-wait, silently.
+  const freshensAfterFirstRead = (): TerminalStateReader => {
+    let calls = 0
+    return () => {
+      calls += 1
+      return {
+        state: "idle",
+        matcher: "prompt-resting",
+        evidence: "❯",
+        screenReadAt: new Date(Date.now() - (calls === 1 ? 105 * 60_000 : 0)).toISOString(),
+        stateChangedAt: "2026-07-28T00:00:00.000Z",
+      }
+    }
+  }
+
+  it("satisfies from a reading the poller freshened while the wait was listening", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "screen", timeoutMs: 120 }),
+      readTerminalState: freshensAfterFirstRead(),
+    })
+    expect(outcome).toMatchObject({ _tag: "Satisfied", state: "idle", via: "screen" })
+    // Not zero: this reading was confirmed at the END of the wait, and saying so
+    // is the difference between "the screen already said idle" and "the screen
+    // was read again during the wait and said idle".
+    if (outcome._tag === "Satisfied") expect(outcome.waitedMs).toBeGreaterThanOrEqual(120)
+  })
+
+  it("still times out when nothing ever refreshed the reading", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "screen", timeoutMs: 120 }),
+      readTerminalState: readerFor({ "session:ab12": { state: "idle", readAgeMs: 105 * 60_000 } }),
+    })
+    expect(outcome).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("never satisfies a supervisor-only wait, however fresh the screen is", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      // `via` defaults to supervisor here: the screen reads `idle` and is current,
+      // and it still must not settle a wait that asked not to be told by it.
+      request: defaultRequest({ until: ["idle"], timeoutMs: 120 }),
+      readTerminalState: readerFor({ "session:ab12": { state: "idle" } }),
+    })
+    expect(outcome).toMatchObject({ _tag: "Timeout" })
+  })
+
+  it("does not turn an occupant swap or a removal into a late screen satisfy", async () => {
+    // Only a Timeout gets a second look — every other outcome is already an
+    // answer, and re-deciding it would overwrite news with an older observation.
+    const { promise } = await beginWait({
+      session: { state: "working" },
+      request: { until: ["idle"], via: "screen" },
+      readTerminalState: readerFor({ "session:ab12": { state: "idle", readAgeMs: 105 * 60_000 } }),
+    })
+    publishRemoved("ab12")
+    expect(await promise).toEqual({ _tag: "Removed" })
+  })
+})
+
+// Before judging the stored reading's age, the wait asks the poller to take a
+// pass if its last one is stale — the same refresh-on-read GET /terminal/states
+// does, and for the same reason (this daemon has lost every timer on a long
+// uptime while its sockets stayed alive). The cost has to stay bounded: the port
+// is called at most once per wait, and never at all by a wait that is not allowed
+// to use screen evidence.
+describe("SessionWaitIo — refresh before judging freshness", () => {
+  it("nudges the poller once for a via: screen wait", async () => {
+    const screens = makeScreens()
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "screen", timeoutMs: 80 }),
+      readTerminalState: readerFor({}),
+      terminalScreens: screens.port,
+    })
+    expect(screens.refreshCount()).toBe(1)
+  })
+
+  it("nudges the poller for an `either` wait and for an untilOutput wait", async () => {
+    const either = makeScreens()
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "either", timeoutMs: 80 }),
+      terminalScreens: either.port,
+    })
+    expect(either.refreshCount()).toBe(1)
+    await runtime?.dispose()
+    const output = makeScreens()
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: [], untilOutput: OUTPUT_PATTERN, timeoutMs: 80 }),
+      terminalScreens: output.port,
+    })
+    expect(output.refreshCount()).toBe(1)
+  })
+
+  it("never nudges the poller for a supervisor-only wait", async () => {
+    const screens = makeScreens()
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["done"], timeoutMs: 80 }),
+      terminalScreens: screens.port,
+    })
+    // A supervisor wait may not be settled by the screen, so spending the
+    // poller's subprocess budget on its behalf buys nothing.
+    expect(screens.refreshCount()).toBe(0)
+  })
+
+  it("does not nudge, or throw, when no screen channel is wired at all", async () => {
+    startRuntime(new Map([["ab12", makeSession({ short: "ab12", state: "working" })]]))
+    const outcome = await runWait({
+      short: "ab12",
+      request: defaultRequest({ until: ["idle"], via: "screen", timeoutMs: 80 }),
+      readTerminalState: readerFor({ "session:ab12": { state: "idle" } }),
+    })
+    // Still satisfies off the fresh record — the nudge is an optimisation, not a
+    // precondition.
+    expect(outcome).toEqual({ _tag: "Satisfied", state: "idle", via: "screen", waitedMs: 0 })
+  })
+})
+
 // A controllable stand-in for the terminal slice's screen channel: `emit` plays
 // the part of a poller pass, and `observers` lets a test prove the subscription
 // was released.
 const makeScreens = ({ enabled = true }: { enabled?: boolean } = {}) => {
   const observers = new Set<(s: { scope: string; id: string; text: string }) => void>()
+  let refreshes = 0
   const port: TerminalScreensPort = {
     enabled: () => enabled,
     subscribe: (observer) => {
       observers.add(observer)
       return () => observers.delete(observer)
     },
+    refreshIfStale: () => {
+      refreshes += 1
+    },
   }
   return {
     port,
     observerCount: () => observers.size,
+    refreshCount: () => refreshes,
     emit: (screen: { scope: string; id: string; text: string }) => {
       for (const observer of [...observers]) observer(screen)
     },
