@@ -46,6 +46,75 @@ describe("parseSessionList", () => {
   })
 })
 
+// zellij keeps every dead session listed until it is resurrected or reaped, so
+// the list the poller parses every pass only ever grows: 598 lines on the
+// machine this was written on, 558 of them EXITED. Worth measuring before
+// optimising, and the measurement said don't — that real list parses in 0.31ms
+// and the growth is flatly linear (0.57ms at 1196 lines, 1.14ms at 2392,
+// 2.23ms at 4784). Against a 15s poll interval that is 0.002% of a core, so the
+// exited entries are left in place and this budget only guards the cost's
+// SHAPE: the same slice has already shipped one matcher whose per-line work
+// exploded (see the `classifyTail cost` block next door), and a linear parser
+// that quietly becomes a quadratic one would show up here.
+const bulkSessionList = (lines: number): string => {
+  const rows: string[] = []
+  for (let i = 0; i < lines; i++) {
+    rows.push(
+      i % 16 === 0
+        ? `live${i} [Created ${i}h 5m 14s ago]`
+        : `dead${i} [Created 2months 1day 7h 23m 28s ago] (EXITED - attach to resurrect)`,
+    )
+  }
+  return `${rows.join("\n")}\n`
+}
+
+const fastestMs = (args: { readonly runs: number; readonly fn: () => void }): number => {
+  let best = Number.POSITIVE_INFINITY
+  for (let i = 0; i < args.runs; i++) {
+    const started = performance.now()
+    args.fn()
+    best = Math.min(best, performance.now() - started)
+  }
+  return best
+}
+
+describe("parseSessionList cost", () => {
+  // An order of magnitude above the ~1.1ms measured at this size, so a loaded
+  // runner cannot flake it.
+  const BUDGET_MS = 15
+  const FOUR_X = bulkSessionList(2400)
+
+  it("parses a list four times the size of a real long-lived machine's in linear time", () => {
+    const parsed = parseSessionList(FOUR_X)
+    expect(parsed).toHaveLength(2400)
+    expect(parsed.filter((s) => !s.exited)).toHaveLength(2400 / 16)
+    const ms = fastestMs({
+      runs: 5,
+      fn: () => {
+        parseSessionList(FOUR_X)
+      },
+    })
+    expect(ms).toBeLessThan(BUDGET_MS)
+  })
+
+  it("selects poll targets from that list without scanning it per candidate", () => {
+    const sessions = parseSessionList(FOUR_X)
+    const candidates: PollCandidate[] = sessions
+      .filter((s) => !s.exited)
+      .map((s) => ({ scope: "session" as const, id: s.name, sessionName: s.name }))
+    expect(selectPollTargets({ candidates, sessions, attachedSessionNames: [] })).toHaveLength(
+      candidates.length,
+    )
+    const ms = fastestMs({
+      runs: 5,
+      fn: () => {
+        selectPollTargets({ candidates, sessions, attachedSessionNames: [] })
+      },
+    })
+    expect(ms).toBeLessThan(BUDGET_MS)
+  })
+})
+
 describe("parseTerminalPaneIds", () => {
   it("keeps terminal panes, drops plugin panes and the header row", () => {
     expect(parseTerminalPaneIds(PANE_LIST)).toEqual(["terminal_0"])

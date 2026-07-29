@@ -324,6 +324,54 @@ describe("SessionRegistry — refresh on read (timer-independent)", () => {
   })
 })
 
+// The refresh-on-read pass above is O(job dirs): a readdir, an existsSync per
+// dir and a stat per watched state.json. Measured on the machine this was
+// written on (251 job dirs) that is 0.58ms of syscalls per pass, growing
+// linearly — 8.5ms at 2024 dirs. Cheap enough per burst, ruinous per reader:
+// the scheduler used to chain a pass per caller, so a 20-read burst ran 20 full
+// passes (22.7ms at 250 job dirs, 110.4ms at 1000, both on the daemon's only
+// thread). Coalescing caps a burst at two passes whatever its width.
+describe("SessionRegistry — refresh-on-read cost", () => {
+  // A burst this wide costs 300 passes unshared and 2 shared. Measured here:
+  // 2.3ms coalesced, 168ms chained at 200 readers. The budget sits an order of
+  // magnitude above the coalesced number and an order of magnitude below the
+  // chained one, so a loaded CI box cannot flake it and a regression cannot
+  // squeak past it.
+  const JOB_DIRS = 200
+  const READERS = 300
+  const BUDGET_MS = 25
+
+  it("serves a wide burst of concurrent reads without a pass per reader", async () => {
+    await writeRoster(cfg, {})
+    await Promise.all(
+      Array.from({ length: JOB_DIRS }, (_unused, i) =>
+        writeState({
+          cfg,
+          short: `bulk${i.toString().padStart(4, "0")}`,
+          body: { state: "idle", detail: "bulk fixture" },
+        }),
+      ),
+    )
+    const api = await startRegistry()
+    // Warm: the first pass pays for the initial read of every state.json, and
+    // what is being measured is the steady-state burst, not boot.
+    await api.snapshot()
+    expect(await api.snapshot()).toHaveLength(JOB_DIRS)
+
+    // Fastest of N, not the mean: the question is whether the work is bounded
+    // by the burst rather than by its width, and a shared runner adds noise
+    // upward only.
+    let best = Number.POSITIVE_INFINITY
+    for (let round = 0; round < 3; round++) {
+      const started = performance.now()
+      await Promise.all(Array.from({ length: READERS }, () => api.snapshot()))
+      const elapsed = performance.now() - started
+      if (elapsed < best) best = elapsed
+    }
+    expect(best).toBeLessThan(BUDGET_MS)
+  })
+})
+
 // GET /:id/explain's data source: everything `getOne` returns, plus the
 // on-disk/pid facts only the registry can see.
 describe("SessionRegistry — diagnostics", () => {

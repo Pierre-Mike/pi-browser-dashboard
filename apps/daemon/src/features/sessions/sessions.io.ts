@@ -19,6 +19,7 @@ import {
   type SessionState,
   seedFromWorker,
 } from "./sessions.core"
+import { createCoalescedRefresh } from "./sessions-freshen.io"
 
 const MAX_PARSE_RETRIES = 5
 const PARSE_RETRY_MS = 50
@@ -95,8 +96,6 @@ type RegistryState = {
   // GET /:id/explain's freshness signal independent of state.json's own
   // `updatedAt` (which the session's process controls, not the daemon).
   readonly lastEventAt: Map<string, number>
-  // Serializes refresh-on-read passes so concurrent HTTP reads share one.
-  freshen: Promise<void>
 }
 
 const recordEvent = ({ reg, short }: { reg: RegistryState; short: string }): void => {
@@ -386,7 +385,6 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       rosterShorts: new Set(),
       workerPids: new Map(),
       lastEventAt: new Map(),
-      freshen: Promise.resolve(),
     }
 
     // Initial sync + watcher arm.
@@ -409,15 +407,17 @@ const buildRegistry = (): Effect.Effect<SessionRegistryApi, never, Scope.Scope> 
       }),
     )
 
-    const freshenOnRead = (): Promise<void> => {
-      const run = (): Promise<void> =>
+    // Concurrent reads share a pass instead of each running their own: the
+    // pass is O(job dirs), and a burst used to multiply that by the number of
+    // readers. See sessions-freshen.io.ts for why the floor is two passes and
+    // not one.
+    const freshener = createCoalescedRefresh({
+      pass: () =>
         ensureFresh(reg, configDir).catch((err) => {
           console.error("[sessions.repo] refresh-on-read failed", err)
-        })
-      // `run` never rejects, so the chain stays clean for the next read.
-      reg.freshen = reg.freshen.then(run)
-      return reg.freshen
-    }
+        }),
+    })
+    const freshenOnRead = (): Promise<void> => freshener.refresh()
 
     return {
       snapshot: async () => {
