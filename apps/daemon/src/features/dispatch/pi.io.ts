@@ -108,7 +108,11 @@ export const spawnLaunchChecked = (
         return { pid: proc.pid, exited: proc.exited }
       }
       const stderr = await readFileOrEmpty(input.stderrPath)
-      throw new ShellError({ message: piLaunchFailureMessage(exitCode, stderr), exitCode, stderr })
+      throw new ShellError({
+        message: piLaunchFailureMessage({ exitCode, stderr }),
+        exitCode,
+        stderr,
+      })
     },
     catch: (cause) =>
       cause instanceof ShellError

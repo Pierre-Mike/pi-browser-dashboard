@@ -33,7 +33,8 @@ export const issueKey = (i: { readonly repo: string; readonly number: number }):
 
 const NON_ALNUM = /[^a-z0-9]+/g
 
-export const slugify = (title: string, maxLen = 40): string => {
+export const slugify = (input: { readonly title: string; readonly maxLen?: number }): string => {
+  const { title, maxLen = 40 } = input
   const lower = title.toLowerCase().trim()
   const dashed = lower.replace(NON_ALNUM, "-").replace(/^-+|-+$/g, "")
   if (dashed === "") return "issue"
@@ -51,7 +52,7 @@ export const branchName = ({
 }: {
   readonly number: number
   readonly title: string
-}): string => `issue/${number}-${slugify(title)}`
+}): string => `issue/${number}-${slugify({ title })}`
 
 type RawLabel = { readonly name?: string }
 type RawIssue = {
@@ -66,7 +67,11 @@ type RawIssue = {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 
-export const parseIssueListJson = (text: string, fallbackRepo?: string): readonly Issue[] => {
+export const parseIssueListJson = (input: {
+  readonly text: string
+  readonly fallbackRepo?: string
+}): readonly Issue[] => {
+  const { text, fallbackRepo } = input
   let parsed: unknown
   try {
     parsed = JSON.parse(text)

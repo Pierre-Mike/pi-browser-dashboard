@@ -105,7 +105,7 @@ export const readFileAt = async (
   root: string,
   rel: string,
 ): Promise<BrowserResult<FileContent>> => {
-  const resolved = resolveProjectPath(root, rel)
+  const resolved = resolveProjectPath({ root, input: rel })
   if (!resolved.ok) return { ok: false, error: "forbidden" }
   let s: Awaited<ReturnType<typeof stat>>
   try {
@@ -156,7 +156,7 @@ export const createAt = async (
   root: string,
   { path: rel, kind }: { path: string; kind: "file" | "directory" },
 ): Promise<WriteResult<{ path: string }>> => {
-  const resolved = resolveProjectPath(root, rel)
+  const resolved = resolveProjectPath({ root, input: rel })
   if (!resolved.ok || resolved.relPath === "") return { ok: false, error: "forbidden" }
   if (await pathExists(resolved.absPath)) return { ok: false, error: "exists" }
   try {
@@ -180,8 +180,8 @@ export const moveAt = async (
   root: string,
   { from: fromRel, to: toRel }: { from: string; to: string },
 ): Promise<WriteResult<{ from: string; to: string }>> => {
-  const from = resolveProjectPath(root, fromRel)
-  const to = resolveProjectPath(root, toRel)
+  const from = resolveProjectPath({ root, input: fromRel })
+  const to = resolveProjectPath({ root, input: toRel })
   if (!from.ok || from.relPath === "") return { ok: false, error: "forbidden" }
   if (!to.ok || to.relPath === "") return { ok: false, error: "forbidden" }
   if (to.relPath === from.relPath || to.relPath.startsWith(`${from.relPath}/`)) {
@@ -205,7 +205,7 @@ export const removeAt = async (
   root: string,
   { path: rel, recursive }: { path: string; recursive: boolean },
 ): Promise<BrowserResult<{ path: string }>> => {
-  const resolved = resolveProjectPath(root, rel)
+  const resolved = resolveProjectPath({ root, input: rel })
   if (!resolved.ok || resolved.relPath === "") return { ok: false, error: "forbidden" }
   if (!(await pathExists(resolved.absPath))) return { ok: false, error: "not_found" }
   try {
@@ -217,7 +217,7 @@ export const removeAt = async (
 }
 
 export const resolveRawAt = async (root: string, rel: string): Promise<BrowserResult<RawFile>> => {
-  const resolved = resolveProjectPath(root, rel)
+  const resolved = resolveProjectPath({ root, input: rel })
   if (!resolved.ok) return { ok: false, error: "forbidden" }
   let s: Awaited<ReturnType<typeof stat>>
   try {

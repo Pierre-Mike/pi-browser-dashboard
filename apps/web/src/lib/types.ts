@@ -1,58 +1,24 @@
-// Local mirror of daemon SessionState shape. The daemon also exports this via
-// `@pid/daemon/types` for the typed Hono client; this duplicate keeps web
-// components typeable even when the daemon types package can't resolve in
-// isolation (e.g. before `bun install`).
+// Web-side view types.
+//
+// `SessionState` and `Project` used to be declared here as hand-written
+// "local mirrors" of the daemon's shapes. They had drifted: the mirror was
+// missing `worktreePath`/`worktreeBranch` and `lastCommitMs`, and typed nine
+// nullable daemon fields as required `string` — nothing could have caught
+// either, because there was no single declaration for the two copies to
+// disagree with. Both now come from `@pid/shared`, where they are effect
+// `Schema`s that also decode a response at runtime.
+//
+// The types below are genuinely web-only (GitHub panel view models, transcript
+// rendering) and stay local until a second workspace needs them.
+export type { Project, SessionState, SessionStateSlug } from "@pid/shared"
 
-// `blocked` is the current supervisor's slug for a session waiting on the user;
-// older CLIs emitted `needs_input`. Both are kept so neither degrades to `idle`.
-// `unknown` is a slug the daemon didn't recognize — surfaced honestly instead
-// of silently degrading to `idle` (see GET /:id/explain, `degradedFrom`).
-export type SessionStateValue =
-  | "done"
-  | "working"
-  | "blocked"
-  | "needs_input"
-  | "idle"
-  | "failed"
-  | "stopped"
-  | "unknown"
+import type { SessionStateSlug } from "@pid/shared"
 
-export type SessionState = {
-  short: string
-  state: SessionStateValue
-  // Where `state` came from: the session's own state.json, a roster-only
-  // placeholder ahead of the first state.json read, or (pi sessions) the
-  // daemon's own pi spawn log — pi has no supervisor state.json at all. See
-  // GET /:id/explain.
-  source?: "state.json" | "roster-seed" | "pi-spawn-log"
-  // The raw slug the daemon didn't recognize, when `state` is "unknown".
-  degradedFrom?: string
-  detail: string
-  tempo: string
-  intent: string
-  name: string
-  sessionId: string
-  cwd: string
-  createdAt: string
-  updatedAt: string
-  linkScanPath: string
-  result?: string
-  // Absent for claude sessions (the historical shape); "pi" for daemon-spawned
-  // pi runs — cards badge these and drop the claude-only controls.
-  harness?: "pi"
-}
-
-export type Project = {
-  id: string
-  name: string
-  path: string
-  isGitRepo: boolean
-  lastModified: number
-  branch?: string
-  githubUrl?: string
-  githubOwner?: string
-  githubRepo?: string
-}
+/**
+ * @deprecated Use `SessionStateSlug` from `@pid/shared`. Kept as an alias so
+ * the rename lands in one commit rather than rippling through 35 files.
+ */
+export type SessionStateValue = SessionStateSlug
 
 export type GithubPullRequest = {
   number: number

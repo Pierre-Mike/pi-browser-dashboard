@@ -1,46 +1,55 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
+import {
+  parseAgenticListing,
+  parseCatalogBundle,
+  parseCommitShaWrapper,
+  parseEntryWrapper,
+  parseErrorBody,
+  parseInitResult,
+  parseInstallResult,
+  parseOutcomesWrapper,
+  parseRemovedWrapper,
+} from "./library.parse"
 import type {
   AddInput,
-  AgenticListing,
-  CatalogBundle,
   InitInput,
-  InitResult,
   InstallInput,
-  InstallResult,
   LibraryCategory,
-  LibraryEntry,
   PushInput,
   RemoveInput,
   SyncInput,
-  SyncOutcome,
 } from "./types"
 
 // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
 const client = api as any
 
 export const useCatalog = (projectId: string | null) =>
-  useQuery<CatalogBundle>({
+  useQuery({
     queryKey: ["library", "catalog", projectId],
     queryFn: async () => {
       const res = await client.library.catalog.$get({
         query: projectId ? { projectId } : {},
       })
       if (!res.ok) throw new Error(`library catalog: HTTP ${res.status}`)
-      return (await res.json()) as CatalogBundle
+      const bundle = parseCatalogBundle(await res.json())
+      if (!bundle) throw new Error("library catalog: malformed response")
+      return bundle
     },
     staleTime: 10_000,
   })
 
 export const useAgenticRepo = (category: LibraryCategory | null) =>
-  useQuery<AgenticListing>({
+  useQuery({
     queryKey: ["library", "agentic", category],
     enabled: category !== null,
     queryFn: async () => {
       if (!category) throw new Error("missing category")
       const res = await client.library.agentic.$get({ query: { category } })
       if (!res.ok) throw new Error(`library agentic: HTTP ${res.status}`)
-      return (await res.json()) as AgenticListing
+      const listing = parseAgenticListing(await res.json())
+      if (!listing) throw new Error("library agentic: malformed response")
+      return listing
     },
     staleTime: 10_000,
   })
@@ -48,7 +57,7 @@ export const useAgenticRepo = (category: LibraryCategory | null) =>
 const httpErrorBody = async (res: Response, label: string): Promise<Error> => {
   let detail = ""
   try {
-    const body = (await res.json()) as { error?: string; message?: string }
+    const body = parseErrorBody(await res.json())
     detail = body.error ? `${body.error}${body.message ? `: ${body.message}` : ""}` : ""
   } catch {
     detail = await res.text().catch(() => "")
@@ -63,11 +72,13 @@ const invalidateLibrary = (qc: ReturnType<typeof useQueryClient>) => {
 
 export const useInitMutation = () => {
   const qc = useQueryClient()
-  return useMutation<InitResult, Error, InitInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: InitInput) => {
       const res = await client.library.init.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "init")
-      return (await res.json()) as InitResult
+      const result = parseInitResult(await res.json())
+      if (!result) throw new Error("library init: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })
@@ -75,11 +86,13 @@ export const useInitMutation = () => {
 
 export const useInstallMutation = () => {
   const qc = useQueryClient()
-  return useMutation<InstallResult, Error, InstallInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: InstallInput) => {
       const res = await client.library.use.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "install")
-      return (await res.json()) as InstallResult
+      const result = parseInstallResult(await res.json())
+      if (!result) throw new Error("library install: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })
@@ -87,11 +100,13 @@ export const useInstallMutation = () => {
 
 export const useAddMutation = () => {
   const qc = useQueryClient()
-  return useMutation<{ entry: LibraryEntry }, Error, AddInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: AddInput) => {
       const res = await client.library.add.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "add")
-      return (await res.json()) as { entry: LibraryEntry }
+      const result = parseEntryWrapper(await res.json())
+      if (!result) throw new Error("library add: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })
@@ -99,11 +114,13 @@ export const useAddMutation = () => {
 
 export const usePushMutation = () => {
   const qc = useQueryClient()
-  return useMutation<{ commitSha: string }, Error, PushInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: PushInput) => {
       const res = await client.library.push.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "push")
-      return (await res.json()) as { commitSha: string }
+      const result = parseCommitShaWrapper(await res.json())
+      if (!result) throw new Error("library push: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })
@@ -111,11 +128,13 @@ export const usePushMutation = () => {
 
 export const useRemoveMutation = () => {
   const qc = useQueryClient()
-  return useMutation<{ removed: boolean }, Error, RemoveInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: RemoveInput) => {
       const res = await client.library.remove.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "remove")
-      return (await res.json()) as { removed: boolean }
+      const result = parseRemovedWrapper(await res.json())
+      if (!result) throw new Error("library remove: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })
@@ -123,11 +142,13 @@ export const useRemoveMutation = () => {
 
 export const useSyncMutation = () => {
   const qc = useQueryClient()
-  return useMutation<{ outcomes: SyncOutcome[] }, Error, SyncInput>({
-    mutationFn: async (input) => {
+  return useMutation({
+    mutationFn: async (input: SyncInput) => {
       const res = await client.library.sync.$post({ json: input })
       if (!res.ok) throw await httpErrorBody(res, "sync")
-      return (await res.json()) as { outcomes: SyncOutcome[] }
+      const result = parseOutcomesWrapper(await res.json())
+      if (!result) throw new Error("library sync: malformed response")
+      return result
     },
     onSuccess: () => invalidateLibrary(qc),
   })

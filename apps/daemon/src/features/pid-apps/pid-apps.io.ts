@@ -100,7 +100,7 @@ const probeEntry = async (pidDir: string, name: string): Promise<PidAppDirEntry>
 
 const withManifest = async (pidDir: string, app: PidApp): Promise<PidApp> => {
   const text = await tryReadText(join(pidDir, app.root, PID_APP_MANIFEST))
-  return applyPidAppManifest(app, parsePidAppManifest(text))
+  return applyPidAppManifest({ app, manifest: parsePidAppManifest(text) })
 }
 
 const discoverApps = async (pidDir: string): Promise<readonly PidApp[]> => {
@@ -116,7 +116,7 @@ const discoverApps = async (pidDir: string): Promise<readonly PidApp[]> => {
     .slice(0, MAX_PID_APP_DIRS)
   const entries = await Promise.all(dirNames.map((n) => probeEntry(pidDir, n)))
   const hasRootIndex = await isFileAt(join(pidDir, DEFAULT_ENTRY))
-  const apps = discoverPidApps(entries, hasRootIndex)
+  const apps = discoverPidApps({ entries, hasRootIndex })
   return Promise.all(apps.map((app) => withManifest(pidDir, app)))
 }
 
@@ -185,7 +185,7 @@ const safeResolve = (
   appRoot: string,
   ref: AssetRef,
 ): { absPath: string; relPath: string } | null => {
-  const r = resolveProjectPath(appRoot, ref.rel)
+  const r = resolveProjectPath({ root: appRoot, input: ref.rel })
   if (!r.ok) return null
   if (ref.appId === DEFAULT_APP_ID && isReservedDefaultAsset(r.relPath)) return null
   return { absPath: r.absPath, relPath: r.relPath }
@@ -234,7 +234,7 @@ const resolveAppFile = async (appRoot: string, ref: AssetRef): Promise<AssetResu
 // pipeline as resolveAppFile, unforked.
 const resolveSpecFile = async (specsRoot: string, ref: AssetRef): Promise<AssetResult> => {
   if (ref.rel !== "") return { ok: false, error: "not_found" }
-  const safe = resolveProjectPath(specsRoot, `${ref.appId}.html`)
+  const safe = resolveProjectPath({ root: specsRoot, input: `${ref.appId}.html` })
   if (!safe.ok) return { ok: false, error: "forbidden" }
   const sized = await statAsset(safe.absPath)
   if (!sized.ok) return sized
@@ -257,7 +257,7 @@ export const PidAppsIoLive: Layer.Layer<PidAppsService, never, ProjectsService> 
               discoverSpecAppsFromDir(join(projectPath, SPECS_DIR)),
             ]),
           )
-          return mergeAppSources(pidApps, specApps)
+          return mergeAppSources({ pidApps, specApps })
         }),
 
       resolveAsset: (projectId, ref) =>

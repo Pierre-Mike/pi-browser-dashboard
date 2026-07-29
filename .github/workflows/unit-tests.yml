@@ -29,7 +29,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -57,7 +57,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -99,7 +99,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -124,7 +124,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version-file: .bun-version
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -133,7 +133,110 @@ jobs:
       # .fallow-baselines/ (refresh with `bun run audit:baseline`), so a large
       # rename cannot re-attribute inherited debt to the PR that touched the
       # filenames. Dead code is still judged on the changeset.
+      # `github.base_ref` reaches the shell through `env:`, never through `${{ }}`
+      # inside `run:`. A branch name is attacker-supplied on a fork PR, and inline
+      # expansion splices it into the script *before* the shell sees it — the
+      # template-injection class zizmor flags at high severity. As `$BASE_REF` it
+      # is just a variable the shell quotes.
       - name: Audit changed files for dead code
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
-          bun run audit -- --base "origin/${{ github.base_ref }}"
+          git fetch --no-tags --depth=50 origin "$BASE_REF"
+          bun run audit -- --base "origin/$BASE_REF"
+
+  # Build the actual distribution artifact.
+  #
+  # `bun run verify` type-checks and tests, but never asks a *bundler* to resolve
+  # the import graph — and those are different questions. `apps/web` imports
+  # `@pid/shared` at runtime; tsc is happy with a workspace symlink that Vite
+  # might not be, and nothing here would have noticed until someone cut a CLI
+  # release. Not a required check, but it runs on every PR.
+  build:
+    name: build:cli (bundle resolves)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build the web bundle and the single-binary CLI
+        run: bun run build:cli
+
+  # Generate a throwaway slice and put it through the same gates a contributor
+  # would run. `bun run scaffold:slice` is the canonical "add a feature" path for
+  # humans and agents alike, and a generator that silently stops producing a
+  # gate-passing slice is worse than no generator: it teaches the wrong shape.
+  # Not a required check.
+  scaffold:
+    name: scaffold:slice smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # `bun run verify` ends in the fallow audit, which diffs against a base.
+          fetch-depth: 0
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # `verify` ends in the fallow audit, which resolves a diff base by looking
+      # for a local `main`. A PR checkout is detached, so without this the audit
+      # exits "could not detect base branch" and the job fails for a reason that
+      # has nothing to do with the generated slice.
+      - name: Give the audit a local base branch
+        run: git branch main origin/main 2>/dev/null || true
+
+      - name: Scaffold a slice
+        run: bun run scaffold:slice smoke-demo
+
+      - name: The generated slice must pass every gate unmodified
+        run: bun run verify
+
+  # Workflow lint: flags unpinned actions, credential persistence, injection
+  # risks. Not a required check, but it does gate on real findings.
+  #
+  # `min-severity: high` on purpose. zizmor's medium tier here is almost entirely
+  # `artipacked` — a checkout that leaves its credential in `.git/config` — which
+  # matters when a later step uploads the workspace as an artifact, and none of
+  # these do. Failing on the whole medium tier would make this job permanently
+  # red, and a permanently red advisory check teaches people to ignore it, which
+  # is worse than not having it. High severity (template injection, and the
+  # like) fails the job and gets fixed.
+  zizmor:
+    name: zizmor (workflow security)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        with:
+          advanced-security: false
+          min-severity: high

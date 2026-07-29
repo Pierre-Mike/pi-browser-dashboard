@@ -12,6 +12,7 @@ const src = readFileSync(join(import.meta.dir, "RecentSessionsFeed.tsx"), "utf8"
 const session: SessionState = {
   short: "abc123",
   state: "idle",
+  source: "state.json",
   detail: "",
   tempo: "steady",
   intent: "",

@@ -32,9 +32,13 @@ export const dispatchDirect = async (
   if (!res.ok) {
     throw new Error(`dispatch: HTTP ${res.status} ${await res.text()}`)
   }
-  const body = (await res.json()) as { short?: string }
-  if (!body.short) throw new Error(`dispatch: missing short in ${JSON.stringify(body)}`)
-  return { short: body.short }
+  const body: unknown = await res.json()
+  const short =
+    typeof body === "object" && body !== null && "short" in body && typeof body.short === "string"
+      ? body.short
+      : ""
+  if (!short) throw new Error(`dispatch: missing short in ${JSON.stringify(body)}`)
+  return { short }
 }
 
 export const stopExternal = async (short: string): Promise<void> => {

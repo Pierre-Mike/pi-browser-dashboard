@@ -194,7 +194,11 @@ const dirOf = (p: string): string => {
 // Parse a `source:` value into a typed shape the repo can act on.
 // Returns null for inputs that don't match any supported format so callers
 // can surface a clear `source_invalid` error to the UI.
-export const parseSource = (source: string, homeDir: string): ParsedSource | null => {
+export const parseSource = (input: {
+  readonly source: string
+  readonly homeDir: string
+}): ParsedSource | null => {
+  const { source, homeDir } = input
   if (source.startsWith("/") || source.startsWith("~")) {
     const absPath = source.startsWith("~") ? `${homeDir}${source.slice(1)}` : source
     return { kind: "local", absPath, dir: dirOf(absPath) }
@@ -256,10 +260,11 @@ export const resolveRequires = ({
   const visited = new Set<string>()
   const out: LibraryEntry[] = []
 
-  const visit = (
-    entry: LibraryEntry,
-    chain: readonly string[],
-  ): Either.Either<void, RequiresCycleError> => {
+  const visit = (input: {
+    readonly entry: LibraryEntry
+    readonly chain: readonly string[]
+  }): Either.Either<void, RequiresCycleError> => {
+    const { entry, chain } = input
     const key = `${entry.type}:${entry.name}`
     if (chain.includes(key)) {
       return Either.left(new RequiresCycleError([...chain, key]))
@@ -271,7 +276,7 @@ export const resolveRequires = ({
       if (!parsed) continue
       const dep = byKey.get(`${parsed.category}:${parsed.name}`)
       if (!dep) continue
-      const nested = visit(dep, [...chain, key])
+      const nested = visit({ entry: dep, chain: [...chain, key] })
       if (Either.isLeft(nested)) return nested
     }
     out.push(entry)
@@ -279,22 +284,24 @@ export const resolveRequires = ({
   }
 
   for (const root of rootCandidates) {
-    const walked = visit(root, [])
+    const walked = visit({ entry: root, chain: [] })
     if (Either.isLeft(walked)) return Either.left(walked.left)
   }
   return Either.right(out)
 }
 
 // Expand `~/foo` → `<home>/foo` for status probes.
-export const expandHome = (p: string, homeDir: string): string =>
-  p.startsWith("~") ? `${homeDir}${p.slice(1)}` : p
+export const expandHome = (input: { readonly p: string; readonly homeDir: string }): string =>
+  input.p.startsWith("~") ? `${input.homeDir}${input.p.slice(1)}` : input.p
 
 const DEFAULT_AGENTIC_REPO = "~/Github/agentic"
 
 // PID_AGENTIC_REPO_PATH wins; otherwise the agentic checkout is assumed
 // to live next to the user's other clones under ~/Github.
-export const resolveAgenticRepoPath = (envPath: string | undefined, homeDir: string): string =>
-  envPath ?? expandHome(DEFAULT_AGENTIC_REPO, homeDir)
+export const resolveAgenticRepoPath = (input: {
+  readonly envPath: string | undefined
+  readonly homeDir: string
+}): string => input.envPath ?? expandHome({ p: DEFAULT_AGENTIC_REPO, homeDir: input.homeDir })
 
 // Coerce arbitrary id to a safe path segment (mirrors claude-config.core).
 export const isSafeSegment = (id: string): boolean =>
@@ -325,7 +332,11 @@ const ensureLibraryMap = (doc: Document): YAMLMap => {
   return created
 }
 
-const ensureCategorySeq = (doc: Document, category: LibraryCategory): YAMLSeq => {
+const ensureCategorySeq = (input: {
+  readonly doc: Document
+  readonly category: LibraryCategory
+}): YAMLSeq => {
+  const { doc, category } = input
   const library = ensureLibraryMap(doc)
   const existing = library.get(category)
   if (isSeq(existing)) return existing
@@ -347,7 +358,7 @@ export const upsertEntryInDocument = ({
   entry: LibraryEntry
   mode?: "add" | "upsert"
 }): Either.Either<void, DuplicateEntryError> => {
-  const seq = ensureCategorySeq(doc, entry.type)
+  const seq = ensureCategorySeq({ doc, category: entry.type })
   const existingIdx = (seq.items as unknown[]).findIndex((item) => {
     if (!isMap(item)) return false
     const name = item.get("name")

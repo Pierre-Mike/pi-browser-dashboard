@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { buildDispatchBody, dispatchErrorMessage } from "./spawnDispatch"
+import { buildDispatchBody, dispatchErrorMessage, parseSpawnedShort } from "./spawnDispatch"
 
 const project = {
   id: "p1",
@@ -21,6 +21,19 @@ describe("dispatchErrorMessage", () => {
     expect(dispatchErrorMessage(500, { detail: "   " })).toBe("dispatch: HTTP 500")
     expect(dispatchErrorMessage(502, null)).toBe("dispatch: HTTP 502")
     expect(dispatchErrorMessage(500, { detail: 42 })).toBe("dispatch: HTTP 500")
+  })
+})
+
+describe("parseSpawnedShort", () => {
+  it("extracts the short id from a well-formed response", () => {
+    expect(parseSpawnedShort({ short: "abc123" })).toBe("abc123")
+  })
+
+  it("returns null when short is missing, wrong-typed, or the body isn't an object", () => {
+    expect(parseSpawnedShort({})).toBeNull()
+    expect(parseSpawnedShort({ short: 1 })).toBeNull()
+    expect(parseSpawnedShort(null)).toBeNull()
+    expect(parseSpawnedShort("abc123")).toBeNull()
   })
 })
 

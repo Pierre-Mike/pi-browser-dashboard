@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
+import { parsePidSettings } from "./pidSettings.parse"
 import type { PidSettings, PidSettingsPatch } from "./types"
 
 // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
@@ -14,7 +15,9 @@ export const useProjectPidSettings = (projectId: string) =>
     queryFn: async () => {
       const res = await client.projects[":id"]["pid-settings"].$get({ param: { id: projectId } })
       if (!res.ok) throw new Error(`pid-settings: HTTP ${res.status}`)
-      return (await res.json()) as PidSettings
+      const settings = parsePidSettings(await res.json())
+      if (!settings) throw new Error("pid-settings: malformed response")
+      return settings
     },
     staleTime: 10_000,
   })
@@ -28,7 +31,9 @@ export const useUpdateProjectPidSettings = (projectId: string) => {
         json: patch,
       })
       if (!res.ok) throw new Error(`pid-settings update: HTTP ${res.status}`)
-      return (await res.json()) as PidSettings
+      const settings = parsePidSettings(await res.json())
+      if (!settings) throw new Error("pid-settings: malformed response")
+      return settings
     },
     onSuccess: (data) => qc.setQueryData(key(projectId), data),
   })

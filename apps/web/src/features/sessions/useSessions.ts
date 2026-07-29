@@ -1,6 +1,6 @@
+import { decodeSessionStateArray, type SessionState } from "@pid/shared"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../../lib/api"
-import type { SessionState } from "../../lib/types"
 
 export const useSessions = () =>
   useQuery<SessionState[]>({
@@ -10,6 +10,9 @@ export const useSessions = () =>
       const client = api as any
       const res = await client.sessions.$get()
       if (!res.ok) throw new Error(`sessions: HTTP ${res.status}`)
-      return (await res.json()) as SessionState[]
+      // Copied into a mutable array: the decoder's `readonly` element type
+      // would otherwise narrow `useQuery`'s inferred data type for every
+      // consumer of this hook.
+      return [...decodeSessionStateArray(await res.json())]
     },
   })

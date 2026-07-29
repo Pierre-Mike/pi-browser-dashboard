@@ -1,10 +1,9 @@
+import { STALE_ACTIVE_MS } from "@pid/shared"
 // Pure state-provenance decision logic for GET /:id/explain. No I/O — the pid
 // probe, disk existence check and clock all live in sessions.io.ts; this file
 // only turns already-resolved facts into a human-readable explanation.
 
 import { ageMs, type SessionState, type SessionStateSlug } from "./sessions.core"
-
-export const STALE_ACTIVE_MS = 120_000
 
 // The screen-derived reading of the same session, as plain input fields. The
 // terminal slice owns the classification (features/terminal/

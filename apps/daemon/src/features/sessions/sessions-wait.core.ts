@@ -1,12 +1,10 @@
+import { WAIT_TIMEOUT_DEFAULT_MS, WAIT_TIMEOUT_MAX_MS } from "@pid/shared"
 // Pure decision logic for server-owned waits on session state. No I/O — the
 // SSE subscription, clock and timeout live in sessions-wait.io.ts; this file
 // only turns already-decoded values into decisions.
 
+import { isSessionStateSlug, type SessionStateSlug } from "@pid/shared"
 import { Either } from "effect"
-import { isSessionStateSlug, type SessionStateSlug } from "./sessions.core"
-
-export const WAIT_TIMEOUT_DEFAULT_MS = 30_000
-export const WAIT_TIMEOUT_MAX_MS = 600_000
 
 // Which observation of the session is allowed to settle the wait.
 //
@@ -90,10 +88,13 @@ const parseUntilSlugs = (
   return Either.right(slugs)
 }
 
-const parseUntil = (
-  raw: unknown,
-  { outputRequested }: { readonly outputRequested: boolean },
-): Either.Either<ReadonlyArray<SessionStateSlug>, WaitRequestError> => {
+const parseUntil = ({
+  raw,
+  outputRequested,
+}: {
+  readonly raw: unknown
+  readonly outputRequested: boolean
+}): Either.Either<ReadonlyArray<SessionStateSlug>, WaitRequestError> => {
   if (raw === undefined && outputRequested) return Either.right([])
   if (!Array.isArray(raw) || raw.length === 0) {
     return Either.left(emptyUntilError(outputRequested))
@@ -215,7 +216,10 @@ export const parseWaitRequest = (raw: unknown): Either.Either<WaitRequest, WaitR
   if (!isPlainObject(raw)) return Either.left(badUntil("wait request body must be an object"))
   const untilOutput = parseUntilOutput(raw.untilOutput)
   if (Either.isLeft(untilOutput)) return Either.left(untilOutput.left)
-  const until = parseUntil(raw.until, { outputRequested: untilOutput.right !== undefined })
+  const until = parseUntil({
+    raw: raw.until,
+    outputRequested: untilOutput.right !== undefined,
+  })
   if (Either.isLeft(until)) return Either.left(until.left)
   const timeoutMs = parseTimeoutMs(raw.timeoutMs)
   if (Either.isLeft(timeoutMs)) return Either.left(timeoutMs.left)

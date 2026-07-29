@@ -39,7 +39,13 @@ const BODY_MAX = 160
 const truncate = (text: string, max: number): string =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text
 
-const label = (s: SessionState): string => s.name.trim() || s.intent.trim() || s.short
+const label = (s: SessionState): string =>
+  (s.name ?? "").trim() || (s.intent ?? "").trim() || s.short
+
+// `result` is a free-form, harness-varying payload (`unknown` on the wire) —
+// only a string is ever shown, anything else falls back to `detail`.
+const resultOrDetail = (s: SessionState): string =>
+  typeof s.result === "string" ? s.result : (s.detail ?? "")
 
 // Decide whether a session state transition warrants a desktop notification.
 //
@@ -57,7 +63,7 @@ export const decideNotification = (
   if (isTerminalState(prev)) return null
 
   const title = TITLES[next.state as "done" | "failed" | "stopped"]
-  const detail = (next.result ?? next.detail ?? "").trim()
+  const detail = resultOrDetail(next).trim()
   const who = label(next)
   const body = truncate(detail ? `${who} — ${detail}` : who, BODY_MAX)
   return { title, body, tag: `pid-session-${next.short}-${next.state}` }

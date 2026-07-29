@@ -85,17 +85,22 @@ export const MAX_DIFF_BYTES = 200_000
 
 export type TruncatedDiff = { readonly diff: string; readonly truncated: boolean }
 
-export const truncateDiff = (raw: string, max: number = MAX_DIFF_BYTES): TruncatedDiff => {
+export const truncateDiff = (input: {
+  readonly raw: string
+  readonly max?: number
+}): TruncatedDiff => {
+  const { raw, max = MAX_DIFF_BYTES } = input
   if (raw.length <= max) return { diff: raw, truncated: false }
   return { diff: raw.slice(0, max), truncated: true }
 }
 
 // Merge name-status records with untracked entries, dedup by path, and sort
 // alphabetically so the client can render a stable list.
-export const mergeChanges = (
-  tracked: readonly FileChange[],
-  untracked: readonly FileChange[],
-): readonly FileChange[] => {
+export const mergeChanges = (input: {
+  readonly tracked: readonly FileChange[]
+  readonly untracked: readonly FileChange[]
+}): readonly FileChange[] => {
+  const { tracked, untracked } = input
   const byPath = new Map<string, FileChange>()
   for (const c of tracked) byPath.set(c.path, c)
   for (const c of untracked) {

@@ -1,3 +1,5 @@
+import type { SessionStateSlug } from "@pid/shared"
+import { WAIT_TIMEOUT_DEFAULT_MS } from "@pid/shared"
 // Pure state machine for EXECUTING a fleet recipe: turning the wave plan
 // fleet.core.ts already computes into a run — caps, the run/step status
 // lattice, and the fold that turns one spawn/wait observation into the next
@@ -9,20 +11,7 @@
 // or mirrored here rather than imported from their real owners.
 
 import { Either } from "effect"
-import {
-  type Fleet,
-  type FleetStep,
-  planFleetRun,
-  type SessionStateSlug,
-  type StepId,
-} from "./fleet.core"
-
-// Mirrors WAIT_TIMEOUT_DEFAULT_MS in
-// apps/daemon/src/features/sessions/sessions-wait.core.ts — same literal-copy
-// precedent fleet.core.ts already uses for WAIT_TIMEOUT_MAX_MS (see that
-// file's own comment for the full rationale). Kept honest by
-// scripts/mirrored-constants.test.ts.
-export const WAIT_TIMEOUT_DEFAULT_MS = 30_000
+import { type Fleet, type FleetStep, planFleetRun, type StepId } from "./fleet.core"
 
 // --- Caps ---------------------------------------------------------------------
 //
@@ -146,8 +135,8 @@ export const planRun = ({
   })
 }
 
-const stepPlanOf = (plan: RunPlan, stepId: StepId): StepPlan =>
-  plan.waves.flat().find((step) => step.stepId === stepId) as StepPlan
+const stepPlanOf = (input: { readonly plan: RunPlan; readonly stepId: StepId }): StepPlan =>
+  input.plan.waves.flat().find((step) => step.stepId === input.stepId) as StepPlan
 
 // --- Run state machine ----------------------------------------------------------
 
@@ -262,7 +251,7 @@ const applyWaveStarting = ({
   const idsInWave = new Set(wave.map((step) => step.stepId))
   return steps.map((step) => {
     if (step.status !== "pending" || !idsInWave.has(step.stepId)) return step
-    const badDep = stepPlanOf(plan, step.stepId).needs.find((need) => {
+    const badDep = stepPlanOf({ plan, stepId: step.stepId }).needs.find((need) => {
       const dep = byId.get(need)
       return dep !== undefined && (dep.status === "failed" || dep.status === "skipped")
     })
@@ -293,7 +282,7 @@ const applySpawnSucceeded = ({
     update: (step) => {
       const shorts = [...step.shorts, { short, wait: undefined }]
       if (step.status !== "spawning") return { ...step, shorts }
-      const stepPlan = stepPlanOf(plan, stepId)
+      const stepPlan = stepPlanOf({ plan, stepId })
       if (shorts.length < stepPlan.n) return { ...step, shorts }
       return { ...step, shorts, status: stepPlan.until === undefined ? "done" : "waiting" }
     },

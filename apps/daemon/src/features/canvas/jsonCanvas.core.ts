@@ -263,8 +263,10 @@ export const serializeJsonCanvas = (snap: CanvasSnapshot): string =>
  * ignores an `updatedAt` that is never persisted — otherwise every stamp would
  * look like an external edit and echo back to every connected tab.
  */
-export const jsonCanvasEqual = (a: CanvasSnapshot, b: CanvasSnapshot): boolean =>
-  serializeJsonCanvas(a) === serializeJsonCanvas(b)
+export const jsonCanvasEqual = (input: {
+  readonly a: CanvasSnapshot
+  readonly b: CanvasSnapshot
+}): boolean => serializeJsonCanvas(input.a) === serializeJsonCanvas(input.b)
 
 export const emptyJsonCanvas = (): CanvasSnapshot => ({
   version: 1,

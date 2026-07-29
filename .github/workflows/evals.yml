@@ -1,0 +1,40 @@
+name: Agent evals
+
+# Weekly golden-task agent evals (see evals/README.md): headless `claude -p`
+# attempts each task in a throwaway worktree and the repo's own gates judge
+# the result. Measures whether the harness still steers agents to the
+# canonical shape. No-ops when the ANTHROPIC_API_KEY secret is absent.
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: run golden tasks
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret not configured — skipping agent evals."
+            exit 0
+          fi
+          ./evals/run.sh

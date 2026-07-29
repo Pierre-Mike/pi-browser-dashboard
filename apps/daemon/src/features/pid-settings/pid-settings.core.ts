@@ -59,10 +59,11 @@ export type PidSettingsPatch = {
 
 // Apply a partial patch over current settings. Invalid field values in the patch
 // are ignored (current value wins) so a bad request can't corrupt stored state.
-export const mergePidSettings = (
-  current: PidSettings,
-  patch: PidSettingsPatch | null | undefined,
-): PidSettings => {
+export const mergePidSettings = (input: {
+  readonly current: PidSettings
+  readonly patch: PidSettingsPatch | null | undefined
+}): PidSettings => {
+  const { current, patch } = input
   if (!isObject(patch)) return current
   const defaultSkills =
     patch.defaultSkills !== undefined ? normalizeSkills(patch.defaultSkills) : null

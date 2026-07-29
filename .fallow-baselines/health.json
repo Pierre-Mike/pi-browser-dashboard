@@ -29,16 +29,6 @@
         "count": 1
       }
     },
-    "apps/daemon/src/features/drops/drops.routes.test.ts": {
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "apps/daemon/src/features/drops/drops.routes.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "apps/daemon/src/features/events/events.routes.test.ts": {
       "crap_high": {
         "count": 1
@@ -192,6 +182,9 @@
     },
     "apps/e2e/global-teardown.ts": {
       "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -363,8 +356,8 @@
         "count": 1
       }
     },
-    "apps/web/src/features/sessions/FilesTab.tsx": {
-      "crap_critical": {
+    "apps/web/src/features/sessions/SessionCard.tsx": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -427,17 +420,6 @@
         "count": 1
       }
     },
-    "apps/web/src/routes/sessions.$id.tsx": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
-      }
-    },
     "scripts/axiom-debt.core.ts": {
       "crap_high": {
         "count": 1
@@ -454,15 +436,17 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "apps/web/src/routes/sessions.$id.tsx:complexity",
     "apps/web/src/features/global-settings/useGlobalSettingsForm.ts:high impact",
     "apps/web/src/features/transcripts/pairTranscript.ts:high impact",
-    "apps/web/src/features/projects/ProjectDashboard.tsx:complexity",
+    "apps/web/src/features/claude-config/claudeConfig.parse.ts:untested risk",
     "apps/web/src/features/dispatch/spawnSkills.ts:high impact",
     "apps/web/src/features/canvas/canvasSync.ts:high impact",
+    "apps/web/src/features/projects/projectGithub.parse.ts:untested risk",
     "apps/daemon/src/platform/extensions/loader.ts:complexity",
-    "apps/web/src/features/sessions/diffParse.ts:high impact",
+    "apps/web/src/features/sessions/sidebarUtil.ts:high impact",
+    "apps/web/src/features/fleet/fleetParse.ts:high impact",
     "apps/daemon/src/platform/extensions/state.ts:high impact",
+    "apps/web/src/lib/guards.ts:high impact",
     "apps/daemon/src/features/claude-config/claude-config.core.ts:high impact",
     "apps/daemon/src/features/canvas/canvas.core.ts:high impact",
     "scripts/harness-doctor.core.ts:complexity"

@@ -9,6 +9,7 @@ import { SessionCard } from "./SessionCard"
 const sampleSession: SessionState = {
   short: "abc123",
   state: "working",
+  source: "state.json",
   detail: "doing a thing",
   tempo: "steady",
   intent: "fix the bug",
@@ -169,6 +170,9 @@ describe("SessionCard (pi harness)", () => {
     ...sampleSession,
     short: "aaaa1111",
     sessionId: "aaaa1111-2222-3333-4444-555566667777",
+    // pi has no supervisor state.json — the daemon's own spawn log is the
+    // only source a pi session ever gets.
+    source: "pi-spawn-log",
     harness: "pi",
   }
 

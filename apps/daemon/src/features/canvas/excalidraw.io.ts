@@ -15,7 +15,7 @@ import {
 const excalidrawCodec: DocCodec<ExcalidrawDoc> = {
   parse: parseExcalidrawDoc,
   serialize: serializeExcalidrawDoc,
-  equal: excalidrawEqual,
+  equal: (a, b) => excalidrawEqual({ a, b }),
   empty: emptyExcalidrawDoc,
   stamp: (doc) => doc,
 }

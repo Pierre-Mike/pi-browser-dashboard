@@ -97,7 +97,8 @@ const optStr = (v: unknown): string | null => (typeof v === "string" ? v : null)
 const posInt = (v: unknown): number | null =>
   typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null
 
-const readGit = (raw: unknown, base: GitSettings): GitSettings => {
+const readGit = (input: { readonly raw: unknown; readonly base: GitSettings }): GitSettings => {
+  const { raw, base } = input
   if (!isObject(raw)) return base
   return {
     defaultBranch: str(raw.defaultBranch) ?? base.defaultBranch,
@@ -105,7 +106,11 @@ const readGit = (raw: unknown, base: GitSettings): GitSettings => {
   }
 }
 
-const readLibrary = (raw: unknown, base: LibrarySettings): LibrarySettings => {
+const readLibrary = (input: {
+  readonly raw: unknown
+  readonly base: LibrarySettings
+}): LibrarySettings => {
+  const { raw, base } = input
   if (!isObject(raw)) return base
   return {
     catalogPath: str(raw.catalogPath) ?? base.catalogPath,
@@ -113,7 +118,11 @@ const readLibrary = (raw: unknown, base: LibrarySettings): LibrarySettings => {
   }
 }
 
-const readOrchestration = (raw: unknown, base: OrchestrationSettings): OrchestrationSettings => {
+const readOrchestration = (input: {
+  readonly raw: unknown
+  readonly base: OrchestrationSettings
+}): OrchestrationSettings => {
+  const { raw, base } = input
   if (!isObject(raw)) return base
   return {
     claudeBin: str(raw.claudeBin) ?? base.claudeBin,
@@ -124,7 +133,11 @@ const readOrchestration = (raw: unknown, base: OrchestrationSettings): Orchestra
   }
 }
 
-const readNetwork = (raw: unknown, base: NetworkSettings): NetworkSettings => {
+const readNetwork = (input: {
+  readonly raw: unknown
+  readonly base: NetworkSettings
+}): NetworkSettings => {
+  const { raw, base } = input
   if (!isObject(raw)) return base
   return {
     projectsRoot: str(raw.projectsRoot) ?? base.projectsRoot,
@@ -151,7 +164,11 @@ const readSkillIds = (raw: unknown): readonly string[] => {
 // Validate the skill-groups list: each entry needs a non-empty name (the dedupe
 // key, first occurrence wins) and a skills list (coerced to [] when absent).
 // A non-array input leaves the base list untouched (so a patch can omit it).
-const readSkillGroups = (raw: unknown, base: readonly SkillGroup[]): readonly SkillGroup[] => {
+const readSkillGroups = (input: {
+  readonly raw: unknown
+  readonly base: readonly SkillGroup[]
+}): readonly SkillGroup[] => {
+  const { raw, base } = input
   if (!Array.isArray(raw)) return base
   const seenNames = new Set<string>()
   const out: SkillGroup[] = []
@@ -165,13 +182,19 @@ const readSkillGroups = (raw: unknown, base: readonly SkillGroup[]): readonly Sk
   return out
 }
 
-const fromObject = (parsed: Record<string, unknown>, base: GlobalSettings): GlobalSettings => ({
-  git: readGit(parsed.git, base.git),
-  library: readLibrary(parsed.library, base.library),
-  orchestration: readOrchestration(parsed.orchestration, base.orchestration),
-  network: readNetwork(parsed.network, base.network),
-  skillGroups: readSkillGroups(parsed.skillGroups, base.skillGroups),
-})
+const fromObject = (input: {
+  readonly parsed: Record<string, unknown>
+  readonly base: GlobalSettings
+}): GlobalSettings => {
+  const { parsed, base } = input
+  return {
+    git: readGit({ raw: parsed.git, base: base.git }),
+    library: readLibrary({ raw: parsed.library, base: base.library }),
+    orchestration: readOrchestration({ raw: parsed.orchestration, base: base.orchestration }),
+    network: readNetwork({ raw: parsed.network, base: base.network }),
+    skillGroups: readSkillGroups({ raw: parsed.skillGroups, base: base.skillGroups }),
+  }
+}
 
 // Parse a settings.json text into fully-populated GlobalSettings. Empty,
 // missing, malformed, or wrong-typed input falls back to defaults field-by-field.
@@ -184,7 +207,7 @@ export const parseGlobalSettings = (text: string | null | undefined): GlobalSett
     return DEFAULT_GLOBAL_SETTINGS
   }
   if (!isObject(parsed)) return DEFAULT_GLOBAL_SETTINGS
-  return fromObject(parsed, DEFAULT_GLOBAL_SETTINGS)
+  return fromObject({ parsed, base: DEFAULT_GLOBAL_SETTINGS })
 }
 
 export type GlobalSettingsPatch = {
@@ -200,12 +223,13 @@ export type GlobalSettingsPatch = {
 // Apply a partial patch over current settings. Invalid field values are ignored
 // (current value wins), reusing the same per-field validation as parse so a bad
 // request can't corrupt stored state.
-export const mergeGlobalSettings = (
-  current: GlobalSettings,
-  patch: GlobalSettingsPatch | null | undefined,
-): GlobalSettings => {
+export const mergeGlobalSettings = (input: {
+  readonly current: GlobalSettings
+  readonly patch: GlobalSettingsPatch | null | undefined
+}): GlobalSettings => {
+  const { current, patch } = input
   if (!isObject(patch)) return current
-  return fromObject(patch as Record<string, unknown>, current)
+  return fromObject({ parsed: patch as Record<string, unknown>, base: current })
 }
 
 export const serializeGlobalSettings = (s: GlobalSettings): string =>

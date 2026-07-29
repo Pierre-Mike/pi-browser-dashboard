@@ -1,19 +1,12 @@
-import type { GitStatusEntry } from "@pierre/trees"
 import { useQuery } from "@tanstack/react-query"
 import { apiBase as baseUrl } from "../../lib/apiBase"
 import type { FileContent } from "../../lib/types"
+import { parseErrorField, parseFileContent, parseProjectTree } from "./projectFiles.parse"
 
 // The hc client's path-param + query-string shape is awkward for these
 // endpoints; bypass it and hit the configured base URL directly.
 
 export type FileResource = { kind: "projects" | "sessions"; id: string }
-
-type ProjectTree = {
-  readonly paths: readonly string[]
-  readonly truncated: boolean
-  // Present when requested with `?gitStatus=1`; drives @pierre/trees row badges.
-  readonly gitStatus?: readonly GitStatusEntry[]
-}
 
 const resourceBase = (resource: FileResource): string =>
   `${baseUrl()}/${resource.kind}/${encodeURIComponent(resource.id)}`
@@ -21,7 +14,7 @@ const resourceBase = (resource: FileResource): string =>
 // Full flat path list, fed to @pierre/trees. `?gitStatus=1` rides the same
 // request so dirty-file badges land together with the listing.
 export const useFileResource = (resource: FileResource) =>
-  useQuery<ProjectTree>({
+  useQuery({
     queryKey: ["file-tree", resource.kind, resource.id],
     staleTime: 15_000,
     queryFn: async () => {
@@ -29,7 +22,9 @@ export const useFileResource = (resource: FileResource) =>
       url.searchParams.set("gitStatus", "1")
       const res = await fetch(url)
       if (!res.ok) throw new Error(`list tree: HTTP ${res.status}`)
-      return (await res.json()) as ProjectTree
+      const tree = parseProjectTree(await res.json())
+      if (!tree) throw new Error("list tree: malformed response")
+      return tree
     },
   })
 
@@ -44,7 +39,9 @@ export const useFileContent = (resource: FileResource, path: string | null) =>
       url.searchParams.set("path", path)
       const res = await fetch(url)
       if (!res.ok) throw new Error(`read file: HTTP ${res.status}`)
-      return (await res.json()) as FileContent
+      const content = parseFileContent(await res.json())
+      if (!content) throw new Error("read file: malformed response")
+      return content
     },
   })
 
@@ -93,8 +90,8 @@ const postFs = async (
   if (res.ok) return { ok: true }
   let error = `HTTP ${res.status}`
   try {
-    const j = (await res.json()) as { error?: unknown }
-    if (typeof j.error === "string") error = j.error
+    const parsed = parseErrorField(await res.json())
+    if (parsed) error = parsed
   } catch {
     // non-JSON body — keep the status-based message
   }

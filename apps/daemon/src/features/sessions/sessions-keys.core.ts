@@ -1,3 +1,4 @@
+import { isNamedKey, type NamedKey } from "@pid/shared"
 // Pure decision logic for POST /:id/keys — a named vocabulary over terminal
 // control bytes (escape / arrows / tab / …) so a caller can answer a
 // permission prompt or an AskUserQuestion menu without hand-encoding control
@@ -10,23 +11,6 @@
 // before becomes impossible now.
 
 import { Either } from "effect"
-
-export type NamedKey =
-  | "escape"
-  | "enter"
-  | "tab"
-  | "shift-tab"
-  | "up"
-  | "down"
-  | "left"
-  | "right"
-  | "home"
-  | "end"
-  | "page-up"
-  | "page-down"
-  | "backspace"
-  | "delete"
-  | "space"
 
 export type KeyStep =
   | { readonly named: NamedKey; readonly repeat?: number }
@@ -66,6 +50,9 @@ export const MAX_RESOLVED_KEYS_LENGTH = 4096
 //     "just another keystroke" would end it invisibly.
 // Both fall through to the same "unknown name" rejection below as any other
 // typo — nothing about their handling is special-cased at runtime.
+// Keyed by the shared `NamedKey` union: add a name to the contract in
+// shared/src/keys.ts without giving it bytes here and this is a type error,
+// which is what replaced the runtime drift guard the two copies used to need.
 const NAMED_KEY_BYTES: Record<NamedKey, string> = {
   escape: "\x1b",
   enter: "\r",
@@ -84,17 +71,8 @@ const NAMED_KEY_BYTES: Record<NamedKey, string> = {
   space: " ",
 }
 
-// Exported (not just the type) so a doc-drift guard (platform/agent-skill.ts's
-// test) can assert against the real vocabulary instead of a hand-copied list.
-export const NAMED_KEYS: ReadonlyArray<NamedKey> = Object.keys(
-  NAMED_KEY_BYTES,
-) as ReadonlyArray<NamedKey>
-
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
-
-const isNamedKey = (v: unknown): v is NamedKey =>
-  typeof v === "string" && Object.hasOwn(NAMED_KEY_BYTES, v)
 
 // Matches C0 controls and DEL — a `text` step is literal input, so any
 // control byte in it almost certainly means the caller meant `named` instead.
@@ -107,10 +85,11 @@ const tooLong = (message: string): KeysRequestError => ({ _tag: "TooLong", messa
 
 type StepResult = { readonly keys: string; readonly resolved: ReadonlyArray<string> }
 
-const resolveNamedStep = (
-  step: { readonly named: unknown; readonly repeat?: unknown },
-  index: number,
-): Either.Either<StepResult, KeysRequestError> => {
+const resolveNamedStep = (input: {
+  readonly step: { readonly named: unknown; readonly repeat?: unknown }
+  readonly index: number
+}): Either.Either<StepResult, KeysRequestError> => {
+  const { step, index } = input
   if (!isNamedKey(step.named)) {
     return Either.left(
       badStep(`sequence[${index}].named is not a known key: ${JSON.stringify(step.named)}`),
@@ -141,10 +120,11 @@ const resolveNamedStep = (
   })
 }
 
-const resolveTextStep = (
-  step: { readonly text: unknown },
-  index: number,
-): Either.Either<StepResult, KeysRequestError> => {
+const resolveTextStep = (input: {
+  readonly step: { readonly text: unknown }
+  readonly index: number
+}): Either.Either<StepResult, KeysRequestError> => {
+  const { step, index } = input
   if (typeof step.text !== "string" || step.text.length === 0) {
     return Either.left(badStep(`sequence[${index}].text must be a non-empty string`))
   }
@@ -158,7 +138,11 @@ const resolveTextStep = (
   return Either.right({ keys: step.text, resolved: [JSON.stringify(step.text)] })
 }
 
-const resolveStep = (raw: unknown, index: number): Either.Either<StepResult, KeysRequestError> => {
+const resolveStep = (input: {
+  readonly raw: unknown
+  readonly index: number
+}): Either.Either<StepResult, KeysRequestError> => {
+  const { raw, index } = input
   if (!isPlainObject(raw)) {
     return Either.left(badStep(`sequence[${index}] must be an object with "named" or "text"`))
   }
@@ -168,8 +152,8 @@ const resolveStep = (raw: unknown, index: number): Either.Either<StepResult, Key
     return Either.left(badStep(`sequence[${index}] must have exactly one of "named" or "text"`))
   }
   return hasNamed
-    ? resolveNamedStep(raw as { named: unknown; repeat?: unknown }, index)
-    : resolveTextStep(raw as { text: unknown }, index)
+    ? resolveNamedStep({ step: raw as { named: unknown; repeat?: unknown }, index })
+    : resolveTextStep({ step: raw as { text: unknown }, index })
 }
 
 // Validates an untrusted JSON body for POST /:id/keys (the `sequence` field —
@@ -187,7 +171,7 @@ export const parseKeysRequest = (raw: unknown): Either.Either<ResolvedKeys, Keys
   let keys = ""
   const resolved: string[] = []
   for (let index = 0; index < sequence.length; index++) {
-    const step = resolveStep(sequence[index], index)
+    const step = resolveStep({ raw: sequence[index], index })
     if (Either.isLeft(step)) return Either.left(step.left)
     keys += step.right.keys
     resolved.push(...step.right.resolved)

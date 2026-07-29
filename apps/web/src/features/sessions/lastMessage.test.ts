@@ -5,6 +5,7 @@ import { lastMessage, resolveLastMessage, sessionFallbackMessage } from "./lastM
 const session = (over: Partial<SessionState>): SessionState => ({
   short: "abc123",
   state: "working",
+  source: "state.json",
   detail: "",
   tempo: "",
   intent: "",

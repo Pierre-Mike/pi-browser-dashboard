@@ -29,8 +29,10 @@ export const parseExcalidrawDoc = (raw: unknown): Either.Either<ExcalidrawDoc, s
 
 export const serializeExcalidrawDoc = (doc: ExcalidrawDoc): string => JSON.stringify(doc, null, 2)
 
-export const excalidrawEqual = (a: ExcalidrawDoc, b: ExcalidrawDoc): boolean =>
-  serializeExcalidrawDoc(a) === serializeExcalidrawDoc(b)
+export const excalidrawEqual = (input: {
+  readonly a: ExcalidrawDoc
+  readonly b: ExcalidrawDoc
+}): boolean => serializeExcalidrawDoc(input.a) === serializeExcalidrawDoc(input.b)
 
 // The document a freshly created board starts from — same shape Excalidraw's
 // own "export to file" produces, so the file is openable anywhere from birth.

@@ -1,3 +1,4 @@
+import { WAIT_TIMEOUT_DEFAULT_MS } from "@pid/shared"
 // Imperative engine for executing a fleet run: walks a RunPlan's waves,
 // dispatching each wave's spawns through injected ports and waiting on any
 // step's `until`, publishing a `fleet.run` SSE event on every transition.
@@ -20,8 +21,8 @@
 // through THIS run's own GET endpoint even if the daemon dies mid-wait.
 
 import { join } from "node:path"
+import type { SessionStateSlug } from "@pid/shared"
 import { sseBus } from "../../platform/sse-bus"
-import type { SessionStateSlug } from "./fleet.core"
 import {
   advance,
   chunkByConcurrency,
@@ -33,7 +34,6 @@ import {
   type RunSummary,
   runSummary,
   type StepPlan,
-  WAIT_TIMEOUT_DEFAULT_MS,
   type WaitOutcomeLike,
 } from "./fleet-run.core"
 

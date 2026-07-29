@@ -17,21 +17,31 @@ describe("allowedOriginList", () => {
 
 describe("resolveCorsOrigin", () => {
   it("echoes an allow-listed origin", () => {
-    expect(resolveCorsOrigin("http://localhost:5173", {})).toBe("http://localhost:5173")
+    expect(resolveCorsOrigin({ requestOrigin: "http://localhost:5173", env: {} })).toBe(
+      "http://localhost:5173",
+    )
   })
 
   it("echoes an injected PID_CORS_ORIGINS origin", () => {
     expect(
-      resolveCorsOrigin("https://tunnel.test", { PID_CORS_ORIGINS: "https://tunnel.test" }),
+      resolveCorsOrigin({
+        requestOrigin: "https://tunnel.test",
+        env: { PID_CORS_ORIGINS: "https://tunnel.test" },
+      }),
     ).toBe("https://tunnel.test")
   })
 
   it("denies an unknown origin", () => {
-    expect(resolveCorsOrigin("https://evil.test", {})).toBeNull()
+    expect(resolveCorsOrigin({ requestOrigin: "https://evil.test", env: {} })).toBeNull()
   })
 
   it("denies a custom-scheme origin — only the explicit allow-list opens the door", () => {
-    expect(resolveCorsOrigin("views://mainview", {})).toBeNull()
-    expect(resolveCorsOrigin("app://anything", { PID_CORS_ORIGINS: "https://a.test" })).toBeNull()
+    expect(resolveCorsOrigin({ requestOrigin: "views://mainview", env: {} })).toBeNull()
+    expect(
+      resolveCorsOrigin({
+        requestOrigin: "app://anything",
+        env: { PID_CORS_ORIGINS: "https://a.test" },
+      }),
+    ).toBeNull()
   })
 })

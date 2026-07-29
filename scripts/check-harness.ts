@@ -5,11 +5,17 @@
  * Reads the enforcement stack off disk and hands it to the pure auditor in
  * scripts/harness-doctor.core.ts. Runs inside `bun run test`, so deleting a
  * gate fails CI instead of silently disarming a rule.
+ *
+ * Everything here is *discovered*, never listed: workspaces come from root
+ * package.json, workflows from the directory, grit plugins from a glob. A
+ * hand-maintained list in the checker would fail open in exactly the way the
+ * checker exists to prevent.
  */
 import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { Glob } from "bun"
-import { auditHarness, type HarnessSnapshot } from "./harness-doctor.core"
+import { auditHarness, type HarnessSnapshot, type Workflow } from "./harness-doctor.core"
+import { expandWorkspacePattern, parseWorkspacePatterns } from "./workspaces.core"
 
 const root = join(import.meta.dir, "..")
 const read = async (rel: string): Promise<string> =>
@@ -22,21 +28,64 @@ for await (const file of new Glob("biome-plugins/*.grit").scan({ cwd: root })) {
   gritPlugins.push(file)
 }
 
-const appDirs = readdirSync(join(root, "apps"), { withFileTypes: true })
-  .filter((e) => e.isDirectory() && existsSync(join(root, "apps", e.name, "package.json")))
-  .map((e) => `apps/${e.name}`)
+// --- workspaces, from the one list that must already be correct -------------
+
+const entriesUnder = (pattern: string): readonly string[] => {
+  if (!pattern.endsWith("/*")) return []
+  const parent = join(root, pattern.slice(0, -2))
+  if (!existsSync(parent)) return []
+  return readdirSync(parent, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+}
+
+const workspaceDirs = parseWorkspacePatterns({
+  pkg: await Bun.file(join(root, "package.json")).json(),
+})
+  .flatMap((pattern) => expandWorkspacePattern({ pattern, entries: entriesUnder(pattern) }))
+  .filter((label) => existsSync(join(root, label, "package.json")))
   .sort()
 
+// --- workflows, from the directory ------------------------------------------
+
+const workflows: Workflow[] = []
+const workflowDir = join(root, ".github/workflows")
+if (existsSync(workflowDir)) {
+  for (const entry of readdirSync(workflowDir).sort()) {
+    if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue
+    workflows.push({ name: entry, text: await read(`.github/workflows/${entry}`) })
+  }
+}
+
+// --- files whose presence, or whose shape, is part of the contract ----------
+
 const TRACKED_FILES = [
+  ".bun-version",
+  ".github/dependabot.yml",
+  ".github/workflows/codeql.yml",
+  ".github/workflows/evals.yml",
+  ".claude/skills/add-slice/SKILL.md",
+  ".claude/skills/retro/SKILL.md",
+  "evals/run.sh",
+  "evals/tasks.jsonl",
   "scripts/axiom-debt.json",
   "scripts/check-axiom-debt.ts",
   "scripts/check-colocated-tests.ts",
   "scripts/check-commit-msg.ts",
   "scripts/check-feature-tests.sh",
   "scripts/check-tests-touched.sh",
+  "scripts/scaffold-slice.ts",
   "scripts/typecheck.ts",
+  "shared/src/index.ts",
   "stryker.config.json",
 ]
+
+const GATE_SOURCES = ["scripts/typecheck.ts", "scripts/check-axiom-debt.ts"]
+
+const gateSources: Record<string, string> = {}
+for (const rel of GATE_SOURCES) {
+  if (existsSync(join(root, rel))) gateSources[rel] = await read(rel)
+}
 
 const snapshot: HarnessSnapshot = {
   biome: await read("biome.json"),
@@ -46,9 +95,13 @@ const snapshot: HarnessSnapshot = {
   claudeMd: await read("CLAUDE.md"),
   agentsMd: await read("AGENTS.md"),
   gritPlugins,
-  appTsconfigs: appDirs.map((d) => `${d}/tsconfig.json`).filter((p) => existsSync(join(root, p))),
-  appDirs,
+  workspaceDirs,
+  workspaceTsconfigs: workspaceDirs
+    .map((d) => `${d}/tsconfig.json`)
+    .filter((p) => existsSync(join(root, p))),
   presentFiles: TRACKED_FILES.filter((f) => existsSync(join(root, f))),
+  workflows,
+  gateSources,
 }
 
 const findings = auditHarness(snapshot)
@@ -60,4 +113,6 @@ if (findings.length > 0) {
   console.error("  is deliberate, update scripts/harness-doctor.core.ts in the same commit.")
   process.exit(1)
 }
-console.error("✓ harness self-check: enforcement stack intact")
+console.error(
+  `✓ harness self-check: enforcement stack intact (${workspaceDirs.length} workspaces, ${workflows.length} workflows)`,
+)

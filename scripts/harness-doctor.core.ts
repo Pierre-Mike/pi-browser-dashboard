@@ -18,6 +18,8 @@
 
 export type Finding = { readonly check: string; readonly detail: string }
 
+export type Workflow = { readonly name: string; readonly text: string }
+
 export type HarnessSnapshot = {
   readonly biome: string
   readonly lefthook: string
@@ -26,9 +28,14 @@ export type HarnessSnapshot = {
   readonly claudeMd: string
   readonly agentsMd: string
   readonly gritPlugins: readonly string[]
-  readonly appTsconfigs: readonly string[]
-  readonly appDirs: readonly string[]
+  /** Every workspace declared in root package.json `workspaces`, expanded. */
+  readonly workspaceDirs: readonly string[]
+  readonly workspaceTsconfigs: readonly string[]
   readonly presentFiles: readonly string[]
+  /** Every file under .github/workflows — pinning is checked across all of them. */
+  readonly workflows: readonly Workflow[]
+  /** Source text of gate scripts whose *shape* is asserted below. */
+  readonly gateSources: Readonly<Record<string, string>>
 }
 
 // The literal status-check contexts the branch ruleset requires. A PR cannot
@@ -77,9 +84,15 @@ const REQUIRED_SCRIPTS: readonly string[] = [
   "test",
   "test:web",
   "test:cli",
+  "test:shared",
+  "test:mutation",
+  "build:cli",
   "audit",
   "doctor",
   "axiom-debt",
+  "axiom-debt:update",
+  "scaffold:slice",
+  "evals",
   "verify",
 ]
 
@@ -88,23 +101,61 @@ const REQUIRED_SCRIPTS: readonly string[] = [
 const COMPOSED_GATES: readonly { readonly script: string; readonly needle: string }[] = [
   { script: "test", needle: "check-colocated-tests.ts" },
   { script: "test", needle: "check-harness.ts" },
+  { script: "test", needle: "test:shared" },
   { script: "verify", needle: "lint:ci" },
   { script: "verify", needle: "typecheck" },
   { script: "verify", needle: "test" },
+  { script: "verify", needle: "test:web" },
+  { script: "verify", needle: "test:cli" },
   { script: "verify", needle: "audit" },
   { script: "verify", needle: "axiom-debt" },
 ]
 
 const REQUIRED_FILES: readonly string[] = [
+  ".bun-version",
+  ".github/dependabot.yml",
+  ".github/workflows/codeql.yml",
+  ".github/workflows/evals.yml",
+  ".claude/skills/add-slice/SKILL.md",
+  ".claude/skills/retro/SKILL.md",
+  "evals/run.sh",
+  "evals/tasks.jsonl",
   "scripts/axiom-debt.json",
   "scripts/check-axiom-debt.ts",
   "scripts/check-colocated-tests.ts",
   "scripts/check-commit-msg.ts",
   "scripts/check-feature-tests.sh",
   "scripts/check-tests-touched.sh",
+  "scripts/scaffold-slice.ts",
   "scripts/typecheck.ts",
+  "shared/src/index.ts",
   "stryker.config.json",
 ]
+
+/**
+ * Gate scripts that must derive their scope from root `package.json`
+ * `workspaces` rather than from a hardcoded glob.
+ *
+ * This check exists because of a specific near-miss: both `typecheck.ts` and
+ * `check-axiom-debt.ts` originally scanned `apps/*`, so when `shared/` was
+ * added as a workspace it silently escaped *both* the typecheck and the debt
+ * ratchet — the first raw `fetch` written there would have been invisible.
+ * A hardcoded root list fails open; deriving from the list that must already be
+ * correct for `bun install` to work cannot.
+ */
+const WORKSPACE_DERIVED_GATES: readonly string[] = [
+  "scripts/typecheck.ts",
+  "scripts/check-axiom-debt.ts",
+]
+
+/**
+ * The one validated reader of `workspaces` (scripts/workspaces.core.ts). Named
+ * here rather than grepping for the word "workspaces" so the check asserts the
+ * gate goes through the *validating* parser: a type assertion on the parsed
+ * package.json also contains that word, and would satisfy a looser check while
+ * silently scanning nothing once the field's shape changed.
+ */
+const WORKSPACE_READER = "parseWorkspacePatterns"
 
 export const CANON_START = "<!-- CANON:START -->"
 export const CANON_END = "<!-- CANON:END -->"
@@ -175,6 +226,37 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
     miss({ check: "no-raw-fetch", detail: "biome.json does not deny the fetch global" })
   }
 
+  // --- The cast ban covers every workspace ---------------------------------
+  // `no-cast-json` began scoped to apps/daemon + apps/cli + scripts, because
+  // apps/web had ~40 sites awaiting a contract to decode against. Those were
+  // paid off and the `json-cast` debt class was deleted — which only stays true
+  // if the rule keeps covering apps/** and shared/**. Narrowing it back would
+  // silently re-open a class that no ratchet is watching any more.
+  const castBanCoversApps =
+    /"includes":\s*\[[^\]]*"apps\/\*\*\/\*\.ts"[^\]]*\][^}]*no-cast-json\.grit/s
+  if (!castBanCoversApps.test(snap.biome)) {
+    miss({
+      check: "no-cast-json",
+      detail:
+        'no-cast-json.grit is not applied to an override that includes "apps/**/*.ts" — the json-cast debt class was retired on the assumption this rule covers every workspace',
+    })
+  }
+
+  // --- One parameter per declaration, scoped to the pure cores -------------
+  // The plugin started life scoped to scripts/** only, which made it a rule
+  // about one directory rather than about a file shape. Asserting it covers
+  // "**/*.core.ts" is what keeps it a shape rule: a new slice, a new app, or a
+  // renamed directory inherits it without anyone editing an includes list.
+  const coreOneParamScoped =
+    /"includes":\s*\[[^\]]*"\*\*\/\*\.core\.ts"[^\]]*\][^}]*max-one-param-declarations\.grit/s
+  if (!coreOneParamScoped.test(snap.biome)) {
+    miss({
+      check: "one-param",
+      detail:
+        'max-one-param-declarations.grit is not applied to an override that includes "**/*.core.ts" — it would only be a rule about one directory, not about the pure cores',
+    })
+  }
+
   // --- Lefthook: every gate still wired -----------------------------------
   for (const job of REQUIRED_LEFTHOOK_JOBS) {
     if (!snap.lefthook.includes(`name: ${job}`)) {
@@ -213,11 +295,20 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
       })
     }
   }
-  for (const ref of unpinnedActions(snap.unitTestsWorkflow)) {
-    miss({
-      check: "action-pinning",
-      detail: `unit-tests.yml uses ${ref} — pin actions to a full commit SHA`,
-    })
+  // Pinning is checked across EVERY workflow, discovered from disk, not just
+  // the one CI file. A tag or branch ref is mutable: whoever controls it can
+  // change what runs in a workflow that already has a token. Checking one file
+  // would let the next added workflow skip the rule entirely.
+  if (snap.workflows.length === 0) {
+    miss({ check: "action-pinning", detail: "no workflows found under .github/workflows" })
+  }
+  for (const workflow of snap.workflows) {
+    for (const ref of unpinnedActions(workflow.text)) {
+      miss({
+        check: "action-pinning",
+        detail: `${workflow.name} uses ${ref} — pin actions to a full commit SHA`,
+      })
+    }
   }
 
   // --- Docs: the canon block is present and identical in both files -------
@@ -232,11 +323,29 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   }
 
   // --- Typecheck coverage: no workspace outside the gate ------------------
-  for (const dir of snap.appDirs) {
-    if (!snap.appTsconfigs.includes(`${dir}/tsconfig.json`)) {
+  // `workspaceDirs` covers every entry in root `workspaces`, so `shared/` — a
+  // workspace that is not an app — is included. An earlier `apps/*` scan here
+  // would have declared the stack intact while shared/ went unchecked.
+  for (const dir of snap.workspaceDirs) {
+    if (!snap.workspaceTsconfigs.includes(`${dir}/tsconfig.json`)) {
       miss({
         check: "typecheck",
-        detail: `${dir} has no tsconfig.json, so it escapes the typecheck gate`,
+        detail: `${dir} is a workspace with no tsconfig.json, so it escapes the typecheck gate`,
+      })
+    }
+  }
+
+  // --- Gate scope derives from `workspaces`, not a hardcoded glob ----------
+  for (const gate of WORKSPACE_DERIVED_GATES) {
+    const source = snap.gateSources[gate]
+    if (source === undefined) {
+      miss({ check: "gate-scope", detail: `${gate} could not be read` })
+      continue
+    }
+    if (!source.includes(WORKSPACE_READER)) {
+      miss({
+        check: "gate-scope",
+        detail: `${gate} no longer derives its scope through ${WORKSPACE_READER}() — a hardcoded root list fails open, exempting the next workspace someone adds`,
       })
     }
   }

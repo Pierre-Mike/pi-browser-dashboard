@@ -28,18 +28,22 @@ const file = (name: string): PidAppDirEntry => ({ name, isDir: false, hasIndexHt
 
 describe("discoverPidApps", () => {
   it("treats a bare .pid/index.html as the implicit 'default' app", () => {
-    expect(discoverPidApps([], true)).toEqual([
+    expect(discoverPidApps({ entries: [], hasRootIndex: true })).toEqual([
       { id: "default", label: "default", entry: "index.html", root: "", source: "pid" },
     ])
   })
 
   it("returns no apps with neither a root index nor any app dir", () => {
-    expect(discoverPidApps([], false)).toEqual([])
-    expect(discoverPidApps([dir("notes", false), file("readme.md")], false)).toEqual([])
+    expect(discoverPidApps({ entries: [], hasRootIndex: false })).toEqual([])
+    expect(
+      discoverPidApps({ entries: [dir("notes", false), file("readme.md")], hasRootIndex: false }),
+    ).toEqual([])
   })
 
   it("treats each subdir containing an index.html as an app keyed by dir name", () => {
-    expect(discoverPidApps([dir("spec"), dir("dashboard")], false)).toEqual([
+    expect(
+      discoverPidApps({ entries: [dir("spec"), dir("dashboard")], hasRootIndex: false }),
+    ).toEqual([
       {
         id: "dashboard",
         label: "dashboard",
@@ -52,7 +56,9 @@ describe("discoverPidApps", () => {
   })
 
   it("omits subdirs without an index.html and non-dir entries", () => {
-    expect(discoverPidApps([dir("empty", false), file("index.html")], false)).toEqual([])
+    expect(
+      discoverPidApps({ entries: [dir("empty", false), file("index.html")], hasRootIndex: false }),
+    ).toEqual([])
   })
 
   it("never surfaces reserved pid internals as apps", () => {
@@ -62,29 +68,29 @@ describe("discoverPidApps", () => {
       file("settings.json"),
       dir("settings.json"),
     ]
-    expect(discoverPidApps(entries, false)).toEqual([])
+    expect(discoverPidApps({ entries, hasRootIndex: false })).toEqual([])
   })
 
   it("skips dir names that fail NAME_RE without throwing", () => {
     const entries = [dir("Bad Name"), dir("../x"), dir("UPPER"), dir("ok-1.2")]
-    expect(discoverPidApps(entries, false)).toEqual([
+    expect(discoverPidApps({ entries, hasRootIndex: false })).toEqual([
       { id: "ok-1.2", label: "ok-1.2", entry: "index.html", root: "ok-1.2", source: "pid" },
     ])
   })
 
   it("orders deterministically: default first, then subdir apps alphabetical", () => {
-    const out = discoverPidApps([dir("zeta"), dir("alpha")], true)
+    const out = discoverPidApps({ entries: [dir("zeta"), dir("alpha")], hasRootIndex: true })
     expect(out.map((a) => a.id)).toEqual(["default", "alpha", "zeta"])
   })
 
   it("lets the bare-root default win over a subdir literally named 'default'", () => {
-    expect(discoverPidApps([dir("default")], true)).toEqual([
+    expect(discoverPidApps({ entries: [dir("default")], hasRootIndex: true })).toEqual([
       { id: "default", label: "default", entry: "index.html", root: "", source: "pid" },
     ])
   })
 
   it("ignores a subdir named 'default' when there is no bare-root index", () => {
-    expect(discoverPidApps([dir("default")], false)).toEqual([])
+    expect(discoverPidApps({ entries: [dir("default")], hasRootIndex: false })).toEqual([])
   })
 })
 
@@ -135,20 +141,23 @@ describe("applyPidAppManifest", () => {
   }
 
   it("overrides label/entry/icon from the manifest", () => {
-    expect(applyPidAppManifest(base, { title: "My Spec", entry: "main.html", icon: "📄" })).toEqual(
-      {
-        id: "spec",
-        label: "My Spec",
-        entry: "main.html",
-        root: "spec",
-        source: "pid",
-        icon: "📄",
-      },
-    )
+    expect(
+      applyPidAppManifest({
+        app: base,
+        manifest: { title: "My Spec", entry: "main.html", icon: "📄" },
+      }),
+    ).toEqual({
+      id: "spec",
+      label: "My Spec",
+      entry: "main.html",
+      root: "spec",
+      source: "pid",
+      icon: "📄",
+    })
   })
 
   it("falls back to the app's own values when the manifest is empty", () => {
-    expect(applyPidAppManifest(base, {})).toEqual(base)
+    expect(applyPidAppManifest({ app: base, manifest: {} })).toEqual(base)
   })
 })
 
@@ -300,7 +309,7 @@ describe("mergeAppSources", () => {
   it("drops a specApps entry whose id collides with a pidApps entry (.pid/ wins)", () => {
     const pidApps = [pidApp("default"), pidApp("foo")]
     const specApps = [specApp("bar"), specApp("foo")]
-    expect(mergeAppSources(pidApps, specApps)).toEqual([
+    expect(mergeAppSources({ pidApps, specApps })).toEqual([
       pidApp("default"),
       pidApp("foo"),
       specApp("bar"),
@@ -310,13 +319,13 @@ describe("mergeAppSources", () => {
   it("keeps both sets when disjoint: pidApps order preserved, then specApps", () => {
     const pidApps = [pidApp("zeta"), pidApp("alpha")] // deliberately not alphabetical
     const specApps = [specApp("bar"), specApp("foo")]
-    expect(mergeAppSources(pidApps, specApps)).toEqual([...pidApps, ...specApps])
+    expect(mergeAppSources({ pidApps, specApps })).toEqual([...pidApps, ...specApps])
   })
 
   it("returns each side unchanged when the other is empty", () => {
     const pidApps = [pidApp("a")]
     const specApps = [specApp("b")]
-    expect(mergeAppSources(pidApps, [])).toEqual(pidApps)
-    expect(mergeAppSources([], specApps)).toEqual(specApps)
+    expect(mergeAppSources({ pidApps, specApps: [] })).toEqual(pidApps)
+    expect(mergeAppSources({ pidApps: [], specApps })).toEqual(specApps)
   })
 })

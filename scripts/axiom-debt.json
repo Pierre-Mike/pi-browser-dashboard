@@ -44,25 +44,5 @@
     "apps/web/src/features/projects/useProjectFiles.ts": 3,
     "apps/web/src/features/terminal/TerminalView.tsx": 1,
     "scripts/axiom-debt.core.ts": 1
-  },
-  "json-cast": {
-    "apps/e2e/tests/helpers.ts": 1,
-    "apps/web/src/features/brainstorms/useBrainstorms.ts": 2,
-    "apps/web/src/features/claude-config/useClaudeConfig.ts": 3,
-    "apps/web/src/features/dispatch/spawnDispatch.ts": 1,
-    "apps/web/src/features/dispatch/usePiModels.ts": 1,
-    "apps/web/src/features/extensions/useExtensions.ts": 1,
-    "apps/web/src/features/global-settings/useGlobalSettings.ts": 2,
-    "apps/web/src/features/library/useLibrary.ts": 9,
-    "apps/web/src/features/pid-apps/usePidApps.ts": 2,
-    "apps/web/src/features/pid-settings/usePidSettings.ts": 2,
-    "apps/web/src/features/projects/useProjectFiles.ts": 3,
-    "apps/web/src/features/projects/useProjectGithub.ts": 3,
-    "apps/web/src/features/projects/useProjects.ts": 1,
-    "apps/web/src/features/sessions/SessionCardActions.tsx": 1,
-    "apps/web/src/features/sessions/useSessions.ts": 1,
-    "apps/web/src/features/transcripts/loadTranscript.ts": 1,
-    "apps/web/src/features/tunnel/useTunnel.ts": 3,
-    "apps/web/src/routes/sessions.$id.tsx": 1
   }
 }

@@ -1,3 +1,4 @@
+import { decodeSessionState, type SessionState } from "@pid/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { SessionPanel } from "../features/sessions/SessionPanel"
@@ -7,7 +8,6 @@ import { useSessionActions } from "../features/sessions/useSessionActions"
 import { api } from "../lib/api"
 import { resolveSessionView } from "../lib/sessionView"
 import { coerceNamespacedTab } from "../lib/tabParams"
-import type { SessionState } from "../lib/types"
 
 // `brainstorm:<encoded path>` selects one board inside the Brainstorm section,
 // so the deep link has to survive validateSearch instead of being dropped.
@@ -32,7 +32,7 @@ const useSession = (id: string) =>
       const client = api as any
       const res = await client.sessions[":id"].$get({ param: { id } })
       if (!res.ok) return null
-      return (await res.json()) as SessionState
+      return decodeSessionState(await res.json())
     },
   })
 

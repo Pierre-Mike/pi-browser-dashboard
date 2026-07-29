@@ -1,3 +1,4 @@
+import type { SessionStateSlug } from "@pid/shared"
 // Imperative engine for state-change automation rules: reads
 // <claudeConfigDir>/pid-dashboard/rules.json, subscribes to the SSE bus for
 // `session.state` / `session.removed` transitions, runs a periodic dwell
@@ -57,7 +58,6 @@ import {
   type RuleOutcome,
   type RulesFile,
   type SessionSnapshot,
-  type SessionStateSlug,
   type SessionView,
 } from "./rules.core"
 

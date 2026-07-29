@@ -14,7 +14,6 @@
     "apps/daemon/src/features/sessions/files.io.test.ts:29-33|apps/daemon/src/features/sessions/files.io.test.ts:50-57|apps/daemon/src/features/sessions/files.io.test.ts:68-72",
     "apps/e2e/tests/dashboard-tabs.spec.ts:55-62|apps/e2e/tests/dashboard-tabs.spec.ts:77-84|apps/e2e/tests/terminal-full-height.spec.ts:10-15",
     "apps/e2e/tests/drop-to-path.spec.ts:127-133|apps/e2e/tests/drop-to-path.spec.ts:32-38|apps/e2e/tests/drop-to-path.spec.ts:65-71|apps/e2e/tests/drop-to-path.spec.ts:93-99",
-    "apps/e2e/tests/drop-to-path.spec.ts:78-85|apps/e2e/tests/peek.spec.ts:8-13|apps/e2e/tests/send-keys.spec.ts:11-16|apps/e2e/tests/spawn-complete.spec.ts:58-63",
     "apps/e2e/tests/file-download.spec.ts:13-17|apps/e2e/tests/git-status-badge.spec.ts:47-51|apps/e2e/tests/markdown-table-align.spec.ts:16-20",
     "apps/e2e/tests/library.spec.ts:28-34|apps/e2e/tests/library.spec.ts:54-60|apps/e2e/tests/library.spec.ts:68-77",
     "apps/e2e/tests/library.spec.ts:109-113|apps/e2e/tests/library.spec.ts:28-32|apps/e2e/tests/library.spec.ts:54-58|apps/e2e/tests/library.spec.ts:68-74",

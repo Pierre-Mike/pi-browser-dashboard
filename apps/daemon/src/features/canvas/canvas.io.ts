@@ -15,7 +15,7 @@ import { type DocCodec, type DocRoom, makeDocRooms } from "./docRoom.io"
 const canvasCodec: DocCodec<CanvasSnapshot> = {
   parse: parseCanvas,
   serialize: serializeCanvas,
-  equal: canvasEqual,
+  equal: (a, b) => canvasEqual({ a, b }),
   empty: emptyCanvas,
   // Publish stamps updatedAt so consumers can age snapshots.
   stamp: (snap) => ({ ...snap, updatedAt: new Date().toISOString() }),
@@ -32,7 +32,7 @@ export type CanvasRoom = DocRoom<CanvasSnapshot>
 // use. Brainstorms (and any future document-backed canvas) go through
 // getCanvasRoomAt with an explicit path.
 export const getCanvasRoom = (configDir: string, short: string): Promise<CanvasRoom> =>
-  getCanvasRoomAt(canvasPathFor(configDir, short))
+  getCanvasRoomAt(canvasPathFor({ configDir, short }))
 
 export const getCanvasRoomAt = rooms.getRoomAt
 

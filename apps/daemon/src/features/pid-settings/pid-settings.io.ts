@@ -71,7 +71,7 @@ export const PidSettingsIoLive: Layer.Layer<PidSettingsService, never, ProjectsS
           Effect.gen(function* () {
             const path = yield* resolvePath(projectId)
             const text = yield* Effect.promise(() => tryReadText(path))
-            const next = mergePidSettings(parsePidSettings(text), patch)
+            const next = mergePidSettings({ current: parsePidSettings(text), patch })
             yield* Effect.promise(() => writeAtomic(path, serializePidSettings(next)))
             return next
           }),
@@ -89,7 +89,7 @@ export const PidSettingsIoTest = (
     },
     updateProject: (id, patch) => {
       if (!isSafeSegment(id)) return Effect.fail<PidSettingsError>("forbidden")
-      const next = mergePidSettings(store[id] ?? parsePidSettings(null), patch)
+      const next = mergePidSettings({ current: store[id] ?? parsePidSettings(null), patch })
       store[id] = next
       return Effect.succeed(next)
     },

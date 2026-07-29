@@ -15,7 +15,7 @@ export type SidebarBucket = {
 export const DEFAULT_BUCKET_KEY = "default"
 
 const sessionRecency = (s: SessionState): number => {
-  const t = Date.parse(s.updatedAt)
+  const t = Date.parse(s.updatedAt ?? "")
   return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
 }
 
@@ -56,7 +56,7 @@ export const bucketProjects = ({
     pinned: false,
   }
   for (const s of sessions) {
-    const proj = byPath.get(s.cwd)
+    const proj = byPath.get(s.cwd ?? "")
     if (proj) byKey.get(`p:${proj.id}`)?.sessions.push(s)
     else defaultBucket.sessions.push(s)
   }

@@ -62,7 +62,7 @@ export const GhIssueClientLive: Layer.Layer<GhIssueClient> = Layer.succeed(GhIss
         args.push("--label", l)
       }
       const stdout = yield* runGh(args)
-      return parseIssueListJson(stdout, repo)
+      return parseIssueListJson({ text: stdout, fallbackRepo: repo })
     }),
   editLabels: ({ repo, number, add = [], remove = [] }) =>
     Effect.gen(function* () {

@@ -52,7 +52,9 @@ export const lastMessage = (messages: readonly TranscriptMessage[]): LastMessage
 // session's `result` is its closing word; otherwise `detail` is the latest
 // status line the supervisor recorded.
 export const sessionFallbackMessage = (session: SessionState): LastMessage | null => {
-  const result = session.result?.trim()
+  // `result` is a free-form, harness-varying payload (`unknown` on the wire) —
+  // only show it when it is actually text.
+  const result = typeof session.result === "string" ? session.result.trim() : ""
   if (session.state === "done" && result) return { role: "result", text: result }
   const detail = session.detail?.trim()
   if (detail) return { role: "assistant", text: detail }

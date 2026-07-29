@@ -210,7 +210,7 @@ const computeStatusByName = async ({
     const entries = byCategory.get(category) ?? []
     if (entries.length === 0) continue
     const dirs = catalog.defaultDirs[category]
-    const globalDir = expandHome(dirs.global, homeDir)
+    const globalDir = expandHome({ p: dirs.global, homeDir })
     const localDir = projectRoot ? join(projectRoot, dirs.default) : null
     const [globalMap, localMap] = await Promise.all([
       probeScope(
@@ -262,7 +262,7 @@ const resolveDestDir = ({
   projectRoot: string | null
 }): string | LibraryError => {
   const dirs = catalog.defaultDirs[category]
-  if (scope === "global") return expandHome(dirs.global, homeDir)
+  if (scope === "global") return expandHome({ p: dirs.global, homeDir })
   if (!projectRoot) return "not_found"
   return join(projectRoot, dirs.default)
 }
@@ -288,7 +288,7 @@ const installOne = async ({
     return { ok: false, error: destOrErr as LibraryError }
   }
   const destPath = join(destOrErr, entry.name)
-  const parsed = parseSource(entry.source, homeDir)
+  const parsed = parseSource({ source: entry.source, homeDir })
   if (!parsed) return { ok: false, error: "source_invalid", message: entry.source }
   try {
     if (parsed.kind === "local") {
@@ -335,9 +335,13 @@ export const LibraryIoLive: Layer.Layer<
     yield* cfg.get()
     const homeDir = homedir()
 
-    const libraryDir = process.env.PID_LIBRARY_DIR ?? expandHome(DEFAULT_LIBRARY_DIR, homeDir)
+    const libraryDir =
+      process.env.PID_LIBRARY_DIR ?? expandHome({ p: DEFAULT_LIBRARY_DIR, homeDir })
     const catalogPath = join(libraryDir, DEFAULT_CATALOG_PATH)
-    const agenticRepoPath = resolveAgenticRepoPath(process.env.PID_AGENTIC_REPO_PATH, homeDir)
+    const agenticRepoPath = resolveAgenticRepoPath({
+      envPath: process.env.PID_AGENTIC_REPO_PATH,
+      homeDir,
+    })
 
     const resolveProjectRoot = (projectId: string | null | undefined) =>
       Effect.gen(function* () {
@@ -544,7 +548,7 @@ export const LibraryIoLive: Layer.Layer<
             return yield* Effect.fail<LibraryError>(destOrErr)
           }
           const localInstall = join(destOrErr, input.name)
-          const parsed = parseSource(entry.source, homeDir)
+          const parsed = parseSource({ source: entry.source, homeDir })
           if (!parsed) return yield* Effect.fail<LibraryError>("source_invalid")
 
           if (parsed.kind === "local") {

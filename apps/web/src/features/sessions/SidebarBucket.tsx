@@ -319,7 +319,7 @@ const SessionRow = ({
             ? "bg-primary/15 text-primary font-medium shadow-[inset_2px_0_0_0] shadow-primary"
             : `${tone.text} hover:bg-base-100`
         }`}
-        title={stateTitle(session.state, session.detail)}
+        title={stateTitle(session.state, session.detail ?? "")}
       >
         <span
           className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`}

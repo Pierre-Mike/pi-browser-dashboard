@@ -1,8 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import { api } from "../../lib/api"
+import { isRecord, isString } from "../../lib/guards"
 import type { SessionState } from "../../lib/types"
 import { SendKeysPanel } from "./SendKeysPanel"
+
+// The peek endpoint's body on success — no `@pid/shared` contract exists for
+// this shape, so it is validated locally instead of trusted with an `as`.
+export const parsePeekSummary = (body: unknown): string | undefined => {
+  if (!isRecord(body)) return undefined
+  return isString(body.summary) ? body.summary : undefined
+}
 
 const CONFIRM_TIMEOUT_MS = 3_000
 
@@ -55,8 +63,8 @@ const useSessionCardActions = (session: SessionState) => {
     try {
       const res = await post("peek", session.short)
       if (!res.ok) throw new Error(`peek: HTTP ${res.status}`)
-      const body = (await res.json()) as { summary?: string }
-      setPeekSummary(body.summary?.trim() || "(empty)")
+      const summary = parsePeekSummary(await res.json())
+      setPeekSummary(summary?.trim() || "(empty)")
     } catch (err) {
       console.error("peek failed", err)
       setPeekSummary("peek failed")

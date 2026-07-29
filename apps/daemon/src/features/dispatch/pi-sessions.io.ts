@@ -79,7 +79,7 @@ const findTranscript = (
   } catch {
     return undefined
   }
-  const name = entries.find((entry) => isPiSessionFile(entry, spawn.id))
+  const name = entries.find((entry) => isPiSessionFile({ fileName: entry, id: spawn.id }))
   return name ? path.join(dir, name) : undefined
 }
 

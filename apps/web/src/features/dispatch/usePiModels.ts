@@ -1,13 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../../lib/api"
+import { parsePiModels } from "./piModels.parse"
 
-// One row of pi's model catalog, as served by GET /dispatch/pi-models (the
-// daemon shells out to `pi --list-models`, which merges pi's built-in
-// provider catalog with the user's ~/.pi/agent/models.json overrides).
-export type PiModelOption = {
-  readonly provider: string
-  readonly id: string
-}
+export type { PiModelOption } from "./piModels.parse"
+
+import type { PiModelOption } from "./piModels.parse"
 
 // The value handed to `pi --model` — pi accepts the "provider/id" pattern.
 export const piModelValue = (m: PiModelOption): string => `${m.provider}/${m.id}`
@@ -20,14 +17,15 @@ const client = api as any
 // side, so don't pay for it on claude-only spawns. The catalog changes rarely
 // (installs/config edits), hence the generous staleTime.
 export const usePiModels = (enabled: boolean) =>
-  useQuery<readonly PiModelOption[]>({
+  useQuery({
     queryKey: ["pi-models"],
     enabled,
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const res = await client.dispatch["pi-models"].$get()
       if (!res.ok) throw new Error(`pi-models: HTTP ${res.status}`)
-      const body = (await res.json()) as { models: PiModelOption[] }
-      return body.models
+      const models = parsePiModels(await res.json())
+      if (!models) throw new Error("pi-models: malformed response")
+      return models
     },
   })

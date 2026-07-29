@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../lib/api"
+import { parseGlobalSettings } from "./globalSettings.parse"
 import type { GlobalSettings, GlobalSettingsPatch } from "./types"
 
 // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
@@ -13,7 +14,9 @@ export const useGlobalSettings = () =>
     queryFn: async () => {
       const res = await client.settings.$get()
       if (!res.ok) throw new Error(`global-settings: HTTP ${res.status}`)
-      return (await res.json()) as GlobalSettings
+      const settings = parseGlobalSettings(await res.json())
+      if (!settings) throw new Error("global-settings: malformed response")
+      return settings
     },
     staleTime: 10_000,
   })
@@ -24,7 +27,9 @@ export const useUpdateGlobalSettings = () => {
     mutationFn: async (patch) => {
       const res = await client.settings.$post({ json: patch })
       if (!res.ok) throw new Error(`global-settings update: HTTP ${res.status}`)
-      return (await res.json()) as GlobalSettings
+      const settings = parseGlobalSettings(await res.json())
+      if (!settings) throw new Error("global-settings: malformed response")
+      return settings
     },
     onSuccess: (data) => qc.setQueryData(KEY, data),
   })

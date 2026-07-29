@@ -86,17 +86,23 @@
     },
     {
       "includes": [
-        "apps/daemon/**/*.ts",
-        "apps/cli/**/*.ts",
+        "apps/**/*.ts",
+        "apps/**/*.tsx",
         "scripts/**/*.ts",
+        "shared/**/*.ts",
         "!**/*.test.ts",
+        "!**/*.test.tsx",
         "!**/*.spec.ts"
       ],
       "plugins": ["./biome-plugins/no-cast-json.grit"]
     },
     {
       "includes": ["**/*.core.ts", "**/*.core.tsx"],
-      "plugins": ["./biome-plugins/no-throw-in-core.grit", "./biome-plugins/no-await-in-core.grit"],
+      "plugins": [
+        "./biome-plugins/no-throw-in-core.grit",
+        "./biome-plugins/no-await-in-core.grit",
+        "./biome-plugins/max-one-param-declarations.grit"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -104,13 +110,13 @@
               "level": "error",
               "options": {
                 "deniedGlobals": {
-                  "fetch": "The functional core performs no I/O \u2014 do the request in a *.io.ts port and pass plain data in.",
-                  "process": "The functional core must not read the environment \u2014 accept config as plain input; the shell reads platform/config.io.ts.",
-                  "Date": "The functional core must not read the clock \u2014 accept timestamps (epoch ms) as plain input from the shell.",
-                  "Promise": "The functional core stays synchronous \u2014 do async work in *.io.ts and pass plain data in.",
-                  "console": "The functional core performs no I/O \u2014 return values and let the shell log.",
-                  "setTimeout": "The functional core must not schedule work \u2014 keep it synchronous data-in/data-out.",
-                  "setInterval": "The functional core must not schedule work \u2014 keep it synchronous data-in/data-out."
+                  "fetch": "The functional core performs no I/O — do the request in a *.io.ts port and pass plain data in.",
+                  "process": "The functional core must not read the environment — accept config as plain input; the shell reads platform/config.io.ts.",
+                  "Date": "The functional core must not read the clock — accept timestamps (epoch ms) as plain input from the shell.",
+                  "Promise": "The functional core stays synchronous — do async work in *.io.ts and pass plain data in.",
+                  "console": "The functional core performs no I/O — return values and let the shell log.",
+                  "setTimeout": "The functional core must not schedule work — keep it synchronous data-in/data-out.",
+                  "setInterval": "The functional core must not schedule work — keep it synchronous data-in/data-out."
                 }
               }
             },

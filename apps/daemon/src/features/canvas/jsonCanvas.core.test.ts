@@ -192,12 +192,12 @@ describe("jsonCanvasEqual", () => {
   it("ignores updatedAt — it is never persisted in a .canvas file", () => {
     const a = snapshot({ updatedAt: "2026-01-01T00:00:00.000Z" })
     const b = snapshot({ updatedAt: "2026-07-28T00:00:00.000Z" })
-    expect(jsonCanvasEqual(a, b)).toBe(true)
+    expect(jsonCanvasEqual({ a, b })).toBe(true)
   })
 
   it("separates canvases that differ in a node", () => {
     const a = snapshot({ nodes: [{ id: "a", position: { x: 0, y: 0 } }] })
     const b = snapshot({ nodes: [{ id: "a", position: { x: 1, y: 0 } }] })
-    expect(jsonCanvasEqual(a, b)).toBe(false)
+    expect(jsonCanvasEqual({ a, b })).toBe(false)
   })
 })

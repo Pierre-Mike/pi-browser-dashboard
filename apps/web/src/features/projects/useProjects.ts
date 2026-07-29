@@ -1,6 +1,6 @@
+import { decodeProjectArray, type Project } from "@pid/shared"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../../lib/api"
-import type { Project } from "../../lib/types"
 
 export const useProjects = () =>
   useQuery<Project[]>({
@@ -10,7 +10,10 @@ export const useProjects = () =>
       const client = api as any
       const res = await client.projects.$get()
       if (!res.ok) throw new Error(`projects: HTTP ${res.status}`)
-      return (await res.json()) as Project[]
+      // Copied into a mutable array: the decoder's `readonly` element type
+      // would otherwise narrow `useQuery`'s inferred data type for every
+      // consumer of this hook.
+      return [...decodeProjectArray(await res.json())]
     },
     staleTime: 30_000,
   })

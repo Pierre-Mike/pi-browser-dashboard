@@ -481,20 +481,23 @@ describe("orchestratorRepoDir", () => {
 
 describe("resolveOrchestratorCwd", () => {
   it("returns the repo dir when it exists on disk", () => {
-    const r = resolveOrchestratorCwd(
-      { HOME: "/Users/me" },
-      (p) => p === "/Users/me/Github/Orchestrator",
-    )
+    const r = resolveOrchestratorCwd({
+      env: { HOME: "/Users/me" },
+      dirExists: (p) => p === "/Users/me/Github/Orchestrator",
+    })
     expect(r).toEqual({ ok: true, cwd: "/Users/me/Github/Orchestrator" })
   })
 
   it("honours the PID_ORCHESTRATOR_DIR override when it exists", () => {
-    const r = resolveOrchestratorCwd({ PID_ORCHESTRATOR_DIR: "/opt/orc" }, (p) => p === "/opt/orc")
+    const r = resolveOrchestratorCwd({
+      env: { PID_ORCHESTRATOR_DIR: "/opt/orc" },
+      dirExists: (p) => p === "/opt/orc",
+    })
     expect(r).toEqual({ ok: true, cwd: "/opt/orc" })
   })
 
   it("fails cleanly (no spawn into a missing cwd → no daemon crash) when the repo is absent, naming the path and the override", () => {
-    const r = resolveOrchestratorCwd({ HOME: "/Users/me" }, () => false)
+    const r = resolveOrchestratorCwd({ env: { HOME: "/Users/me" }, dirExists: () => false })
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.reason).toContain("/Users/me/Github/Orchestrator")

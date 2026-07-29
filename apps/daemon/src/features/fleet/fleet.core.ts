@@ -1,3 +1,9 @@
+import {
+  isSessionStateSlug,
+  SESSION_STATE_SLUGS,
+  type SessionStateSlug,
+  WAIT_TIMEOUT_MAX_MS,
+} from "@pid/shared"
 // Pure schema, validation and dependency-wave planning for declarative fleet
 // recipes (<project>/.pid/fleet.json). No I/O — reading the file off disk
 // lives in fleet.io.ts.
@@ -23,22 +29,9 @@ import { Either } from "effect"
 // literal copy — see that file's own comment for the precedent. Kept honest by
 // scripts/mirrored-constants.test.ts, which imports the real values and
 // asserts these copies still match.
-export const SESSION_STATE_SLUGS = [
-  "done",
-  "working",
-  "blocked",
-  "needs_input",
-  "idle",
-  "failed",
-  "stopped",
-  "unknown",
-] as const
-export type SessionStateSlug = (typeof SESSION_STATE_SLUGS)[number]
-
-const isSessionStateSlug = (s: string): s is SessionStateSlug =>
-  (SESSION_STATE_SLUGS as readonly string[]).includes(s)
-
-export const WAIT_TIMEOUT_MAX_MS = 600_000
+// The state vocabulary is a published contract in `@pid/shared`, importable
+// from a pure core at zero cross-slice debt — which is why this file no longer
+// carries a literal copy of it (see the note above).
 
 // A single step can spawn at most this many agents (`n`). Spawning costs the
 // user's own API quota, so an unbounded `n` would let one bad recipe — or a

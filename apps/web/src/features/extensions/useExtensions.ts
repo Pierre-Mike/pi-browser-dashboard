@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../../lib/api"
+import { parseExtensionManifests } from "./extensions.parse"
 import type { ExtensionManifest } from "./types"
 
 export const useExtensions = () =>
@@ -10,7 +11,9 @@ export const useExtensions = () =>
       const client = api as any
       const res = await client.extensions.$get()
       if (!res.ok) throw new Error(`extensions: HTTP ${res.status}`)
-      return (await res.json()) as ExtensionManifest[]
+      const manifests = parseExtensionManifests(await res.json())
+      if (!manifests) throw new Error("extensions: malformed response")
+      return manifests
     },
     staleTime: 30_000,
   })

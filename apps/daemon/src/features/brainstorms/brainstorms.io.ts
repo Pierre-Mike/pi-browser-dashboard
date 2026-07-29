@@ -119,7 +119,7 @@ export const resolveBrainstormIn = async (input: {
   readonly root: string
   readonly path: string
 }): Promise<BrainstormResult<BrainstormRef, BrainstormReadError>> => {
-  const resolved = resolveProjectPath(input.root, input.path)
+  const resolved = resolveProjectPath({ root: input.root, input: input.path })
   if (!resolved.ok || resolved.relPath === "") return { ok: false, error: "forbidden" }
   const doc = brainstormDocFromPath(resolved.relPath)
   if (doc === null) return { ok: false, error: "not_found" }

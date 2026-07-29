@@ -164,13 +164,17 @@ describe("piLaunchVerdict", () => {
 
 describe("piLaunchFailureMessage", () => {
   it("surfaces pi's own stderr, trimmed, as the failure message", () => {
-    expect(piLaunchFailureMessage(1, "No API key for provider: anthropic\n")).toBe(
-      "No API key for provider: anthropic",
-    )
+    expect(
+      piLaunchFailureMessage({ exitCode: 1, stderr: "No API key for provider: anthropic\n" }),
+    ).toBe("No API key for provider: anthropic")
   })
 
   it("falls back to the exit code when pi died without writing stderr", () => {
-    expect(piLaunchFailureMessage(7, "")).toBe("pi exited with code 7 before starting")
-    expect(piLaunchFailureMessage(1, "   \n")).toBe("pi exited with code 1 before starting")
+    expect(piLaunchFailureMessage({ exitCode: 7, stderr: "" })).toBe(
+      "pi exited with code 7 before starting",
+    )
+    expect(piLaunchFailureMessage({ exitCode: 1, stderr: "   \n" })).toBe(
+      "pi exited with code 1 before starting",
+    )
   })
 })

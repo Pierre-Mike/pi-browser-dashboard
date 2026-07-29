@@ -5,6 +5,7 @@ import { decideNotification, isTerminalState, resolvePrevState } from "./session
 const make = (over: Partial<SessionState> = {}): SessionState => ({
   short: "abc123",
   state: "done",
+  source: "state.json",
   detail: "",
   tempo: "",
   intent: "",
