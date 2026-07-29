@@ -158,9 +158,10 @@ terminal.state       ← a terminal's classified agent state changed; payload =
                         { scope, id, state, matcher, evidence, at }
 fleet.run            ← a fleet run or one of its steps changed status; payload =
                         the run summary (see "Fleet recipes" below)
-rules.fired          ← a state-change rule matched and either fired or was
-                        suppressed; payload = { _tag, rule, short, action,
-                        reason?, at } (see "State-change rules" below)
+rules.fired          ← a rule matched (on either reading — session.state or
+                        terminal.state) and either fired or was suppressed;
+                        payload = { _tag, rule, short, action, reason?, at }
+                        (see "State-change rules" below)
 notification         ← a `notify` rule action's own message, for a future
                         web toast/notifier; payload = { short, rule, message,
                         at }
@@ -181,9 +182,10 @@ notification         ← a `notify` rule action's own message, for a future
 - `POST /projects/:id/fleets/:name/run` — dry-run or execute a recipe.
   `GET /projects/:id/fleet-runs[/:runId]` — run status. Daemon + CLI only —
   no web UI yet (see "Fleet recipes" below).
-- `GET /rules`, `POST /rules/pause`, `POST /rules/preview` — state-change
-  automation rules, off by default. Daemon + CLI only — no web UI yet (see
-  "State-change rules" below).
+- `GET /rules`, `POST /rules/pause`, `POST /rules/preview` — automation rules on
+  either reading of a session (the supervisor's `session.state` or the screen
+  classifier's `terminal.state`), off by default. Daemon + CLI only — no web UI
+  yet (see "State-change rules" below).
 
 ### Server-owned waits (`features/sessions/sessions-wait.*`)
 
@@ -454,6 +456,19 @@ an empty shell is idle), and a working frame that carries no spinner would read
 - Two producers write the same map and the same event. The WS tap above covers
   every terminal a browser is looking at; the **unattended poller** below covers
   the rest.
+- Three consumers read that event: the web chip, `sessions-wait` (`via screen` /
+  `untilOutput`), and the rules engine's screen triggers (see "State-change
+  rules"). None of them imports this slice — they all decode the bus payload — so
+  the single writer `publishTerminalState` stays the only thing that has to be
+  right about the record shape.
+- The `state` and `matcher` vocabularies are published contracts in
+  `shared/src/terminal.ts`, not local strings: a screen-triggered rule names both
+  in a request body, so `features/rules` validates against the same lists this
+  slice classifies with. `Matcher.name` here IS the shared union (a row named
+  off-vocabulary is a type error) and a co-located test asserts the table covers
+  the published list exactly, in both directions. The patterns and their ORDER
+  stay here — a regex tuned against a live dump is this slice's business, and the
+  ordering is a priority decision documented row by row.
 
 #### Unattended sessions: the screen-dump poller (`terminal-poll.*`)
 
@@ -953,6 +968,16 @@ the named-key vocabulary and the wait primitive, so a rules engine is the
 layer neither tool covers: a session that goes `blocked` at 3am can page you,
 and a session that finishes can kick off the next step.
 
+**Both readings can trigger a rule.** A session has an independent supervisor
+reading (`state.json`, republished as `session.state`) and screen reading (the
+classifier's verdict on the pane, republished as `terminal.state`), and they
+disagree in exactly the cases automation exists for: a permission prompt nobody
+answers, a folder-trust dialog, a pane gone quiet while `state.json` still claims
+`working`. `POST /sessions/:id/wait` lets an agent choose its reading with `via`
+and `GET /sessions/:id/explain` reports when the two contradict each other — a
+rule chooses by which key its `when` sets, `state` or `screen`. Every safety
+property below applies identically to both.
+
 **Safety is the feature, not a constraint bolted onto it:**
 
 - **Disabled by default.** With no `rules.json` present, or with the file's
@@ -967,8 +992,11 @@ and a session that finishes can kick off the next step.
   parses (so an author can build a rule up before turning the dangerous part
   on) but the engine refuses to fire it, reported as a `KeysNotConfirmed`
   suppression.
-- **Two loop breakers**, both enforced in the pure core (`evaluate`) and
-  tested there:
+- **Two loop breakers**, both enforced in the pure core and tested there. Both
+  evaluators (`evaluate` for the supervisor reading, `evaluateScreen` for the
+  screen) route a matched rule through one source-blind `outcomeFor`, so the
+  suppressions cannot diverge between the two readings — that is structural, not
+  a promise:
   - A per-(rule, session) **cooldown** — `cooldownMs` on the rule, defaulting
     to 300000ms (5 minutes) when omitted — so a dwell rule re-checked on
     every tick cannot resend the same keystroke to a still-blocked session a
@@ -981,14 +1009,14 @@ and a session that finishes can kick off the next step.
     silence: it is recorded in the firing log and published on the bus the
     same as a real firing, because a silently-throttled automation is
     indistinguishable from a broken one.
-- **A dry-run preview** (`POST /rules/preview`) evaluates every
+- **A dry-run preview** (`POST /rules/preview`) evaluates both readings of every
   currently-known session against the rules file on disk and reports what
   would happen — fires nothing, calls no port, records nothing. It ignores
   the file's own top-level `enabled` gate (but not a rule's own `enabled`) so
   an author can test-drive a rules file before ever flipping automation on.
 - **A pause switch** (`POST /rules/pause`) at runtime, mirroring
-  `issue-driver`'s own `/pause` — suppresses every action without touching
-  the file or losing the engine's tracked session state.
+  `issue-driver`'s own `/pause` — suppresses every action, on either reading,
+  without touching the file or losing the engine's tracked session state.
 - Actions never touch a session the rule did not match, and a rule that
   matches nothing is not an error — it simply produces no outcome.
 
@@ -1002,7 +1030,9 @@ and a session that finishes can kick off the next step.
       "name": "page-on-stuck-blocked",   // required, unique across the file
       "enabled": true,                   // optional, default true — a per-rule kill switch
       "when": {
-        "state": "blocked",              // required: blocked | needs_input | done | failed | idle | unknown
+        // EXACTLY ONE of `state` (the supervisor's reading) or `screen` (the
+        // classifier's). Setting both, or neither, is a validation error.
+        "state": "blocked",              // blocked | needs_input | done | failed | idle | unknown
         "forMs": 300000,                 // optional: present = dwell condition, absent = transition condition
         "harness": "claude",             // optional: claude | pi — restrict to one CLI's sessions
         "stale": true                    // optional boolean — match sessions-explain.core's own staleness verdict
@@ -1012,6 +1042,15 @@ and a session that finishes can kick off the next step.
         "message": "still blocked after 5 minutes"
       },
       "cooldownMs": 300000               // optional, default 300000, integer 0..86400000
+    },
+    {
+      "name": "page-on-an-unanswered-permission-dialog",
+      "when": {
+        "screen": "blocked",             // working | blocked | idle | unknown — what the classifier read
+        "matcher": "permission-prompt",  // optional: which classifier row fired
+        "forMs": 120000                  // optional, same two readings as above
+      },
+      "then": { "action": "notify", "message": "nobody has answered this prompt in 2 minutes" }
     }
   ]
 }
@@ -1024,6 +1063,20 @@ rule flags any object literal with a `then` key (thenable ambiguity), so the
 real field is `do: { action, ... }`.
 
 ### Conditions (`when`)
+
+A `when` names its trigger source by which key it sets, and the parser records
+that as a derived `source: "supervisor" | "screen"` field on the parsed rule (so
+`GET /rules` shows a reader which reading each rule watches, and so neither
+evaluator can test a screen observation against a supervisor rule). Setting both
+`state` and `screen`, or neither, is a validation error rather than a precedence
+rule nobody would remember.
+
+Fields belonging to the other source are rejected, not ignored: `matcher` on a
+supervisor trigger, or `harness` / `stale` on a screen trigger, each produce
+their own error. Silently dropping them is how an author ends up believing a rule
+is narrower than it is.
+
+#### Supervisor conditions
 
 - **`state`** is required and is one of the six trigger states —
   deliberately narrower than the full eight-slug vocabulary: `working` is
@@ -1052,6 +1105,81 @@ real field is `do: { action, ... }`.
   rules slice cannot import `sessions-explain.core.ts`'s internals (see
   below).
 
+#### Screen conditions
+
+- **`screen`** is required and is one of the four readings the classifier can
+  report — `working` | `blocked` | `idle` | `unknown` (the vocabulary in
+  `shared/src/terminal.ts`, a strict subset of the session states: a resting pane
+  looks identical whether the session finished, failed or was stopped, so the
+  classifier never claims to know which). Deliberately **not** narrowed the way
+  the supervisor trigger list is, and `working` is why: "the screen has read
+  `working` for four hours" is a stuck-loop condition no supervisor reading can
+  express — `state.json` is not rewritten during a long turn, so even `stale`
+  misses it — and it is the one rule the screen uniquely makes possible.
+- **`matcher`** (optional) narrows the reading to ONE classifier row by name, from
+  the eight in `shared/src/terminal.ts` (`permission-prompt`,
+  `workspace-trust-prompt`, `thinking-gerund`, … — the same `matcher` field
+  `GET /terminal/states`, the `terminal.state` event and `explain`'s `terminal`
+  object already carry). This is what makes a rule about a tool-permission dialog
+  a different rule from one about the folder-trust dialog, which matters most for
+  a `keys` action: the same keystroke answers them differently. A name outside the
+  vocabulary is a validation error, never a rule that silently never fires — a
+  typo in a 3am pager rule should fail at parse time.
+  - `matcher` combined with `screen: "unknown"` is rejected: `unknown` IS the
+    absence of a matcher, so the pair describes a screen that cannot exist.
+- **Dwell** works the same way as for a supervisor condition, measured against the
+  screen's own anchor, which is independent of the supervisor's. This is the
+  condition that actually matters for a screen rule: a prompt answered in two
+  seconds needs no automation, one nobody has touched for two minutes does.
+- **What a rule sees when the classifier flips to `unknown`.** `unknown` is a
+  real, first-class reading — "no matcher fired", the absence of evidence — so it
+  is a legal trigger and reaching it IS a transition: a dwell timer on the
+  previous reading resets, and a `screen: "unknown"` rule fires. What does NOT
+  happen is a matcher-scoped rule matching it: an `unknown` observation carries no
+  matcher, so `{ "screen": "blocked", "matcher": "permission-prompt" }` stops
+  matching the moment the classifier loses the thread, even though the pane may
+  well still be blocked. That asymmetry is deliberate — a rule that sends
+  keystrokes should act on evidence, not on the memory of evidence.
+- **Matcher changes inside one reading are not observed.** The poller publishes
+  `terminal.state` only when the STATE changes (`decideTransition` in
+  `terminal-state.core.ts`; gating it any looser would mean an SSE event per
+  spinner frame), so if a pane's matcher changes while its reading does not, the
+  engine keeps the matcher it last saw. For `blocked` — the reading
+  matcher-scoped rules are actually written against — that means a rule keys on
+  whichever dialog first blocked the pane, which is also the one a human would
+  answer first.
+- **Rules act on the session row, not on pane rows.** A multi-pane session
+  publishes one `terminal.state` row per pane on the same event, with an `id` of
+  `<short>#<paneId>` (see "Unattended sessions" above). The engine skips those:
+  a pane row's `id` is not a short, so a `keys` or `stop` fired for one would
+  target a session that does not exist. No coverage is lost, because the
+  session-level row already folds every pane into the most attention-worthy
+  reading and carries the winning pane's own matcher — a prompt waiting in a
+  second pane still triggers a rule, under an identity the action can address.
+  `isTerminalPaneRowId` in `shared/src/terminal.ts` is the one place that
+  distinction is spelled, since it is a wire fact both slices depend on.
+- **Screen latency is the poll interval.** An unattended pane is classified once
+  per `PID_TERMINAL_POLL_MS` pass, so a screen trigger fires up to one interval
+  after the screen actually changed, and a dwell is accurate to the same
+  granularity. A pane with a terminal WebSocket open is classified off its byte
+  stream instead and is far quicker.
+
+#### Dwell across a daemon restart
+
+Every dwell anchor lives in memory, like the firing history and the engine's
+whole picture of both readings. A restart loses all of it: each view is re-seeded
+by the first event after boot — the session registry's own state replay for the
+supervisor side, the first poller pass (within one interval) for the screen side
+— with `stateEnteredAt` set to *now*. So a dwell rule starts counting from zero at
+boot, and a pane that had been blocked for an hour needs its full `forMs` again
+before anything fires.
+
+That is deliberate, and it fails in the safe direction. Persisting anchors would
+have a restart immediately fire every rule whose window had already elapsed —
+while the cooldown and per-session ceiling that exist to stop exactly that came
+back empty, because they are in memory too. Under-firing after a restart is
+recoverable; a burst of `keys` actions with both loop breakers reset is not.
+
 ### Actions (`do`)
 
 - **`notify`** — `{ action: "notify", message }`. Publishes a `notification`
@@ -1060,19 +1188,76 @@ real field is `do: { action, ... }`.
   (see "SSE surface" below).
 - **`keys`** — `{ action: "keys", sequence: NamedKey[], confirm: true }`. The
   same 15-name vocabulary "Named key vocabulary" above documents (no `text`
-  steps, no `repeat` — just names); resolved through the REAL
-  `sessions-keys.core.ts` vocabulary at the wire boundary, not the rules
-  slice's own mirrored copy, so a vocabulary drift would surface as a runtime
-  error rather than silently sending the wrong bytes. **`confirm: true` is
-  mandatory to ever actually fire** — see "Safety" above.
+  steps, no `repeat` — just names), validated against the one `NAMED_KEYS`
+  declaration in `shared/`; `api.ts` resolves the sequence to bytes through the
+  same `parseKeysRequest` the HTTP endpoint uses, so a rule's keystrokes and a
+  caller's take one code path rather than two encoders that could disagree.
+  **`confirm: true` is mandatory to ever actually fire** — see "Safety" above.
 - **`stop`** — `{ action: "stop" }`. Ends the session the supported way
   (`ShellIo.stop`, the same call `POST /sessions/:id/stop` makes).
+
+### Answering a dialog automatically — the capability, and why it ships off
+
+Nothing in this repo ships a rule that answers a permission prompt. The
+capability exists and works; auto-approving a tool call on someone's behalf is a
+decision for whoever owns the machine, so it is theirs to write, not a default.
+There is no default rules file at all — see "Safety" above.
+
+If that is what you want, this is the shape. It is spelled out here rather than
+shipped so the trade-offs are visible before you copy it:
+
+```jsonc
+// <claudeConfigDir>/pid-dashboard/rules.json  — YOU write this file; nothing creates it
+{
+  "enabled": true,
+  "rules": [
+    {
+      "name": "trust-my-own-worktrees",
+      // Only the folder-trust dialog, never a tool-permission one: they render
+      // different option lists, so one keystroke does not mean the same thing in
+      // both. This is exactly what `matcher` is for.
+      "when": { "screen": "blocked", "matcher": "workspace-trust-prompt", "forMs": 15000 },
+      // `confirm: true` is what makes a keys action fire at all. Without it the
+      // rule parses and is then refused as a KeysNotConfirmed suppression.
+      "do": { "action": "keys", "sequence": ["enter"], "confirm": true },
+      "cooldownMs": 60000
+    }
+  ]
+}
+```
+
+What to weigh before enabling something like this:
+
+- **A screen classification is a weaker claim than a supervisor state.** It says
+  the pane looks like that, not that the agent reported it. Naming the `matcher`
+  is what raises the confidence from "some dialog" to "this dialog", so a `keys`
+  rule without one is close to sending a keystroke at a screen you have not read.
+- **`forMs` is your safety margin.** A dwell of a few seconds means you only ever
+  answer a dialog nobody was about to answer themselves, and it costs nothing but
+  latency.
+- **The dialog's own option order is not this repo's to guarantee.** `enter`
+  accepts whatever option the CLI's cursor happens to sit on, and that is the
+  CLI's UI, which changes between versions. Prefer an explicit selection
+  (`["1", …]` is not available — the named-key vocabulary has no digits, so a
+  digit needs `POST /sessions/:id/send`, which no rule action wraps) and re-check
+  the behaviour after a CLI upgrade.
+- **The loop breakers still apply**, and for a keystroke rule they are the
+  backstop that matters: at most one firing per rule per session per
+  `cooldownMs`, and at most 5 actions per session per 10 minutes across every
+  rule.
+- **Dry-run first.** `POST /rules/preview` (`pid rules preview`) reports what
+  would fire against the sessions the engine can currently see, without firing
+  anything and ignoring the file-wide `enabled` gate — so the honest order is:
+  write the file with `enabled` absent, preview it, then flip it on.
 
 ### Validation
 
 `parseRulesFile` collects **every** error in one pass, the same discipline
 `parseFleetFile` uses: a bad `name`, an unrecognized `when.state` /
-`when.harness`, an out-of-range `when.forMs` / `cooldownMs`, a malformed
+`when.screen` / `when.matcher` / `when.harness`, a `when` that sets both or
+neither of `state` and `screen`, a field belonging to the other trigger source, a
+`matcher` paired with `screen: "unknown"`, an out-of-range `when.forMs` /
+`cooldownMs`, a malformed
 `then`/`do` object for the declared `action`, an unknown key name in a `keys`
 sequence, and duplicate rule names are all reported together, not
 one-fix-rerun-see-the-next. A malformed `rules.json` (bad JSON, or JSON that
@@ -1081,24 +1266,43 @@ surface it as an `errors` list — `pid rules` exits 2, the same code `pid
 fleets` uses for an invalid recipe. An absent `rules.json` is not an error
 either: `{ enabled: false, rules: [] }`, disabled.
 
-### Why the rules slice can't import the real vocabulary
+### How the rules slice reaches vocabulary it does not own
 
-`features/rules/rules.core.ts` mirrors `KNOWN_STATES`, `NAMED_KEYS`, the
-`harness` field and `STALE_ACTIVE_MS` as literal copies rather than
-importing `sessions.core.ts` / `sessions-keys.core.ts` /
-`sessions-explain.core.ts` directly — those are slice internals, not a
-published door, and `bun run axiom-debt`'s cross-slice-import counter fails
-the build on any NEW violation of that rule. `fleet.core.ts` and
-`apps/cli/src/agent/agent.core.ts` hit the identical constraint and keep the
-same kind of literal copy; `scripts/mirrored-constants.test.ts` guards all
-three against drifting from the real values. For the same reason, the
-engine's own picture of "what is every session doing right now"
-(`features/rules/rules.io.ts`) is built entirely from decoding
-`session.state` / `session.removed` payloads off the SSE bus — it never
-queries the sessions slice directly. Ports (`notify`, `sendKeys`, `stop`,
-`now`) are injected plain-Promise functions, exactly like
-`fleet-run.io.ts`'s `FleetRunPorts`; `api.ts` (outside any slice, so free of
-the ratchet) wires the real `ShellIo` / `sse-bus` implementations into them.
+`features/rules/` may not import `features/sessions/`'s or `features/terminal/`'s
+internals: `sessions.core.ts`, `sessions-keys.core.ts`,
+`sessions-explain.core.ts` and `terminal-state.core.ts` are slice internals, not
+published doors, and `bun run axiom-debt`'s cross-slice-import counter fails the
+build on any NEW violation. Two mechanisms get the slice what it needs without
+one:
+
+- **Vocabulary comes from `shared/`.** `rules.core.ts` imports the session-state
+  slugs, the named keys, the staleness threshold and — for screen triggers — the
+  terminal-state slugs and the classifier's matcher names from `@pid/shared`,
+  which a pure core may import at zero debt. The screen vocabularies moved there
+  in this feature's own PR for exactly that reason, and `terminal-state.core.ts`
+  now imports them back: its `Matcher.name` IS the shared union, so a row named
+  off-vocabulary is a type error, and a co-located test closes the other direction
+  (a published name with no row behind it). The alternative — a literal copy
+  behind a drift guard — is the pattern `shared/` exists to delete; see the
+  "Contracts live in `shared/`" axiom above for the five copies it already
+  retired.
+- **Observations come off the SSE bus.** The engine's picture of what every
+  session is doing (`features/rules/rules.io.ts`) is built entirely by decoding
+  `session.state`, `session.removed` and `terminal.state` payloads off
+  `platform/sse-bus` — it never queries the sessions or terminal slices. That
+  works because `terminal.routes.ts` already publishes every classification there
+  through its single writer `publishTerminalState`, so the screen reading needed
+  no new plumbing at all: one more `event.type` branch and a defensive decoder
+  (`decodeTerminalStatePayload`, `undefined` on anything unexpected, never a
+  cast). Screen views are kept in their own map keyed by session short, not folded
+  into the supervisor view — a `terminal.state` payload carries no supervisor
+  state or harness, and the two readings have independent dwell anchors, which is
+  the entire point.
+
+Ports (`notify`, `sendKeys`, `stop`, `now`) are injected plain-Promise functions,
+exactly like `fleet-run.io.ts`'s `FleetRunPorts`; `api.ts` (outside any slice, so
+free of the ratchet) wires the real `ShellIo` / `sse-bus` implementations into
+them.
 
 ### Endpoints
 

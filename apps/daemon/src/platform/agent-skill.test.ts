@@ -19,8 +19,11 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  isTerminalMatcherName,
   SESSION_STATE_SLUGS as KNOWN_STATES,
   NAMED_KEYS,
+  TERMINAL_MATCHER_NAMES,
+  TERMINAL_STATE_SLUGS,
   WAIT_TIMEOUT_DEFAULT_MS,
   WAIT_TIMEOUT_MAX_MS,
   WAIT_VIA_VALUES,
@@ -111,6 +114,54 @@ describe("agent-skill.md: wait constants", () => {
       heading: "### Which observation settles it",
     })
     expect(backtickTokensInTableRows(section)).toEqual(new Set(WAIT_VIA_VALUES))
+  })
+})
+
+// Same guard as the key/state/via vocabularies, for the two the screen
+// classifier publishes. Both are now things a caller WRITES as well as reads — a
+// screen-triggered rule in rules.json names a state and optionally a matcher —
+// so advertising a reading the daemon cannot report, or hiding a matcher a rule
+// could legitimately target, is drift in either direction.
+describe("agent-skill.md: screen classification vocabulary", () => {
+  it("documents exactly the real terminal-state vocabulary — no more, no less", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "## What the screen classifier reports",
+    })
+    // The section carries two tables; the matcher table's own names are asserted
+    // below, so exclude them here rather than loosening either check.
+    const documented = new Set(
+      [...backtickTokensInTableRows(section)].filter((token) => !isTerminalMatcherName(token)),
+    )
+    expect(documented).toEqual(new Set(TERMINAL_STATE_SLUGS))
+  })
+
+  it("documents exactly the real matcher vocabulary — no more, no less", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "## What the screen classifier reports",
+    })
+    const documented = new Set(
+      [...backtickTokensInTableRows(section)].filter((token) => isTerminalMatcherName(token)),
+    )
+    expect(documented).toEqual(new Set(TERMINAL_MATCHER_NAMES))
+  })
+
+  // The one claim in the automation section that is a promise about behaviour
+  // rather than a description of it, and the reason this task shipped the
+  // capability switched off.
+  it("states that no rule answers a permission prompt by default", () => {
+    const section = sectionBody({
+      doc: AGENT_SKILL_MD,
+      heading: "## Automation: rules that react without you",
+    })
+    expect(section).toContain("none answers a permission prompt for you")
+    // `then` is the natural English word for the action half and is exactly what
+    // the wire field is NOT — Biome's noThenProperty forbids it — so a worked
+    // example that used it would be a copy-pasteable rules file that fails to
+    // parse.
+    expect(section).toContain('"do":')
+    expect(section).not.toContain('"then":')
   })
 })
 

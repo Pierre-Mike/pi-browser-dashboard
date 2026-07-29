@@ -22,7 +22,19 @@
 // render proves it reaches a screen, and only a render shows what surrounds it.
 // The permission rows were rewritten on 2026-07-29 for exactly that reason.
 
-export type TerminalStateSlug = "working" | "blocked" | "idle" | "unknown"
+// Both vocabularies live in `@pid/shared`, not here, because a caller now writes
+// them into a request as well as reading them off one: a screen-triggered rule in
+// rules.json names a state and optionally a matcher, so `features/rules` must
+// validate against the same lists this file classifies with — and a pure core
+// cannot import another slice's internals. See shared/src/terminal.ts's header.
+// Re-exported so every existing importer of this module is untouched.
+import {
+  TERMINAL_PANE_SEPARATOR,
+  type TerminalMatcherName,
+  type TerminalStateSlug,
+} from "@pid/shared"
+
+export type { TerminalStateSlug }
 
 // ---- ANSI stripping ---------------------------------------------------
 
@@ -86,8 +98,13 @@ export const appendTail = (input: {
 
 // ---- classification -------------------------------------------------------
 
+// `name` is the closed `TerminalMatcherName` vocabulary, not a free string: a
+// rules file may target one row by name, so a row named off-vocabulary would be
+// unaddressable and a rule naming a row that does not exist would silently never
+// fire. The compiler catches the first direction here; the co-located test
+// catches the second (a vocabulary entry with no row).
 type Matcher = {
-  readonly name: string
+  readonly name: TerminalMatcherName
   readonly state: TerminalStateSlug
   readonly pattern: RegExp
 }
@@ -362,6 +379,14 @@ const MATCHERS: ReadonlyArray<Matcher> = [
   },
 ]
 
+// The priority order the table is evaluated in, exposed so the invariants the
+// rows document in prose ("MUST STAY LAST", the blocked rows above
+// `tool-call-waiting`) can be asserted directly, and so the co-located test can
+// check the table against the shared name vocabulary in both directions.
+export const TERMINAL_MATCHER_ORDER: ReadonlyArray<TerminalMatcherName> = MATCHERS.map(
+  (m) => m.name,
+)
+
 export type Classification = {
   readonly state: TerminalStateSlug
   readonly matcher: string | undefined
@@ -418,7 +443,12 @@ export const terminalStateKey = (input: { readonly scope: string; readonly id: s
 // colon. Nothing ever parses a pane key back apart — the only use is prefix
 // matching to find one terminal's pane rows — so an id that itself contained a
 // `#` could at worst over-match its own rows, never another terminal's.
-const TERMINAL_PANE_SEPARATOR = "#"
+//
+// The separator itself lives in `@pid/shared` (with `isTerminalPaneRowId`)
+// because it turned out to be a wire fact, not a private key format: both row
+// kinds ride the same `terminal.state` event, and a consumer that ADDRESSES
+// sessions — `features/rules` — has to tell a pane row's `id` from a session
+// short before acting on it.
 
 export const terminalPaneRowId = (input: {
   readonly id: string

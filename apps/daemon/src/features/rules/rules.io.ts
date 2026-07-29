@@ -1,4 +1,3 @@
-import type { SessionStateSlug } from "@pid/shared"
 // Imperative engine for state-change automation rules: reads
 // <claudeConfigDir>/pid-dashboard/rules.json, subscribes to the SSE bus for
 // `session.state` / `session.removed` transitions, runs a periodic dwell
@@ -20,7 +19,17 @@ import type { SessionStateSlug } from "@pid/shared"
 // subscribes to the SAME `session.state` / `session.removed` events the web
 // UI's own SSE listener does, decodes them with rules.core's own (mirrored)
 // decoders, and keeps a private per-short view (state, harness, when the
-// current state was entered). server.ts wires this subscription up BEFORE
+// current state was entered).
+//
+// It subscribes to `terminal.state` on that same bus for the screen reading, and
+// this is why no cross-slice import is needed for it either: `terminal.routes.ts`
+// already publishes every classification there through its single writer
+// `publishTerminalState`, so the engine decodes a bus payload defensively
+// (`decodeTerminalStatePayload`) exactly as it does a session one. Screen views
+// live in their own map keyed by the same short — see ScreenView's comment for
+// why they are not folded into SessionView.
+//
+// server.ts wires this subscription up BEFORE
 // touching SessionRegistry, so the boot-time replay of every known session's
 // state (the registry's jobs-dir scan + roster reconciliation, both of which
 // publish on the bus) still lands here. This daemon has previously lost its
@@ -39,7 +48,17 @@ import type { SessionStateSlug } from "@pid/shared"
 // that actually boots the daemon process) calls `start()`.
 //
 // Firing history lives in memory only (this daemon persists nothing) and is
-// bounded — see HISTORY_LIMIT / LOG_LIMIT below.
+// bounded — see HISTORY_LIMIT / LOG_LIMIT below. So is every dwell anchor: a
+// daemon restart loses `stateEnteredAt` for both readings, and each view is
+// re-seeded with `stateEnteredAt = now` by the first event after boot (the
+// registry's own state replay for the supervisor side, the first poller pass —
+// within one poll interval — for the screen side). A dwell rule therefore starts
+// counting from zero at boot: a pane that had been blocked for an hour needs its
+// full `forMs` again. That is deliberate and it fails in the safe direction. The
+// alternative, persisting anchors, would have a restart immediately fire every
+// dwell rule whose window had already elapsed while the firing history that
+// enforces the cooldown and the per-session ceiling — also in memory — came back
+// empty, i.e. a burst of actions with both loop breakers reset.
 
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -47,16 +66,20 @@ import { resolveConfigDir } from "../../platform/config-dir"
 import { sseBus } from "../../platform/sse-bus"
 import {
   ageMs,
+  applyScreenEvent,
   applyStateEvent,
   computeStale,
   decodeSessionRemovedPayload,
   decodeSessionStatePayload,
+  decodeTerminalStatePayload,
   evaluate,
+  evaluateScreen,
   type FiringRecord,
   parseRulesFile,
   type RuleError,
   type RuleOutcome,
   type RulesFile,
+  type ScreenView,
   type SessionSnapshot,
   type SessionView,
 } from "./rules.core"
@@ -186,6 +209,7 @@ export const createRulesEngine = ({
   readonly configDir?: string
 }): RulesEngineApi => {
   const sessions = new Map<string, SessionView>()
+  const screens = new Map<string, ScreenView>()
   const history: FiringRecord[] = []
   const log: FiringLogEntry[] = []
   let paused = false
@@ -243,21 +267,21 @@ export const createRulesEngine = ({
     }
   }
 
-  const evaluateAgainstLiveFile = async ({
-    session,
-    prior,
-    dwellMs,
+  // The one place the rules file is re-read and its top-level gate is checked
+  // before anything can fire. `compute` is handed the freshly-parsed file so the
+  // caller decides WHICH reading it is evaluating without duplicating the gate —
+  // a screen path that forgot the `enabled` check would be the worst possible
+  // bug in this slice.
+  const applyLiveFile = async ({
+    compute,
     now,
   }: {
-    readonly session: SessionSnapshot
-    readonly prior: SessionStateSlug | undefined
-    readonly dwellMs: number
+    readonly compute: (rulesFile: RulesFile) => ReadonlyArray<RuleOutcome>
     readonly now: number
   }): Promise<void> => {
     const { rulesFile, errors } = await readRulesFile(configDir)
     if (errors.length > 0 || !rulesFile.enabled) return
-    const outcomes = evaluate({ rules: rulesFile, session, prior, dwellMs, now, history })
-    await applyOutcomes({ outcomes, now })
+    await applyOutcomes({ outcomes: compute(rulesFile), now })
   }
 
   const onSessionState = async (payload: unknown): Promise<void> => {
@@ -275,17 +299,58 @@ export const createRulesEngine = ({
     })
     sessions.set(decoded.short, applied.view)
     if (!applied.transitioned || paused) return
-    await evaluateAgainstLiveFile({
-      session: snapshotOf({ view: applied.view, now }),
-      prior: applied.prior,
-      dwellMs: 0,
+    await applyLiveFile({
       now,
+      compute: (rulesFile) =>
+        evaluate({
+          rules: rulesFile,
+          session: snapshotOf({ view: applied.view, now }),
+          prior: applied.prior,
+          dwellMs: 0,
+          now,
+          history,
+        }),
     })
   }
 
+  // The screen mirror of onSessionState. The poller already publishes only on a
+  // state change, so `transitioned` is normally true here — the guard still
+  // matters for the WS classifier tap and for a re-publish after a reconnect.
+  const onTerminalState = async (payload: unknown): Promise<void> => {
+    const decoded = decodeTerminalStatePayload(payload)
+    if (decoded === undefined) return
+    const now = ports.now()
+    const applied = applyScreenEvent({
+      existing: screens.get(decoded.short),
+      short: decoded.short,
+      state: decoded.state,
+      matcher: decoded.matcher,
+      now,
+    })
+    screens.set(decoded.short, applied.view)
+    if (!applied.transitioned || paused) return
+    await applyLiveFile({
+      now,
+      compute: (rulesFile) =>
+        evaluateScreen({
+          rules: rulesFile,
+          screen: applied.view,
+          prior: applied.prior,
+          dwellMs: 0,
+          now,
+          history,
+        }),
+    })
+  }
+
+  // Drops BOTH readings of a removed session: a short that comes back is a
+  // different occupant, and inheriting the previous one's dwell anchor would let
+  // a dwell rule fire on a session that has existed for a second.
   const onSessionRemoved = (payload: unknown): void => {
     const short = decodeSessionRemovedPayload(payload)
-    if (short !== undefined) sessions.delete(short)
+    if (short === undefined) return
+    sessions.delete(short)
+    screens.delete(short)
   }
 
   let started = false
@@ -297,25 +362,65 @@ export const createRulesEngine = ({
     // — nothing ever tears the subscription down early.
     sseBus.subscribe((event) => {
       if (event.type === "session.state") void onSessionState(event.data)
+      else if (event.type === "terminal.state") void onTerminalState(event.data)
       else if (event.type === "session.removed") onSessionRemoved(event.data)
     })
   }
 
+  // Both sweeps pass `prior` equal to the current state, which is what keeps a
+  // transition-only rule from re-firing on every tick, and a dwell measured from
+  // the view's own anchor.
+  const supervisorOutcomes = ({
+    rulesFile,
+    view,
+    now,
+  }: {
+    readonly rulesFile: RulesFile
+    readonly view: SessionView
+    readonly now: number
+  }): ReadonlyArray<RuleOutcome> =>
+    evaluate({
+      rules: rulesFile,
+      session: snapshotOf({ view, now }),
+      prior: view.state,
+      dwellMs: now - view.stateEnteredAt,
+      now,
+      history,
+    })
+
+  const screenOutcomes = ({
+    rulesFile,
+    view,
+    now,
+  }: {
+    readonly rulesFile: RulesFile
+    readonly view: ScreenView
+    readonly now: number
+  }): ReadonlyArray<RuleOutcome> =>
+    evaluateScreen({
+      rules: rulesFile,
+      screen: view,
+      prior: view.state,
+      dwellMs: now - view.stateEnteredAt,
+      now,
+      history,
+    })
+
+  // Applied one view at a time on purpose: `history` is mutated by
+  // applyOutcomes, so a session whose supervisor rule just fired has already
+  // spent that budget by the time its screen rules are evaluated in the same
+  // sweep. Computing every outcome up front first would hand each view an
+  // identical stale history and let one sweep overshoot the per-session ceiling.
   const tick = async (): Promise<void> => {
     if (paused) return
     const { rulesFile, errors } = await readRulesFile(configDir)
     if (errors.length > 0 || !rulesFile.enabled) return
     const now = ports.now()
     for (const view of sessions.values()) {
-      const outcomes = evaluate({
-        rules: rulesFile,
-        session: snapshotOf({ view, now }),
-        prior: view.state,
-        dwellMs: now - view.stateEnteredAt,
-        now,
-        history,
-      })
-      await applyOutcomes({ outcomes, now })
+      await applyOutcomes({ outcomes: supervisorOutcomes({ rulesFile, view, now }), now })
+    }
+    for (const view of screens.values()) {
+      await applyOutcomes({ outcomes: screenOutcomes({ rulesFile, view, now }), now })
     }
   }
 
@@ -328,20 +433,15 @@ export const createRulesEngine = ({
     paused = next
   }
 
+  // Fires nothing, so unlike `tick` it can compute both readings in one pass.
   const preview = async (): Promise<PreviewResult> => {
     const { rulesFile, errors } = await readRulesFile(configDir)
     if (errors.length > 0) return { errors, outcomes: [] }
     const now = ports.now()
-    const outcomes = [...sessions.values()].flatMap((view) =>
-      evaluate({
-        rules: rulesFile,
-        session: snapshotOf({ view, now }),
-        prior: view.state,
-        dwellMs: now - view.stateEnteredAt,
-        now,
-        history,
-      }),
-    )
+    const outcomes = [
+      ...[...sessions.values()].flatMap((view) => supervisorOutcomes({ rulesFile, view, now })),
+      ...[...screens.values()].flatMap((view) => screenOutcomes({ rulesFile, view, now })),
+    ]
     return { errors: [], outcomes }
   }
 

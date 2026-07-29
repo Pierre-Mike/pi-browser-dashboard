@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { Either } from "effect"
 import {
   ageMs,
+  applyScreenEvent,
   applyStateEvent,
   CEILING_MAX_ACTIONS_PER_SESSION,
   CEILING_WINDOW_MS,
@@ -9,12 +10,17 @@ import {
   DEFAULT_COOLDOWN_MS,
   decodeSessionRemovedPayload,
   decodeSessionStatePayload,
+  decodeTerminalStatePayload,
   evaluate,
+  evaluateScreen,
   type FiringRecord,
   parseRulesFile,
   type Rule,
   type RulesFile,
+  type ScreenSnapshot,
+  type ScreenWhen,
   type SessionSnapshot,
+  type SupervisorWhen,
 } from "./rules.core"
 
 const errorsOf = (raw: unknown): readonly { rule: string; message: string }[] => {
@@ -47,7 +53,13 @@ describe("parseRulesFile — happy path", () => {
         {
           name: "notify-on-blocked",
           enabled: true,
-          when: { state: "blocked", forMs: undefined, harness: undefined, stale: undefined },
+          when: {
+            source: "supervisor",
+            state: "blocked",
+            forMs: undefined,
+            harness: undefined,
+            stale: undefined,
+          },
           do: { action: "notify", message: "session is blocked" },
           cooldownMs: DEFAULT_COOLDOWN_MS,
         },
@@ -83,7 +95,13 @@ describe("parseRulesFile — happy path", () => {
     expect(result.right.rules[0]).toEqual({
       name: "page-on-stuck-blocked",
       enabled: false,
-      when: { state: "blocked", forMs: 60_000, harness: "claude", stale: true },
+      when: {
+        source: "supervisor",
+        state: "blocked",
+        forMs: 60_000,
+        harness: "claude",
+        stale: true,
+      },
       do: { action: "keys", sequence: ["down", "enter"], confirm: true },
       cooldownMs: 120_000,
     })
@@ -244,12 +262,180 @@ describe("parseRulesFile — rule fields", () => {
   })
 })
 
+// --- screen triggers: parsing ---------------------------------------------------
+
+describe("parseRulesFile — screen triggers", () => {
+  it("parses a bare screen trigger, tagging the source and defaulting the rest", () => {
+    const result = parseRulesFile({
+      enabled: true,
+      rules: [{ name: "s", when: { screen: "blocked" }, do: { action: "notify", message: "m" } }],
+    })
+    expect(Either.isRight(result)).toBe(true)
+    if (Either.isLeft(result)) return
+    expect(result.right.rules[0]?.when).toEqual({
+      source: "screen",
+      screen: "blocked",
+      matcher: undefined,
+      forMs: undefined,
+    })
+  })
+
+  it("parses a matcher-scoped dwell trigger", () => {
+    const result = parseRulesFile({
+      enabled: true,
+      rules: [
+        {
+          name: "s",
+          when: { screen: "blocked", matcher: "workspace-trust-prompt", forMs: 30_000 },
+          do: { action: "notify", message: "m" },
+        },
+      ],
+    })
+    expect(Either.isRight(result)).toBe(true)
+    if (Either.isLeft(result)) return
+    expect(result.right.rules[0]?.when).toEqual({
+      source: "screen",
+      screen: "blocked",
+      matcher: "workspace-trust-prompt",
+      forMs: 30_000,
+    })
+  })
+
+  // A screen dwell on `working` is the one stuck-loop condition no supervisor
+  // reading can express, so the screen vocabulary is deliberately NOT narrowed
+  // the way the supervisor trigger list is.
+  it("accepts every slug the classifier can actually report, working included", () => {
+    for (const screen of ["working", "blocked", "idle", "unknown"]) {
+      const result = parseRulesFile({
+        enabled: true,
+        rules: [{ name: "s", when: { screen }, do: { action: "stop" } }],
+      })
+      expect(Either.isRight(result)).toBe(true)
+    }
+  })
+
+  it("rejects a screen slug the classifier can never report", () => {
+    expect(
+      messagesOf({ rules: [{ name: "s", when: { screen: "done" }, do: { action: "stop" } }] }),
+    ).toEqual([expect.stringContaining("when.screen must be one of")])
+  })
+
+  it("rejects an unknown matcher name rather than accepting a rule that can never fire", () => {
+    expect(
+      messagesOf({
+        rules: [
+          {
+            name: "s",
+            when: { screen: "blocked", matcher: "permission_prompt" },
+            do: { action: "stop" },
+          },
+        ],
+      }),
+    ).toEqual([expect.stringContaining("when.matcher must be one of")])
+  })
+
+  // `unknown` IS the absence of a matcher, so the two together describe a screen
+  // that cannot exist — caught at parse time rather than as silence at 3am.
+  it("rejects a matcher combined with screen: unknown", () => {
+    expect(
+      messagesOf({
+        rules: [
+          {
+            name: "s",
+            when: { screen: "unknown", matcher: "permission-prompt" },
+            do: { action: "stop" },
+          },
+        ],
+      }),
+    ).toEqual([expect.stringContaining("when.matcher cannot be combined")])
+  })
+
+  it("rejects a when that sets both state and screen", () => {
+    expect(
+      messagesOf({
+        rules: [
+          { name: "s", when: { state: "blocked", screen: "blocked" }, do: { action: "stop" } },
+        ],
+      }),
+    ).toEqual([expect.stringContaining("exactly one of")])
+  })
+
+  it("rejects a when that sets neither state nor screen", () => {
+    expect(messagesOf({ rules: [{ name: "s", when: {}, do: { action: "stop" } }] })).toEqual([
+      expect.stringContaining("exactly one of"),
+    ])
+  })
+
+  // Silently ignoring a field is how an author ends up believing a rule is
+  // narrower than it is.
+  it("rejects the supervisor-only fields on a screen trigger", () => {
+    expect(
+      messagesOf({
+        rules: [
+          {
+            name: "s",
+            when: { screen: "blocked", harness: "pi", stale: true },
+            do: { action: "stop" },
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.stringContaining("when.harness applies to a supervisor trigger"),
+      expect.stringContaining("when.stale applies to a supervisor trigger"),
+    ])
+  })
+
+  it("rejects a matcher on a supervisor trigger", () => {
+    expect(
+      messagesOf({
+        rules: [
+          {
+            name: "s",
+            when: { state: "blocked", matcher: "permission-prompt" },
+            do: { action: "stop" },
+          },
+        ],
+      }),
+    ).toEqual([expect.stringContaining("when.matcher applies to a screen trigger")])
+  })
+
+  it("applies the same forMs range to a screen dwell", () => {
+    expect(
+      messagesOf({
+        rules: [{ name: "s", when: { screen: "blocked", forMs: 0 }, do: { action: "stop" } }],
+      }),
+    ).toEqual([expect.stringContaining("when.forMs must be an integer")])
+  })
+})
+
 // --- evaluate ------------------------------------------------------------------
+
+// Builds the supervisor half of the `when` union with every optional field
+// spelled out, so a rule under test differs from the default in exactly the
+// field the test names.
+const supervisorWhen = (
+  overrides: Partial<Omit<SupervisorWhen, "source">> = {},
+): SupervisorWhen => ({
+  source: "supervisor",
+  state: "blocked",
+  forMs: undefined,
+  harness: undefined,
+  stale: undefined,
+  ...overrides,
+})
+
+const screenWhen = (overrides: Partial<Omit<ScreenWhen, "source">> = {}): ScreenWhen => ({
+  source: "screen",
+  screen: "blocked",
+  matcher: undefined,
+  forMs: undefined,
+  ...overrides,
+})
 
 const ruleOf = (overrides: Partial<Rule>): Rule => ({
   name: "r",
   enabled: true,
-  when: { state: "blocked", forMs: undefined, harness: undefined, stale: undefined },
+  when: supervisorWhen(),
   do: { action: "notify", message: "hi" },
   cooldownMs: DEFAULT_COOLDOWN_MS,
   ...overrides,
@@ -293,9 +479,7 @@ describe("evaluate — matching", () => {
   })
 
   it("a dwell condition does not match before forMs has elapsed, then does", () => {
-    const rule = ruleOf({
-      when: { state: "blocked", forMs: 60_000, harness: undefined, stale: undefined },
-    })
+    const rule = ruleOf({ when: supervisorWhen({ forMs: 60_000 }) })
     const notYet = evaluate({
       rules: fileOf([rule]),
       session: sessionOf({}),
@@ -320,9 +504,7 @@ describe("evaluate — matching", () => {
 
   it("a rule that matches nothing produces no outcome and no error", () => {
     const outcomes = evaluate({
-      rules: fileOf([
-        ruleOf({ when: { state: "done", forMs: undefined, harness: undefined, stale: undefined } }),
-      ]),
+      rules: fileOf([ruleOf({ when: supervisorWhen({ state: "done" }) })]),
       session: sessionOf({ state: "blocked" }),
       prior: "working",
       dwellMs: 0,
@@ -333,9 +515,7 @@ describe("evaluate — matching", () => {
   })
 
   it("filters on harness", () => {
-    const rule = ruleOf({
-      when: { state: "blocked", forMs: undefined, harness: "pi", stale: undefined },
-    })
+    const rule = ruleOf({ when: supervisorWhen({ harness: "pi" }) })
     expect(
       evaluate({
         rules: fileOf([rule]),
@@ -359,9 +539,7 @@ describe("evaluate — matching", () => {
   })
 
   it("filters on the staleness verdict", () => {
-    const rule = ruleOf({
-      when: { state: "blocked", forMs: undefined, harness: undefined, stale: true },
-    })
+    const rule = ruleOf({ when: supervisorWhen({ stale: true }) })
     expect(
       evaluate({
         rules: fileOf([rule]),
@@ -533,6 +711,231 @@ describe("evaluate — safety suppressions", () => {
   })
 })
 
+// --- screen triggers: evaluation --------------------------------------------------
+
+const screenOf = (overrides: Partial<ScreenSnapshot> = {}): ScreenSnapshot => ({
+  short: "ab12",
+  state: "blocked",
+  matcher: "permission-prompt",
+  ...overrides,
+})
+
+const screenRule = (overrides: Partial<Rule> = {}): Rule =>
+  ruleOf({ when: screenWhen(), ...overrides })
+
+describe("evaluateScreen — matching", () => {
+  it("fires on a transition into the target screen state", () => {
+    expect(
+      evaluateScreen({
+        rules: fileOf([screenRule()]),
+        screen: screenOf(),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([
+      { _tag: "Fired", rule: "r", short: "ab12", action: { action: "notify", message: "hi" } },
+    ])
+  })
+
+  it("does not re-fire a transition rule on an unchanged screen", () => {
+    expect(
+      evaluateScreen({
+        rules: fileOf([screenRule()]),
+        screen: screenOf(),
+        prior: "blocked",
+        dwellMs: 90_000,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([])
+  })
+
+  // The condition that actually matters: a prompt answered in two seconds needs
+  // no rule, one nobody has touched for two minutes does.
+  it("a screen dwell waits out forMs, then fires", () => {
+    const rule = screenRule({ when: screenWhen({ forMs: 120_000 }) })
+    expect(
+      evaluateScreen({
+        rules: fileOf([rule]),
+        screen: screenOf(),
+        prior: "blocked",
+        dwellMs: 119_999,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([])
+    expect(
+      evaluateScreen({
+        rules: fileOf([rule]),
+        screen: screenOf(),
+        prior: "blocked",
+        dwellMs: 120_000,
+        now: 1000,
+        history: [],
+      }),
+    ).toHaveLength(1)
+  })
+
+  it("filters on the matcher — a permission-prompt rule is not a trust-prompt rule", () => {
+    const rule = screenRule({ when: screenWhen({ matcher: "workspace-trust-prompt" }) })
+    expect(
+      evaluateScreen({
+        rules: fileOf([rule]),
+        screen: screenOf({ matcher: "permission-prompt" }),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([])
+    expect(
+      evaluateScreen({
+        rules: fileOf([rule]),
+        screen: screenOf({ matcher: "workspace-trust-prompt" }),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toHaveLength(1)
+  })
+
+  // A matcher-scoped rule acts on evidence. `unknown` carries none, so it must
+  // not act — even though the pane may well still be blocked.
+  it("never matches a matcher-scoped rule against an unclassified screen", () => {
+    expect(
+      evaluateScreen({
+        rules: fileOf([screenRule({ when: screenWhen({ matcher: "permission-prompt" }) })]),
+        screen: screenOf({ state: "unknown", matcher: undefined }),
+        prior: "blocked",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([])
+  })
+
+  it("matches an unknown-screen rule when the classifier loses the thread", () => {
+    expect(
+      evaluateScreen({
+        rules: fileOf([screenRule({ when: screenWhen({ screen: "unknown" }) })]),
+        screen: screenOf({ state: "unknown", matcher: undefined }),
+        prior: "blocked",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toHaveLength(1)
+  })
+
+  // The two evaluators read the same rules file; each must ignore the other's
+  // rules rather than reading `when.state` off a screen observation or vice versa.
+  it("ignores supervisor rules, and evaluate ignores screen rules", () => {
+    const both = fileOf([
+      ruleOf({ name: "sup" }),
+      screenRule({ name: "scr", when: screenWhen({ screen: "idle" }) }),
+    ])
+    expect(
+      evaluateScreen({
+        rules: both,
+        screen: screenOf({ state: "idle", matcher: "prompt-resting" }),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }).map((o) => o.rule),
+    ).toEqual(["scr"])
+    expect(
+      evaluate({
+        rules: both,
+        session: sessionOf({}),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }).map((o) => o.rule),
+    ).toEqual(["sup"])
+  })
+})
+
+describe("evaluateScreen — safety suppressions", () => {
+  it("refuses a keys action without the rule's own confirm", () => {
+    expect(
+      evaluateScreen({
+        rules: fileOf([
+          screenRule({ do: { action: "keys", sequence: ["enter"], confirm: false } }),
+        ]),
+        screen: screenOf(),
+        prior: "working",
+        dwellMs: 0,
+        now: 1000,
+        history: [],
+      }),
+    ).toEqual([
+      {
+        _tag: "Suppressed",
+        rule: "r",
+        short: "ab12",
+        action: { action: "keys", sequence: ["enter"], confirm: false },
+        reason: { _tag: "KeysNotConfirmed" },
+      },
+    ])
+  })
+
+  it("honours the per-rule cooldown", () => {
+    const outcomes = evaluateScreen({
+      rules: fileOf([screenRule({ cooldownMs: 10_000 })]),
+      screen: screenOf(),
+      prior: "working",
+      dwellMs: 0,
+      now: 1_000_000,
+      history: [{ rule: "r", short: "ab12", at: 995_000 }],
+    })
+    expect(outcomes).toEqual([
+      {
+        _tag: "Suppressed",
+        rule: "r",
+        short: "ab12",
+        action: { action: "notify", message: "hi" },
+        reason: { _tag: "Cooldown", remainingMs: 5000 },
+      },
+    ])
+  })
+
+  // The ceiling is per SESSION, not per source: the point is that nothing piles
+  // onto one session, however many readings of it there are.
+  it("counts supervisor firings against a screen rule's ceiling", () => {
+    const history: readonly FiringRecord[] = Array.from(
+      { length: CEILING_MAX_ACTIONS_PER_SESSION },
+      (_, i) => ({ rule: `supervisor-${i}`, short: "ab12", at: 1000 - i }),
+    )
+    const outcomes = evaluateScreen({
+      rules: fileOf([screenRule()]),
+      screen: screenOf(),
+      prior: "working",
+      dwellMs: 0,
+      now: 1000 + CEILING_WINDOW_MS / 2,
+      history,
+    })
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0]).toMatchObject({ _tag: "Suppressed", reason: { _tag: "Ceiling" } })
+  })
+
+  it("suppresses a disabled screen rule but still reports the match", () => {
+    const outcomes = evaluateScreen({
+      rules: fileOf([screenRule({ enabled: false })]),
+      screen: screenOf(),
+      prior: "working",
+      dwellMs: 0,
+      now: 1000,
+      history: [],
+    })
+    expect(outcomes[0]).toMatchObject({ _tag: "Suppressed", reason: { _tag: "Disabled" } })
+  })
+})
+
 // --- bus-payload decoding -------------------------------------------------------
 
 describe("decodeSessionStatePayload", () => {
@@ -627,6 +1030,142 @@ describe("applyStateEvent", () => {
     expect(result.prior).toBe("working")
     expect(result.transitioned).toBe(true)
     expect(result.view.stateEnteredAt).toBe(2000)
+  })
+})
+
+describe("decodeTerminalStatePayload", () => {
+  it("decodes a session-scoped classification", () => {
+    expect(
+      decodeTerminalStatePayload({
+        scope: "session",
+        id: "ab12",
+        state: "blocked",
+        matcher: "permission-prompt",
+        evidence: "Do you want to proceed?",
+        at: "2020-01-01T00:00:00.000Z",
+      }),
+    ).toEqual({ short: "ab12", state: "blocked", matcher: "permission-prompt" })
+  })
+
+  it("carries no matcher for an unclassified screen", () => {
+    expect(
+      decodeTerminalStatePayload({ scope: "session", id: "ab12", state: "unknown" })?.matcher,
+    ).toBeUndefined()
+  })
+
+  // A rules file addresses sessions by short. The global, orchestrator and
+  // project panes have no session behind them, so their `id` is not a short and
+  // must never be treated as one.
+  it("ignores every scope that is not a session", () => {
+    for (const scope of ["global", "orchestrator", "project"]) {
+      expect(decodeTerminalStatePayload({ scope, id: "x", state: "blocked" })).toBeUndefined()
+    }
+  })
+
+  // Pane rows ride the same event as session rows, and a pane row's `id` is not
+  // a short — a rule firing on one would send keystrokes to a session that does
+  // not exist. Nothing is lost: the session-level row for the same short already
+  // folds every pane into the worst reading.
+  it("ignores a pane row, whose id is not an addressable short", () => {
+    expect(
+      decodeTerminalStatePayload({
+        scope: "session",
+        id: "ab12#terminal_1",
+        state: "blocked",
+        matcher: "permission-prompt",
+      }),
+    ).toBeUndefined()
+  })
+
+  it("rejects a malformed payload without throwing", () => {
+    expect(decodeTerminalStatePayload(null)).toBeUndefined()
+    expect(decodeTerminalStatePayload({ scope: "session", state: "blocked" })).toBeUndefined()
+    expect(
+      decodeTerminalStatePayload({ scope: "session", id: "ab12", state: "done" }),
+    ).toBeUndefined()
+  })
+
+  // A matcher this build does not know is not a decode failure — the state is
+  // still trustworthy, and a matcher-scoped rule simply will not match it.
+  it("keeps an unrecognized matcher as an opaque string rather than failing", () => {
+    expect(
+      decodeTerminalStatePayload({
+        scope: "session",
+        id: "ab12",
+        state: "blocked",
+        matcher: "row-from-a-newer-build",
+      })?.matcher,
+    ).toBe("row-from-a-newer-build")
+  })
+})
+
+describe("applyScreenEvent", () => {
+  it("treats first sight of a pane as a transition", () => {
+    const result = applyScreenEvent({
+      existing: undefined,
+      short: "ab12",
+      state: "blocked",
+      matcher: "permission-prompt",
+      now: 1000,
+    })
+    expect(result.prior).toBeUndefined()
+    expect(result.transitioned).toBe(true)
+    expect(result.view.stateEnteredAt).toBe(1000)
+  })
+
+  it("preserves stateEnteredAt across a same-state observation", () => {
+    const result = applyScreenEvent({
+      existing: {
+        short: "ab12",
+        state: "blocked",
+        matcher: "permission-prompt",
+        stateEnteredAt: 500,
+      },
+      short: "ab12",
+      state: "blocked",
+      matcher: "permission-prompt",
+      now: 2000,
+    })
+    expect(result.transitioned).toBe(false)
+    expect(result.view.stateEnteredAt).toBe(500)
+  })
+
+  it("resets the dwell anchor on a real screen transition", () => {
+    const result = applyScreenEvent({
+      existing: {
+        short: "ab12",
+        state: "working",
+        matcher: "thinking-gerund",
+        stateEnteredAt: 500,
+      },
+      short: "ab12",
+      state: "blocked",
+      matcher: "permission-prompt",
+      now: 2000,
+    })
+    expect(result.prior).toBe("working")
+    expect(result.transitioned).toBe(true)
+    expect(result.view.stateEnteredAt).toBe(2000)
+  })
+
+  // The matcher is the newest evidence either way — a same-state observation
+  // that swapped one working spinner for another must still update it.
+  it("always takes the latest matcher, transition or not", () => {
+    const result = applyScreenEvent({
+      existing: {
+        short: "ab12",
+        state: "working",
+        matcher: "thinking-gerund",
+        stateEnteredAt: 500,
+      },
+      short: "ab12",
+      state: "working",
+      matcher: "tool-call-waiting",
+      now: 2000,
+    })
+    expect(result.transitioned).toBe(false)
+    expect(result.view.matcher).toBe("tool-call-waiting")
+    expect(result.view.stateEnteredAt).toBe(500)
   })
 })
 

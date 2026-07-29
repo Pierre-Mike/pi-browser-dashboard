@@ -190,6 +190,13 @@ export const startDaemon = async (opts: StartDaemonOptions = {}): Promise<Daemon
   // every session that already exists, and this ordering is what lets the
   // engine observe that initial replay instead of only ever seeing sessions
   // that change state *after* boot. See rules.io.ts's own header.
+  //
+  // The same ordering matters just as much for the SCREEN reading, and for a
+  // sharper reason: `startTerminalPoll()` below publishes `terminal.state` only
+  // when a classification CHANGES, so a pass that ran before this subscription
+  // existed would never be re-announced. The engine would then be blind to that
+  // pane until its screen changed again — which for a session parked at an
+  // unanswered prompt is precisely never.
   rulesEngine.start()
 
   // Touch the runtime so SessionRegistryLive is constructed (watchers armed)
