@@ -14,21 +14,22 @@ describe("session tab dock", () => {
     expect(SESSION_TAB_DOCK[0]).toEqual({ key: "terminal", label: "Terminal" })
   })
 
-  it("docks exactly the five drill-in sections, title-cased", () => {
-    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual([
-      "terminal",
-      "chat",
-      "canvas",
-      "brainstorm",
-      "files",
-    ])
+  it("docks exactly the four drill-in sections, title-cased", () => {
+    // Brainstorm is the only drawing section: a board is a canvas file in this
+    // session's own worktree, which is where the retired Canvas tab's scratch
+    // drawing wanted to be anyway.
+    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual(["terminal", "chat", "brainstorm", "files"])
     expect(SESSION_TAB_DOCK.map((t) => t.label)).toEqual([
       "Terminal",
       "Chat",
-      "Canvas",
       "Brainstorm",
       "Files",
     ])
+  })
+
+  it("docks no Canvas section", () => {
+    expect(SESSION_TAB_DOCK.map((t) => t.key)).not.toContain("canvas")
+    expect(SESSION_TABS).not.toContain("canvas" as never)
   })
 
   it("derives the ?tab= whitelist from the dock so no section is dockable-but-unroutable", () => {
@@ -45,13 +46,13 @@ describe("session tab dock", () => {
 describe("isSessionTabActive", () => {
   it("lights the exact section a plain tab names", () => {
     expect(isSessionTabActive({ tab: "terminal", key: "terminal" })).toBe(true)
-    expect(isSessionTabActive({ tab: "terminal", key: "canvas" })).toBe(false)
+    expect(isSessionTabActive({ tab: "terminal", key: "files" })).toBe(false)
   })
 
   it("keeps Brainstorm lit while one of its boards is selected", () => {
     const tab = "brainstorm:brainstorms%2Fauth.canvas"
     expect(isSessionTabActive({ tab, key: "brainstorm" })).toBe(true)
-    expect(isSessionTabActive({ tab, key: "canvas" })).toBe(false)
+    expect(isSessionTabActive({ tab, key: "terminal" })).toBe(false)
   })
 })
 

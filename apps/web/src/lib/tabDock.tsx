@@ -47,10 +47,9 @@ export const TAB_ICONS: Record<string, ReactNode> = {
     <Icon d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0019.5 4.5a5.07 5.07 0 00-.09-3.77S17.73.35 14 2.48a13.38 13.38 0 00-7 0C3.27.35 1.59.73 1.59.73A5.07 5.07 0 001.5 4.5 5.44 5.44 0 000 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 005.5 18.13V22" />
   ),
   files: <Icon d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />,
-  // Session drill-in sections. The chat bubble and the sketched board keep the
+  // Session drill-in sections. The chat bubble and the lightbulb keep the
   // drill-in's dock reading as the same system as the project / root docks.
   chat: <Icon d="M21 12a8 8 0 01-11.6 7.1L4 21l1.9-5.4A8 8 0 1121 12z" />,
-  canvas: <Icon d="M4 4h16v16H4zM7 15l3.5-3.5 2 2L17 9" />,
   brainstorm: (
     <Icon d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.9.7 1.5 1.7 1.5 2.8V17h4v-.3c0-1.1.6-2.1 1.5-2.8A6 6 0 0012 3z" />
   ),

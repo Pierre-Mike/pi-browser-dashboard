@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
-import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helpers"
+import { openSeededBoard, rmSession } from "./helpers"
 
-// Covers the usability features added on top of the shared-canvas tab:
+// Covers the usability features added on top of the shared canvas editor:
 //  - rename a box inline (double-click → input → Enter commits)
 //  - select two boxes and wrap them under a "group" parent
 //  - ungroup back to flat boxes
@@ -10,20 +10,13 @@ import { dispatchDirect, rmSession, waitForCard, waitForSettled } from "./helper
 // All assertions ride on data-testid hooks; we deliberately avoid relying on
 // React Flow's internal pixel transforms because they're a moving target.
 
-// Spin up a fresh session and land on its canvas tab. Returns the short id so
-// the caller can tear the session down in a finally block.
-const openCanvasTab = async (page: Page): Promise<string> => {
-  await page.goto("/")
-  const { short } = await dispatchDirect()
-  await waitForCard({ page, short, timeout: 20_000 })
-  await waitForSettled({ page, short })
-  await page.goto(`/sessions/${short}`)
-  await page.getByTestId("tab-canvas").click()
-  await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
-  return short
-}
+// Spin up a fresh session with an empty board and land on it. Brainstorm is the
+// only surface this editor renders on — the session-scratch Canvas tab is gone.
+// Returns the short id so the caller can tear the session down in a finally block.
+const openCanvasTab = (page: Page): Promise<string> =>
+  openSeededBoard({ page, project: "canvas-edit" })
 
-test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
+test("brainstorm board — rename, group, ungroup, label arrow", async ({ page }) => {
   const short = await openCanvasTab(page)
   try {
     // Wait for sync to come online so the toolbar actions reach the daemon.
@@ -89,7 +82,7 @@ test("canvas tab — rename, group, ungroup, label arrow", async ({ page }) => {
   }
 })
 
-test("canvas tab — edge label input appears when an edge is selected", async ({ page }) => {
+test("brainstorm board — edge label input appears when an edge is selected", async ({ page }) => {
   const short = await openCanvasTab(page)
   try {
     // The edge label input only mounts when an edge is selected. With no
@@ -107,7 +100,7 @@ test("canvas tab — edge label input appears when an edge is selected", async (
   }
 })
 
-test("canvas tab — a link node re-opens for editing on double-click (not navigation)", async ({
+test("brainstorm board — a link node re-opens for editing on double-click (not navigation)", async ({
   page,
 }) => {
   const short = await openCanvasTab(page)
@@ -141,7 +134,7 @@ test("canvas tab — a link node re-opens for editing on double-click (not navig
   }
 })
 
-test("canvas tab — double-click empty space creates an editable box", async ({ page }) => {
+test("brainstorm board — double-click empty space creates an editable box", async ({ page }) => {
   const short = await openCanvasTab(page)
   try {
     await expect(page.getByTestId("canvas-status")).toHaveText(/live|connecting/i, {

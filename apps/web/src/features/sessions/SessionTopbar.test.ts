@@ -31,7 +31,7 @@ describe("session topbar", () => {
   })
 
   it("keeps every session tab reachable under its established testid", () => {
-    // e2e specs (terminal-fit, chat-fullwidth, canvas-edit, drill-in) click
+    // e2e specs (terminal-fit, chat-fullwidth, brainstorms, drill-in) click
     // these — moving to the dock must not rename them.
     expect(src).toMatch(/data-testid=\{`tab-\$\{t\.key\}`\}/)
     expect(src).toContain('role="tablist"')

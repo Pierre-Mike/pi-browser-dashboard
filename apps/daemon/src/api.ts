@@ -4,7 +4,6 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { resolveCorsOrigin } from "./cors.core"
 import * as brainstormsRoute from "./features/brainstorms/brainstorms.routes"
-import * as canvasRoute from "./features/canvas/canvas.routes"
 import * as claudeConfigRoute from "./features/claude-config/claude-config.routes"
 import * as dispatchRoute from "./features/dispatch/dispatch.routes"
 import * as eventsRoute from "./features/events/events.routes"
@@ -254,7 +253,6 @@ const app = new Hono()
   .route("/events", eventsRoute.app)
   .route("/terminal", terminalRoute.app)
   .route("/tunnel", tunnelRoute.app)
-  .route("/canvas", canvasRoute.app)
   .route("/issue-driver", issueDriverRoute.app)
   // State-change rules (<claudeConfigDir>/pid-dashboard/rules.json): GET
   // /rules (parsed rules + validation errors + enabled/paused + firing log),

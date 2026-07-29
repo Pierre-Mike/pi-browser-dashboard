@@ -3,8 +3,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { Either } from "effect"
-import { type CanvasSnapshot, canvasPathFor, parseCanvas as decodeCanvas } from "./canvas.core"
-import { __resetCanvasRoomsForTests, getCanvasRoom, getCanvasRoomAt } from "./canvas.io"
+import { type CanvasSnapshot, parseCanvas as decodeCanvas } from "./canvas.core"
+import { __resetCanvasRoomsForTests, getCanvasRoomAt } from "./canvas.io"
 
 // These cases only read documents this suite just wrote, so the decode always
 // succeeds — unwrap the Right and let a Left fail the test loudly.
@@ -14,7 +14,7 @@ const parseCanvas = (json: unknown): CanvasSnapshot => {
   return decoded.right
 }
 
-const makeTempConfigDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "pid-canvas-"))
+const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "pid-canvas-"))
 
 const fixedSnapshot = (label: string): CanvasSnapshot => ({
   version: 1,
@@ -28,41 +28,51 @@ const wait = (ms: number): Promise<void> =>
     setTimeout(resolve, ms)
   })
 
-describe("getCanvasRoom — publish + subscribe", () => {
-  let cfg: string
+// Every canvas room is opened by absolute path: the only documents this codec
+// binds to are brainstorm boards in a session's worktree.
+describe("getCanvasRoomAt — publish + subscribe", () => {
+  let dir: string
+  let file: string
 
   beforeEach(() => {
-    cfg = makeTempConfigDir()
+    dir = makeTempDir()
+    file = path.join(dir, "board.canvas.json")
   })
 
   afterEach(() => {
     __resetCanvasRoomsForTests()
     try {
-      fs.rmSync(cfg, { recursive: true, force: true })
+      fs.rmSync(dir, { recursive: true, force: true })
     } catch {
       // best effort
     }
   })
 
-  it("returns an empty snapshot when canvas.json doesn't exist yet", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+  it("returns an empty snapshot when the document doesn't exist yet", async () => {
+    const room = await getCanvasRoomAt(file)
     const snap = room.snapshot()
     expect(snap.nodes).toEqual([])
     expect(snap.edges).toEqual([])
   })
 
-  it("persists publish() output to ~/.claude/jobs/<short>/canvas.json", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+  it("persists publish() output to the exact file it was opened at", async () => {
+    const room = await getCanvasRoomAt(file)
     await room.publish(fixedSnapshot("Hello"), null)
-    const onDisk = parseCanvas(
-      JSON.parse(fs.readFileSync(canvasPathFor({ configDir: cfg, short: "abc" }), "utf8")),
-    )
+    const onDisk = parseCanvas(JSON.parse(fs.readFileSync(file, "utf8")))
     expect(onDisk.nodes).toHaveLength(1)
     expect(onDisk.nodes[0]?.data).toEqual({ label: "Hello" })
   })
 
+  it("creates missing parent directories on the way to the document", async () => {
+    const nested = path.join(dir, "proj", ".pid", "brainstorms", "auth-flow.canvas.json")
+    const room = await getCanvasRoomAt(nested)
+    await room.publish(fixedSnapshot("Idea"), null)
+    const onDisk = parseCanvas(JSON.parse(fs.readFileSync(nested, "utf8")))
+    expect(onDisk.nodes[0]?.data).toEqual({ label: "Idea" })
+  })
+
   it("stamps updatedAt on publish so consumers can age snapshots", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+    const room = await getCanvasRoomAt(file)
     const before = Date.now()
     const out = await room.publish(fixedSnapshot("x"), null)
     const stampMs = Date.parse(out.updatedAt)
@@ -70,7 +80,7 @@ describe("getCanvasRoom — publish + subscribe", () => {
   })
 
   it("delivers a remote snapshot to every subscriber on publish", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+    const room = await getCanvasRoomAt(file)
     const received: Array<{ label: string | undefined; self: boolean }> = []
     room.subscribe((snap, fromSelf) => {
       const label = snap.nodes[0]?.data?.label as string | undefined
@@ -81,7 +91,7 @@ describe("getCanvasRoom — publish + subscribe", () => {
   })
 
   it("tags the originating subscriber as fromSelf=true on its own publish", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+    const room = await getCanvasRoomAt(file)
     const flags: boolean[] = []
     let mineKey: symbol = Symbol("placeholder")
     room.subscribe((_snap, fromSelf) => {
@@ -103,7 +113,7 @@ describe("getCanvasRoom — publish + subscribe", () => {
   })
 
   it("ignores a no-op publish that resolves to the same on-disk content", async () => {
-    const room = await getCanvasRoom(cfg, "abc")
+    const room = await getCanvasRoomAt(file)
     const seen: number[] = []
     room.subscribe(() => {
       seen.push(seen.length)
@@ -119,34 +129,8 @@ describe("getCanvasRoom — publish + subscribe", () => {
     await wait(700)
     expect(seen.length).toBe(2)
   })
-})
-
-describe("getCanvasRoomAt — path-keyed rooms (brainstorm documents)", () => {
-  let cfg: string
-
-  beforeEach(() => {
-    cfg = makeTempConfigDir()
-  })
-
-  afterEach(() => {
-    __resetCanvasRoomsForTests()
-    try {
-      fs.rmSync(cfg, { recursive: true, force: true })
-    } catch {
-      // best effort
-    }
-  })
-
-  it("persists publish() output to the exact file it was opened at", async () => {
-    const file = path.join(cfg, "proj", ".pid", "brainstorms", "auth-flow.canvas.json")
-    const room = await getCanvasRoomAt(file)
-    await room.publish(fixedSnapshot("Idea"), null)
-    const onDisk = parseCanvas(JSON.parse(fs.readFileSync(file, "utf8")))
-    expect(onDisk.nodes[0]?.data).toEqual({ label: "Idea" })
-  })
 
   it("shares one room per path: a publish reaches a subscriber from a second open", async () => {
-    const file = path.join(cfg, "doc.canvas.json")
     const a = await getCanvasRoomAt(file)
     const b = await getCanvasRoomAt(file)
     const labels: unknown[] = []
@@ -155,12 +139,5 @@ describe("getCanvasRoomAt — path-keyed rooms (brainstorm documents)", () => {
     })
     await a.publish(fixedSnapshot("shared"), null)
     expect(labels).toEqual(["shared"])
-  })
-
-  it("keeps the session-canvas API on the same room store (no forked state)", async () => {
-    const viaShort = await getCanvasRoom(cfg, "abc")
-    const viaPath = await getCanvasRoomAt(canvasPathFor({ configDir: cfg, short: "abc" }))
-    await viaShort.publish(fixedSnapshot("one-store"), null)
-    expect(viaPath.snapshot().nodes[0]?.data).toEqual({ label: "one-store" })
   })
 })

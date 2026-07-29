@@ -331,3 +331,39 @@ export const waitForSettled = async ({
     timeout,
   })
 }
+
+/**
+ * Spawn a session, seed an empty JSON Canvas board in the tree it works in, and
+ * land on that board in the Brainstorm section — the only surface the shared
+ * canvas editor renders on. The seeded document is empty so a spec can assert on
+ * a blank board; `path` names it inside the session's root.
+ *
+ * The board shares its row with the boards rail and the session's own terminal,
+ * so at the default viewport the editor pane is only ~370px wide — narrow enough
+ * that React Flow's fitView zooms a single node past the pane edges and pointer
+ * geometry stops meaning anything. Widen the window and collapse the rail so a
+ * drawing spec gets a pane it can aim at.
+ */
+export const openSeededBoard = async ({
+  page,
+  project,
+  path = "board.canvas",
+}: {
+  page: Page
+  project: string
+  path?: string
+}): Promise<string> => {
+  const cwd = ensureProject(project)
+  const { short } = await dispatchDirect(undefined, { cwd })
+  const root = sessionRootOf(await waitForSessionInRegistry(short))
+  const file = join(root, path)
+  mkdirSync(join(file, ".."), { recursive: true })
+  writeFileSync(file, JSON.stringify({ nodes: [], edges: [] }))
+
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto(`/sessions/${short}?tab=brainstorm`)
+  await expect(page.getByTestId("canvas-tab")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("brainstorm-subtabs-collapse").click()
+  await expect(page.getByTestId("brainstorm-subtabs")).not.toBeAttached()
+  return short
+}

@@ -19,10 +19,6 @@
       "exports": ["app", "createApp"]
     },
     {
-      "file": "apps/daemon/src/features/canvas/canvas.routes.ts",
-      "exports": ["app"]
-    },
-    {
       "file": "apps/daemon/src/features/claude-config/claude-config.routes.ts",
       "exports": ["app"]
     },

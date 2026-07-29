@@ -23,7 +23,7 @@ bun add -d playwright          # launches your installed Chrome via channel:'chr
 bun run dev                    # start the app on :5173 (in another shell)
 # save the "Recorder script" below as record.mjs at the repo root, then:
 node record.mjs                # record all 22 features
-node record.mjs 11             # re-record only feature 11 (canvas)
+node record.mjs 11             # re-record only feature 11 (brainstorm board)
 DEMO_SESSION=<id> DEMO_SESSION_DIFF=<id> DEMO_PROJECT=<slug> node record.mjs
 DEMO_BASE=http://localhost:5180 node record.mjs   # record against a different host/port
 ```
@@ -78,7 +78,7 @@ The session/project IDs used as demo targets were read from the live app's rende
 |---|---------|-----|---------------|
 | 9 | Session controls + Peek | [`09-session-controls.gif`](./gifs/09-session-controls.gif) | Header (name/state/short id/cwd), Open-in-CLI/Peek/Delete; Peek summary. |
 | 10 | Chat transcript | [`10-chat.gif`](./gifs/10-chat.gif) | JSONL transcript: tool-use / tool-result / assistant blocks. |
-| 11 | Canvas | [`11-canvas.gif`](./gifs/11-canvas.gif) | JSON-Canvas editor: toolbar (Box/Link/File/Group/Export), grid, minimap, zoom. |
+| 11 | Brainstorm board | [`11-brainstorm.gif`](./gifs/11-brainstorm.gif) | JSON-Canvas editor on a board in the session's worktree: boards rail, toolbar (Box/Link/File/Group/Export), grid, minimap, zoom. |
 | 12 | Session terminal | [`12-terminal-session.gif`](./gifs/12-terminal-session.gif) | xterm attached to per-session zellij. |
 | 13 | Files diff | [`13-files-diff.gif`](./gifs/13-files-diff.gif) | Worktree diff viewer. |
 
@@ -110,7 +110,7 @@ The session/project IDs used as demo targets were read from the live app's rende
 ### B. Session
 ![Session controls + Peek](./gifs/09-session-controls.gif)
 ![Chat transcript](./gifs/10-chat.gif)
-![Canvas](./gifs/11-canvas.gif)
+![Brainstorm board](./gifs/11-brainstorm.gif)
 ![Session terminal](./gifs/12-terminal-session.gif)
 ![Files diff](./gifs/13-files-diff.gif)
 
@@ -273,11 +273,17 @@ const features = [
       await page.waitForTimeout(1500); await clickAny(page, ['chat', 'Chat'], { exact: true }); await page.waitForTimeout(1500);
       await page.mouse.wheel(0, 600); await page.waitForTimeout(900); await page.mouse.wheel(0, 600); await page.waitForTimeout(900);
   }},
-  // Canvas persists per session, so an un-touched session renders an *empty* grid.
-  // Clear any leftover nodes, then build a small graph (boxes + a file node + a link
-  // node) via the toolbar and Fit it — so the clip actually demonstrates the editor.
-  { file: '11-canvas', url: `/sessions/${SESS}`, async run(page) {
-      await page.waitForTimeout(1200); await clickAny(page, ['canvas', 'Canvas'], { exact: true }); await page.waitForTimeout(1000);
+  // A board is a canvas file in the session's worktree, so a session with no board
+  // shows an empty Brainstorm section — create one with the rail's + button first,
+  // then build a small graph (boxes + a file node + a link node) via the toolbar and
+  // Fit it, so the clip actually demonstrates the editor.
+  { file: '11-brainstorm', url: `/sessions/${SESS}?tab=brainstorm`, async run(page) {
+      await page.waitForTimeout(1200);
+      // Reuse an existing board if the rail already lists one; else create it.
+      const board = page.locator('[data-testid^="brainstorm-subtab-"]').first();
+      if (await board.count() === 0) await clickTestId(page, 'brainstorm-new');
+      else await board.click({ timeout: 2500 });
+      await page.locator('[data-testid="canvas-tab"]').waitFor({ state: 'visible', timeout: 15000 });
       await clickTestId(page, 'canvas-reset'); await page.waitForTimeout(700);
       for (let i = 0; i < 3; i++) { await clickTestId(page, 'canvas-add-box'); await page.waitForTimeout(550); }
       await clickTestId(page, 'canvas-add-file'); await page.waitForTimeout(550);

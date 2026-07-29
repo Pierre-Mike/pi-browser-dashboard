@@ -21,7 +21,7 @@ test("session topbar puts identity, tab dock and actions on one row", async ({ p
     await expect(topbar).toBeVisible()
 
     // Every control the topbar owns must sit inside it — not in a row below.
-    for (const id of ["session-tabs", "tab-terminal", "tab-chat", "tab-canvas", "tab-files"]) {
+    for (const id of ["session-tabs", "tab-terminal", "tab-chat", "tab-brainstorm", "tab-files"]) {
       await expect(topbar.getByTestId(id)).toBeVisible()
     }
 

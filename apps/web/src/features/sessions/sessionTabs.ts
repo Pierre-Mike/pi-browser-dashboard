@@ -6,9 +6,11 @@ import { BOARD_TAB_PREFIX } from "../brainstorms/brainstorms"
 export const SESSION_TAB_DOCK = [
   { key: "terminal", label: "Terminal" },
   { key: "chat", label: "Chat" },
-  { key: "canvas", label: "Canvas" },
   // Every drawing in this session's worktree; individual boards live in the
-  // section's left rail rather than each claiming a dock tab.
+  // section's left rail rather than each claiming a dock tab. This is the only
+  // drawing section — the old Canvas tab edited one scratch file per job dir,
+  // which a board in the worktree already covers, and better: it is a real file
+  // the session's agent can see.
   { key: "brainstorm", label: "Brainstorm" },
   { key: "files", label: "Files" },
 ] as const

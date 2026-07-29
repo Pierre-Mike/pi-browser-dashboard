@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { coerceEnumTab, coerceExtTab, coerceNamespacedTab } from "./tabParams"
 
 describe("coerceEnumTab", () => {
-  const keys = ["chat", "canvas", "terminal", "files"] as const
+  const keys = ["chat", "brainstorm", "terminal", "files"] as const
 
   it("returns a known key unchanged", () => {
     expect(coerceEnumTab("chat", keys)).toBe("chat")

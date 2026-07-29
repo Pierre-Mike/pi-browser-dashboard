@@ -1,7 +1,6 @@
 import {
   type CanvasSnapshot,
   canvasEqual,
-  canvasPathFor,
   emptyCanvas,
   parseCanvas,
   serializeCanvas,
@@ -21,18 +20,12 @@ const canvasCodec: DocCodec<CanvasSnapshot> = {
   stamp: (snap) => ({ ...snap, updatedAt: new Date().toISOString() }),
 }
 
-// Keyed by absolute file path — one room per document, whether that document
-// is a session canvas (~/.claude/jobs/<short>/canvas.json) or a project
-// brainstorm (<project>/.pid/brainstorms/<id>.canvas.json).
+// Keyed by absolute file path — one room per document. Every document is a
+// brainstorm board: any `*.canvas` / `*.canvas.json` file in the session's
+// worktree.
 const rooms = makeDocRooms(canvasCodec)
 
 export type CanvasRoom = DocRoom<CanvasSnapshot>
-
-// Session-canvas entry point, kept as the narrow public API the canvas routes
-// use. Brainstorms (and any future document-backed canvas) go through
-// getCanvasRoomAt with an explicit path.
-export const getCanvasRoom = (configDir: string, short: string): Promise<CanvasRoom> =>
-  getCanvasRoomAt(canvasPathFor({ configDir, short }))
 
 export const getCanvasRoomAt = rooms.getRoomAt
 
