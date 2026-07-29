@@ -1,14 +1,21 @@
 import { describe, expect, it } from "bun:test"
 import {
+  advancePassOffset,
+  foldPaneReadings,
   foldScreenDump,
+  type PaneReading,
   type PollCandidate,
   parseSessionList,
   parseTerminalPaneIds,
+  rotateTargets,
+  selectPanesToDump,
   selectPollTargets,
+  stalePaneKeys,
   zellijDumpScreenArgv,
   zellijListPanesArgv,
   zellijListSessionsArgv,
 } from "./terminal-poll.core"
+import type { TerminalStateSlug } from "./terminal-state.core"
 
 // Verbatim `zellij list-sessions --no-formatting` output (zellij 0.44.3).
 const SESSION_LIST = `default [Created 12h 5m 14s ago]
@@ -193,6 +200,196 @@ describe("selectPollTargets", () => {
     ]
     const picked = selectPollTargets({ candidates: dupes, sessions, attachedSessionNames: [] })
     expect(picked).toEqual([{ scope: "session", id: "abcd1234", sessionName: "default" }])
+  })
+})
+
+describe("selectPanesToDump", () => {
+  const eight = ["terminal_0", "terminal_1", "terminal_2", "terminal_3", "terminal_4"]
+
+  it("keeps every pane of an ordinary session untouched", () => {
+    expect(selectPanesToDump({ paneIds: ["terminal_0", "terminal_1"], maxPanes: 4 })).toEqual([
+      "terminal_0",
+      "terminal_1",
+    ])
+  })
+
+  it("caps a pane wall at the budget, keeping the lowest pane indexes", () => {
+    // parseTerminalPaneIds already sorted them, so "first N" means the panes the
+    // layout opened first — the ones an agent was most likely started in.
+    expect(selectPanesToDump({ paneIds: eight, maxPanes: 3 })).toEqual([
+      "terminal_0",
+      "terminal_1",
+      "terminal_2",
+    ])
+  })
+
+  it("is empty for no panes, and for a nonsensical budget", () => {
+    expect(selectPanesToDump({ paneIds: [], maxPanes: 4 })).toEqual([])
+    expect(selectPanesToDump({ paneIds: eight, maxPanes: 0 })).toEqual([])
+    expect(selectPanesToDump({ paneIds: eight, maxPanes: -1 })).toEqual([])
+  })
+})
+
+// THE session-level decision. Panes disagree constantly (an agent generating in
+// one pane, a shell resting in another), and every screen-derived feature —
+// chips, `wait --via screen`, `explain`, rules — reads the session-level row.
+// See foldPaneReadings' own comment for why `blocked` wins.
+describe("foldPaneReadings", () => {
+  const reading = (input: {
+    readonly paneId: string
+    readonly state: TerminalStateSlug
+  }): PaneReading => ({
+    paneId: input.paneId,
+    state: input.state,
+    matcher: `${input.state}-matcher`,
+    evidence: `${input.paneId} says ${input.state}`,
+  })
+
+  it("is undefined when no pane could be read at all", () => {
+    expect(foldPaneReadings({ panes: [] })).toBeUndefined()
+  })
+
+  it("is the pane's own reading, verbatim, for a single-pane session", () => {
+    const only = reading({ paneId: "terminal_0", state: "working" })
+    expect(foldPaneReadings({ panes: [only] })).toEqual(only)
+  })
+
+  // The interesting case, spelled out: one blocked pane, two working ones.
+  it("reports blocked when one pane is blocked and the others are working", () => {
+    const folded = foldPaneReadings({
+      panes: [
+        reading({ paneId: "terminal_0", state: "working" }),
+        reading({ paneId: "terminal_1", state: "blocked" }),
+        reading({ paneId: "terminal_2", state: "working" }),
+      ],
+    })
+    expect(folded?.state).toBe("blocked")
+    // And it names the pane it read that from — the row is a citation, never a
+    // synthesized summary, so the evidence still belongs to a real screen.
+    expect(folded?.paneId).toBe("terminal_1")
+    expect(folded?.evidence).toBe("terminal_1 says blocked")
+  })
+
+  it("prefers working over idle — a resting shell must not mask a running agent", () => {
+    const folded = foldPaneReadings({
+      panes: [
+        reading({ paneId: "terminal_0", state: "idle" }),
+        reading({ paneId: "terminal_1", state: "working" }),
+      ],
+    })
+    expect(folded?.state).toBe("working")
+    expect(folded?.paneId).toBe("terminal_1")
+  })
+
+  it("prefers any real classification over unknown — no matcher firing is not evidence", () => {
+    const folded = foldPaneReadings({
+      panes: [
+        reading({ paneId: "terminal_0", state: "unknown" }),
+        reading({ paneId: "terminal_1", state: "idle" }),
+      ],
+    })
+    expect(folded?.state).toBe("idle")
+  })
+
+  it("is unknown only when every pane is unknown", () => {
+    const folded = foldPaneReadings({
+      panes: [
+        reading({ paneId: "terminal_0", state: "unknown" }),
+        reading({ paneId: "terminal_1", state: "unknown" }),
+      ],
+    })
+    expect(folded?.state).toBe("unknown")
+    expect(folded?.paneId).toBe("terminal_0")
+  })
+
+  it("breaks a tie on the lowest pane index, so a stable screen gives a stable row", () => {
+    const folded = foldPaneReadings({
+      panes: [
+        reading({ paneId: "terminal_0", state: "working" }),
+        reading({ paneId: "terminal_1", state: "working" }),
+      ],
+    })
+    expect(folded?.paneId).toBe("terminal_0")
+  })
+})
+
+// Pane rows outlive their pane: a pane the user closed would otherwise sit in
+// GET /terminal/states forever, and a stale `blocked` row is exactly the
+// misinformation per-pane classification exists to remove.
+describe("stalePaneKeys", () => {
+  const keys = [
+    "session:ab12",
+    "session:ab12#terminal_0",
+    "session:ab12#terminal_1",
+    "session:ab12x#terminal_0",
+    "project:ab12#terminal_0",
+    "global:global",
+  ]
+
+  it("drops the pane rows of panes that are gone", () => {
+    expect(
+      stalePaneKeys({ keys, scope: "session", id: "ab12", keepPaneIds: ["terminal_0"] }),
+    ).toEqual(["session:ab12#terminal_1"])
+  })
+
+  it("never drops the session-level row, whatever is live", () => {
+    expect(stalePaneKeys({ keys, scope: "session", id: "ab12", keepPaneIds: [] })).not.toContain(
+      "session:ab12",
+    )
+  })
+
+  it("drops every pane row when the terminal should have none", () => {
+    // What a session dropping back to one pane looks like: pane rows only exist
+    // while there is more than one pane to disagree.
+    expect(stalePaneKeys({ keys, scope: "session", id: "ab12", keepPaneIds: [] })).toEqual([
+      "session:ab12#terminal_0",
+      "session:ab12#terminal_1",
+    ])
+  })
+
+  it("touches no other terminal's rows — not another scope, not a longer id", () => {
+    const dropped = stalePaneKeys({ keys, scope: "session", id: "ab12", keepPaneIds: [] })
+    expect(dropped).not.toContain("project:ab12#terminal_0")
+    expect(dropped).not.toContain("session:ab12x#terminal_0")
+    expect(dropped).not.toContain("global:global")
+  })
+})
+
+// One pass is bounded (MAX_DUMPS_PER_PASS). A bound that always truncated the
+// same tail of the candidate list would make those terminals permanently
+// invisible — the exact blind spot per-pane polling exists to remove — so the
+// pass starts where the last one stopped instead.
+describe("rotateTargets / advancePassOffset", () => {
+  const targets: ReadonlyArray<PollCandidate> = ["a", "b", "c", "d"].map((n) => ({
+    scope: "session" as const,
+    id: n,
+    sessionName: n,
+  }))
+  const ids = (list: ReadonlyArray<PollCandidate>): ReadonlyArray<string> => list.map((t) => t.id)
+
+  it("starts at the offset and wraps once", () => {
+    expect(ids(rotateTargets({ targets, offset: 2 }))).toEqual(["c", "d", "a", "b"])
+  })
+
+  it("is the identity at offset 0, and for an offset past the end", () => {
+    expect(ids(rotateTargets({ targets, offset: 0 }))).toEqual(["a", "b", "c", "d"])
+    expect(ids(rotateTargets({ targets, offset: 4 }))).toEqual(["a", "b", "c", "d"])
+    expect(ids(rotateTargets({ targets, offset: 9 }))).toEqual(["b", "c", "d", "a"])
+  })
+
+  it("survives an empty list and a negative offset rather than producing holes", () => {
+    expect(rotateTargets({ targets: [], offset: 3 })).toEqual([])
+    expect(ids(rotateTargets({ targets, offset: -1 }))).toEqual(["a", "b", "c", "d"])
+  })
+
+  it("advances by however many targets the pass actually reached", () => {
+    expect(advancePassOffset({ offset: 0, visited: 2, total: 4 })).toBe(2)
+    expect(advancePassOffset({ offset: 3, visited: 3, total: 4 })).toBe(2)
+  })
+
+  it("returns to 0 once a pass covered everything, so a small machine never rotates", () => {
+    expect(advancePassOffset({ offset: 0, visited: 4, total: 4 })).toBe(0)
+    expect(advancePassOffset({ offset: 0, visited: 0, total: 0 })).toBe(0)
   })
 })
 

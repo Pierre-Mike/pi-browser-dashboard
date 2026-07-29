@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import type { PollCandidate } from "./terminal-poll.core"
+import { MAX_DUMPS_PER_PASS, MAX_PANES_PER_SESSION, type PollCandidate } from "./terminal-poll.core"
 import { createTerminalPoller, type ScreenText, type TerminalPollPorts } from "./terminal-poll.io"
 
 const SESSION_LIST = `default [Created 12h ago]
@@ -12,12 +12,27 @@ plugin_1  plugin  zellij:status-bar
 terminal_0  terminal  bash -lc claude attach abcd1234; exec bash -l
 `
 
+// Verbatim `action list-panes` for a session with a second pane opened next to
+// the layout's content pane (captured against a session created for the purpose,
+// zellij 0.44.3).
+const TWO_PANE_LIST = `PANE_ID  TYPE  TITLE
+terminal_0  terminal  pierre-mikel@mac-1:~/Github/pi-browser-dashboard
+terminal_1  terminal  probe
+`
+
 type Published = {
   readonly scope: string
   readonly id: string
   readonly state: string
   readonly matcher: string | undefined
   readonly evidence: string | undefined
+  readonly paneId: string | undefined
+}
+
+type Forgotten = {
+  readonly scope: string
+  readonly id: string
+  readonly keepPaneIds: ReadonlyArray<string>
 }
 
 type Harness = {
@@ -26,11 +41,13 @@ type Harness = {
   readonly noted: ScreenText[]
   readonly dumped: string[]
   readonly paneListed: string[]
+  readonly forgotten: Forgotten[]
   readonly candidates: PollCandidate[]
   readonly attached: string[]
   readonly prior: Map<string, string>
   setNow: (ms: number) => void
   setDump: (text: string) => void
+  setPaneDump: (input: { readonly paneId: string; readonly text: string }) => void
 }
 
 const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
@@ -38,6 +55,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   const noted: ScreenText[] = []
   const dumped: string[] = []
   const paneListed: string[] = []
+  const forgotten: Forgotten[] = []
   const attached: string[] = []
   const prior = new Map<string, string>()
   const candidates: PollCandidate[] = [
@@ -47,6 +65,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
   let nowMs = 1_000
   // pi's rendered spinner line: the bare literal no longer classifies.
   let dump = " ⠋ Working..."
+  const perPane = new Map<string, string>()
 
   const ports: TerminalPollPorts = {
     listCandidates: async () => candidates,
@@ -57,7 +76,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     },
     dumpScreen: async ({ sessionName, paneId }) => {
       dumped.push(`${sessionName}/${paneId}`)
-      return dump
+      return perPane.get(paneId) ?? dump
     },
     attachedSessionNames: () => [...attached],
     priorState: ({ key }) => prior.get(key) as never,
@@ -67,6 +86,9 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     },
     noteScreen: (screen) => {
       noted.push(screen)
+    },
+    forgetPaneStates: (input) => {
+      forgotten.push({ scope: input.scope, id: input.id, keepPaneIds: [...input.keepPaneIds] })
     },
     now: () => nowMs,
     ...overrides,
@@ -78,6 +100,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     noted,
     dumped,
     paneListed,
+    forgotten,
     candidates,
     attached,
     prior,
@@ -87,10 +110,22 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     setDump: (text) => {
       dump = text
     },
+    setPaneDump: ({ paneId, text }) => {
+      perPane.set(paneId, text)
+    },
   }
 }
 
 const makePoller = (h: Harness) => createTerminalPoller({ ports: h.ports, tailMaxChars: 8_000 })
+
+// One published row by its id, or a failed test naming the row that is missing —
+// so an assertion reads `row.state` rather than `row?.state`, and a row that was
+// never published fails loudly instead of comparing undefined to undefined.
+const rowFor = (input: { readonly h: Harness; readonly id: string }): Published => {
+  const row = input.h.published.find((p) => p.id === input.id)
+  if (row === undefined) throw new Error(`no row published for id ${input.id}`)
+  return row
+}
 
 describe("createTerminalPoller.tick", () => {
   it("dumps the first terminal pane of every owned, live, unattached session", async () => {
@@ -111,6 +146,9 @@ describe("createTerminalPoller.tick", () => {
         state: "working",
         matcher: "pi-working",
         evidence: "⠋ Working...",
+        // Provenance: which pane that reading came off. A single-pane session
+        // gets no separate pane row, so this is the only place it is recorded.
+        paneId: "terminal_0",
       },
       {
         scope: "session",
@@ -118,8 +156,15 @@ describe("createTerminalPoller.tick", () => {
         state: "working",
         matcher: "pi-working",
         evidence: "⠋ Working...",
+        paneId: "terminal_0",
       },
     ])
+  })
+
+  it("publishes no pane row for a single-pane session — it would only duplicate", async () => {
+    const h = makeHarness()
+    await makePoller(h).tick()
+    expect(h.published.map((p) => p.id)).toEqual(["global", "abcd1234"])
   })
 
   it("skips a session with a live WS bridge — the bridge already classifies it", async () => {
@@ -233,6 +278,205 @@ describe("createTerminalPoller.tick", () => {
     const poller = makePoller(h)
     await Promise.all([poller.tick(), poller.tick(), poller.tick()])
     expect(h.dumped).toEqual(["default/terminal_0", "abcd1234/terminal_0"])
+  })
+})
+
+// Every pane, not just the first. An agent running in a session's second pane
+// used to be invisible to chips, `wait --via screen`, `explain`, `pid terminals`
+// and rules all at once.
+describe("createTerminalPoller.tick over several panes", () => {
+  const twoPaneHarness = (overrides?: Partial<TerminalPollPorts>): Harness =>
+    makeHarness({ listPanes: async () => TWO_PANE_LIST, ...overrides })
+
+  // A dialog waiting for an answer in pane 1 while pane 0 generates. Written as
+  // the rendered SHAPE (question line + option list) because a bare question is
+  // a sentence any screen can print; the literal renders live only in
+  // terminal-state.core.test.ts's fixtures.
+  const BLOCKED_DUMP = " Do you want to proceed?\n ❯ 1. Yes\n   2. No"
+
+  it("dumps every terminal pane of the session, in pane order", async () => {
+    const h = twoPaneHarness()
+    await makePoller(h).tick()
+    expect(h.dumped).toEqual([
+      "default/terminal_0",
+      "default/terminal_1",
+      "abcd1234/terminal_0",
+      "abcd1234/terminal_1",
+    ])
+  })
+
+  it("gives each pane its own row beside the session's, keyed <id>#<paneId>", async () => {
+    const h = twoPaneHarness()
+    await makePoller(h).tick()
+    const session = h.published.filter((p) => p.scope === "session")
+    expect(session.map((p) => p.id)).toEqual([
+      "abcd1234#terminal_0",
+      "abcd1234#terminal_1",
+      "abcd1234",
+    ])
+  })
+
+  // The decision this feature turns on: one blocked pane, one working pane. A
+  // session-level `working` would hide a prompt nothing else will ever answer,
+  // so the row reports the blocked pane — and names it, so the working pane is
+  // still there to be read on its own row.
+  it("reports the blocked pane at session level when panes disagree", async () => {
+    const h = twoPaneHarness()
+    h.setPaneDump({ paneId: "terminal_1", text: BLOCKED_DUMP })
+    await makePoller(h).tick()
+    const row = rowFor({ h, id: "abcd1234" })
+    expect(row.state).toBe("blocked")
+    expect(row.paneId).toBe("terminal_1")
+    // Not a synthesized summary: the matcher and the matched line are the
+    // blocked pane's own, carried through verbatim.
+    expect(row.matcher).toBe("permission-prompt")
+    expect(row.evidence).toBe(rowFor({ h, id: "abcd1234#terminal_1" }).evidence)
+  })
+
+  it("hides neither pane while reporting the more urgent one", async () => {
+    const h = twoPaneHarness()
+    h.setPaneDump({ paneId: "terminal_1", text: BLOCKED_DUMP })
+    await makePoller(h).tick()
+    expect(rowFor({ h, id: "abcd1234#terminal_0" }).state).toBe("working")
+    expect(rowFor({ h, id: "abcd1234#terminal_1" }).state).toBe("blocked")
+  })
+
+  it("keeps each pane's own transition gate, so one pane changing publishes one pane row", async () => {
+    const h = twoPaneHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    const before = h.published.length
+    h.setPaneDump({ paneId: "terminal_1", text: BLOCKED_DUMP })
+    await poller.tick()
+    // pane 1's row (working -> blocked) and both session rows (working ->
+    // blocked); pane 0 is unchanged and stays silent.
+    expect(h.published.slice(before).map((p) => p.id)).toEqual([
+      "global#terminal_1",
+      "global",
+      "abcd1234#terminal_1",
+      "abcd1234",
+    ])
+  })
+
+  // `wait --until-output` matches against the session's short, so a pattern that
+  // appears in pane 1 has to reach it under the session id — otherwise the wait
+  // only ever sees pane 0 and times out on text that is plainly on screen.
+  it("notes every pane's screen under the session id, tagged with the pane", async () => {
+    const h = twoPaneHarness()
+    h.setPaneDump({ paneId: "terminal_1", text: "pane two says 42 passed" })
+    await makePoller(h).tick()
+    const session = h.noted.filter((n) => n.scope === "session" && n.id === "abcd1234")
+    expect(session.map((n) => n.paneId)).toEqual(["terminal_0", "terminal_1"])
+    expect(session[1]?.text).toContain("42 passed")
+  })
+
+  // A pane the user closed must not leave a row behind: a stale `blocked` row is
+  // exactly the misinformation this feature exists to remove.
+  it("asks for the pane rows of closed panes to be forgotten, keeping the live ones", async () => {
+    const h = twoPaneHarness()
+    await makePoller(h).tick()
+    expect(h.forgotten).toEqual([
+      { scope: "global", id: "global", keepPaneIds: ["terminal_0", "terminal_1"] },
+      { scope: "session", id: "abcd1234", keepPaneIds: ["terminal_0", "terminal_1"] },
+    ])
+  })
+
+  it("forgets every pane row once a session is back to a single pane", async () => {
+    const h = makeHarness()
+    await makePoller(h).tick()
+    expect(h.forgotten).toEqual([
+      { scope: "global", id: "global", keepPaneIds: [] },
+      { scope: "session", id: "abcd1234", keepPaneIds: [] },
+    ])
+  })
+
+  it("forgets nothing when the pane list could not be read — a hiccup is not a closure", async () => {
+    const h = makeHarness({
+      listPanes: async () => {
+        throw new Error("session died mid-tick")
+      },
+    })
+    await makePoller(h).tick()
+    expect(h.forgotten).toEqual([])
+  })
+
+  it("folds only the panes it could actually read", async () => {
+    const h = twoPaneHarness({
+      dumpScreen: async ({ sessionName, paneId }) =>
+        paneId === "terminal_1" ? "" : `${sessionName} ⠋ Working...`,
+    })
+    await makePoller(h).tick()
+    // An unreadable pane contributes nothing rather than voiding the pass: the
+    // readable pane still gets a row, and so does the session.
+    expect(h.published.filter((p) => p.scope === "session").map((p) => p.id)).toEqual([
+      "abcd1234#terminal_0",
+      "abcd1234",
+    ])
+  })
+
+  it("caps one session's panes so a pane wall cannot consume the pass", async () => {
+    const wall = ["PANE_ID  TYPE  TITLE"]
+    for (let i = 0; i < 12; i++) wall.push(`terminal_${i}  terminal  bash`)
+    const h = makeHarness({ listPanes: async () => `${wall.join("\n")}\n` })
+    await makePoller(h).tick()
+    const perSession = h.dumped.filter((d) => d.startsWith("abcd1234/"))
+    expect(perSession).toHaveLength(MAX_PANES_PER_SESSION)
+    expect(perSession[0]).toBe("abcd1234/terminal_0")
+  })
+})
+
+// The whole-pass dump budget, and the rotation that keeps it from turning into a
+// permanent blind spot for whatever sorts last.
+describe("createTerminalPoller.tick dump budget", () => {
+  // Enough candidates that MAX_DUMPS_PER_PASS bites with one pane each.
+  const manyCandidates = (count: number): PollCandidate[] =>
+    Array.from({ length: count }, (_, i) => ({
+      scope: "session" as const,
+      id: `s${i}`,
+      sessionName: `s${i}`,
+    }))
+
+  const bigHarness = (count: number): Harness => {
+    const h = makeHarness({
+      listSessions: async () =>
+        `${manyCandidates(count)
+          .map((c) => `${c.sessionName} [Created 1m ago]`)
+          .join("\n")}\n`,
+    })
+    h.candidates.length = 0
+    h.candidates.push(...manyCandidates(count))
+    return h
+  }
+
+  it("stops a pass at the budget instead of spawning one dump per pane found", async () => {
+    const h = bigHarness(MAX_DUMPS_PER_PASS + 10)
+    await makePoller(h).tick()
+    expect(h.dumped).toHaveLength(MAX_DUMPS_PER_PASS)
+  })
+
+  it("starts the next pass where the last one stopped, so nothing is invisible forever", async () => {
+    const h = bigHarness(MAX_DUMPS_PER_PASS + 10)
+    const poller = makePoller(h)
+    await poller.tick()
+    expect(h.dumped[0]).toBe("s0/terminal_0")
+    h.dumped.length = 0
+    await poller.tick()
+    expect(h.dumped[0]).toBe(`s${MAX_DUMPS_PER_PASS}/terminal_0`)
+  })
+
+  it("never leaves a session half-dumped — a partial pane set would fold to a wrong row", async () => {
+    // Two panes each, so the budget cuts mid-session unless whole sessions are
+    // skipped. Every session that produced any row must have produced both.
+    const h = bigHarness(MAX_DUMPS_PER_PASS)
+    const twoPane = { ...h.ports, listPanes: async () => TWO_PANE_LIST }
+    await createTerminalPoller({ ports: twoPane, tailMaxChars: 8_000 }).tick()
+    const perSession = new Map<string, number>()
+    for (const d of h.dumped) {
+      const name = d.split("/")[0] ?? ""
+      perSession.set(name, (perSession.get(name) ?? 0) + 1)
+    }
+    expect([...perSession.values()].every((n) => n === 2)).toBe(true)
+    expect(h.dumped.length).toBeLessThanOrEqual(MAX_DUMPS_PER_PASS)
   })
 })
 

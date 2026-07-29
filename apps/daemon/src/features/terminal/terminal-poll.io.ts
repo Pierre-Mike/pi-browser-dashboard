@@ -18,17 +18,24 @@
 // the rules engine's construct-then-start.
 
 import {
+  advancePassOffset,
+  foldPaneReadings,
   foldScreenDump,
+  MAX_DUMPS_PER_PASS,
+  MAX_PANES_PER_SESSION,
+  type PaneReading,
   type PollCandidate,
   parseSessionList,
   parseTerminalPaneIds,
+  rotateTargets,
+  selectPanesToDump,
   selectPollTargets,
   type TerminalScope,
   zellijDumpScreenArgv,
   zellijListPanesArgv,
   zellijListSessionsArgv,
 } from "./terminal-poll.core"
-import type { TerminalStateSlug } from "./terminal-state.core"
+import { type TerminalStateSlug, terminalPaneRowId } from "./terminal-state.core"
 
 export type PolledState = {
   readonly scope: TerminalScope
@@ -36,6 +43,12 @@ export type PolledState = {
   readonly state: TerminalStateSlug
   readonly matcher: string | undefined
   readonly evidence: string | undefined
+  // Which zellij pane this reading came off. Present on a pane row (where it is
+  // also encoded in `id`) AND on the session-level row, where it is the
+  // provenance of the fold: which pane's screen the session's state was read
+  // from. `undefined` only from a producer that cannot know — the WS classifier
+  // tap, which sees one byte stream and no pane ids.
+  readonly paneId: string | undefined
 }
 
 export type TerminalPollPorts = {
@@ -66,6 +79,15 @@ export type TerminalPollPorts = {
   // Separate from `publish` because that one lands on the SSE bus, which every
   // connected browser is subscribed to: screen text must never go there.
   readonly noteScreen: (input: ScreenText) => void
+  // Drop the stored rows of panes that are no longer there. Called once per
+  // successfully listed session with the pane ids that SHOULD still have a row —
+  // empty for a single-pane session, which has no pane rows at all. Never called
+  // when `listPanes` failed: a hiccup is not a closed pane.
+  readonly forgetPaneStates: (input: {
+    readonly scope: TerminalScope
+    readonly id: string
+    readonly keepPaneIds: ReadonlyArray<string>
+  }) => void
   readonly now: () => number
 }
 
@@ -73,6 +95,11 @@ export type ScreenText = {
   readonly scope: TerminalScope
   readonly id: string
   readonly text: string
+  // The pane the text came off. `id` stays the SESSION's id even for a second
+  // pane's screen, because `wait --until-output` matches a pattern against a
+  // roster short — text on any pane of that session is text on that session's
+  // screen. The pane id rides along as provenance.
+  readonly paneId: string
 }
 
 export type TerminalPollerApi = {
@@ -111,38 +138,97 @@ export const createTerminalPoller = (input: {
   let inFlight: Promise<void> | undefined
   let lastPassAt: number | undefined
 
-  const pollOne = async (target: PollCandidate): Promise<void> => {
-    const paneId = parseTerminalPaneIds(
-      await ports.listPanes({ sessionName: target.sessionName }),
-    )[0]
-    if (paneId === undefined) return
+  // Cursor into the target list, so a pass truncated by MAX_DUMPS_PER_PASS
+  // resumes where the last one stopped rather than re-reading the same head
+  // forever. 0 on a machine small enough for one pass to cover everything.
+  let passOffset = 0
+
+  // One pane: dump, classify, offer the text to output waits, and publish the
+  // pane's own row when the session has more than one pane. Returns the reading
+  // so the caller can fold the session-level row out of every pane it read.
+  const pollPane = async (input: {
+    readonly target: PollCandidate
+    readonly paneId: string
+    readonly ownRow: boolean
+  }): Promise<PaneReading | undefined> => {
+    const { target, paneId } = input
     const dump = await ports.dumpScreen({ sessionName: target.sessionName, paneId })
     // An empty dump is not evidence of anything: a pane that has produced no
     // output yet, or a session that died between list-sessions and this call,
     // both look like this. Staying silent leaves the last known state (or no
     // state) in place instead of overwriting it with a guess.
-    if (dump.trim() === "") return
-    const key = `${target.scope}:${target.id}`
+    if (dump.trim() === "") return undefined
+    const rowId = input.ownRow ? terminalPaneRowId({ id: target.id, paneId }) : target.id
     const folded = foldScreenDump({
       dump,
-      prior: ports.priorState({ key }),
+      prior: ports.priorState({ key: `${target.scope}:${rowId}` }),
       maxChars: tailMaxChars,
     })
     // Before the transition gate: an output pattern must see every pass, and an
     // observer must never be able to break the poller either, hence the catch.
+    // Noted under the SESSION's id whichever pane it came from — see ScreenText.
     try {
-      ports.noteScreen({ scope: target.scope, id: target.id, text: folded.text })
+      ports.noteScreen({ scope: target.scope, id: target.id, text: folded.text, paneId })
     } catch {
       // An observer that throws is its own problem, not this pass's.
     }
-    if (!folded.publish) return
-    ports.publish({
-      scope: target.scope,
-      id: target.id,
+    if (input.ownRow && folded.publish) {
+      ports.publish({
+        scope: target.scope,
+        id: rowId,
+        state: folded.classification.state,
+        matcher: folded.classification.matcher,
+        evidence: folded.classification.evidence,
+        paneId,
+      })
+    }
+    return {
+      paneId,
       state: folded.classification.state,
       matcher: folded.classification.matcher,
       evidence: folded.classification.evidence,
+    }
+  }
+
+  // One session: every terminal pane it has (up to the per-session cap), then
+  // the session-level row folded out of the panes actually read. Returns how
+  // many dumps it spent so the pass can hold its budget.
+  const pollOne = async (input: {
+    readonly target: PollCandidate
+    readonly dumpBudget: number
+  }): Promise<number> => {
+    const { target } = input
+    const paneIds = parseTerminalPaneIds(await ports.listPanes({ sessionName: target.sessionName }))
+    const panes = selectPanesToDump({ paneIds, maxPanes: MAX_PANES_PER_SESSION })
+    // A pane row exists only where panes can disagree. For the ordinary
+    // one-content-pane session it would duplicate the session row, and doubling
+    // every entry in `GET /terminal/states` / `pid terminals` buys nothing: the
+    // session row already names its pane in `paneId`.
+    const ownRows = panes.length > 1
+    // Whole sessions, never half of one: a fold over a partial pane set could
+    // report `working` for a session whose unread pane is blocked, which is the
+    // failure the fold is ordered to avoid in the first place.
+    if (panes.length > input.dumpBudget) return 0
+    ports.forgetPaneStates({
+      scope: target.scope,
+      id: target.id,
+      keepPaneIds: ownRows ? paneIds : [],
     })
+    const readings: PaneReading[] = []
+    for (const paneId of panes) {
+      // One unreadable pane must not cost the session its other panes. What it
+      // does cost is its own contribution to the fold — an unread pane is
+      // silence, not a state.
+      const reading = await pollPane({ target, paneId, ownRow: ownRows }).catch(() => undefined)
+      if (reading !== undefined) readings.push(reading)
+    }
+    const session = foldPaneReadings({ panes: readings })
+    if (session === undefined) return panes.length
+    const priorSession = ports.priorState({ key: `${target.scope}:${target.id}` })
+    if (priorSession !== session.state) {
+      ports.publish({ scope: target.scope, id: target.id, ...session })
+    }
+    return panes.length
   }
 
   const runPass = async (): Promise<void> => {
@@ -155,13 +241,19 @@ export const createTerminalPoller = (input: {
       sessions: parseSessionList(rawSessions),
       attachedSessionNames: ports.attachedSessionNames(),
     })
-    // Sequential by design. Each target costs two subprocess spawns, and
-    // fanning them out would turn a machine with a dozen sessions into a
-    // spawn storm every interval. A session that dies mid-pass must not take
-    // the rest of the pass with it, hence the per-target catch.
-    for (const target of targets) {
-      await pollOne(target).catch(() => undefined)
+    // Sequential by design. Each pane costs a subprocess spawn on top of the
+    // session's `list-panes`, and fanning them out would turn a machine with a
+    // dozen sessions into a spawn storm every interval. A session that dies
+    // mid-pass must not take the rest of the pass with it, hence the per-target
+    // catch.
+    let budget = MAX_DUMPS_PER_PASS
+    let visited = 0
+    for (const target of rotateTargets({ targets, offset: passOffset })) {
+      if (budget <= 0) break
+      budget -= await pollOne({ target, dumpBudget: budget }).catch(() => 0)
+      visited += 1
     }
+    passOffset = advancePassOffset({ offset: passOffset, visited, total: targets.length })
   }
 
   const tick = (): Promise<void> => {

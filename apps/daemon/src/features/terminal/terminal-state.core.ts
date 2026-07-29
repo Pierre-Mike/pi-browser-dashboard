@@ -404,3 +404,31 @@ export const decideTransition = (input: {
 // centralised so the route and any consumer agree on the same shape.
 export const terminalStateKey = (input: { readonly scope: string; readonly id: string }): string =>
   `${input.scope}:${input.id}`
+
+// A zellij session can hold more than one terminal pane, and an agent running
+// in the second one is a terminal in its own right. Rather than invent a second
+// key format, a second map or a second SSE event type for panes, a pane row IS
+// a terminal row whose `id` carries the zellij pane id: the session-level row
+// stays exactly `<scope>:<id>` (which is what every wait, rule, chip and
+// `pid terminals` call built so far addresses), and the pane rows sit beside it
+// under `<scope>:<id>#<paneId>`.
+//
+// `#` rather than a second `:`: `:` already separates scope from id, so
+// `session:ab12:terminal_1` would be ambiguous with an id that contains a
+// colon. Nothing ever parses a pane key back apart — the only use is prefix
+// matching to find one terminal's pane rows — so an id that itself contained a
+// `#` could at worst over-match its own rows, never another terminal's.
+const TERMINAL_PANE_SEPARATOR = "#"
+
+export const terminalPaneRowId = (input: {
+  readonly id: string
+  readonly paneId: string
+}): string => `${input.id}${TERMINAL_PANE_SEPARATOR}${input.paneId}`
+
+// Every pane row of one terminal starts with this, and its session-level row
+// does not — deliberately, because that row has a second producer (the WS
+// classifier tap) and dropping it would blank a live chip.
+export const terminalPaneKeyPrefix = (input: {
+  readonly scope: string
+  readonly id: string
+}): string => `${terminalStateKey(input)}${TERMINAL_PANE_SEPARATOR}`
