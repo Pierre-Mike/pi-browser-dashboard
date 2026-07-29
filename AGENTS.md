@@ -406,11 +406,28 @@ something a render has and a quotation does not — verified against fresh dumps
 - **pi's literal counts only behind a braille spinner glyph** (the whole
   U+2800–U+28FF block, since ten frames of it were captured in one turn).
 
-One row is still literal-matched and says so in its own comment: `turn-complete`
-(`<PastVerb> for <N>s`). It has the same defect — pasting a real example into the
-matcher table made the table classify itself as `idle` — and it wants the same
-treatment against a fresh capture, in its own change. `prompt-resting` stays last
-regardless; its correctness is ordering, not pattern.
+`turn-complete` (`<PastVerb> for <N>s`) is anchored the same way — it must own its
+row, behind an optional glyph — and it mattered more than the others because
+`wait --via screen` can resolve a real wait on `idle`: a screen merely *printing* a
+completion line could unblock an agent early. Its capture also turned up a bug
+none of the anchoring work would have found:
+
+- **The status verb is not ASCII.** The captured line read `Sautéed for 3s`, which
+  a `[A-Z][a-z]+` class does not match at all — so a genuinely finished turn was
+  not matching the row meant for it. It still reported `idle`, but through
+  `prompt-resting`, the row of last resort, which means the state was right by luck
+  and would have gone `unknown` the moment the human typed into the prompt box.
+- The shipped vocabulary confirms it: `strings -a` on the 2.1.220 binary carries
+  `Saut\xE9ed` / `Saut\xE9ing`, and of the 185 capitalised verbs visible in that
+  region five more are hyphenated (`Dilly-dallying`, `Fiddle-faddling`,
+  `Razzle-dazzling`, `Sock-hopping`, `Topsy-turvying`) — **six known misses**, in
+  both the past-tense and gerund rows, since they share the vocabulary. Both now
+  use `\p{Lu}[\p{Ll}'-]*` with the `u` flag.
+- The glyph (U+273B in all 70 captured frames) is corroboration, not the anchor.
+  The neighbouring status line rotates through at least four glyphs, so betting on
+  one here would repeat a mistake the row next door already disproved.
+
+`prompt-resting` stays last regardless; its correctness is ordering, not pattern.
 
 `prompt-resting` (an empty `❯` input line) is the one row whose correctness
 depends entirely on **ordering**, and it is last for that reason. The prompt box
@@ -530,16 +547,21 @@ was needed.
 - **Self-reference is a live failure mode of screen scraping, not a curiosity.**
   Any matcher keyed on a bare sentence fires on a terminal that is merely
   *discussing* that sentence — an agent editing this table, reviewing its diff or
-  displaying this file. Seven of the eight rows are anchored against it now: the
-  three `blocked` rows (question + option list, option label + list number,
-  own-row trust option), the three `working` rows (elapsed-time reading, own-line
-  pending marker, braille spinner) and `prompt-resting`, which is a whole-line
-  pattern to begin with. The
-  holdout is `turn-complete`, flagged in its own comment. Two habits keep it from
-  coming back: **anchor on a rendered shape, never a bare sentence**, and **write
-  placeholders in comments and docs, never a complete rendered line**. A
+  displaying this file. **All eight rows are anchored against it now**: the three
+  `blocked` rows (question + option list, option label + list number, own-row trust
+  option), the three `working` rows (elapsed-time reading, own-line pending marker,
+  braille spinner), `turn-complete` (own row behind an optional glyph) and
+  `prompt-resting`, which is a whole-line pattern to begin with. Two habits keep it
+  from coming back: **anchor on a rendered shape, never a bare sentence**, and
+  **write placeholders in comments and docs, never a complete rendered line**. A
   regression here is invisible without measurement, because the matcher does not
   fail on the fixtures — it fails on the file that describes it.
+- **A pattern can be self-reference-proof and still wrong.** Anchoring says which
+  screens a row must ignore; it says nothing about which real screens it must
+  catch. Every row here was also measured against a live render of the thing it
+  claims to match, and that is what caught `turn-complete` not matching an accented
+  verb and `permission-prompt` not matching a Write approval — two silent false
+  negatives that no amount of anti-self-reference work would have surfaced.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 

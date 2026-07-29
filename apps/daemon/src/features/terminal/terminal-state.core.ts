@@ -246,7 +246,12 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     //
     // The duration is required through a lookahead so the evidence stays the
     // gerund: a tooltip that changes every frame is noise in an SSE payload.
-    pattern: /\b[A-Z][a-z]+ing…(?=[^\S\n]*\((?:\d+[hm][^\S\n]+)*\d+s\b)/,
+    //
+    // The verb class is `\p{Lu}[\p{Ll}'-]*`, not `[A-Z][a-z]+`, because the
+    // shipped vocabulary is not plain ASCII — see the turn-complete row below,
+    // where a live capture of an accented verb is what turned that up. The two
+    // rows share the vocabulary, so they share the class.
+    pattern: /\b\p{Lu}[\p{Ll}'-]*ing…(?=[^\S\n]*\((?:\d+[hm][^\S\n]+)*\d+s\b)/u,
   },
   {
     name: "pi-working",
@@ -270,18 +275,38 @@ const MATCHERS: ReadonlyArray<Matcher> = [
   {
     name: "turn-complete",
     state: "idle",
-    // Verified: printed once a turn finishes and control returns to the prompt —
-    // `<PastVerb> for <N>s`, the same randomized-verb shape as thinking-gerund in
-    // past tense (a live capture of one is in the test fixtures).
+    // Printed once a turn finishes and control returns to the prompt —
+    // `<PastVerb> for <N>s` behind a glyph, the same randomized-verb shape as
+    // thinking-gerund in past tense. Verified live (dump + raw redraw bytes) on a
+    // fresh capture, which is where two things turned up:
     //
-    // STILL UNANCHORED, and the example above is written as a placeholder for
-    // that reason: this row matches a bare literal, so a terminal displaying a
-    // sentence of that shape reads `idle`. Pasting a real one here made this file
-    // classify ITSELF as idle — measured 2026-07-29. It is the last row with the
-    // self-reference defect the blocked and working rows were fixed for; it wants
-    // the same treatment (the rendered line carries a spinner glyph before the
-    // verb) against a fresh capture, in its own change.
-    pattern: /\b[A-Z][a-z]+ed for \d+s\b/,
+    //  - THE VERB IS NOT ASCII-ONLY. The captured line read `Sautéed for 3s`, and
+    //    `[A-Z][a-z]+` matches no such word, so a real completion line did not
+    //    match this row at all. `strings -a` on the 2.1.220 binary confirms the
+    //    vocabulary carries `Saut\xE9ed`/`Saut\xE9ing`, and of the 185 capitalised
+    //    verbs visible in that region five more are hyphenated
+    //    (`Dilly-dallying`, `Fiddle-faddling`, `Razzle-dazzling`, `Sock-hopping`,
+    //    `Topsy-turvying`) — six known misses. Hence `\p{Lu}[\p{Ll}'-]*` and the
+    //    `u` flag, here and in thinking-gerund.
+    //    The screen still read `idle` while this was broken, but through
+    //    `prompt-resting` — the row of last resort — so the state was right by
+    //    luck and would have gone `unknown` the moment the human typed anything
+    //    into the prompt box.
+    //  - IT HAS TO OWN ITS ROW. `wait --via screen` can resolve a real wait on
+    //    `idle`, so a screen merely PRINTING a completion line could unblock an
+    //    agent early. A rendered line starts its row (line start on a dump, a run
+    //    of padding on the collapsed attached path) and ends it; a quotation sits
+    //    mid-sentence behind a delimiter, or one space after a word.
+    //
+    // The glyph is captured but OPTIONAL: it was U+273B in all 70 captured frames
+    // and in an earlier pty capture, yet the spinner glyphs on the working status
+    // line rotate through at least four code points, so requiring this one would
+    // be betting on a pattern the neighbouring row already disproved. The glyph
+    // clause also tolerates ZERO spaces after the glyph, because a pty capture in
+    // the fixtures jumps the cursor between glyph and verb instead of printing
+    // one.
+    pattern:
+      /(?:^|\n[^\S\n]*|[^\S\n]{2,})(?:✻[^\S\n]*)?\p{Lu}[\p{Ll}'-]*ed for \d+s(?=[^\S\n]|$)/mu,
   },
   {
     name: "prompt-resting",

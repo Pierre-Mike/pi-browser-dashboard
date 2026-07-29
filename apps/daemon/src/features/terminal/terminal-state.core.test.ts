@@ -319,6 +319,41 @@ const PROMPT_WORKING_DUMP = [
   "  ⏵⏵ auto mode on (shift+tab to cycle) · ← 85 agents · PR #430",
 ].join("\n")
 
+// ---- live turn-complete capture (2026-07-29) ----------------------------
+//
+// A finished turn, verbatim from `polltest-done24`. Two things in one screen:
+// the completion line, and the resting prompt box below it — which is why this
+// screen read `idle` before this change even though the completion line did not
+// match. It reached the right state through `prompt-resting`, the row of last
+// resort, and would have read `unknown` the moment the human typed anything into
+// that box.
+//
+// The verb is `Sautéed`, and the `é` is the point: the shipped vocabulary is not
+// plain ASCII. `strings -a` on the 2.1.220 binary carries `Saut\xE9ed` and
+// `Saut\xE9ing`, and of the 185 capitalised verbs visible in that vocabulary
+// region five more are hyphenated (`Dilly-dallying`, `Fiddle-faddling`,
+// `Razzle-dazzling`, `Sock-hopping`, `Topsy-turvying`). A `[a-z]+` verb class
+// matches none of those six.
+const TURN_COMPLETE_DUMP = [
+  "⏺ A terminal escape sequence is a special sequence of characters (often",
+  "  starting with ESC) that a terminal interprets as a command.",
+  "",
+  "✻ Sautéed for 3s",
+  "",
+  "──────────────────── herd codebase structure review ──",
+  PROMPT_LINE,
+  "──────────────────────────────────────────────────────",
+  "  ⏸ manual mode on · ? for shortcuts",
+].join("\n")
+
+// The same completion line as the attached path sees it: raw bytes, verbatim
+// except that the padding run in front was truncated from 120 spaces to 12 —
+// the only edit, stated because the row needs two. zellij splits the line into
+// per-word writes, so `Sautéed`, `for` and `3s` arrive with escapes between
+// them and there is no `\n` anywhere.
+const TURN_COMPLETE_WS_BYTES =
+  "            \x1b[19;1H\x1b[m\x1b[38;2;153;153;153m\x1b[49m\x1b[59m\x1b[29m\x1b[28m\x1b[27m\x1b[25m\x1b[25m\x1b[22m\x1b[24m\x1b[22m\x1b[23m\x1b]8;;\x1b\\✻\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153mSautéed\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153mfor\x1b[m\x1b]8;;\x1b\\ \x1b[38;2;153;153;153m3s"
+
 describe("stripAnsi", () => {
   it("drops OSC title sequences (BEL-terminated) and CSI true-colour/cursor codes", () => {
     // The box-drawing glyphs are the splash logo itself, not a stripping bug.
@@ -391,7 +426,56 @@ describe("classifyTail", () => {
     const result = classifyTail({ tail: TURN_COMPLETE_FIXTURE })
     expect(result.state).toBe("idle")
     expect(result.matcher).toBe("turn-complete")
-    expect(result.evidence).toBe("Churned for 6s")
+    // The glyph and the verb end up adjacent here: this capture came off a pty
+    // where the CLI jumped the cursor between them instead of printing a space.
+    expect(result.evidence).toBe("✻Churned for 6s")
+  })
+
+  it("classifies a live-captured completion line as idle, accented verb and all", () => {
+    // The screen carries a resting prompt box too, so before this row matched it
+    // still reached `idle` — through `prompt-resting`, the row of last resort. The
+    // matcher name is the assertion that matters: it says WHY.
+    const result = classifyTail({ tail: TURN_COMPLETE_DUMP })
+    expect(result.state).toBe("idle")
+    expect(result.matcher).toBe("turn-complete")
+    expect(result.evidence).toBe("✻ Sautéed for 3s")
+  })
+
+  it("classifies the completion line from raw redraw bytes", () => {
+    const result = classifyTail({ tail: TURN_COMPLETE_WS_BYTES })
+    expect(result.state).toBe("idle")
+    expect(result.matcher).toBe("turn-complete")
+  })
+
+  it("matches the hyphenated and accented verbs the shipped vocabulary contains", () => {
+    // Verb list read out of the 2.1.220 binary, line shape from the live captures
+    // above — so the SHAPE is rendered evidence and the VERBS are binary evidence.
+    // Both forms miss a `[a-z]+` class entirely.
+    expect(classifyTail({ tail: "✻ Dilly-dallied for 12s" }).matcher).toBe("turn-complete")
+    expect(classifyTail({ tail: "✶ Sautéing… (3s · ↓ 9 tokens)" }).matcher).toBe("thinking-gerund")
+    expect(classifyTail({ tail: "✶ Dilly-dallying… (12s · ↓ 4 tokens)" }).matcher).toBe(
+      "thinking-gerund",
+    )
+  })
+
+  // The reason this row is worth anchoring at all: `wait --via screen` can resolve
+  // a real wait on `idle`, so a screen that merely PRINTS a completion line could
+  // unblock an agent early.
+  it("does not report idle for a screen that merely quotes a completion line", () => {
+    expect(
+      classifyTail({ tail: '    // prompt, e.g. "Cogitated for 3s", "Churned for 6s" — same' })
+        .state,
+    ).toBe("unknown")
+    expect(classifyTail({ tail: "The agent Cogitated for 3s before answering" }).state).toBe(
+      "unknown",
+    )
+  })
+
+  it("keeps turn-complete above prompt-resting", () => {
+    // Both rows match TURN_COMPLETE_DUMP (it has a completion line AND an empty
+    // prompt box). Ordering decides which one explains the state.
+    expect(classifyTail({ tail: PROMPT_LINE }).matcher).toBe("prompt-resting")
+    expect(classifyTail({ tail: TURN_COMPLETE_DUMP }).matcher).toBe("turn-complete")
   })
 
   it("classifies a session resting at its prompt as idle (prompt-resting)", () => {
