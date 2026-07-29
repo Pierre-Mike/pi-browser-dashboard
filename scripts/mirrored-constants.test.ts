@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+// The minting side of the zellij-name agreement checked at the bottom of this file.
+import { piDispatchSessionName } from "../apps/daemon/src/features/dispatch/pi.io"
 import { SCREEN_AGREES_WITH } from "../apps/daemon/src/features/sessions/sessions-explain.core"
+// The resolving side: what the attach path and the screen poller both compose.
+import {
+  piZellijSessionName,
+  prefixedZellijSession,
+} from "../apps/daemon/src/features/terminal/terminal.core"
 // The web chip's own copy of the screen-agreement table, tuned against the
 // live daemon — see the suite below.
 import { AGREES_WITH as WEB_AGREES_WITH } from "../apps/web/src/features/terminal/terminalState"
@@ -68,5 +77,73 @@ describe("the screen-agreement table mirrored between the web chip and explain",
   it("leaves the unknown classification asserting nothing in either copy", () => {
     expect(SCREEN_AGREES_WITH.unknown).toEqual([])
     expect(WEB_AGREES_WITH.unknown).toEqual([])
+  })
+})
+
+/**
+ * Not a mirrored *constant* but the same failure mode, and the same reason this
+ * file is where it can be checked: one slice MINTS a zellij session name and
+ * another RESOLVES it, neither may import the other's internals, so neither side
+ * could hold an assertion that the two agree.
+ *
+ * They didn't. `features/dispatch/pi.io.ts` created a dispatched pi run as a bare
+ * `pi-<short>` while both readers in `features/terminal/terminal.routes.ts` — the
+ * attach path (`resolvePiSession`) and the screen poller (`sessionPollCandidates`)
+ * — ran that name through `prefixedZellijSession`. With `PID_ZELLIJ_PREFIX` set,
+ * the dispatch created a session neither could address, and all three of attach,
+ * poll and kill broke silently (see `piDispatchSessionName`'s comment for the
+ * observed symptoms, including attach resurrecting a second pi on the same
+ * session id).
+ *
+ * Asserted as a property over several prefixes rather than one literal, because
+ * `prefixedZellijSession` has real behaviour to agree with — sanitizing, a length
+ * cap, and returning the bare name for an empty prefix.
+ */
+describe("the zellij session name a dispatched pi run is created under", () => {
+  const PREFIXES = ["", "polltest", "e2e", "second-checkout", "weird.prefix_v2", "a".repeat(80)]
+
+  it("is exactly what the attach path and the poller resolve, for every prefix", () => {
+    for (const prefix of PREFIXES) {
+      expect(piDispatchSessionName({ short: "bd83d0a7", prefix })).toBe(
+        prefixedZellijSession({ prefix, name: piZellijSessionName("bd83d0a7") }),
+      )
+    }
+  })
+
+  // The regression that mattered: with a prefix configured, the created name must
+  // not be the bare one. Without this, the assertion above would still pass if
+  // BOTH sides dropped the prefix.
+  it("carries the prefix rather than the bare name whenever one is configured", () => {
+    const withPrefix = piDispatchSessionName({ short: "bd83d0a7", prefix: "polltest" })
+    expect(withPrefix).toBe("polltest-pi-bd83d0a7")
+    expect(withPrefix).not.toBe(piZellijSessionName("bd83d0a7"))
+  })
+
+  // ...and the empty prefix every default daemon runs with must still produce the
+  // byte-identical legacy name, so the fix cannot orphan a running session.
+  it("is unchanged from the legacy name when no prefix is configured", () => {
+    expect(piDispatchSessionName({ short: "bd83d0a7", prefix: "" })).toBe("pi-bd83d0a7")
+  })
+
+  // The three assertions above test the helper. The BUG was at the call site:
+  // `dispatch` reached past a helper like this one straight to the unprefixed
+  // `piZellijSessionName`. Testing the helper alone would let exactly that
+  // regression back in, so this pins the mint site too — pi.io.ts may derive a
+  // pi session name in exactly one place, and everything else must go through
+  // it. Source-shape assertions are the established guard here (see
+  // scripts/check-harness.ts), because the alternative is stubbing a subprocess
+  // spawn to observe one string.
+  it("is derived in exactly one place in pi.io.ts — the call site cannot bypass it", () => {
+    const src = readFileSync(
+      join(import.meta.dir, "..", "apps/daemon/src/features/dispatch/pi.io.ts"),
+      "utf8",
+    )
+    const rawMints = [...src.matchAll(/piZellijSessionName\(/g)]
+    expect(rawMints).toHaveLength(1)
+    // ...and that one occurrence is the helper's own body, not a call site.
+    const helperBody = src.slice(src.indexOf("export const piDispatchSessionName"))
+    expect(helperBody).toContain("piZellijSessionName(")
+    // The dispatch body names the session through the helper.
+    expect(src).toContain("piDispatchSessionName({ short, prefix: zellijPrefix })")
   })
 })

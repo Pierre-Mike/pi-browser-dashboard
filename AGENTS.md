@@ -677,6 +677,40 @@ name is trimmed from the **front**, keeping its tail. Trimming the end would map
 two long names sharing a common stem onto one session — the same hijack, one
 level down. Both edge cases are covered in `terminal.core.test.ts`.
 
+#### The site the prefix originally missed: creating a pi session
+
+Every derivation above **reads** a name. Exactly one place **mints** one outside
+the terminal slice — `features/dispatch/pi.io.ts`, which creates the detached
+zellij session a dispatched pi run lives in — and it was not prefixed. So on any
+daemon with `PID_ZELLIJ_PREFIX` set, the dispatch created `pi-<short>` while the
+attach path and the poller both resolved `<prefix>-pi-<short>`, and three things
+broke without a single error:
+
+- **the poller** had no terminal-state row for the session at all, so
+  `GET /sessions/:id/explain` reported `terminal: undefined` — silently removing
+  the only independent evidence a pi session has (there is no `state.json`);
+- **`DELETE /terminal/<short>`** answered `{"ok":false}` and left the session
+  running: the daemon could not kill what it had just started;
+- **attach** took `zellijAttachOrCreate`'s create branch and resurrected a
+  *second* pi on the same session id under the prefixed name. Two processes
+  appending to one transcript, the real run left invisible — observed as two live
+  `pi` pids in one cwd.
+
+It is fixed where the name is minted (`piDispatchSessionName`), not by teaching
+the readers to try a second candidate: the prefix is a property of the daemon, so
+every name it derives must carry it. Because an empty prefix returns the name
+unchanged byte for byte, the fix is a **no-op on any default daemon** — including
+the user's — so no already-running session is orphaned. On a prefixed daemon the
+pre-existing sessions were already unreachable by all three readers; nothing
+regresses.
+
+The agreement between the minting side and the reading side is asserted in
+`scripts/mirrored-constants.test.ts` rather than in either slice, for the reason
+that file exists: neither slice may import the other's internals, so neither
+could hold the check. It also pins the *call site* — `pi.io.ts` may derive a pi
+session name in exactly one place — because testing only the helper would let the
+original bug straight back in.
+
 ## Brainstorm boards (session-scoped drawings)
 
 A brainstorm board is **any drawing file in the tree a session works in**. There
