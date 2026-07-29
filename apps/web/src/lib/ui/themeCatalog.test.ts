@@ -69,9 +69,12 @@ const REQUIRED_TOKENS = [
 // failure, it just fails against its own row rather than against pidlight's.
 //
 // The table is the design decision, in one place:
-//   pid       — byte-frozen. It is the default, and the point of tokenizing
-//               shape was to make the OTHER families expressible, not to
-//               restyle this one. Do not touch these three numbers.
+//   pid       — frozen. It is the default, and the point of tokenizing shape was
+//               to make the OTHER families expressible, not to restyle this
+//               one. Do not touch these three numbers. (Frozen *tokens*, not
+//               frozen pixels: individual elements did move, because the
+//               migration mapped each one by role — panel / control / chip —
+//               and Tailwind's `rounded-lg` never equalled `--rounded-btn`.)
 //   mono      — tight and technical.
 //   terminal  — fully square, including a 0s button transition.
 //   sunset    — soft, with fully-pill badges.
