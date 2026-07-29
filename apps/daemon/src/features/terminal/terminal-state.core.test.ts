@@ -478,6 +478,22 @@ describe("classifyTail", () => {
     expect(classifyTail({ tail: TURN_COMPLETE_DUMP }).matcher).toBe("turn-complete")
   })
 
+  it("anchors a completion line the same way at the tail's start as mid-tail", () => {
+    // What gets classified is a TRUNCATED tail (appendTail keeps the last N
+    // chars), so whether a rendered row happens to begin at character zero is an
+    // accident of where the window fell — not a property of the screen. The two
+    // must therefore agree.
+    //
+    // They did not: the shipped anchor spelled line start as `^` for the string
+    // and `\n[^\S\n]*` for every later row, and only the second branch tolerated
+    // an indent. A one-space-indented completion line classified when the window
+    // happened to include the preceding newline and went `unknown` when it did
+    // not — the same screen, two answers, decided by truncation.
+    const line = " ✻ Sautéed for 3s"
+    expect(classifyTail({ tail: line }).matcher).toBe("turn-complete")
+    expect(classifyTail({ tail: `earlier output\n${line}` }).matcher).toBe("turn-complete")
+  })
+
   it("classifies a session resting at its prompt as idle (prompt-resting)", () => {
     const result = classifyTail({ tail: PROMPT_RESTING_DUMP })
     expect(result.state).toBe("idle")
@@ -713,6 +729,85 @@ describe("classifyTail", () => {
     expect(result.state).toBe("working")
     expect(result.evidence?.length).toBe(201)
     expect(result.evidence?.endsWith("…")).toBe(true)
+  })
+})
+
+// ---- matcher cost -------------------------------------------------------
+
+// Every row's cost is paid on every classified frame, and there are two callers
+// doing that continuously: the attached-terminal tap runs the whole table once
+// per 400ms per open terminal, and the screen poller runs it once per unattended
+// session per pass. A row that SCANS instead of anchoring therefore does not
+// present as "a slow regex" — it presents as a daemon that stops keeping up, and
+// the symptom (a sluggish dashboard) points nowhere near the cause.
+//
+// That is not hypothetical. `turn-complete` shipped an anchor whose first branch,
+// `[^\S\n]{2,}`, MATCHES padding — so on a padded pane the engine opened a
+// candidate at nearly every column and backtracked the whole run at each one.
+// Measured 2026-07-29 on an 8 KB tail of a 400-column pane: 267ms per call,
+// against 0.16ms once the anchor was rewritten to anchor. A terminal pane is
+// mostly padding, so that is the ordinary case rather than a corner one.
+const paddedPane = (args: { readonly cols: number; readonly rows: number }): string =>
+  `│${" ".repeat(args.cols)}│\n`.repeat(args.rows)
+
+// Fastest of N, not the mean: the question is whether the work is algorithmically
+// bounded, and a shared CI box adds noise upward only.
+const fastestMs = (args: { readonly runs: number; readonly fn: () => void }): number => {
+  let best = Number.POSITIVE_INFINITY
+  for (let i = 0; i < args.runs; i++) {
+    const started = performance.now()
+    args.fn()
+    const elapsed = performance.now() - started
+    if (elapsed < best) best = elapsed
+  }
+  return best
+}
+
+describe("classifyTail cost", () => {
+  // Two orders of magnitude above the anchored measurement and an order of
+  // magnitude below the scanning one, so a loaded runner cannot flake it and a
+  // regression cannot squeak past it.
+  const BUDGET_MS = 25
+  const WIDE_PANE = paddedPane({ cols: 400, rows: 120 })
+
+  it("classifies a wide padded pane without walking it column by column", () => {
+    const tail = WIDE_PANE.slice(-8_000)
+    const ms = fastestMs({
+      runs: 5,
+      fn: () => {
+        classifyTail({ tail })
+      },
+    })
+    expect(ms).toBeLessThan(BUDGET_MS)
+  })
+
+  it("stays bounded when the padded pane really does end in a completion line", () => {
+    // The miss path is the hot one, but the hit path must not be the slow one
+    // either — and asserting the match here keeps the budget honest by proving
+    // the work was real.
+    const tail = `${WIDE_PANE}  ✻ Sautéed for 3s`.slice(-8_000)
+    expect(classifyTail({ tail }).matcher).toBe("turn-complete")
+    const ms = fastestMs({
+      runs: 5,
+      fn: () => {
+        classifyTail({ tail })
+      },
+    })
+    expect(ms).toBeLessThan(BUDGET_MS)
+  })
+
+  it("classifies a wide padded pane carrying the workspace-trust dialog", () => {
+    // Same defect, same anchor, second row: `blocked` is the state a wait can
+    // hang on, so this one is not merely a cost problem.
+    const tail = `${WIDE_PANE}  ❯ 1. Yes, I trust this folder`.slice(-8_000)
+    expect(classifyTail({ tail }).state).toBe("blocked")
+    const ms = fastestMs({
+      runs: 5,
+      fn: () => {
+        classifyTail({ tail })
+      },
+    })
+    expect(ms).toBeLessThan(BUDGET_MS)
   })
 })
 

@@ -193,7 +193,11 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // doc that pastes the rendered option list verbatim as a numbered list is
     // indistinguishable from the dialog. Hence the house rule — placeholders in
     // prose, renders only in fixtures.
-    pattern: /(?:^|\n[^\S\n]*|[^\S\n]{2,})(?:❯[^\S\n]*)?1\.[^\S\n]+Yes, I trust this folder/,
+    // Anchored the same way, and for the same two reasons, as `turn-complete`
+    // below — see the long note on that row: `^[^\S\n]*` under `m` is the single
+    // spelling of "starts its row", and `{2}` rather than `{2,}` keeps the
+    // padding branch from backtracking a pane-width run at every column.
+    pattern: /(?:^[^\S\n]*|[^\S\n]{2})(?:❯[^\S\n]*)?1\.[^\S\n]+Yes, I trust this folder/m,
   },
   // The three rows below are `working`, and they were anchored on 2026-07-29 for
   // the same reason the two above were: a bare literal is a string any terminal
@@ -298,6 +302,26 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     //    of padding on the collapsed attached path) and ends it; a quotation sits
     //    mid-sentence behind a delimiter, or one space after a word.
     //
+    // THE ANCHOR MUST ANCHOR, NOT SCAN. This row first shipped that requirement
+    // as `(?:^|\n[^\S\n]*|[^\S\n]{2,})`, and both halves of that were wrong:
+    //  - `[^\S\n]{2,}` MATCHES padding, greedily. A terminal pane is mostly
+    //    padding, so the engine opened a candidate at nearly every column and
+    //    backtracked the whole run at each one — 267ms per call on an 8 KB tail
+    //    of a 400-column pane, against 0.16ms for the form below (measured
+    //    2026-07-29). Since the tap classifies every open terminal every 400ms
+    //    and the poller classifies every unattended session every pass, that is
+    //    a busy CPU core and a dashboard that stops keeping up. `{2}` accepts
+    //    exactly the same screens — "at least two spaces precede the verb" is
+    //    already decided by where the engine starts the match, so consuming the
+    //    rest of the run buys nothing and costs the backtracking.
+    //  - `^` next to a separate `\n[^\S\n]*` branch spelled "line start" twice
+    //    and differently: only the second branch tolerated an indent, so a
+    //    one-space-indented completion line matched mid-tail and NOT at the
+    //    tail's start. What gets classified is a truncated window, so that made
+    //    the answer depend on where the truncation fell. Under `m`, `^[^\S\n]*`
+    //    is the one spelling and covers both.
+    // `classifyTail cost` in the co-located test pins the budget.
+    //
     // The glyph is captured but OPTIONAL: it was U+273B in all 70 captured frames
     // and in an earlier pty capture, yet the spinner glyphs on the working status
     // line rotate through at least four code points, so requiring this one would
@@ -305,8 +329,7 @@ const MATCHERS: ReadonlyArray<Matcher> = [
     // clause also tolerates ZERO spaces after the glyph, because a pty capture in
     // the fixtures jumps the cursor between glyph and verb instead of printing
     // one.
-    pattern:
-      /(?:^|\n[^\S\n]*|[^\S\n]{2,})(?:✻[^\S\n]*)?\p{Lu}[\p{Ll}'-]*ed for \d+s(?=[^\S\n]|$)/mu,
+    pattern: /(?:^[^\S\n]*|[^\S\n]{2})(?:✻[^\S\n]*)?\p{Lu}[\p{Ll}'-]*ed for \d+s(?=[^\S\n]|$)/mu,
   },
   {
     name: "prompt-resting",
