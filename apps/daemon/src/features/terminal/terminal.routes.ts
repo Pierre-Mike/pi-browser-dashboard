@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect } from "effect"
+import { Effect, Either } from "effect"
 import type { Context } from "hono"
 import { Hono } from "hono"
 import { appRuntime } from "../../platform/runtime"
@@ -33,6 +33,13 @@ import {
   zellijSessionName,
 } from "./terminal.core"
 import {
+  parsePaneCloseRequest,
+  parsePaneCreateRequest,
+  refusalMessage,
+  refusalStatus,
+} from "./terminal-panes.core"
+import { createPaneWriter } from "./terminal-panes.io"
+import {
   type PollCandidate,
   stalePaneKeys,
   type TerminalScope,
@@ -46,6 +53,7 @@ import {
   classifyTail,
   decideTransition,
   type TerminalStateSlug,
+  terminalPaneRowId,
   terminalStateKey,
 } from "./terminal-state.core"
 
@@ -937,7 +945,123 @@ export const terminalPoller = createTerminalPoller({
   tailMaxChars: TERMINAL_STATE_TAIL_MAX_CHARS,
 })
 
+// --- the write surface -------------------------------------------------------
+//
+// The daemon's only way to change zellij's own state (beyond attaching a bridge):
+// open a pane in a terminal it derived and owns, and close a pane it opened
+// itself. Ports are the same reads the poller uses, plus one directory check and
+// one bounded spawn. See terminal-panes.core.ts's header for the refusal
+// discipline and the four measured zellij behaviours it is built around.
+const paneWriter = createPaneWriter({
+  ports: {
+    listCandidates: listPollCandidates,
+    listSessions: () => runZellijRead(zellijListSessionsArgv()),
+    listPanes: ({ sessionName }) => runZellijRead(zellijListPanesArgv({ sessionName })),
+    // Existence AND directory-ness: `--cwd` pointing at a regular file is as
+    // wrong as one pointing at nothing, and zellij accepts both silently.
+    directoryExists: ({ path }) => {
+      try {
+        return statSync(path).isDirectory()
+      } catch {
+        return false
+      }
+    },
+    // Same environment policy as the read path above, and for the same reason:
+    // these calls never attach, they name their target with an explicit
+    // `--session` (built by a pure function whose exact argv a test pins), and
+    // that was verified to work with a *different* session's ZELLIJ_SESSION_NAME
+    // still in the environment. Scrubbing through `cleanZellijEnv` as
+    // belt-and-braces would need one more environment read in a file whose count
+    // the axiom ratchet pins exactly (`bun run axiom-debt`) — a worse trade than
+    // it sounds, because that ratchet is what stops the count drifting anywhere,
+    // and the risk the scrub would cover (an argv that somehow lost its
+    // `--session`) cannot be built here in the first place.
+    //
+    // No `cwd` is passed to Bun.spawn on purpose. The caller's directory travels
+    // as zellij's `--cwd` ARGUMENT, so a path that vanished between the check and
+    // the spawn cannot repeat the crash that a nonexistent spawn cwd has caused
+    // in this daemon before.
+    runZellij: async ({ argv }) => {
+      try {
+        const proc = Bun.spawn([...argv], { stdout: "pipe", stderr: "pipe" })
+        const [out, err] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ])
+        await proc.exited
+        return { ok: proc.exitCode === 0, output: out.trim() === "" ? err : out }
+      } catch (error) {
+        // A spawn that could not start at all (no `zellij` on PATH). Reported as
+        // a failure rather than thrown: the route answers 502 and the daemon
+        // stays up.
+        return { ok: false, output: error instanceof Error ? error.message : "spawn failed" }
+      }
+    },
+  },
+})
+
 const app = new Hono()
+  // Registered ahead of every `/:id` route below, so a terminal id can never
+  // literally be "panes" and shadow them. Both are POST — deliberately not
+  // DELETE for the close — because `DELETE /terminal/:id` is the route that
+  // KILLS A SESSION, and no pane operation should live one path segment away
+  // from that.
+  .post("/panes", async (c) => {
+    const parsed = parsePaneCreateRequest(await c.req.json().catch(() => ({})))
+    if (Either.isLeft(parsed)) {
+      return c.json({ error: "bad_request", message: parsed.left.message }, 400)
+    }
+    const outcome = await paneWriter.create(parsed.right)
+    if (outcome._tag === "Refused") {
+      return c.json(
+        { error: outcome.reason, message: refusalMessage(outcome.reason) },
+        refusalStatus(outcome.reason),
+      )
+    }
+    if (outcome._tag === "ZellijFailed") {
+      return c.json({ error: "zellij_failed", message: outcome.detail }, 502)
+    }
+    return c.json({
+      ok: true,
+      scope: outcome.scope,
+      id: outcome.id,
+      paneId: outcome.paneId,
+      paneName: outcome.paneName,
+      sessionName: outcome.sessionName,
+      // The key this pane's screen classification appears under once the poller
+      // reaches it — handed back so a caller can watch the pane it just made
+      // without having to know how the key is spelled.
+      key: terminalStateKey({
+        scope: outcome.scope,
+        id: terminalPaneRowId({ id: outcome.id, paneId: outcome.paneId }),
+      }),
+    })
+  })
+  .post("/panes/close", async (c) => {
+    const parsed = parsePaneCloseRequest(await c.req.json().catch(() => ({})))
+    if (Either.isLeft(parsed)) {
+      return c.json({ error: "bad_request", message: parsed.left.message }, 400)
+    }
+    const outcome = await paneWriter.close(parsed.right)
+    if (outcome._tag === "Refused") {
+      return c.json(
+        { error: outcome.reason, message: refusalMessage(outcome.reason) },
+        refusalStatus(outcome.reason),
+      )
+    }
+    if (outcome._tag === "ZellijFailed") {
+      return c.json({ error: "zellij_failed", message: outcome.detail }, 502)
+    }
+    // `closed` distinguishes "this call closed it" from "it was already gone" —
+    // both are the goal state, and neither is an error.
+    return c.json({
+      ok: true,
+      scope: parsed.right.scope,
+      id: parsed.right.id,
+      paneId: outcome.paneId,
+      closed: outcome._tag === "Closed",
+    })
+  })
   .get(
     "/global",
     makeWsHandler({

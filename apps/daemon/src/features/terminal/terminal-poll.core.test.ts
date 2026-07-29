@@ -7,6 +7,7 @@ import {
   type PollCandidate,
   parseSessionList,
   parseTerminalPaneIds,
+  parseTerminalPaneRows,
   rotateTargets,
   selectPanesToDump,
   selectPollTargets,
@@ -200,6 +201,30 @@ describe("selectPollTargets", () => {
     ]
     const picked = selectPollTargets({ candidates: dupes, sessions, attachedSessionNames: [] })
     expect(picked).toEqual([{ scope: "session", id: "abcd1234", sessionName: "default" }])
+  })
+})
+
+// The rows behind parseTerminalPaneIds. The title is what lets the write surface
+// check that a pane still carries the name the daemon minted for it before
+// closing it (terminal-panes.core.ts).
+describe("parseTerminalPaneRows", () => {
+  it("carries each terminal pane's title, and drops plugin rows and the header", () => {
+    expect(parseTerminalPaneRows(PANE_LIST)).toEqual([
+      { paneId: "terminal_0", title: "bash -lc claude attach abcd1234; exec bash -l" },
+    ])
+  })
+
+  it("keeps a minted pane name intact", () => {
+    const raw = `PANE_ID  TYPE  TITLE
+terminal_3  terminal  pid-pane-1
+`
+    expect(parseTerminalPaneRows(raw)).toEqual([{ paneId: "terminal_3", title: "pid-pane-1" }])
+  })
+
+  it("is empty for a title-less row rather than dropping the pane", () => {
+    expect(parseTerminalPaneRows("PANE_ID  TYPE  TITLE\nterminal_0  terminal\n")).toEqual([
+      { paneId: "terminal_0", title: "" },
+    ])
   })
 })
 

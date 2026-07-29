@@ -13,6 +13,8 @@ import {
   buildDispatchRequestBody,
   buildFleetRunRequestBody,
   buildKeysRequestBody,
+  buildPaneCloseBody,
+  buildPaneNewBody,
   buildSendRequestBody,
   buildWaitRequestBody,
   type Command,
@@ -21,6 +23,7 @@ import {
   exitCodeForFleetRunStatus,
   exitCodeForFleets,
   exitCodeForOutcome,
+  exitCodeForPaneStatus,
   exitCodeForRulesErrors,
   exitCodeForTerminalLookup,
   exitCodeForUsage,
@@ -37,6 +40,8 @@ import {
   formatFleetRuns,
   formatFleets,
   formatKeysSent,
+  formatPaneClosed,
+  formatPaneCreated,
   formatRemoved,
   formatRulesPreview,
   formatRulesStatus,
@@ -49,6 +54,7 @@ import {
   type HelpCommand,
   NAMED_KEYS_HELP,
   OUTPUT_ANCHORS_HELP,
+  type PaneResponse,
   type ParseError,
   parseAgentArgv,
   parseDispatchResponse,
@@ -60,6 +66,7 @@ import {
   parseFleetsResponse,
   parseKeysResponse,
   parseOkShortResponse,
+  parsePaneResponse,
   parseRulesPreviewResponse,
   parseRulesStatusResponse,
   parseSendResponse,
@@ -84,6 +91,8 @@ Usage:
   pid sessions [--state <slug,...>] [--json]
   pid explain <short> [--json]
   pid terminals [<scope>:<id>] [--json]
+  pid pane new <scope>:<id> [--cwd <path>] [--json] [-- <command>...]
+  pid pane close <scope>:<id> <paneId> [--json]
   pid wait <short> [--until <slug,...>] [--until-output <text> [--anchor <where>]]
            [--via supervisor|screen|either] [--timeout <ms>] [--json]
   pid send <short> <text...> [--wait <slug,...>] [--timeout <ms>] [--json]
@@ -129,6 +138,25 @@ covers a claude or pi a human started by hand. With no argument it prints
 every terminal; with a <scope>:<id> key (session:ab12, project:my-app,
 global:global, orchestrator:orchestrator) it prints just that one, and exits 6
 if that terminal has no classification yet.
+
+pid pane new opens a pane in a terminal this daemon derived and owns, and
+pid pane close closes one it opened itself. The target is the same
+<scope>:<id> key pid terminals prints — never a zellij session name, which
+the daemon looks up itself so a session it does not own cannot be named at
+all. Everything after -- is the pane's command as argv (no shell, so no
+quoting to get wrong), and --cwd must exist: zellij would accept a missing
+directory and run the command elsewhere, so the daemon refuses instead.
+The new pane's own screen shows up in pid terminals under
+<scope>:<id>#<paneId>, which pane new prints for you.
+
+Refusals are exit 2 and each names itself: not_created_here (a pane this
+daemon did not open, including every pane it opened before its last restart —
+the bookkeeping is in memory, and refusing beats guessing), own_pane (the pane
+you are calling from), last_pane (the session's only pane, whose closure would
+leave the session with none), pane_budget (as many panes as the screen poller
+classifies — a further one could not be observed), cwd_missing. A terminal
+this daemon has no record of at all is exit 6. This surface never kills or
+deletes a session.
 
 pid fleets lists the declarative multi-agent recipes in a project's
 .pid/fleet.json (schema + validation + wave planning only). pid fleet run
@@ -878,6 +906,123 @@ const runSpawn = async ({
   return worstExitCode(attempts.map((a) => a.code))
 }
 
+// --- panes -------------------------------------------------------------------
+
+// One response shape, two commands: a create reply carries the pane's name and
+// the key its screen appears under, a close reply carries `closed`. Both are
+// reported the same way — the daemon's own body under --json, one line otherwise.
+// `--json` prints the daemon's own body verbatim, the same contract every other
+// command follows; without it, one line built from the parsed reply. Exactly one
+// of the two is printed, and a refusal prints the daemon's own message on stderr
+// rather than a paraphrase.
+// A refusal: the daemon named it and explained it, so print its own words —
+// under --json the body too, since a refusal reason is exactly what a scripted
+// caller wants to read.
+const reportPaneRefusal = ({
+  res,
+  body,
+  label,
+  json,
+}: {
+  readonly res: Response
+  readonly body: unknown
+  readonly label: string
+  readonly json: boolean
+}): ExitCode => {
+  if (json) console.log(JSON.stringify(body))
+  console.error(`${label}: ${errorMessageFrom(body)}`)
+  return exitCodeForPaneStatus(res.status)
+}
+
+const reportPane = ({
+  res,
+  body,
+  label,
+  json,
+  format,
+}: {
+  readonly res: Response
+  readonly body: unknown
+  readonly label: string
+  readonly json: boolean
+  readonly format: (parsed: PaneResponse) => string
+}): ExitCode => {
+  if (!res.ok) return reportPaneRefusal({ res, body, label, json })
+  if (json) {
+    console.log(JSON.stringify(body))
+    return 0
+  }
+  const parsed = parsePaneResponse(body)
+  if (Either.isLeft(parsed)) {
+    console.error(`${label}: ${parsed.left.message}`)
+    return 1
+  }
+  console.log(format(parsed.right))
+  return 0
+}
+
+// Split for the human line only — the request body's own split happens in the
+// pure core (buildPaneNewBody).
+const paneTargetOf = (key: string): { readonly scope: string; readonly id: string } => {
+  const idx = key.indexOf(":")
+  return { scope: key.slice(0, idx), id: key.slice(idx + 1) }
+}
+
+const runPaneNew = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "PaneNew" }>
+}): Promise<ExitCode> => {
+  const res: Response = await client.terminal.panes.$post({
+    json: buildPaneNewBody({ key: command.key, cwd: command.cwd, command: command.command }),
+  })
+  const body = await readJson(res)
+  return reportPane({
+    res,
+    body,
+    label: "pane new",
+    json: command.json,
+    format: (parsed) =>
+      formatPaneCreated({
+        ...paneTargetOf(command.key),
+        paneId: parsed.paneId,
+        paneName: parsed.paneName,
+        sessionName: parsed.sessionName,
+        key: parsed.key,
+      }),
+  })
+}
+
+const runPaneClose = async ({
+  client,
+  command,
+}: {
+  readonly client: AnyClient
+  readonly command: Extract<Command, { readonly _tag: "PaneClose" }>
+}): Promise<ExitCode> => {
+  const res: Response = await client.terminal.panes.close.$post({
+    json: buildPaneCloseBody({
+      key: command.key,
+      paneId: command.paneId,
+      // Where this CLI is running, straight from zellij's own environment, so the
+      // daemon can refuse to close the pane the caller is sitting in. Untrusted
+      // by construction: it can only ever make the daemon say no.
+      callerPaneId: process.env.ZELLIJ_PANE_ID,
+      callerSessionName: process.env.ZELLIJ_SESSION_NAME,
+    }),
+  })
+  const body = await readJson(res)
+  return reportPane({
+    res,
+    body,
+    label: "pane close",
+    json: command.json,
+    format: (parsed) => formatPaneClosed({ paneId: parsed.paneId, closed: parsed.closed }),
+  })
+}
+
 type NonHelpCommand = Exclude<Command, HelpCommand>
 
 type AnyCommandHandler = (args: {
@@ -904,6 +1049,8 @@ const HANDLERS: Readonly<Record<NonHelpCommand["_tag"], AnyCommandHandler>> = {
   Rules: runRules,
   RulesPreview: runRulesPreview,
   Terminals: runTerminals,
+  PaneNew: runPaneNew,
+  PaneClose: runPaneClose,
 }
 
 const runCommand = ({

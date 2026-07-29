@@ -993,6 +993,78 @@ plain words (sessions, waves, project), a live-updating run list fed by the
 step is deliberately styled differently from a failed one. See "Frontend
 skeleton" below.
 
+## Panes: the daemon's only write surface into zellij
+
+Until this landed, everything the daemon did with zellij was a read
+(`list-sessions`, `action list-panes`, `action dump-screen --pane-id`) plus
+attaching a WS bridge — a pane existed because a human made it. `POST
+/terminal/panes` (`pid pane new <scope>:<id>`) opens a pane in a terminal the
+daemon derived and owns, and `POST /terminal/panes/close`
+(`pid pane close <scope>:<id> <paneId>`) closes one it opened itself.
+`features/terminal/terminal-panes.core.ts` holds every decision;
+`terminal-panes.io.ts` spawns and keeps the bookkeeping.
+
+- **Ownership is the same derivation the poller uses, and a caller cannot name
+  a session at all.** A request carries a `scope` and an `id`, never a zellij
+  session NAME: `resolveOwnedSession` looks the name up in the daemon's own
+  candidate list (`listPollCandidates`, the list `selectPollTargets` intersects)
+  and requires `zellij list-sessions` to report it live and not EXITED. So a
+  session the daemon did not derive cannot be asked for, rather than being
+  filtered out afterwards. No name-shape heuristic exists anywhere in the path.
+- **Two zellij verbs, by construction.** The only argv this slice can build are
+  `action new-pane` and `action close-pane`. `kill-session`,
+  `delete-session` and `kill-all-sessions` are not merely avoided — they cannot
+  be produced, and a test asserts the built argv contains none of them.
+- **The refusal matrix** (each reason is its own word, so a caller can branch;
+  `refusalStatus` maps them to a status and the CLI to an exit code):
+
+  | reason | status / `pid` | why |
+  |---|---|---|
+  | `not_derived` | 404 / 6 | the daemon never derived that scope+id |
+  | `not_live` | 404 / 6 | derived, but no live zellij session by that name |
+  | `cwd_missing` | 400 / 2 | see below — zellij would accept it silently |
+  | `pane_budget` | 409 / 2 | the session already holds `MAX_PANES_PER_SESSION` terminal panes, so a further pane could not be classified by the poller — creating an unobservable pane is not a favour |
+  | `not_created_here` | 409 / 2 | no bookkeeping record (a human's pane, or any pane created before the last daemon restart), or the live pane no longer carries the name the daemon minted |
+  | `own_pane` | 409 / 2 | the caller's own pane; closing it would kill the caller mid-request |
+  | `last_pane` | 409 / 2 | the session's only terminal pane — closing it leaves the session with zero panes, which is a teardown by another name |
+
+- **`--cwd` is guarded by the daemon, not by zellij.** Verified against zellij
+  0.44.3: `new-pane --cwd /does/not/exist` is ACCEPTED — it creates the pane and
+  runs the command somewhere else, silently. A pane running in the wrong
+  directory is worse than no pane, so `directoryExists` is checked (and must be
+  a directory) before any spawn. The requested path is passed as zellij's `--cwd`
+  ARGUMENT and never as `Bun.spawn`'s own cwd, because spawning into a
+  nonexistent cwd has killed this daemon before.
+- **Created-pane bookkeeping is in memory only, and that is the safe choice.**
+  Pane ids are monotonic within a session and never reused (measured), so within
+  one daemon lifetime an id identifies one pane — but a recreated session starts
+  at `terminal_0` again, so a record that outlived the daemon could name a pane a
+  human made. After a restart the daemon cannot know it created anything and
+  refuses every close (`not_created_here`) rather than guessing. Identity is
+  therefore id AND minted name: `--name pid-pane-<n>` survives a program setting
+  its own OSC title (also measured), so `decideClosePane` requires the live
+  `list-panes` row for that id to still carry it.
+- **Self-close is refused, not honoured.** `pid pane close` sends the caller's own
+  `ZELLIJ_PANE_ID` / `ZELLIJ_SESSION_NAME` (read in `apps/cli/src/agent/main.ts`,
+  a sanctioned composition root). Both are untrusted by construction — they come
+  from the caller's environment and can only ever make the daemon refuse, never
+  let it do more — and `ZELLIJ_PANE_ID` is a bare number inside a pane while
+  `list-panes` speaks `terminal_<n>`, so `normalizePaneId` accepts both spellings.
+- Closing a pane that has already gone is a success (`ok: true, closed: false`),
+  not an error: the state asked for is the state that holds. The record is dropped
+  either way, so a second close is `not_created_here`. A zellij failure keeps the
+  record (retryable) and answers 502 with only the FIRST LINE of zellij's output,
+  bounded to 200 chars — an unknown session makes `zellij action` print its whole
+  session list, 60KB of it on the box this was written on.
+- The write spawn scrubs the environment through `cleanZellijEnv`, unlike the
+  read path. Not because `action` attaches (it does not) but because a write is
+  where an ambient `ZELLIJ_SESSION_NAME` would be dangerous: if `--session` were
+  ever dropped from an argv, a scrubbed environment makes that a loud failure
+  instead of a pane opened in whatever session the daemon itself runs inside.
+- A created pane is classified like any other: its screen appears under
+  `<scope>:<id>#<paneId>` (see the poller section above), and the create response
+  hands that key back so a caller does not have to build it.
+
 ## State-change rules (`<claudeConfigDir>/pid-dashboard/rules.json`)
 
 herdr's own docs leave "when a session does X, do Y" to shell scripting over
@@ -1590,11 +1662,11 @@ An orchestrating agent composes `pid` in a shell
 |---|---|
 | 0 | success / wait satisfied |
 | 1 | transport failure, 5xx, unreachable daemon, or a response this CLI's parser could not make sense of |
-| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or an invalid recipe file / a cap-exceeded `pid fleet run` request |
+| 2 | usage error (unknown command, missing argument, bad slug, unknown key name) — or an invalid recipe file / a cap-exceeded `pid fleet run` request, or a refused `pid pane` request (`cwd_missing`, `pane_budget`, `not_created_here`, `own_pane`, `last_pane`) |
 | 3 | wait timed out |
 | 4 | `occupant_changed` — the session was replaced under the wait |
 | 5 | `removed` — the session went away |
-| 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key |
+| 6 | not found — the daemon returned 404, or `pid terminals <scope>:<id>` found no entry for that key, or a `pid pane` target this daemon never derived (`not_derived`) or whose zellij session is not running (`not_live`) |
 | 7 | `pid fleet run --wait`: the run finished with a failed or skipped step, or the daemon refused to start it because that fleet already has an active run |
 | 8 | `screen_polling_disabled` — `pid wait --until-output` against a daemon whose screen poller is off (`PID_TERMINAL_POLL_MS=0`), off its own `409`. Deterministic: retrying cannot help until the daemon is reconfigured, which is exactly why it is not 3 |
 

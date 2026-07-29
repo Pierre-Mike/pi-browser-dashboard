@@ -238,6 +238,31 @@ export type TerminalsCommand = {
   readonly url: string | undefined
 }
 
+// `pid pane new <scope>:<id>` — the same key shape `pid terminals` prints, so
+// the thing you just watched is the thing you open a pane in. `command` is
+// everything after a literal `--`, kept as argv: the daemon hands it to zellij
+// as argv too, so there is no shell anywhere in the path.
+export type PaneNewCommand = {
+  readonly _tag: "PaneNew"
+  readonly key: string
+  readonly cwd: string | undefined
+  readonly command: ReadonlyArray<string> | undefined
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
+// `pid pane close <scope>:<id> <paneId>`. The pane id is passed through as
+// written — `terminal_3` or the bare `3` a pane's own `ZELLIJ_PANE_ID` carries —
+// and normalised daemon-side, which is also where the two spellings have to
+// agree for the self-close refusal to work.
+export type PaneCloseCommand = {
+  readonly _tag: "PaneClose"
+  readonly key: string
+  readonly paneId: string
+  readonly json: boolean
+  readonly url: string | undefined
+}
+
 export type HelpCommand = {
   readonly _tag: "Help"
   readonly url: string | undefined
@@ -258,6 +283,8 @@ export type Command =
   | RulesCommand
   | RulesPreviewCommand
   | TerminalsCommand
+  | PaneNewCommand
+  | PaneCloseCommand
   | HelpCommand
 
 export type UsageError = {
@@ -1134,6 +1161,123 @@ const parseTerminalsCommand = ({
   })
 }
 
+// --- pane new / pane close ---------------------------------------------------
+
+// Everything after the FIRST literal `--` is the pane's command, flags and all.
+// Without this split, `pid pane new session:ab12 -- bun test --json` would have
+// its `--json` stolen by the CLI instead of reaching the program being run.
+const splitAtDoubleDash = (
+  argv: ReadonlyArray<string>,
+): {
+  readonly head: ReadonlyArray<string>
+  readonly command: ReadonlyArray<string> | undefined
+} => {
+  const idx = argv.indexOf("--")
+  if (idx === -1) return { head: argv, command: undefined }
+  const command = argv.slice(idx + 1)
+  return { head: argv.slice(0, idx), command: command.length === 0 ? undefined : command }
+}
+
+// The pane commands validate their target exactly the way `pid terminals` does —
+// same key shape, same refusal to guess a scope — so the message is reused with
+// only the command name swapped rather than written twice.
+const paneKeyOf = ({
+  command,
+  raw,
+}: {
+  readonly command: string
+  readonly raw: string
+}): Either.Either<string, UsageError> =>
+  Either.mapLeft(parseTerminalKey(raw), (err) =>
+    usageError(err.message.replace(/^terminals/, command)),
+  )
+
+// Shared by both pane subcommands: the first positional is the terminal key, and
+// `max` is however many positionals that subcommand allows in total.
+const requirePaneTarget = ({
+  command,
+  positionals,
+  max,
+}: {
+  readonly command: string
+  readonly positionals: ReadonlyArray<string>
+  readonly max: number
+}): Either.Either<string, UsageError> => {
+  const raw = positionals[0]
+  if (raw === undefined) {
+    return Either.left(usageError(`${command}: requires a <scope>:<id> argument`))
+  }
+  const extra = rejectExtraPositionals({ command, positionals, max })
+  return Either.isLeft(extra) ? Either.left(extra.left) : paneKeyOf({ command, raw })
+}
+
+const parsePaneNewCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
+  const { head, command } = splitAtDoubleDash(rest)
+  const scanned = scanArgv({ command: "pane new", argv: head, flagSpecs: withJson([FLAG_CWD]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  const target = requirePaneTarget({ command: "pane new", positionals, max: 1 })
+  if (Either.isLeft(target)) return Either.left(target.left)
+  return Either.right({
+    _tag: "PaneNew",
+    key: target.right,
+    cwd: flags.get("cwd"),
+    command,
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parsePaneCloseCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
+  const scanned = scanArgv({ command: "pane close", argv: rest, flagSpecs: withJson([]) })
+  if (Either.isLeft(scanned)) return Either.left(scanned.left)
+  const { positionals, flags } = scanned.right
+  // Checked before the key so a lone `pane close session:ab12` says what is
+  // actually missing rather than complaining about the argument that is present.
+  const paneId = positionals[1]
+  if (paneId === undefined) {
+    return Either.left(usageError("pane close: requires a <scope>:<id> and a pane id"))
+  }
+  const target = requirePaneTarget({ command: "pane close", positionals, max: 2 })
+  if (Either.isLeft(target)) return Either.left(target.left)
+  return Either.right({
+    _tag: "PaneClose",
+    key: target.right,
+    paneId,
+    json: flags.has("json"),
+    url,
+  })
+}
+
+const parsePaneCommand = ({
+  rest,
+  url,
+}: {
+  readonly rest: ReadonlyArray<string>
+  readonly url: string | undefined
+}): Either.Either<Command, UsageError> => {
+  const [sub, ...subRest] = rest
+  if (sub === "new") return parsePaneNewCommand({ rest: subRest, url })
+  if (sub === "close") return parsePaneCloseCommand({ rest: subRest, url })
+  return Either.left(
+    usageError(
+      `pane: unknown subcommand${sub === undefined ? "" : `: ${sub}`} (expected new|close)`,
+    ),
+  )
+}
+
 const parseShortOnlyCommand = ({
   tag,
   command,
@@ -1196,6 +1340,7 @@ const SUBCOMMAND_PARSERS: Readonly<
   fleet: parseFleetCommand,
   rules: parseRulesCommand,
   terminals: parseTerminalsCommand,
+  pane: parsePaneCommand,
 }
 
 // `rest` is always non-empty here (parseAgentArgv only calls this once the
@@ -1908,6 +2053,123 @@ export const exitCodeForTerminalLookup = ({
   readonly key: string | undefined
   readonly matched: number
 }): ExitCode => (key !== undefined && matched === 0 ? 6 : 0)
+
+// --- Panes (POST /terminal/panes, POST /terminal/panes/close) ----------------
+//
+// The daemon's only write surface into zellij. Everything the CLI contributes
+// here is shaping: split the `<scope>:<id>` key the way the daemon expects, keep
+// the pane's command as argv, and turn a refusal into an exit code a shell can
+// branch on.
+
+// The `key` is validated by parseTerminalKey before it gets here, so the split
+// cannot fail — and it splits on the FIRST colon only, because a project id may
+// contain one.
+const keyParts = (key: string): { readonly scope: string; readonly id: string } => {
+  const idx = key.indexOf(":")
+  return { scope: key.slice(0, idx), id: key.slice(idx + 1) }
+}
+
+export const buildPaneNewBody = ({
+  key,
+  cwd,
+  command,
+}: {
+  readonly key: string
+  readonly cwd: string | undefined
+  readonly command: ReadonlyArray<string> | undefined
+}): Record<string, unknown> => ({
+  ...keyParts(key),
+  // Omitted rather than sent as null: the daemon reads "no cwd" as "inherit the
+  // session's", and an explicit null would be a bad request.
+  ...(cwd === undefined ? {} : { cwd }),
+  ...(command === undefined ? {} : { command }),
+})
+
+export const buildPaneCloseBody = ({
+  key,
+  paneId,
+  callerPaneId,
+  callerSessionName,
+}: {
+  readonly key: string
+  readonly paneId: string
+  // The caller's own pane and session, read from the environment by the shell.
+  // Sent so the daemon can refuse a self-close; absent outside a zellij pane.
+  readonly callerPaneId: string | undefined
+  readonly callerSessionName: string | undefined
+}): Record<string, unknown> => ({
+  ...keyParts(key),
+  paneId,
+  ...(callerPaneId === undefined ? {} : { callerPaneId }),
+  ...(callerSessionName === undefined ? {} : { callerSessionName }),
+})
+
+// 404 is "this daemon has no such terminal" — the same not-found every other
+// command reports as 6. A 409 is a REFUSAL: the request was understood, the
+// answer is no, and no retry will change it, so it is the caller's mistake to
+// fix (2) rather than a transport failure (1) or a timeout (3). 400 is the same
+// class of caller error. Anything else, including the 502 a failed `zellij
+// action` produces, is 1: the daemon could not carry the request out and the
+// caller does not know what state zellij is in.
+const PANE_STATUS_EXIT: Readonly<Record<number, ExitCode>> = {
+  200: 0,
+  400: 2,
+  404: 6,
+  409: 2,
+}
+
+export const exitCodeForPaneStatus = (status: number): ExitCode => PANE_STATUS_EXIT[status] ?? 1
+
+export type PaneResponse = {
+  readonly paneId: string
+  readonly paneName: string | undefined
+  readonly sessionName: string | undefined
+  // Present on a create: the key this pane's screen classification appears under
+  // in `pid terminals`.
+  readonly key: string | undefined
+  // Present on a close: whether THIS call closed the pane, or it had already
+  // gone. Both are the goal state; only one of them did anything.
+  readonly closed: boolean | undefined
+}
+
+export const parsePaneResponse = (raw: unknown): Either.Either<PaneResponse, ParseError> => {
+  if (!isPlainObject(raw)) return Either.left(parseError("pane response must be an object"))
+  const paneId = optionalString(raw.paneId)
+  if (paneId === undefined) return Either.left(parseError("pane response has no paneId"))
+  return Either.right({
+    paneId,
+    paneName: optionalString(raw.paneName),
+    sessionName: optionalString(raw.sessionName),
+    key: optionalString(raw.key),
+    closed: typeof raw.closed === "boolean" ? raw.closed : undefined,
+  })
+}
+
+// One line, and every part of it is something the caller needs next: the pane id
+// to close it with, the key to watch its screen under, the minted name so the
+// pane is findable in zellij's own tab bar, and the session it landed in.
+export const formatPaneCreated = (input: {
+  readonly scope: string
+  readonly id: string
+  readonly paneId: string
+  readonly paneName: string | undefined
+  readonly sessionName: string | undefined
+  readonly key: string | undefined
+}): string =>
+  [
+    `pane ${input.paneId} opened in ${input.scope}:${input.id}`,
+    input.sessionName === undefined ? undefined : `(zellij session ${input.sessionName})`,
+    input.paneName === undefined ? undefined : `named ${input.paneName}`,
+    input.key === undefined ? undefined : `— screen at ${input.key}`,
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join(" ")
+
+export const formatPaneClosed = (input: {
+  readonly paneId: string
+  readonly closed: boolean | undefined
+}): string =>
+  input.closed === false ? `pane ${input.paneId} was already gone` : `pane ${input.paneId} closed`
 
 // --- Fleet recipes (GET /projects/:id/fleets) --------------------------------
 //
