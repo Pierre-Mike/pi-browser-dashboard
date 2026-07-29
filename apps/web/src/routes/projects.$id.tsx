@@ -37,12 +37,12 @@ function ProjectDashboardPage() {
   const projectsQ = useProjects()
 
   if (projectsQ.isLoading) {
-    return <div className="text-sm text-slate-500">Loading…</div>
+    return <div className="text-sm text-base-content/60">Loading…</div>
   }
 
   if (projectsQ.isError) {
     return (
-      <div className="text-sm text-rose-600">
+      <div className="text-sm text-error">
         Failed to load projects:{" "}
         {projectsQ.error instanceof Error ? projectsQ.error.message : "unknown error"}
       </div>
@@ -53,10 +53,10 @@ function ProjectDashboardPage() {
   if (!project) {
     return (
       <div className="flex flex-col gap-2">
-        <Link to="/" className="text-xs text-slate-500 hover:underline">
+        <Link to="/" className="text-xs text-base-content/60 hover:underline">
           ← All projects
         </Link>
-        <div className="text-sm text-slate-600 dark:text-slate-400">
+        <div className="text-sm text-base-content/80">
           Project <span className="font-mono">{id}</span> not found.
         </div>
       </div>

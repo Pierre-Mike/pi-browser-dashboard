@@ -2,25 +2,34 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
-// Uniform design: feature UIs must paint with daisyUI semantic tokens
+// Uniform design: the UI must paint with daisyUI semantic tokens
 // (base-100/200/300, base-content, primary/secondary/accent, info/success/
 // warning/error/neutral) — NOT the raw Tailwind palette (slate/gray/zinc/sky/
-// rose/emerald/amber/indigo/…). Semantic tokens auto-adapt across the pidlight
-// / piddark themes, so a single class replaces the hand-maintained
-// `light dark:` pairs and the design stays uniform across every feature.
+// rose/emerald/amber/indigo/…). Semantic tokens adapt across every theme
+// *family* (see lib/ui/theme.core.ts), so a single class replaces the
+// hand-maintained `light dark:` pairs and the design stays uniform.
 //
-// This test is the ratchet that keeps it uniform: it scans every feature .tsx
-// className surface for raw-palette utilities and fails on any it finds.
+// This is not cosmetic. A raw literal is a surface a theme cannot reach: the
+// app shell was painted `from-slate-50 … dark:from-slate-950` and the sidebar
+// `bg-white dark:bg-slate-950`, so picking a warm or a green family used to
+// leave the two largest surfaces on the page untouched.
+//
+// This test is the ratchet that keeps it uniform: it scans the design surface
+// for raw-palette utilities and fails on any it finds. `routes/` is in scope
+// alongside `features/`, and `.ts` alongside `.tsx`, because the two worst
+// offenders were a route file and a pure class-name helper — neither of which
+// the original feature-.tsx-only scan could see.
 
-const FEATURES_DIR = join(import.meta.dir, "..", "..", "features")
+const SRC_DIR = join(import.meta.dir, "..", "..")
+const SCAN_ROOTS = ["features", "routes"] as const
 
 // Files that legitimately carry literal colours that are DATA, not UI styling:
 // xterm needs hex theme values; the Obsidian Canvas spec encodes node colours.
 // These are allow-listed wholesale.
 const ALLOWLISTED_FILES = new Set<string>([
-  "terminal/terminalTheme.ts",
-  "canvas/canvasObsidian.ts",
-  "projects/canvasParse.ts",
+  "features/terminal/terminalTheme.ts",
+  "features/canvas/canvasObsidian.ts",
+  "features/projects/canvasParse.ts",
 ])
 
 // Raw Tailwind palette families that must not appear in a className context.
@@ -37,26 +46,36 @@ const RAW_UTIL = new RegExp(
 // A line may opt out with a trailing `design-allow:` comment naming the reason.
 const ESCAPE_HATCH = /design-allow:/
 
-const collectTsx = (dir: string): string[] => {
+const collectSources = (dir: string): string[] => {
   const out: string[] = []
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) {
-      out.push(...collectTsx(full))
-    } else if (entry.endsWith(".tsx") && !entry.endsWith(".test.tsx")) {
+      out.push(...collectSources(full))
+    } else if (
+      /\.tsx?$/.test(entry) &&
+      !/\.test\.tsx?$/.test(entry) &&
+      entry !== "routeTree.gen.ts"
+    ) {
       out.push(full)
     }
   }
   return out
 }
 
-const rel = (full: string) => full.slice(FEATURES_DIR.length + 1)
+const rel = (full: string) => full.slice(SRC_DIR.length + 1)
 
-describe("feature UIs use daisyUI semantic tokens, not the raw Tailwind palette", () => {
-  const files = collectTsx(FEATURES_DIR)
+describe("the UI uses daisyUI semantic tokens, not the raw Tailwind palette", () => {
+  const files = SCAN_ROOTS.flatMap((root) => collectSources(join(SRC_DIR, root)))
 
-  it("scans a non-trivial number of feature components", () => {
+  it("scans a non-trivial number of components", () => {
     expect(files.length).toBeGreaterThan(20)
+  })
+
+  it("covers the app shell and the nav chrome, the two surfaces a theme must reach", () => {
+    const scanned = files.map(rel)
+    expect(scanned).toContain("routes/__root.tsx")
+    expect(scanned).toContain("features/sessions/navChrome.ts")
   })
 
   for (const file of files) {

@@ -2,12 +2,35 @@
 
 ## Design system: daisyUI semantic tokens (uniform palette)
 
-Feature UIs paint with **daisyUI semantic tokens**, never the raw Tailwind
-palette. The two themes `pidlight` / `piddark` (in `tailwind.config.js`,
-`base: false`) define the tokens; `piddark` auto-applies under
-`prefers-color-scheme: dark` (`darkMode: "media"`), so **one semantic class
-adapts across both themes** and replaces the old hand-written `light dark:`
-pairs.
+The UI paints with **daisyUI semantic tokens**, never the raw Tailwind palette.
+`tailwind.config.js` (`base: false`) declares four theme **families**, each a
+light + dark pair: `pid` (`pidlight`/`piddark`), `mono`, `terminal`, `sunset`.
+**One semantic class adapts across all eight themes**, which is what replaced the
+old hand-written `light dark:` pairs.
+
+### Choosing a theme
+
+`src/lib/ui/theme.core.ts` is the catalog and every decision (`THEME_FAMILIES`,
+`THEME_MODES` = `system | light | dark`, `resolveTheme`, `parseStoredTheme`,
+`schemeForThemeName`). `src/lib/ui/useTheme.ts` is the only I/O edge: it reads
+`localStorage["pid:ui:theme"]` (encoded `"<family>:<mode>"`), subscribes to
+`prefers-color-scheme` for `system` mode, and writes `data-theme` +
+`style.colorScheme` onto `<html>`. `darkMode` is
+`["selector", '[data-theme$="dark"]']`, so the `dark:` variant follows the
+*resolved theme name*, not the OS — which is also why every family's dark
+variant must keep the `dark` suffix. The choice is per-browser; promoting it to a
+machine-wide default in the global-settings file is not done yet.
+
+Because `base: false`, **the app shell paints the page**, not daisyUI. That is
+`routes/__root.tsx` (`bg-gradient-to-b from-base-100 to-base-200
+text-base-content`). A raw colour literal there — or in the sidebar chrome — is a
+surface no theme can reach, which is exactly how it used to be.
+
+The xterm palette (`features/terminal/terminalTheme.ts`) is still one light/dark
+pair shared by every family; `TerminalView` picks between them from the resolved
+theme name. Per-family terminal colours, and per-family `--rounded-*`, are
+deliberately not done: all eight themes share identical shape tokens today
+(`lib/ui/themeCatalog.test.ts` asserts it).
 
 ### Canonical mapping (raw → semantic)
 
@@ -41,10 +64,22 @@ Prefer daisyUI **component** classes over hand-rolled equivalents:
 
 ### Enforcement
 
-`src/lib/ui/semanticPalette.test.ts` scans every feature `.tsx` and **fails on
-any raw-palette colour utility**. This is the ratchet — keep it green.
+`src/lib/ui/semanticPalette.test.ts` scans every `.ts`/`.tsx` under `features/`
+**and `routes/`** and **fails on any raw-palette colour utility**. This is the
+ratchet — keep it green. `routes/` and plain `.ts` are in scope because the two
+worst offenders were a route file (the shell gradient) and a pure class-name
+helper (`sessions/navChrome.ts`, the sidebar), neither of which the original
+feature-`.tsx`-only scan could see.
+
+`src/lib/ui/themeCatalog.test.ts` is the second half: it loads
+`tailwind.config.js` at runtime and asserts the catalog and the config name the
+same eight themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 as
+`:root` and theme 1 under `prefers-color-scheme: dark` — the no-JS fallback),
+that `darkMode` is still the suffix selector, that every theme carries the full
+token set, and that `base-content` clears 7:1 on `base-100/200/300`.
 
 Escape hatch: a line carrying a genuinely-required colour literal opts out with
 a trailing `// design-allow: <reason>` comment. Reserved for colour **data**,
 not styling. Wholesale-allow-listed files (xterm / Obsidian-canvas colour data):
-`terminal/terminalTheme.ts`, `canvas/canvasObsidian.ts`, `projects/canvasParse.ts`.
+`features/terminal/terminalTheme.ts`, `features/canvas/canvasObsidian.ts`,
+`features/projects/canvasParse.ts`.
