@@ -16,7 +16,7 @@ import {
 import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
-import { explainSession } from "./sessions-explain.core"
+import { explainSession, type ScreenFacts } from "./sessions-explain.core"
 import { type KeyStep, parseKeysRequest } from "./sessions-keys.core"
 import { parseWaitRequest, type WaitRequest } from "./sessions-wait.core"
 import { SessionWaitIo, type TerminalStateReader, type WaitOutcome } from "./sessions-wait.io"
@@ -95,6 +95,28 @@ const currentSessionId = async (
       return session?.sessionId
     }),
   )
+
+// The polled screen classification for one session short, as the plain input
+// fields sessions-explain.core.ts takes. The impure half of the sandwich: the
+// reader is a port (the terminal slice's door, injected by api.ts) and
+// `Date.parse` happens here so the pure core keeps its no-clock rule and never
+// has to know the wire format of a `terminal.state` record.
+const screenFactsFor = ({
+  short,
+  readTerminalState,
+}: {
+  readonly short: string
+  readonly readTerminalState: TerminalStateReader | undefined
+}): ScreenFacts | undefined => {
+  const record = readTerminalState?.({ scope: "session", id: short })
+  if (!record) return undefined
+  return {
+    state: record.state,
+    matcher: record.matcher,
+    evidence: record.evidence,
+    atMs: Date.parse(record.at),
+  }
+}
 
 // Maps a WaitOutcome onto the JSON payload documented for POST /:id/wait —
 // reused as-is for the `wait` field POST /:id/send embeds when the caller
@@ -247,6 +269,7 @@ export const buildSessionsApp = ({ runtime, readTerminalState }: SessionsRouteDe
           lastEventAtMs: diag.lastEventAtMs,
           pidAlive: diag.pidAlive,
           stateFilePresent: diag.stateFilePresent,
+          terminal: screenFactsFor({ short: id, readTerminalState }),
         }),
       )
     })
