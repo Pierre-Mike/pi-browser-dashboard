@@ -111,14 +111,18 @@ const openTerminalTab = async ({ page }: { page: Page }): Promise<void> => {
   await expect(terminalPane({ page })).toBeVisible()
 }
 
-test("the default family's shape is unchanged by tokenizing radius", async ({ page }) => {
+test("the default family resolves to its own declared shape tokens", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" })
   await openWithTheme({ page, stored: "pid:dark" })
   await openTerminalTab({ page })
 
-  // piddark's --rounded-box: 0.75rem and --rounded-btn: 0.5rem. `pid` is the
-  // default and byte-frozen: it must look exactly as it did when these radii
-  // were spelled `rounded-lg` in the component.
+  // piddark's --rounded-box: 0.75rem and --rounded-btn: 0.5rem. What is frozen
+  // is the *token table* — `pid`'s three values are unchanged from when shape
+  // was uniform. Individual elements did move, deliberately: this pane was
+  // `rounded-lg` (8px) and is now `rounded-box` (12px), because the mapping is
+  // by role, not radius-preserving. Tailwind's scale and daisyUI's tokens do
+  // not line up, and chasing byte-identical pixels would have meant inventing a
+  // fourth token per family to preserve accidents of the old literals.
   await expectRadius({ target: terminalPane({ page }), radius: "12px" })
   await expectRadius({ target: terminalButton({ page }), radius: "8px" })
 })
