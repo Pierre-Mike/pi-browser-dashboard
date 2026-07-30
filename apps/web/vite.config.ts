@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite"
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
@@ -7,7 +8,7 @@ const DAEMON = process.env.PID_DAEMON_URL ?? "http://localhost:8787"
 const WEB_PORT = Number(process.env.PID_WEB_PORT ?? 5173)
 
 export default defineConfig({
-  plugins: [TanStackRouterVite(), react()],
+  plugins: [TanStackRouterVite(), react(), tailwindcss()],
   server: {
     port: WEB_PORT,
     strictPort: true,

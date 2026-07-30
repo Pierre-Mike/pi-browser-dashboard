@@ -16,14 +16,32 @@ const CONFIG_PATH = join(import.meta.dir, "..", "..", "..", "tailwind.config.js"
 
 type Theme = Record<string, string>
 
+// daisyUI 5 declares a theme as a flat object of CSS custom properties plus three
+// meta keys (`name`, `default`, `prefersdark`, `color-scheme`). The config keeps
+// that list as exported data — which is the whole reason this gate still has an
+// input under a CSS-first Tailwind: `@config` loads the same module the bundler
+// does, so there is exactly one declaration and this test reads it.
+const META_KEYS = new Set(["name", "default", "prefersdark", "color-scheme"])
+
 const loadConfig = async () => {
   const mod = await import(CONFIG_PATH)
   const config = mod.default
   const themes: Record<string, Theme> = {}
-  for (const entry of config.daisyui.themes) {
-    for (const [name, tokens] of Object.entries(entry)) themes[name] = tokens as Theme
+  const meta: Record<string, Record<string, unknown>> = {}
+  for (const entry of mod.THEMES as ReadonlyArray<Record<string, string>>) {
+    const name = entry.name as string
+    themes[name] = Object.fromEntries(
+      Object.entries(entry).filter(([key]) => !META_KEYS.has(key)),
+    ) as Theme
+    meta[name] = Object.fromEntries(Object.entries(entry).filter(([key]) => META_KEYS.has(key)))
   }
-  return { config, themes, order: Object.keys(themes) }
+  return {
+    config,
+    themes,
+    meta,
+    daisyui: mod.DAISYUI_OPTIONS as Record<string, unknown>,
+    order: Object.keys(themes),
+  }
 }
 
 // WCAG 2.1 relative luminance / contrast ratio. Six lines beats a dependency,
@@ -42,6 +60,12 @@ const contrast = ({ a, b }: { readonly a: string; readonly b: string }): number 
   const [la, lb] = [luminance(a), luminance(b)]
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
+
+// daisyUI 5 prefixes every colour token with `--color-`. The short names stay the
+// vocabulary of this file (and of the exemption list, and of the failure
+// messages) — only the lookup changes.
+const colour = ({ tokens, name }: { readonly tokens: Theme; readonly name: string }): string =>
+  tokens[`--color-${name}`] as string
 
 // Every token the two original themes carry. A new family that forgets one gets
 // daisyUI's auto-generated guess instead of a designed value — usually readable,
@@ -84,30 +108,40 @@ const REQUIRED_TOKENS = [
 //
 // Both variants of a family share one shape: light and dark are the same design
 // in two lightings.
+//
+// daisyUI 5 note: `--animation-btn` is GONE — v5 hardcodes
+// `transition-duration:.2s` on `.btn` and exposes no per-theme knob, so
+// `terminal`'s deliberate `0s` ("a CRT does not ease") is no longer expressible.
+// In its place v5 adds `--border` (read by 22 components) and `--depth` (14), so
+// the shape row is still five values wide and still distinguishes every family.
 const SHAPE_BY_FAMILY = {
   pid: {
-    "--rounded-box": "0.75rem",
-    "--rounded-btn": "0.5rem",
-    "--rounded-badge": "1rem",
-    "--animation-btn": "0.2s",
+    "--radius-box": "0.75rem",
+    "--radius-field": "0.5rem",
+    "--radius-selector": "1rem",
+    "--border": "1px",
+    "--depth": "0",
   },
   mono: {
-    "--rounded-box": "0.25rem",
-    "--rounded-btn": "0.125rem",
-    "--rounded-badge": "0.25rem",
-    "--animation-btn": "0.1s",
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.125rem",
+    "--radius-selector": "0.25rem",
+    "--border": "1px",
+    "--depth": "0",
   },
   terminal: {
-    "--rounded-box": "0",
-    "--rounded-btn": "0",
-    "--rounded-badge": "0",
-    "--animation-btn": "0s",
+    "--radius-box": "0",
+    "--radius-field": "0",
+    "--radius-selector": "0",
+    "--border": "2px",
+    "--depth": "0",
   },
   sunset: {
-    "--rounded-box": "1rem",
-    "--rounded-btn": "0.75rem",
-    "--rounded-badge": "2rem",
-    "--animation-btn": "0.3s",
+    "--radius-box": "1rem",
+    "--radius-field": "0.75rem",
+    "--radius-selector": "2rem",
+    "--border": "1px",
+    "--depth": "1",
   },
 } as const
 
@@ -160,30 +194,57 @@ describe("tailwind.config.js matches the theme catalog", () => {
     expect(Object.keys(themes).sort()).toEqual(catalogued)
   })
 
-  test("pidlight and piddark stay first, in that order — they are the no-JS fallback", async () => {
-    const { order, config } = await loadConfig()
-    expect(order.slice(0, 2)).toEqual(["pidlight", "piddark"])
-    expect(config.daisyui.darkTheme).toBe("piddark")
+  test("pidlight is the default theme and piddark is the prefers-dark fallback", async () => {
+    // Under daisyUI 4 this was positional and implicit: theme 0 became `:root`,
+    // theme 1 got wrapped in `@media (prefers-color-scheme: dark)` because of the
+    // `darkTheme` key, so the no-JS fallback depended on array order nobody
+    // declared. daisyUI 5 makes both explicit per theme, which is strictly
+    // better — the invariant is now stated where it takes effect, and it cannot
+    // be broken by inserting a family at the top of the list.
+    const { meta } = await loadConfig()
+    expect(meta.pidlight?.default, "pidlight must carry `default: true`").toBe(true)
+    expect(meta.piddark?.prefersdark, "piddark must carry `prefersdark: true`").toBe(true)
+    // Exactly one of each, or the fallback is ambiguous.
+    const defaults = Object.entries(meta).filter(([, m]) => m.default === true)
+    const prefersdark = Object.entries(meta).filter(([, m]) => m.prefersdark === true)
+    expect(defaults.map(([n]) => n)).toEqual(["pidlight"])
+    expect(prefersdark.map(([n]) => n)).toEqual(["piddark"])
+  })
+
+  test("every theme declares the colour-scheme its name implies", async () => {
+    // daisyUI 5 emits `color-scheme` into the theme rule, which is what makes
+    // native form controls and scrollbars match. A light theme claiming `dark`
+    // paints white-on-white checkboxes.
+    const { meta } = await loadConfig()
+    for (const [name, m] of Object.entries(meta)) {
+      expect(m["color-scheme"], `${name} declares the wrong color-scheme`).toBe(
+        name.endsWith("dark") ? "dark" : "light",
+      )
+    }
   })
 
   test("daisyUI still keeps its hands off the page background", async () => {
-    const { config } = await loadConfig()
-    // base:false is what lets routes/__root.tsx own the shell paint.
-    expect(config.daisyui.base).toBe(false)
+    const { daisyui } = await loadConfig()
+    // daisyUI 5 replaced `base: false` with per-item excludes. `rootcolor` is the
+    // one base item that paints :root's background/colour, so excluding it is
+    // what lets routes/__root.tsx own the shell paint.
+    expect(daisyui.exclude).toContain("rootcolor")
+    // …and none of daisyUI's own 35 themes may ship, or `[data-theme=sunset]`
+    // (a real built-in name!) would collide with this repo's `sunsetlight`.
+    expect(daisyui.themes).toBe(false)
   })
 
   test("the radius scale aliases the theme vars, so corner utilities are themeable", async () => {
-    // Without these three entries in Tailwind's own borderRadius scale, only
-    // daisyUI's whole-element `.rounded-box` exists and `rounded-t-box` /
-    // `rounded-tr-btn` silently do nothing — the class name is simply unknown,
-    // so the element renders with square corners and no error anywhere.
-    // semanticRadius.test.ts would still pass, because the class *name* is
-    // spelled correctly. This is the test that notices.
+    // daisyUI 5 ships all 24 corner-specific forms for `box` / `field` /
+    // `selector` itself, so those need no alias. It drops `btn` and `badge`,
+    // which 126 call sites in this app are written against — without these two
+    // entries every one of them becomes an unknown class that emits no CSS and
+    // silently renders square. semanticRadius.test.ts would still pass, because
+    // the class *name* is spelled correctly. This is the test that notices.
     const { config } = await loadConfig()
     expect(config.theme.extend.borderRadius).toEqual({
-      box: "var(--rounded-box, 1rem)",
-      btn: "var(--rounded-btn, 0.5rem)",
-      badge: "var(--rounded-badge, 1.9rem)",
+      btn: "var(--radius-field, 0.5rem)",
+      badge: "var(--radius-selector, 1.9rem)",
     })
   })
 
@@ -207,7 +268,9 @@ describe("every theme is complete and legible", () => {
     const { themes } = await loadConfig()
     for (const [name, tokens] of Object.entries(themes)) {
       for (const token of REQUIRED_TOKENS) {
-        expect(tokens[token], `${name} is missing ${token}`).toMatch(/^#[0-9a-f]{6}$/)
+        expect(colour({ tokens, name: token }), `${name} is missing ${token}`).toMatch(
+          /^#[0-9a-f]{6}$/,
+        )
       }
     }
   })
@@ -254,8 +317,8 @@ describe("every theme is complete and legible", () => {
     for (const [name, tokens] of Object.entries(themes)) {
       for (const surface of ["base-100", "base-200", "base-300"] as const) {
         const ratio = contrast({
-          a: tokens["base-content"] as string,
-          b: tokens[surface] as string,
+          a: colour({ tokens, name: "base-content" }),
+          b: colour({ tokens, name: surface }),
         })
         expect(
           ratio,
@@ -269,8 +332,8 @@ describe("every theme is complete and legible", () => {
     const { themes } = await loadConfig()
     for (const [name, tokens] of Object.entries(themes)) {
       const ratio = contrast({
-        a: tokens["primary-content"] as string,
-        b: tokens.primary as string,
+        a: colour({ tokens, name: "primary-content" }),
+        b: colour({ tokens, name: "primary" }),
       })
       expect(ratio, `${name}: primary-content on primary is ${ratio.toFixed(2)}:1`).toBeGreaterThan(
         4.5,
@@ -289,7 +352,10 @@ describe("every theme is complete and legible", () => {
     for (const [name, tokens] of Object.entries(themes)) {
       for (const token of INK_TOKENS) {
         if (INK_CONTRAST_EXEMPT.has(`${name}.${token}`)) continue
-        const ratio = contrast({ a: tokens[token] as string, b: tokens["base-100"] as string })
+        const ratio = contrast({
+          a: colour({ tokens, name: token }),
+          b: colour({ tokens, name: "base-100" }),
+        })
         expect(
           ratio,
           `${name}: text-${token} on base-100 is ${ratio.toFixed(2)}:1`,
@@ -308,8 +374,8 @@ describe("every theme is complete and legible", () => {
       const tokens = themes[name]
       expect(tokens, `${entry} names a theme that does not exist`).toBeDefined()
       const ratio = contrast({
-        a: (tokens as Theme)[token] as string,
-        b: (tokens as Theme)["base-100"] as string,
+        a: colour({ tokens: tokens as Theme, name: token }),
+        b: colour({ tokens: tokens as Theme, name: "base-100" }),
       })
       expect(
         ratio,
