@@ -2400,21 +2400,25 @@ declaration.
   required `string`. Nothing could have caught it, because there was no single
   declaration for the two copies to disagree with. Both web mirrors are gone;
   `apps/web/src/lib/types.ts` re-exports from `@pid/shared`.
-- **Two daemon-side declarations remain — know which, and why.** `SessionState`
-  is declared twice on purpose: `shared/src/session.ts` models *wire*
-  optionality (`S.optional`, because `JSON.stringify` drops an `undefined` key
-  and the field never reaches the body), while
+- **Two declarations are fine when each has a job the other cannot do and
+  something proves they agree. They are a mirror when nothing does.** That line,
+  not the count, is the test to apply — and the two daemon-side pairs that remain
+  sit on opposite sides of it, so the rule comes with worked examples.
+  `SessionState` is declared twice on purpose: `shared/src/session.ts` models
+  *wire* optionality (`S.optional`, because `JSON.stringify` drops an `undefined`
+  key and the field never reaches the body), while
   `features/sessions/sessions.core.ts` keeps a strict producer type where every
-  key is required, so a constructor that forgets one is a type error. Two
-  declarations for two jobs is fine; two that can silently disagree is not, which
-  is what `features/sessions/sessions.contract.test.ts` exists for — it JSON
-  round-trips real `parseState` / `seedFromWorker` output through
-  `decodeSessionState` and goes red on a daemon field the contract does not know
-  about. `Project` is the pair with no such link: `shared/src/project.ts` and
+  key is required, so a constructor that forgets one is a type error. Neither job
+  is the other's, and `features/sessions/sessions.contract.test.ts` is the proof
+  they agree — it JSON round-trips real `parseState` / `seedFromWorker` output
+  through `decodeSessionState` and goes red on a daemon field the contract does
+  not know about. `Project` fails both halves: `shared/src/project.ts` and
   `features/projects/projects.io.ts` declare the same ten fields with the same
-  optionality and nothing compares them, so drift there surfaces only when the
-  web app decodes a live response. Add the contract test or delete the duplicate;
-  either way, do not add a third copy of either type.
+  optionality, so neither is doing work the other cannot, and nothing compares
+  them — drift surfaces only when the web app decodes a live response. That pair
+  is a mirror, and naming it here is deliberate: a gap with an address gets
+  closed, a gap acknowledged in general does not. Add the contract test or delete
+  the duplicate; either way, do not add a third copy of either type.
 - **`shared/` dissolved a deadlock the ratchet created.** A core that needed
   another slice's vocabulary used to keep a *literal copy* of it, because
   importing across slices is debt. Five such copies existed — the session-state
