@@ -9,8 +9,12 @@
     }
   },
   "rules": [
-    { "type": "deletion" },
-    { "type": "non_fast_forward" },
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
     {
       "type": "pull_request",
       "parameters": {
@@ -29,10 +33,21 @@
         "strict_required_status_checks_policy": false,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          { "context": "biome ci (lint + format)" },
-          { "context": "bun test (daemon + web)" },
-          { "context": "fallow audit (dead code)" },
-          { "context": "Playwright" }
+          {
+            "context": "biome ci (lint + format)"
+          },
+          {
+            "context": "bun test (daemon + web)"
+          },
+          {
+            "context": "fallow audit (dead code)"
+          },
+          {
+            "context": "Playwright"
+          },
+          {
+            "context": "tsc --noEmit (all workspaces)"
+          }
         ]
       }
     }
