@@ -5,6 +5,21 @@ import {
   CANON_START,
   CORE_DENIED_GLOBALS,
   canonBlock,
+  checkActionPinning,
+  checkCanonSync,
+  checkCastBan,
+  checkCiContexts,
+  checkCoreDoorBan,
+  checkCorePurity,
+  checkEvalTasks,
+  checkGateScope,
+  checkGritPlugins,
+  checkLefthook,
+  checkOneParam,
+  checkRequiredFiles,
+  checkScheduledAudit,
+  checkScripts,
+  checkTypecheckCoverage,
   type HarnessSnapshot,
   REQUIRED_GRIT_PLUGINS,
   requiredContextsOf,
@@ -192,17 +207,24 @@ describe("auditHarness", () => {
     expect(checksFor(snap)).toContain("biome-plugins")
   })
 
+  // Asserted against `checkCorePurity` rather than the combined list: two checks
+  // emit `core-purity` (this one and the door ban), so `toContain("core-purity")`
+  // could pass on the wrong finding entirely.
   it("catches the *.core.ts override losing its shape scope", () => {
     const snap = {
       ...healthy(),
       biome: healthy().biome.replaceAll('"**/*.core.ts"', '"apps/daemon/src/**/*.core.ts"'),
     }
-    expect(checksFor(snap)).toContain("core-purity")
+    expect(checkCorePurity(snap).map((f) => f.detail)).toContain(
+      'biome.json has no override scoped to "**/*.core.ts"',
+    )
   })
 
   it("catches a denied core global being un-denied", () => {
     const snap = { ...healthy(), biome: healthy().biome.replace('"setInterval":', '"x":') }
-    expect(checksFor(snap)).toContain("core-purity")
+    expect(checkCorePurity(snap).map((f) => f.detail)).toContain(
+      "the *.core.ts override does not deny the setInterval global",
+    )
   })
 
   // The one-param plugin began life scoped to scripts/** only. Narrowing it back
@@ -237,7 +259,11 @@ describe("auditHarness", () => {
   // the check was satisfied by exactly that — prose about a rule that was gone.
   it("catches the door ban being dropped from the core override", () => {
     const snap = { ...healthy(), biome: healthy().biome.replace('"**/*.door"', '"**/*.nope"') }
-    expect(checksFor(snap)).toContain("core-purity")
+    // The door check specifically, not any `core-purity` finding: the rest of the
+    // core override is untouched here, so a combined filter would also pass if
+    // this check had been deleted outright.
+    expect(checkCoreDoorBan(snap)).toHaveLength(1)
+    expect(checkCorePurity(snap)).toEqual([])
   })
 
   // Scoped by shape or not at all: a door ban sitting in a path-scoped override
@@ -255,7 +281,7 @@ describe("auditHarness", () => {
       includes: ["apps/daemon/src/**/*.ts"],
       importPatterns: [{ group: ["**/*.door"] }],
     })
-    expect(checksFor({ ...healthy(), biome: JSON.stringify(moved) })).toContain("core-purity")
+    expect(checkCoreDoorBan({ ...healthy(), biome: JSON.stringify(moved) })).toHaveLength(1)
   })
 
   it("catches a deleted lefthook job", () => {
@@ -490,6 +516,54 @@ describe("auditHarness", () => {
       ),
     }
     expect(checksFor(snap)).not.toContain("scheduled-audit")
+  })
+})
+
+// `auditHarness` is the spread of these, and each one is callable on its own so a
+// red-team test can name the check it is about instead of filtering a combined
+// findings list. Two of them (core purity and the door ban) emit the same `check`
+// string, which is exactly the case a combined filter cannot distinguish.
+const EVERY_CHECK = {
+  checkGritPlugins,
+  checkCorePurity,
+  checkCastBan,
+  checkOneParam,
+  checkCoreDoorBan,
+  checkLefthook,
+  checkScripts,
+  checkCiContexts,
+  checkActionPinning,
+  checkCanonSync,
+  checkTypecheckCoverage,
+  checkGateScope,
+  checkRequiredFiles,
+  checkEvalTasks,
+  checkScheduledAudit,
+} as const
+
+describe("per-check functions", () => {
+  it("are all silent on a healthy snapshot", () => {
+    const snap = healthy()
+    const noisy = Object.entries(EVERY_CHECK)
+      .filter(([, check]) => check(snap).length > 0)
+      .map(([name]) => name)
+    expect(noisy).toEqual([])
+  })
+
+  it("account for every finding auditHarness reports", () => {
+    // A check left out of the spread would be dead weight: it would pass its own
+    // test and never run in `bun run doctor`. Comparing counts on a broken
+    // snapshot catches that, which asserting on `healthy()` alone cannot.
+    const broken: HarnessSnapshot = {
+      ...healthy(),
+      lefthook: "",
+      ruleset: "{",
+      evalTasks: "",
+      presentFiles: [],
+    }
+    const summed = Object.values(EVERY_CHECK).flatMap((check) => check(broken))
+    expect(auditHarness(broken)).toEqual(summed)
+    expect(summed.length).toBeGreaterThan(0)
   })
 })
 
