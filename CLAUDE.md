@@ -96,27 +96,52 @@ declaration.
   repo-wide; the web app talks to the daemon through the typed Hono RPC client
   (`api = hc<AppType>` in `apps/web/src/lib/api.ts`). `*.io.ts` is the sanctioned
   place for a raw request.
-- **Contracts live in `shared/`, never mirrored.** A type two workspaces need is
-  declared **once**, in `shared/src`, as an effect `Schema` — so the same
-  declaration both types a call site and decodes an untrusted response
-  (`decodeSessionState`, `decodeProject`, `decodeApiErrorBody`;
-  `onExcessProperty: "error"`, so an undocumented field fails loudly instead of
-  surfacing as `undefined` three components deep). Never hand-copy a daemon type
-  into the web app. That is not a hypothetical: `SessionState` and `Project` were
-  each declared twice under a comment calling the copy a "local mirror", and both
-  mirrors had already drifted — missing `worktreePath`, `worktreeBranch` and
-  `lastCommitMs`, and typing nine nullable fields as required `string`. Nothing
-  could have caught it, because there was no single declaration for the two
-  copies to disagree with. `shared/` also dissolved a deadlock the ratchet
-  created: a core that needed another slice's vocabulary used to keep a *literal
-  copy* of it, because importing across slices is debt. Five such copies existed
-  — the session-state slugs in `features/fleet`, `features/rules` and the CLI's
-  agent core, the named-key list in `features/rules`, and the wait/staleness
-  timings — each with a comment apologising for itself, and a whole test file
-  (`scripts/mirrored-constants.test.ts`) whose only job was to compare the copies.
-  All of it is gone: `shared/src/{session,keys,timing}.ts` holds one declaration
-  each, importable from a pure core at zero debt, and the guard file was deleted
-  because there is nothing left to guard.
+- **Contracts live in `shared/`; the mirrors that survive are guarded, not
+  silent.** A type two workspaces need is declared **once**, in `shared/src`, as
+  an effect `Schema` — so the same declaration both types a call site and decodes
+  an untrusted response (`decodeSessionState`, `decodeProject`,
+  `decodeApiErrorBody`; `onExcessProperty: "error"`, so an undocumented field
+  fails loudly instead of surfacing as `undefined` three components deep). Never
+  hand-copy a daemon type into the web app. That is not a hypothetical:
+  `SessionState` and `Project` were each declared twice, the second time in
+  `apps/web/src/lib/types.ts` under a comment calling the copy a "local mirror",
+  and both mirrors had already drifted — missing `worktreePath`,
+  `worktreeBranch` and `lastCommitMs`, and typing nine nullable fields as
+  required `string`. Nothing could have caught it, because there was no single
+  declaration for the two copies to disagree with. Both web mirrors are gone;
+  `apps/web/src/lib/types.ts` re-exports from `@pid/shared`.
+- **Two daemon-side declarations remain — know which, and why.** `SessionState`
+  is declared twice on purpose: `shared/src/session.ts` models *wire*
+  optionality (`S.optional`, because `JSON.stringify` drops an `undefined` key
+  and the field never reaches the body), while
+  `features/sessions/sessions.core.ts` keeps a strict producer type where every
+  key is required, so a constructor that forgets one is a type error. Two
+  declarations for two jobs is fine; two that can silently disagree is not, which
+  is what `features/sessions/sessions.contract.test.ts` exists for — it JSON
+  round-trips real `parseState` / `seedFromWorker` output through
+  `decodeSessionState` and goes red on a daemon field the contract does not know
+  about. `Project` is the pair with no such link: `shared/src/project.ts` and
+  `features/projects/projects.io.ts` declare the same ten fields with the same
+  optionality and nothing compares them, so drift there surfaces only when the
+  web app decodes a live response. Add the contract test or delete the duplicate;
+  either way, do not add a third copy of either type.
+- **`shared/` dissolved a deadlock the ratchet created.** A core that needed
+  another slice's vocabulary used to keep a *literal copy* of it, because
+  importing across slices is debt. Five such copies existed — the session-state
+  slugs in `features/fleet`, `features/rules` and the CLI's agent core, the
+  named-key list in `features/rules`, and the wait/staleness timings — each with
+  a comment apologising for itself. Those five are gone:
+  `shared/src/{session,keys,timing}.ts` holds one declaration each, importable
+  from a pure core at zero debt. `scripts/mirrored-constants.test.ts`, the file
+  that compared them, still exists and still runs, because two copies outlived
+  the cleanup: the screen-vs-supervisor agreement table, duplicated between
+  `features/sessions/sessions-explain.core.ts` and
+  `apps/web/src/features/terminal/terminalState.ts` because neither workspace may
+  import the other, and the zellij session name one slice mints while another
+  resolves it. That file lives under `scripts/` so it can import both sides
+  without adding cross-slice debt, and it is where an unavoidable copy earns the
+  right to exist: a mirror with an assertion attached, not a mirror with an
+  apology.
 - **Contracts decode at the boundary.** `biome-plugins/no-cast-json.grit` bans
   `(await res.json()) as T` — a cast asserts a wire shape without checking it, so
   drift compiles forever and fails at runtime. Hand the decoded `unknown` to the
