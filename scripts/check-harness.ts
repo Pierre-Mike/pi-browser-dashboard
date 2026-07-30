@@ -62,6 +62,8 @@ if (existsSync(workflowDir)) {
 const TRACKED_FILES = [
   ".bun-version",
   ".github/dependabot.yml",
+  ".github/rulesets/main.json",
+  ".github/scripts/apply-ruleset.sh",
   ".github/workflows/codeql.yml",
   ".github/workflows/evals.yml",
   ".claude/skills/add-slice/SKILL.md",
@@ -97,6 +99,7 @@ const snapshot: HarnessSnapshot = {
   packageJson: await read("package.json"),
   claudeMd: await read("CLAUDE.md"),
   agentsMd: await read("AGENTS.md"),
+  ruleset: await read(".github/rulesets/main.json"),
   gritPlugins,
   workspaceDirs,
   workspaceTsconfigs: workspaceDirs

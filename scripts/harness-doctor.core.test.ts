@@ -6,8 +6,8 @@ import {
   CORE_DENIED_GLOBALS,
   canonBlock,
   type HarnessSnapshot,
-  REQUIRED_CI_CONTEXTS,
   REQUIRED_GRIT_PLUGINS,
+  requiredContextsOf,
   tasksMissingAsserts,
   unpinnedActions,
 } from "./harness-doctor.core"
@@ -16,9 +16,32 @@ const canon = (body: string): string => `# doc\n${CANON_START}${body}${CANON_END
 
 const SHA = "a".repeat(40)
 
+// The contexts the fixture's ruleset requires. Mirrors the real split: three are
+// jobs in unit-tests.yml, `Playwright` is a job in pr-e2e.yml.
+const CONTEXTS = [
+  "biome ci (lint + format)",
+  "bun test (daemon + web)",
+  "fallow audit (dead code)",
+  "Playwright",
+]
+
+const ruleset = (contexts: readonly string[]): string =>
+  JSON.stringify({
+    name: "main protection",
+    rules: [
+      { type: "deletion" },
+      {
+        type: "required_status_checks",
+        parameters: { required_status_checks: contexts.map((context) => ({ context })) },
+      },
+    ],
+  })
+
 const TRACKED = [
   ".bun-version",
   ".github/dependabot.yml",
+  ".github/rulesets/main.json",
+  ".github/scripts/apply-ruleset.sh",
   ".github/workflows/codeql.yml",
   ".github/workflows/evals.yml",
   ".claude/skills/add-slice/SKILL.md",
@@ -109,6 +132,7 @@ const healthy = (): HarnessSnapshot => ({
   }),
   claudeMd: canon("\nshared canon\n"),
   agentsMd: canon("\nshared canon\n"),
+  ruleset: ruleset(CONTEXTS),
   gritPlugins: REQUIRED_GRIT_PLUGINS.map((p) => `biome-plugins/${p}`),
   workspaceDirs: ["apps/daemon", "apps/web", "shared"],
   workspaceTsconfigs: [
@@ -117,14 +141,11 @@ const healthy = (): HarnessSnapshot => ({
     "shared/tsconfig.json",
   ],
   presentFiles: [...TRACKED],
-  // Mirrors the real split: most required contexts are jobs in unit-tests.yml,
-  // but `Playwright` is declared in pr-e2e.yml. The fixture keeps them apart so
-  // the cross-workflow search is exercised rather than assumed.
   workflows: [
     {
       name: "unit-tests.yml",
       text: [
-        ...REQUIRED_CI_CONTEXTS.filter((c) => c !== "Playwright").map((c) => `    name: ${c}`),
+        ...CONTEXTS.filter((c) => c !== "Playwright").map((c) => `    name: ${c}`),
         `      - uses: actions/checkout@${SHA}`,
       ].join("\n"),
     },
@@ -133,6 +154,12 @@ const healthy = (): HarnessSnapshot => ({
       text: ["    name: Playwright", "      - name: Install Playwright browsers"].join("\n"),
     },
     { name: "codeql.yml", text: `      - uses: github/codeql-action/init@${SHA}` },
+    // The scheduled advisory scan, matched by shape — a cron trigger and a
+    // `bun audit` run in the same workflow — never by filename.
+    {
+      name: "dependency-audit.yml",
+      text: ['    - cron: "17 6 * * *"', "      - run: bun audit --json"].join("\n"),
+    },
   ],
   gateSources: {
     "scripts/typecheck.ts": "const patterns = parseWorkspacePatterns({ pkg })",
@@ -214,6 +241,43 @@ describe("auditHarness", () => {
     pkg.scripts.test =
       "bun run scripts/check-colocated-tests.ts && bun run scripts/check-harness.ts"
     expect(checksFor({ ...healthy(), packageJson: JSON.stringify(pkg) })).toContain("scripts")
+  })
+
+  // --- governance-as-code -------------------------------------------------
+  // The contexts are read from the committed ruleset, so a check promoted in
+  // the ruleset is guarded the moment the file records it — no second list to
+  // forget. These cases cover the file itself going wrong.
+
+  it("catches a missing ruleset file", () => {
+    expect(checksFor({ ...healthy(), ruleset: "" })).toContain("governance")
+  })
+
+  it("catches a ruleset that is not valid JSON", () => {
+    expect(checksFor({ ...healthy(), ruleset: "{ not json" })).toContain("governance")
+  })
+
+  // An empty required_status_checks list means any red PR can merge. It must not
+  // be mistaken for "nothing to check", which is what an empty array would look
+  // like to the loop below.
+  it("catches a ruleset that requires no status checks", () => {
+    expect(checksFor({ ...healthy(), ruleset: ruleset([]) })).toContain("governance")
+  })
+
+  // Promoting a check in the ruleset now guards it automatically — the whole
+  // point. A context nothing declares is the trap, whichever direction it came
+  // from.
+  it("catches a newly required context that no workflow declares", () => {
+    const snap = { ...healthy(), ruleset: ruleset([...CONTEXTS, "tsc --noEmit (all workspaces)"]) }
+    expect(checksFor(snap)).toContain("ci-contexts")
+  })
+
+  it("reads the required contexts out of the ruleset", () => {
+    expect(requiredContextsOf({ ruleset: ruleset(CONTEXTS) })).toEqual(CONTEXTS)
+  })
+
+  it("reports null, not an empty list, when the ruleset cannot be read", () => {
+    expect(requiredContextsOf({ ruleset: "" })).toBeNull()
+    expect(requiredContextsOf({ ruleset: "[]" })).toBeNull()
   })
 
   const withWorkflowText = (input: {
@@ -349,6 +413,50 @@ describe("auditHarness", () => {
       presentFiles: healthy().presentFiles.filter((f) => f !== "evals/tasks.jsonl"),
     }
     expect(checksFor(snap)).toContain("files")
+  })
+
+  // The advisory scan is the one gate whose trigger is the point: de-schedule it
+  // and it still passes every other check while scanning nothing. These four
+  // pin the shape — cron present, audit present, both in one file — and prove a
+  // rename cannot fail the check open.
+  it("catches the advisory scan losing its cron (the quiet-repo blind spot)", () => {
+    const snap = withWorkflowText({
+      file: "dependency-audit.yml",
+      edit: (t) => t.replace(/^\s*-\s*cron:.*$/gm, ""),
+    })
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  it("catches the advisory scan losing its `bun audit` step", () => {
+    const snap = withWorkflowText({
+      file: "dependency-audit.yml",
+      edit: (t) => t.replace("bun audit --json", "bun outdated"),
+    })
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  // A cron in one workflow and an audit in another is not a scheduled audit —
+  // the repo already has two weekly crons that scan nothing of the sort.
+  it("does not accept a cron and a `bun audit` in different workflows", () => {
+    const snap = {
+      ...healthy(),
+      workflows: [
+        ...healthy().workflows.filter((w) => w.name !== "dependency-audit.yml"),
+        { name: "nightly.yml", text: '    - cron: "17 6 * * *"' },
+        { name: "pr-audit.yml", text: "      - run: bun audit" },
+      ],
+    }
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  it("accepts a renamed advisory workflow that keeps the shape", () => {
+    const snap = {
+      ...healthy(),
+      workflows: healthy().workflows.map((w) =>
+        w.name === "dependency-audit.yml" ? { ...w, name: "supply-chain.yml" } : w,
+      ),
+    }
+    expect(checksFor(snap)).not.toContain("scheduled-audit")
   })
 })
 

@@ -1,12 +1,50 @@
 version: 2
+
+# Two dependency signals, deliberately different in kind.
+#
+# Routine version updates are batched: one PR a week per ecosystem per
+# dependency-type, minor and patch only, cheap to skim. A security bump is not
+# routine, so it must never arrive as one line inside that batch — which is what
+# `applies-to: version-updates` on every group below buys. Without it a group
+# also absorbs security updates, and a runtime CVE fix lands as one entry in a
+# twenty-package diff nobody reads line by line.
+#
+# The bun groups are also split dev vs runtime, for the same reason at lower
+# stakes: a devDependency patch train is skimmable, a runtime bump changes what
+# ships.
+#
+# Two things Dependabot cannot express, and where they live instead:
+#   - Per-kind labels. `labels` applies to every PR from an entry, so a security
+#     PR cannot be labelled differently from a routine one here. The `security`
+#     label is applied where it can be — on the daily advisory issue opened by
+#     .github/workflows/dependency-audit.yml, which names every advisory and the
+#     dependency path that reaches it.
+#   - Transitive remediation. Dependabot bumps what a `package.json` declares.
+#     A vulnerable package reachable only *through* a dependency needs an
+#     `overrides` entry written by a human — the job the daily scan prompts.
+#
+# Nothing here auto-merges: the repo has no auto-merge workflow, so every
+# dependency PR is read by a human by construction.
 updates:
   - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
     groups:
-      bun-minor-patch:
+      bun-dev-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      bun-runtime-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
         patterns:
           - "*"
         update-types:
@@ -18,8 +56,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
     groups:
       actions-minor-patch:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:

@@ -26,6 +26,8 @@ export type HarnessSnapshot = {
   readonly packageJson: string
   readonly claudeMd: string
   readonly agentsMd: string
+  /** .github/rulesets/main.json — the committed branch-protection contract. */
+  readonly ruleset: string
   readonly gritPlugins: readonly string[]
   /** Every workspace declared in root package.json `workspaces`, expanded. */
   readonly workspaceDirs: readonly string[]
@@ -39,22 +41,44 @@ export type HarnessSnapshot = {
   readonly evalTasks: string
 }
 
-// The literal status-check contexts the branch ruleset requires. A PR cannot
-// merge unless a check with each of these names reports in, so renaming a job
-// silently makes every PR unmergeable ("base branch policy prohibits the
-// merge") even when all visible checks are green. Asserting the names here
-// turns that trap into a failing gate at authoring time.
-//
-// This list has to move whenever the ruleset does. Promoting a check to
-// required without adding it here re-opens the exact trap the list exists to
-// close: `fallow audit (dead code)` and `Playwright` were promoted in the
-// ruleset and went unguarded until this commit.
-export const REQUIRED_CI_CONTEXTS: readonly string[] = [
-  "biome ci (lint + format)",
-  "bun test (daemon + web)",
-  "fallow audit (dead code)",
-  "Playwright",
-]
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+/**
+ * The status-check contexts the committed ruleset requires — or `null` when the
+ * file is missing or malformed.
+ *
+ * A PR cannot merge unless a check with each of these names reports in, so
+ * renaming a job silently makes every PR unmergeable ("base branch policy
+ * prohibits the merge") even when all visible checks are green. The contexts
+ * used to be a hand-maintained array here, which meant the guard was only as
+ * current as someone's memory: `fallow audit (dead code)` and `Playwright` were
+ * promoted in the ruleset and went unguarded for a week. Reading them from the
+ * committed ruleset removes the copy that could go stale.
+ *
+ * `null` rather than `[]` on a bad read, because "no contexts required" is
+ * indistinguishable from "any red PR can merge" and must not be inferred from a
+ * typo.
+ */
+export const requiredContextsOf = (input: {
+  readonly ruleset: string
+}): readonly string[] | null => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input.ruleset)
+  } catch {
+    return null
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.rules)) return null
+  const statusRule = parsed.rules
+    .filter(isRecord)
+    .find((rule) => rule.type === "required_status_checks")
+  const params = statusRule === undefined ? undefined : statusRule.parameters
+  if (!isRecord(params) || !Array.isArray(params.required_status_checks)) return []
+  return params.required_status_checks
+    .filter(isRecord)
+    .flatMap((check) => (typeof check.context === "string" ? [check.context] : []))
+}
 
 /**
  * Does some workflow declare a job whose display name is exactly `context`?
@@ -267,6 +291,16 @@ export const tasksMissingAsserts = (input: {
   })
 }
 
+// The shape of a scheduled advisory scan: a cron trigger and a `bun audit` run,
+// in the SAME workflow. Matched by shape rather than by filename on purpose —
+// a check for `.github/workflows/dependency-audit.yml` would go green the moment
+// someone renamed or replaced the file, which is the failure mode the whole
+// doctor exists to prevent. Requiring both in one file also rejects the
+// accidental pass where `bun audit` sits in a PR-only workflow while some
+// unrelated job supplies the cron.
+const CRON_TRIGGER = /^\s*-\s*cron:/m
+const BUN_AUDIT_RUN = /\bbun\s+audit\b/
+
 export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   const findings: Finding[] = []
   const miss = (finding: Finding): void => {
@@ -373,16 +407,31 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
     }
   }
 
-  // --- CI: required contexts intact, actions pinned -----------------------
-  // Searched across EVERY workflow, discovered from disk — same reasoning as
-  // pinning below. `Playwright` is a required context declared in pr-e2e.yml,
-  // and the next check someone promotes could live in a file that does not
-  // exist yet; scanning one hardcoded workflow would miss both.
-  for (const context of REQUIRED_CI_CONTEXTS) {
+  // --- CI: the ruleset's required contexts all report -----------------------
+  // The contexts come from the committed ruleset, not a list maintained here.
+  // Each is then looked for across EVERY workflow, discovered from disk — same
+  // reasoning as pinning below. `Playwright` is required and declared in
+  // pr-e2e.yml, and the next check someone promotes could live in a file that
+  // does not exist yet; scanning one hardcoded workflow would miss both.
+  const contexts = requiredContextsOf({ ruleset: snap.ruleset })
+  if (contexts === null) {
+    miss({
+      check: "governance",
+      detail:
+        ".github/rulesets/main.json is missing or not valid JSON — branch protection has no committed contract, so nothing can check the CI jobs against it",
+    })
+  } else if (contexts.length === 0) {
+    miss({
+      check: "governance",
+      detail:
+        "the committed ruleset requires no status checks — a red PR could merge; restore required_status_checks in .github/rulesets/main.json",
+    })
+  }
+  for (const context of contexts ?? []) {
     if (!declaresJobNamed({ workflows: snap.workflows, context })) {
       miss({
         check: "ci-contexts",
-        detail: `no CI job named "${context}" — the branch ruleset requires that exact context, so PRs would never become mergeable`,
+        detail: `the ruleset requires check "${context}" but no workflow declares a job with that name — PRs would never become mergeable. Rename the job and the ruleset context TOGETHER.`,
       })
     }
   }
@@ -451,6 +500,23 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
     miss({
       check: "eval-tasks",
       detail: `evals/tasks.jsonl: ${problem.label} ${problem.reason} — add a functional assert (see evals/README.md), the gates are green on an untouched checkout`,
+    })
+  }
+
+  // --- Advisories are scanned on a clock, not on push traffic --------------
+  // Every other dependency signal here is event-driven, so a repo nobody is
+  // pushing to is a repo nobody is scanning — and a new advisory is an event in
+  // the world, not in this repo. The template upstream went 2.5 quiet weeks and
+  // accumulated 16 advisories, one critical, before a routine PR tripped over
+  // them.
+  const scansOnAClock = snap.workflows.some(
+    (workflow) => CRON_TRIGGER.test(workflow.text) && BUN_AUDIT_RUN.test(workflow.text),
+  )
+  if (!scansOnAClock) {
+    miss({
+      check: "scheduled-audit",
+      detail:
+        "no workflow runs `bun audit` on a cron — advisories would only surface when someone happens to open a PR, so a quiet repo becomes a blind one",
     })
   }
 
