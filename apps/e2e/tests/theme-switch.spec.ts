@@ -23,7 +23,7 @@ const openWithTheme = async ({ page, stored }: { page: Page; stored: string }): 
 
 // Each family owns its xterm pane as well as its chrome: the palette in
 // apps/web/src/features/terminal/terminalTheme.ts is keyed by resolved theme
-// name, so all eight themes have a pane colour of their own. Written out
+// name, so all nine families have a pane colour of their own. Written out
 // literally because apps/e2e drives the app from outside and must not import
 // apps/web internals — the same rule as THEME_KEY above.
 //

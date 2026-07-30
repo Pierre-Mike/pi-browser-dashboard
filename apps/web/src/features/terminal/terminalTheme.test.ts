@@ -6,7 +6,7 @@ import { terminalTheme } from "./terminalTheme"
 // The xterm pane is the largest surface in the app and the only one daisyUI
 // cannot reach: xterm paints its own canvas from hex values, so no semantic
 // token reaches inside it. The palette is therefore keyed by *daisyUI theme
-// name* — one palette per theme, fourteen of each — and this file keeps each one
+// name* — one palette per theme, eighteen of each — and this file keeps each one
 // inside its family instead of falling back to pid's slate/sky pair. That
 // fallback was the defect: `terminaldark` wrapped a slate-blue terminal in a
 // phosphor-green shell and `sunsetdark` put a cool navy pane inside warm plum
@@ -391,6 +391,50 @@ describe("each pane sits inside its family's chrome", () => {
           `${name}.${key} (${palette[key]}) is not at full chroma`,
         ).toBeGreaterThanOrEqual(112)
       }
+    }
+  })
+
+  it("keeps every one of neon's dark hue slots a pure channel triple", () => {
+    // One step past `prism`'s rule. `prism` holds six hues at "full chroma",
+    // measured as spread >= 112; `neondark` holds them at the *maximum a hex can
+    // express* — one channel pinned to 0 and another to 255, so spread is exactly
+    // 255 and no value at that hue is more saturated. `prismdark` reaches this in
+    // four slots of six by accident of its reference palette; here it is all six
+    // by construction, and it is what makes this the brightest pane in the repo.
+    //
+    // The floor is not free: `error` in the *theme* could not be pure (#ff0000
+    // measures 3.86 on neon's violet base-100 and misses 4.5), so if a slot here
+    // ever has to move, move it along its hue and record the ratio — do not
+    // quietly relax this to a spread threshold, which is the shape this assertion
+    // would decay into.
+    const palette = terminalTheme({ theme: "neondark" })
+    for (const key of ["red", "green", "yellow", "blue", "magenta", "cyan"] as const) {
+      const slot = rgb(palette[key] as string)
+      expect(Math.min(...slot), `neondark.${key} (${palette[key]}) has no channel at 0`).toBe(0)
+      expect(Math.max(...slot), `neondark.${key} (${palette[key]}) has no channel at 255`).toBe(255)
+    }
+  })
+
+  it("keeps neon's light pane a saturated colour, not tinted paper", () => {
+    // The other half of the family's character, and the half that is easy to lose:
+    // every other light pane in this file is a near-white (`pidlight` spread 4,
+    // `prismlight` 5, `candylight` 20, `citruslight` 51 at the top end). `neonlight`
+    // is a bright spring green at spread 158 — the honest blend of a lemon
+    // `base-100` and a cyan `base-200`, which is also the only pane the
+    // between-the-stops rule *allows* here, since it pins the green channel into
+    // 240..255. Assert both halves: saturated, and still light enough to take dark
+    // ink (its foreground clears 14.96:1).
+    const pane = terminalTheme({ theme: "neonlight" }).background
+    expect(spread(pane), `neonlight: pane ${pane} is tinted paper, not a colour`).toBeGreaterThan(
+      120,
+    )
+    const { g } = at(pane)
+    expect(g, `neonlight: pane ${pane} is not a bright green`).toBeGreaterThanOrEqual(240)
+    // …and the neutral ramp carries that hue rather than being a stock gray, the
+    // same rule `arcade` is pinned on.
+    for (const key of ["white", "brightWhite"] as const) {
+      const slot = at(terminalTheme({ theme: "neonlight" })[key] as string)
+      expect(slot.g, `neonlight.${key} is a neutral gray`).toBeGreaterThan(slot.b)
     }
   })
 
