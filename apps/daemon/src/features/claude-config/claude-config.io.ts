@@ -2,11 +2,11 @@ import { open, readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
+import { isSafeSegment } from "../../platform/safe-path.core"
 import { ProjectsService } from "../projects/projects.io"
 import {
   type HookEntry,
   type HookScript,
-  isSafeSegment,
   parseSettings,
   parseSkillFrontmatter,
   type SettingsSummary,

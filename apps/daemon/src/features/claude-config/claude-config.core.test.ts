@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import {
-  flattenHooks,
-  isSafeSegment,
-  parseSettings,
-  parseSkillFrontmatter,
-} from "./claude-config.core"
+import { flattenHooks, parseSettings, parseSkillFrontmatter } from "./claude-config.core"
 
 describe("flattenHooks", () => {
   it("returns empty for non-object input", () => {
@@ -138,20 +133,5 @@ description: 'single'
     const { frontmatter } = parseSkillFrontmatter(text)
     expect(frontmatter.name).toBe("quoted")
     expect(frontmatter.description).toBe("single")
-  })
-})
-
-describe("isSafeSegment", () => {
-  it("accepts normal ids", () => {
-    expect(isSafeSegment("concise")).toBe(true)
-    expect(isSafeSegment("claude-p")).toBe(true)
-    expect(isSafeSegment("a.b.c")).toBe(true)
-  })
-  it("rejects dotfiles, slashes, NUL", () => {
-    expect(isSafeSegment(".hidden")).toBe(false)
-    expect(isSafeSegment("a/b")).toBe(false)
-    expect(isSafeSegment("a\\b")).toBe(false)
-    expect(isSafeSegment("a\0b")).toBe(false)
-    expect(isSafeSegment("")).toBe(false)
   })
 })

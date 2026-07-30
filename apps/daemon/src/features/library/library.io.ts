@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Context, Effect, Either, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
+import { isSafeSegment } from "../../platform/safe-path.core"
 import { ProjectsService } from "../projects/projects.io"
 import {
   copyDir,
@@ -16,7 +17,6 @@ import {
   type Catalog,
   expandHome,
   type InstallStatus,
-  isSafeSegment,
   LIBRARY_CATEGORIES,
   type LibraryCategory,
   type LibraryEntry,

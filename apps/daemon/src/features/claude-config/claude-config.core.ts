@@ -204,11 +204,3 @@ const unquote = (s: string): string => {
   }
   return s
 }
-
-// Coerce an arbitrary id (dirname / filename) to a safe path segment.
-export const isSafeSegment = (id: string): boolean =>
-  id.length > 0 &&
-  !id.startsWith(".") &&
-  !id.includes("/") &&
-  !id.includes("\\") &&
-  !id.includes("\0")

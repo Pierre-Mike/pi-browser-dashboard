@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import { Effect, Either, type ManagedRuntime } from "effect"
 import { Hono } from "hono"
+import { contentDispositionAttachment } from "../../platform/http-content.core"
 import { appRuntime } from "../../platform/runtime"
 import { ShellIo } from "../../platform/shell.io"
 import { PiSessionsIo } from "../dispatch/pi-sessions.io"
@@ -13,7 +14,6 @@ import {
   runFsMove,
   treeGitStatusAt,
 } from "../projects/fileBrowser.routes"
-import { contentDispositionAttachment } from "../projects/projects.core"
 import { FilesError, FilesService } from "./files.io"
 import { SessionRegistry } from "./sessions.io"
 import { explainSession, type ScreenFacts } from "./sessions-explain.core"

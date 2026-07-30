@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { Hono } from "hono"
+import { contentDispositionAttachment } from "../../platform/http-content.core"
 import { appRuntime } from "../../platform/runtime"
 import { app as pidAppsApp } from "../pid-apps/pid-apps.routes"
 import { app as pidSettingsApp } from "../pid-settings/pid-settings.routes"
@@ -7,7 +8,6 @@ import { errorToStatus, treeGitStatusAt } from "./fileBrowser.routes"
 import type { TreeGitStatusEntry } from "./git.core"
 import { type GitError, type GitResult, gitLog, gitPull, gitStatus } from "./git.io"
 import { fetchGithubSummary, fetchPrDiff } from "./github.io"
-import { contentDispositionAttachment } from "./projects.core"
 import { ProjectsService } from "./projects.io"
 
 const gitErrorToStatus = (e: GitError): 404 | 500 => (e === "not_a_repo" ? 404 : 500)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { Either } from "effect"
+import { isSafeSegment } from "../../platform/safe-path.core"
 import {
   type Catalog,
   CatalogParseError,
@@ -8,7 +9,6 @@ import {
   resolveRequires as decodeRequires,
   upsertEntryInDocument as decodeUpsert,
   expandHome,
-  isSafeSegment,
   LIBRARY_CATEGORIES,
   type LibraryEntry,
   parseCatalogDocument,
@@ -201,7 +201,7 @@ describe("resolveRequires", () => {
   })
 })
 
-describe("expandHome / isSafeSegment", () => {
+describe("expandHome", () => {
   it("expands ~ prefix", () => {
     expect(expandHome({ p: "~/.claude/skills/", homeDir: "/h" })).toBe("/h/.claude/skills/")
     expect(expandHome({ p: "/abs/.claude/skills/", homeDir: "/h" })).toBe("/abs/.claude/skills/")

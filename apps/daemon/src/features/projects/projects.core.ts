@@ -1,49 +1,10 @@
 // Pure helpers for the projects feature. No I/O.
 
-import { basename, isAbsolute, normalize, relative, resolve, sep } from "node:path"
-
 export type FileEntry = {
   readonly name: string
   readonly type: "dir" | "file" | "symlink" | "other"
   readonly size: number
 }
-
-export type ResolveOk = { readonly ok: true; readonly absPath: string; readonly relPath: string }
-export type ResolveErr = { readonly ok: false; readonly reason: "escape" | "absolute" | "invalid" }
-export type ResolveResult = ResolveOk | ResolveErr
-
-// Resolve a user-supplied path against a project root and refuse anything that
-// escapes the root (via "..", absolute paths, or symlink-looking tricks at the
-// string layer). Symlink resolution at the filesystem layer is the repo's job.
-export const resolveProjectPath = (args: {
-  readonly root: string
-  readonly input: string | undefined
-}): ResolveResult => {
-  const { root, input } = args
-  const rel = (input ?? "").trim()
-  if (rel === "" || rel === "." || rel === "/") {
-    return { ok: true, absPath: root, relPath: "" }
-  }
-  if (isAbsolute(rel)) return { ok: false, reason: "absolute" }
-  if (rel.includes("\0")) return { ok: false, reason: "invalid" }
-  const normalized = normalize(rel)
-  if (normalized.startsWith("..") || normalized.split(sep).includes("..")) {
-    return { ok: false, reason: "escape" }
-  }
-  const absPath = resolve(root, normalized)
-  const back = relative(root, absPath)
-  if (back.startsWith("..") || isAbsolute(back)) {
-    return { ok: false, reason: "escape" }
-  }
-  return { ok: true, absPath, relPath: back }
-}
-
-// String-layer guard for a user-supplied relative asset path, applied BEFORE any
-// filesystem access: reject "..", backslashes, and absolute paths. Shared by the
-// extension and pid-app static-asset routes (one rule, no drift). An empty string
-// is allowed — callers decide whether "" means "serve the entry/index".
-export const validateRelPath = (rel: string): boolean =>
-  !rel.includes("..") && !rel.includes("\\") && !rel.startsWith("/")
 
 // Heuristic binary detection: scan the first N bytes for a NUL. Matches the
 // approach used by git and ripgrep — cheap, no false negatives on real binaries,
@@ -173,80 +134,13 @@ export const compareProjectsByCommit = (input: {
 // render inline (image/audio/video/pdf), iframe (html), or treat as opaque
 // download. Covers the formats the file viewer needs; everything else falls
 // back to application/octet-stream.
-const MIME_BY_EXT: Readonly<Record<string, string>> = {
-  txt: "text/plain; charset=utf-8",
-  log: "text/plain; charset=utf-8",
-  md: "text/markdown; charset=utf-8",
-  markdown: "text/markdown; charset=utf-8",
-  json: "application/json; charset=utf-8",
-  jsonl: "application/json; charset=utf-8",
-  ndjson: "application/json; charset=utf-8",
-  xml: "application/xml; charset=utf-8",
-  yaml: "application/yaml; charset=utf-8",
-  yml: "application/yaml; charset=utf-8",
-  toml: "application/toml; charset=utf-8",
-  csv: "text/csv; charset=utf-8",
-  tsv: "text/tab-separated-values; charset=utf-8",
-  html: "text/html; charset=utf-8",
-  htm: "text/html; charset=utf-8",
-  css: "text/css; charset=utf-8",
-  js: "text/javascript; charset=utf-8",
-  mjs: "text/javascript; charset=utf-8",
-  cjs: "text/javascript; charset=utf-8",
-  ts: "text/typescript; charset=utf-8",
-  tsx: "text/typescript; charset=utf-8",
-  jsx: "text/javascript; charset=utf-8",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  avif: "image/avif",
-  bmp: "image/bmp",
-  ico: "image/vnd.microsoft.icon",
-  mp3: "audio/mpeg",
-  wav: "audio/wav",
-  ogg: "audio/ogg",
-  oga: "audio/ogg",
-  flac: "audio/flac",
-  m4a: "audio/mp4",
-  aac: "audio/aac",
-  mp4: "video/mp4",
-  m4v: "video/mp4",
-  mov: "video/quicktime",
-  webm: "video/webm",
-  ogv: "video/ogg",
-  pdf: "application/pdf",
-}
 
 // RFC 5987 value encoding: percent-encode everything `encodeURIComponent`
 // would, then additionally escape the chars it leaves bare but the grammar
 // forbids, and restore the few it over-encodes. Used for the `filename*` token.
-const encodeRFC5987 = (s: string): string =>
-  encodeURIComponent(s)
-    .replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
-    .replace(/%(7C|60|5E)/g, (_m, h: string) => String.fromCharCode(Number.parseInt(h, 16)))
 
 // Build a `Content-Disposition` header value that forces a download while
 // preserving the original filename. Emits the RFC 6266 dual-token form: an
-// ASCII-sanitised `filename=` for legacy agents plus a UTF-8 `filename*=`
-// (RFC 5987) so non-ASCII names survive. Always derives the name from the
-// basename so directory segments never leak into the header, and falls back to
-// "download" when no basename is present.
-export const contentDispositionAttachment = (path: string): string => {
-  const name = basename(path) || "download"
-  const ascii = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_")
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987(name)}`
-}
-
-export const mimeFromPath = (relPath: string): string => {
-  const name = relPath.toLowerCase()
-  const dot = name.lastIndexOf(".")
-  if (dot === -1 || dot === name.length - 1) return "application/octet-stream"
-  const ext = name.slice(dot + 1)
-  return MIME_BY_EXT[ext] ?? "application/octet-stream"
-}
 
 export const parseGithubUrl = (url: string): GithubRemote | null => {
   // SSH: git@github.com:owner/repo(.git)?

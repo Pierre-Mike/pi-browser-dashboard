@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
-import { isSafeSegment } from "../claude-config/claude-config.core"
+import { isSafeSegment } from "../../platform/safe-path.core"
 import { ProjectsService, resolveProjectDir } from "../projects/projects.io"
 import {
   mergePidSettings,
