@@ -449,7 +449,8 @@ both in `themeCatalog.test.ts`:
 
 - `primary-content` clears 4.5:1 on `primary`, every theme, **no exemptions**.
 - every ink token (`primary`, `secondary`, `accent`, `info`, `success`,
-  `warning`, `error`) clears 4.5:1 on `base-100`.
+  `warning`, `error`) clears 4.5:1 on `base-100` — every theme, **no exemptions
+  either**, since the last four were repaid (below).
 
 `base-100` and not the whole shell gradient, because `sunsetlight` sits at 4.14
 on `base-200` — widening the bar is a change to three families, not a floor they
@@ -514,11 +515,47 @@ The xterm pane moved with it: `cursor` `#0284c7` → `#0369a1` (3.91 → 5.67),
 `brightYellow` `#ca8a04` → `#b67c04` (2.81 → 3.42), `brightWhite` `#94a3b8` →
 `#7c8ca2` (2.45 → 3.27). Both **backgrounds** stay frozen.
 
-Four measured misses remain, named in `INK_CONTRAST_EXEMPT` with their ratios:
-`pidlight`'s three status hues (`accent`/`warning` `#f59e0b` at 2.15,
-`success` `#10b981` at 2.54, `error` `#f43f5e` at 3.67) and `sunsetlight.accent`
-(`#ea580c` at 3.43). Deferred, not waived: a status colour carries meaning — a
-"blocked" pill has to read differently from a "failed" one at a glance in the
-sidebar — so darkening the set changes what the app *communicates* and wants its
-own before/after. A companion test asserts each entry **still misses** the bar, so
-a repaid exemption fails the build instead of lingering as a stale comment.
+**`INK_CONTRAST_EXEMPT` is empty, and the set is deleted rather than emptied.**
+The four measured misses it held were all light-theme *status* hues — `pidlight`'s
+`accent`/`warning` `#f59e0b` at 2.15, `success` `#10b981` at 2.54, `error`
+`#f43f5e` at 3.67, and `sunsetlight.accent` `#ea580c` at 3.43. They were deferred
+rather than waived for a real reason: a status colour carries meaning, a "blocked"
+pill has to read differently from a "failed" one at a glance in the sidebar, so
+darkening the set changes what the app *communicates* and wanted its own
+before/after rather than riding along on the accent fix. That before/after is now
+done, with `scripts/theme-solve.core.ts` doing the solving — the same rule every
+other family's light ink already follows:
+
+| token | before | after | ratio | chroma spread | hue |
+|---|---|---|---|---|---|
+| `pidlight.accent` / `warning` | `#f59e0b` | `#a26907` | 2.15 → **4.61** | 234 → 155 | 38 → 38 |
+| `pidlight.success` | `#10b981` | `#0c855d` | 2.54 → **4.64** | 169 → 121 | 160 → 160 |
+| `pidlight.error` | `#f43f5e` | `#e80d33` | 3.67 → **4.63** | 181 → **219** | 350 → 350 |
+| `sunsetlight.accent` | `#ea580c` | `#c64a0a` | 3.43 → **4.62** | 222 → 188 | 21 → 20 |
+
+`accent` and `warning` stay one value in `pidlight`, as they were: the family
+aliases them deliberately (`stateColor` maps `blocked`/`needs_input` to `warning`
+and nothing maps to `accent` at all — three `text-accent` sites total), so
+splitting them would invent a distinction the UI does not make.
+
+Two things worth not re-deriving. **The ~0.1 margin over 4.5 is deliberate.** The
+exact-floor solutions land at 4.50–4.53 and amber cleared the bar by 0.002, which
+is inside a single 8-bit step — a rounding change or a `base-100` tweak would flip
+it. Buying the margin cost 2–3 points of channel spread out of 155–222, invisible
+at chip size. **And `error` came out *more* chromatic, not less** (spread 181 →
+219): rose-500 is a washed rose, and darkening toward hue 349 raises chroma, so the
+token that most needs to read as alarming is the one that improved most.
+
+**The surface half of these four tokens is still unmeasured, and that is now the
+open gap.** Only `base-content` and `primary-content` are declared, in all
+eighteen themes; `accent-content` / `success-content` / `warning-content` /
+`error-content` are declared *nowhere*, so daisyUI's `--btn-fg:
+var(--color-warning-content)` is invalid-at-computed-value and `btn-warning`,
+`badge-warning` and `alert-warning` paint inherited `base-content` on the token.
+Measured across the catalog, **68 of those 72 cells already miss 4.5:1** — every
+theme but `pidlight`, which passed all four only because its status hues were the
+light Tailwind-500 values that failed the *ink* test. So this change moves
+`pidlight`'s surface half from 4.86–8.31 down to ~3.86, joining the seventeen
+themes already there; it does not create the gap. Closing it properly is 72 token
+declarations plus a gate, in both directions, which is its own before/after — the
+same argument that deferred these four ink misses in the first place.
