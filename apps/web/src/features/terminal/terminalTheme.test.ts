@@ -97,13 +97,18 @@ const at = (hex: string): { readonly r: number; readonly g: number; readonly b: 
 // (apps/web has no allowJs), and the runtime value is what matters.
 const CONFIG_PATH = join(import.meta.dir, "..", "..", "..", "tailwind.config.js")
 
+// daisyUI 5 keeps a theme as one flat object of CSS custom properties and
+// prefixes every colour with `--color-`. Strip the prefix on the way in so the
+// rest of this file keeps speaking in short token names (`base-100`, `primary`).
 const loadThemes = async (): Promise<Readonly<Record<string, Record<string, string>>>> => {
   const mod = await import(CONFIG_PATH)
   const themes: Record<string, Record<string, string>> = {}
-  for (const entry of mod.default.daisyui.themes) {
-    for (const [name, tokens] of Object.entries(entry)) {
-      themes[name] = tokens as Record<string, string>
-    }
+  for (const entry of mod.THEMES as ReadonlyArray<Record<string, string>>) {
+    themes[entry.name as string] = Object.fromEntries(
+      Object.entries(entry)
+        .filter(([key]) => key.startsWith("--color-"))
+        .map(([key, value]) => [key.slice("--color-".length), value]),
+    )
   }
   return themes
 }

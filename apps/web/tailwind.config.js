@@ -1,292 +1,242 @@
 import daisyui from "daisyui"
+import daisyuiTheme from "daisyui/theme"
+
+// SPIKE (daisyUI 5 / Tailwind 4). The question this file exists to answer:
+// can `tailwind.config.js` stay the single runtime-readable source of truth for
+// the theme catalog under a CSS-first Tailwind, so `themeCatalog.test.ts` keeps
+// its input? Themes are declared as plain data here and registered through
+// daisyUI 5's `daisyui/theme` JS plugin, which spreads each object straight into
+// a `[data-theme=…]` rule.
+//
+// Token renames vs daisyUI 4:
+//   primary            -> --color-primary        (every colour token gains --color-)
+//   --rounded-box      -> --radius-box
+//   --rounded-btn      -> --radius-field
+//   --rounded-badge    -> --radius-selector
+//   --animation-btn    -> REMOVED by daisyUI 5 (button duration is hardcoded .2s)
+//   new: --border, --depth, --noise, --size-field, --size-selector
+export const THEMES = [
+  {
+    name: "pidlight",
+    default: true,
+    "color-scheme": "light",
+    "--color-primary": "#0369a1",
+    "--color-primary-content": "#f8fafc",
+    "--color-secondary": "#4f46e5",
+    "--color-accent": "#f59e0b",
+    "--color-neutral": "#1e293b",
+    "--color-base-100": "#ffffff",
+    "--color-base-200": "#f1f5f9",
+    "--color-base-300": "#e2e8f0",
+    "--color-base-content": "#0f172a",
+    "--color-info": "#0369a1",
+    "--color-success": "#10b981",
+    "--color-warning": "#f59e0b",
+    "--color-error": "#f43f5e",
+    "--radius-box": "0.75rem",
+    "--radius-field": "0.5rem",
+    "--radius-selector": "1rem",
+    "--border": "1px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "piddark",
+    prefersdark: true,
+    "color-scheme": "dark",
+    "--color-primary": "#38bdf8",
+    "--color-primary-content": "#0b1220",
+    "--color-secondary": "#818cf8",
+    "--color-accent": "#fbbf24",
+    "--color-neutral": "#1e293b",
+    "--color-base-100": "#020617",
+    "--color-base-200": "#0f172a",
+    "--color-base-300": "#1e293b",
+    "--color-base-content": "#e2e8f0",
+    "--color-info": "#38bdf8",
+    "--color-success": "#34d399",
+    "--color-warning": "#fbbf24",
+    "--color-error": "#fb7185",
+    "--radius-box": "0.75rem",
+    "--radius-field": "0.5rem",
+    "--radius-selector": "1rem",
+    "--border": "1px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "monolight",
+    "color-scheme": "light",
+    "--color-primary": "#3f3f46",
+    "--color-primary-content": "#fafafa",
+    "--color-secondary": "#71717a",
+    "--color-accent": "#57534e",
+    "--color-neutral": "#18181b",
+    "--color-base-100": "#ffffff",
+    "--color-base-200": "#f4f4f5",
+    "--color-base-300": "#e4e4e7",
+    "--color-base-content": "#18181b",
+    "--color-info": "#475569",
+    "--color-success": "#4d7c0f",
+    "--color-warning": "#a16207",
+    "--color-error": "#b91c1c",
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.125rem",
+    "--radius-selector": "0.25rem",
+    // mono is tight AND thin-lined: a hairline frame reads as technical.
+    "--border": "1px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "monodark",
+    "color-scheme": "dark",
+    "--color-primary": "#d4d4d8",
+    "--color-primary-content": "#18181b",
+    "--color-secondary": "#a1a1aa",
+    "--color-accent": "#d6d3d1",
+    "--color-neutral": "#27272a",
+    "--color-base-100": "#09090b",
+    "--color-base-200": "#18181b",
+    "--color-base-300": "#27272a",
+    "--color-base-content": "#e4e4e7",
+    "--color-info": "#94a3b8",
+    "--color-success": "#a3e635",
+    "--color-warning": "#fbbf24",
+    "--color-error": "#fb7185",
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.125rem",
+    "--radius-selector": "0.25rem",
+    "--border": "1px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "terminallight",
+    "color-scheme": "light",
+    "--color-primary": "#15803d",
+    "--color-primary-content": "#fdfbf5",
+    "--color-secondary": "#0f766e",
+    "--color-accent": "#4d7c0f",
+    "--color-neutral": "#1c2b1f",
+    "--color-base-100": "#faf6ea",
+    "--color-base-200": "#f2ecda",
+    "--color-base-300": "#e3dac2",
+    "--color-base-content": "#14351f",
+    "--color-info": "#0f766e",
+    "--color-success": "#15803d",
+    "--color-warning": "#a16207",
+    "--color-error": "#b91c1c",
+    "--radius-box": "0",
+    "--radius-field": "0",
+    "--radius-selector": "0",
+    // A character cell is drawn with a 2px rule and no shadow. This is the
+    // knob the spike exists to evaluate.
+    "--border": "2px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "terminaldark",
+    "color-scheme": "dark",
+    "--color-primary": "#4ade80",
+    "--color-primary-content": "#04120a",
+    "--color-secondary": "#2dd4bf",
+    "--color-accent": "#a3e635",
+    "--color-neutral": "#14261a",
+    "--color-base-100": "#04120a",
+    "--color-base-200": "#0a1f12",
+    "--color-base-300": "#12331f",
+    "--color-base-content": "#86efac",
+    "--color-info": "#5eead4",
+    "--color-success": "#4ade80",
+    "--color-warning": "#fde047",
+    "--color-error": "#fca5a5",
+    "--radius-box": "0",
+    "--radius-field": "0",
+    "--radius-selector": "0",
+    "--border": "2px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "sunsetlight",
+    "color-scheme": "light",
+    "--color-primary": "#e11d48",
+    "--color-primary-content": "#ffffff",
+    "--color-secondary": "#7c3aed",
+    "--color-accent": "#ea580c",
+    "--color-neutral": "#3b1f2b",
+    "--color-base-100": "#fffaf6",
+    "--color-base-200": "#fdeee3",
+    "--color-base-300": "#f7dcc9",
+    "--color-base-content": "#3a1d24",
+    "--color-info": "#0e7490",
+    "--color-success": "#15803d",
+    "--color-warning": "#b45309",
+    "--color-error": "#be123c",
+    "--radius-box": "1rem",
+    "--radius-field": "0.75rem",
+    "--radius-selector": "2rem",
+    // Soft: no hard rule, lift instead. The other new knob under evaluation.
+    "--border": "1px",
+    "--depth": "1",
+    "--noise": "0",
+  },
+  {
+    name: "sunsetdark",
+    "color-scheme": "dark",
+    "--color-primary": "#fb7185",
+    "--color-primary-content": "#2a0a13",
+    "--color-secondary": "#c4b5fd",
+    "--color-accent": "#fb923c",
+    "--color-neutral": "#3b2430",
+    "--color-base-100": "#1a0f16",
+    "--color-base-200": "#251621",
+    "--color-base-300": "#35202d",
+    "--color-base-content": "#fbe3e0",
+    "--color-info": "#67e8f9",
+    "--color-success": "#6ee7b7",
+    "--color-warning": "#fcd34d",
+    "--color-error": "#fda4af",
+    "--radius-box": "1rem",
+    "--radius-field": "0.75rem",
+    "--radius-selector": "2rem",
+    "--border": "1px",
+    "--depth": "1",
+    "--noise": "0",
+  },
+]
+
+// Exported so themeCatalog.test.ts can assert it: `exclude: ["rootcolor"]` is
+// daisyUI 5's equivalent of daisyUI 4's `base: false` — rootcolor is the one base
+// item that paints :root's background/colour, and dropping it is what leaves the
+// shell paint to routes/__root.tsx.
+export const DAISYUI_OPTIONS = { themes: false, logs: false, exclude: ["rootcolor"] }
 
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  // The theme is a runtime choice, not an OS reading: `useTheme` writes the
-  // resolved daisyUI theme name into <html data-theme="…">, and every family
-  // suffixes its dark variant with "dark" — so one selector drives the `dark:`
-  // variant for all of them. `system` mode still follows
-  // prefers-color-scheme, but it does so by resolving to a name, not by
-  // letting the media query decide behind the app's back.
   darkMode: ["selector", '[data-theme$="dark"]'],
+  // SPIKE probe: daisyUI 5 ships `box` / `field` / `selector` (all 24
+  // corner-specific forms), but drops `btn` and `badge` — the two names 126 call
+  // sites in this app are written against. If Tailwind 4 still honours a legacy
+  // `theme.extend.borderRadius` loaded through `@config`, these two lines are a
+  // compat shim that makes the rename optional rather than mandatory.
   theme: {
     extend: {
-      // Shape is a theme property, so every corner in the app has to be sized
-      // from a theme var. daisyUI's own `utils` layer only emits the
-      // whole-element `.rounded-box` / `.rounded-btn` / `.rounded-badge`, which
-      // cannot express a single corner — and the app does need that (a panel
-      // header rounding only its top, a chat bubble squaring off its tail).
-      //
-      // Registering the three names in Tailwind's *borderRadius scale* instead
-      // makes Tailwind generate the whole family: `rounded-box`,
-      // `rounded-t-box`, `rounded-tr-btn`, `rounded-bl-badge`, … all reading
-      // the same var. Verified in built CSS, not assumed.
-      //
-      // daisyUI 4 happens to register the same three names itself (its
-      // `src/lib/utility-classes.js` is merged through the plugin's own
-      // `theme.extend`), so this is belt *and* braces — deliberately. The
-      // contract the whole UI is now written against should be declared in this
-      // repo's config, not inherited from a dependency's internal file: daisyUI
-      // 5 renames these vars to `--radius-box` / `--radius-field`, and when we
-      // upgrade, this block is the one place that has to change.
-      //
-      // The fallbacks match daisyUI's own, so a theme that forgets a token
-      // degrades to a sane radius rather than to `border-radius: ;`.
       borderRadius: {
-        box: "var(--rounded-box, 1rem)",
-        btn: "var(--rounded-btn, 0.5rem)",
-        badge: "var(--rounded-badge, 1.9rem)",
+        btn: "var(--radius-field, 0.5rem)",
+        badge: "var(--radius-selector, 1.9rem)",
       },
     },
   },
-  plugins: [daisyui],
-  // daisyUI gives us a coherent component layer (btn / tab / menu / badge /
-  // card) on top of Tailwind. We keep `base: false` so daisyUI never paints
-  // the global background/foreground — the app shell (routes/__root.tsx) paints
-  // it with base tokens instead, which is what lets a theme change the page
-  // background at all.
-  //
-  // Themes come in *families*: one light + one dark variant each, catalogued in
-  // src/lib/ui/theme.core.ts (themeCatalog.test.ts fails if the two drift).
-  // Order is load-bearing — daisyUI emits theme 0 as `:root` and theme 1 inside
-  // `@media (prefers-color-scheme: dark)` (because of `darkTheme` below), with
-  // every theme also emitted as `[data-theme=…]`. So pidlight/piddark must stay
-  // first and stay in that order: they are the no-JS fallback.
-  //
-  // A family owns its **shape** as well as its colour. `--rounded-box` sizes
-  // panels/cards/modals/code blocks, `--rounded-btn` sizes buttons, inputs and
-  // small controls, `--rounded-badge` sizes chips; `theme.extend.borderRadius`
-  // above turns each into a full set of Tailwind utilities, corner-specific
-  // ones included, and `lib/ui/semanticRadius.test.ts` fails on any component
-  // that hardcodes a radius instead of using them. Adding a shape to a family
-  // is therefore a change to these four lines and nothing else.
-  //
-  // `pid`'s **shape** is frozen — it is the default and must keep looking
-  // exactly as it did before shape was tokenized. The other three differ on
-  // purpose: mono is tight and technical, terminal is fully square (and drops
-  // the button transition to 0s: a CRT does not ease), sunset is soft.
-  //
-  // Its **colour** is not frozen any more, and the freeze is why: `pid` was held
-  // byte-identical while the seven newer themes were built, so a palette
-  // regression could never be blamed on the machinery. Every one of those seven
-  // then cleared WCAG AA on its accent while `pid` — the machine-wide default —
-  // did not, at 2.77:1 for `text-primary` on `base-100`. The accent trio
-  // (`primary`, `info`, `secondary`) was darkened along its own hue until it
-  // cleared 4.5:1; nothing else about the family moved. `themeCatalog.test.ts`
-  // is now the floor, so the next accent cannot regress without failing a gate.
-  //
-  // The two variants of a family always share one shape. Light and dark are the
-  // same design in two lightings, not two designs.
-  daisyui: {
-    base: false,
-    styled: true,
-    utils: true,
-    logs: false,
-    darkTheme: "piddark",
-    themes: [
-      {
-        pidlight: {
-          // sky-700, not sky-500. `primary` is read both ways — as a surface
-          // under `primary-content` and as ink via `text-primary` (38 sites:
-          // links, active tabs, focus rings, count pills) — so it has to clear
-          // 4.5:1 in both directions. sky-500 managed 2.65 / 2.77 and sky-600
-          // only 3.91 / 4.10; sky-700 is the first step on the ramp that clears
-          // the bar, at 5.67 / 5.93.
-          primary: "#0369a1", // sky-700
-          "primary-content": "#f8fafc",
-          // indigo-600, not indigo-500: `text-secondary` on white measured
-          // 4.47:1 — a miss is a miss, and 0.03 is not a reason to exempt.
-          secondary: "#4f46e5", // indigo-600
-          accent: "#f59e0b", // amber-500
-          neutral: "#1e293b", // slate-800
-          "base-100": "#ffffff",
-          "base-200": "#f1f5f9", // slate-100
-          "base-300": "#e2e8f0", // slate-200
-          "base-content": "#0f172a", // slate-900
-          // `info` tracks `primary` in this family by design, and `text-info` is
-          // how a "working" session paints, so it moves with it.
-          info: "#0369a1",
-          // The three *status* hues still miss 4.5:1 as ink on white — success
-          // 2.54, warning 2.15 (it is `accent`, same hex), error 3.67 — and are
-          // named in `themeCatalog.test.ts`'s exemption list with those ratios,
-          // not left unmeasured. They are deliberately not in this change: a
-          // status colour carries meaning ("blocked" vs "failed" at a glance in
-          // the sidebar), so darkening the set is a design decision that wants
-          // its own before/after, not a rider on an accent fix.
-          success: "#10b981",
-          warning: "#f59e0b",
-          error: "#f43f5e",
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
-        },
-      },
-      {
-        piddark: {
-          primary: "#38bdf8", // sky-400
-          "primary-content": "#0b1220",
-          secondary: "#818cf8", // indigo-400
-          accent: "#fbbf24", // amber-400
-          neutral: "#1e293b",
-          "base-100": "#020617", // slate-950
-          "base-200": "#0f172a", // slate-900
-          "base-300": "#1e293b", // slate-800
-          "base-content": "#e2e8f0", // slate-200
-          info: "#38bdf8",
-          success: "#34d399",
-          warning: "#fbbf24",
-          error: "#fb7185",
-          "--rounded-box": "0.75rem",
-          "--rounded-btn": "0.5rem",
-          "--rounded-badge": "1rem",
-          "--animation-btn": "0.2s",
-        },
-      },
-      {
-        // mono — deliberately restrained. Zinc ink on paper, no accent hue to
-        // compete with content. The four state colours stay hue-distinct (a
-        // "done" pill has to read differently from a "failed" one) but are
-        // pulled down to the darkest, least saturated shade that still holds.
-        monolight: {
-          primary: "#3f3f46", // zinc-700
-          "primary-content": "#fafafa", // zinc-50
-          secondary: "#71717a", // zinc-500
-          accent: "#57534e", // stone-600
-          neutral: "#18181b", // zinc-900
-          "base-100": "#ffffff",
-          "base-200": "#f4f4f5", // zinc-100
-          "base-300": "#e4e4e7", // zinc-200
-          "base-content": "#18181b", // zinc-900
-          info: "#475569", // slate-600
-          success: "#4d7c0f", // lime-700
-          warning: "#a16207", // yellow-700
-          error: "#b91c1c", // red-700
-          // Tight and technical: corners present but barely, so the eye reads
-          // the content and not the frame. Snappier button transition to match.
-          "--rounded-box": "0.25rem",
-          "--rounded-btn": "0.125rem",
-          "--rounded-badge": "0.25rem",
-          "--animation-btn": "0.1s",
-        },
-      },
-      {
-        monodark: {
-          primary: "#d4d4d8", // zinc-300
-          "primary-content": "#18181b", // zinc-900
-          secondary: "#a1a1aa", // zinc-400
-          accent: "#d6d3d1", // stone-300
-          neutral: "#27272a", // zinc-800
-          "base-100": "#09090b", // zinc-950
-          "base-200": "#18181b", // zinc-900
-          "base-300": "#27272a", // zinc-800
-          "base-content": "#e4e4e7", // zinc-200
-          info: "#94a3b8", // slate-400
-          success: "#a3e635", // lime-400
-          warning: "#fbbf24", // amber-400
-          error: "#fb7185", // rose-400
-          "--rounded-box": "0.25rem",
-          "--rounded-btn": "0.125rem",
-          "--rounded-badge": "0.25rem",
-          "--animation-btn": "0.1s",
-        },
-      },
-      {
-        // terminal — phosphor green ink. Light is dark green on warm paper
-        // (a printout), dark is green on near-black (the CRT).
-        terminallight: {
-          primary: "#15803d", // green-700
-          "primary-content": "#fdfbf5",
-          secondary: "#0f766e", // teal-700
-          accent: "#4d7c0f", // lime-700
-          neutral: "#1c2b1f",
-          "base-100": "#faf6ea",
-          "base-200": "#f2ecda",
-          "base-300": "#e3dac2",
-          "base-content": "#14351f",
-          info: "#0f766e", // teal-700
-          success: "#15803d", // green-700
-          warning: "#a16207", // yellow-700
-          error: "#b91c1c", // red-700
-          // Fully square: a character cell has no corner radius, and neither
-          // should anything framing one. `--animation-btn: 0s` for the same
-          // reason — a CRT does not ease, it switches.
-          "--rounded-box": "0",
-          "--rounded-btn": "0",
-          "--rounded-badge": "0",
-          "--animation-btn": "0s",
-        },
-      },
-      {
-        terminaldark: {
-          primary: "#4ade80", // green-400
-          "primary-content": "#04120a",
-          secondary: "#2dd4bf", // teal-400
-          accent: "#a3e635", // lime-400
-          neutral: "#14261a",
-          "base-100": "#04120a",
-          "base-200": "#0a1f12",
-          "base-300": "#12331f",
-          "base-content": "#86efac", // green-300
-          info: "#5eead4", // teal-300
-          success: "#4ade80", // green-400
-          warning: "#fde047", // yellow-300
-          error: "#fca5a5", // red-300
-          "--rounded-box": "0",
-          "--rounded-btn": "0",
-          "--rounded-badge": "0",
-          "--animation-btn": "0s",
-        },
-      },
-      {
-        // sunset — warm rose/orange primary against a violet secondary, on
-        // bases tinted toward the warm end so the chrome reads as dusk.
-        sunsetlight: {
-          primary: "#e11d48", // rose-600
-          // Pure white, not a warm off-white: rose-600 only clears 4.5:1
-          // against #ffffff. The theme's warmth lives in the bases and accent.
-          "primary-content": "#ffffff",
-          secondary: "#7c3aed", // violet-600
-          accent: "#ea580c", // orange-600
-          neutral: "#3b1f2b",
-          "base-100": "#fffaf6",
-          "base-200": "#fdeee3",
-          "base-300": "#f7dcc9",
-          "base-content": "#3a1d24",
-          info: "#0e7490", // cyan-700
-          success: "#15803d", // green-700
-          warning: "#b45309", // amber-700
-          error: "#be123c", // rose-700
-          // Soft: generous corners, and pill-shaped badges (2rem exceeds any
-          // chip's height, so `--rounded-badge` fully rounds the ends).
-          "--rounded-box": "1rem",
-          "--rounded-btn": "0.75rem",
-          "--rounded-badge": "2rem",
-          "--animation-btn": "0.3s",
-        },
-      },
-      {
-        sunsetdark: {
-          primary: "#fb7185", // rose-400
-          "primary-content": "#2a0a13",
-          secondary: "#c4b5fd", // violet-300
-          accent: "#fb923c", // orange-400
-          neutral: "#3b2430",
-          "base-100": "#1a0f16",
-          "base-200": "#251621",
-          "base-300": "#35202d",
-          "base-content": "#fbe3e0",
-          info: "#67e8f9", // cyan-300
-          success: "#6ee7b7", // emerald-300
-          warning: "#fcd34d", // amber-300
-          error: "#fda4af", // rose-300
-          "--rounded-box": "1rem",
-          "--rounded-btn": "0.75rem",
-          "--rounded-badge": "2rem",
-          "--animation-btn": "0.3s",
-        },
-      },
-    ],
-  },
+  plugins: [
+    // `themes: false` so none of daisyUI's own 35 themes are emitted, and
+    // `exclude: ["rootcolor"]` is the daisyUI-4 `base: false` equivalent — it is
+    // the one base item that paints :root's background/colour, so dropping it
+    // leaves the shell paint to routes/__root.tsx.
+    daisyui(DAISYUI_OPTIONS),
+    ...THEMES.map((theme) => daisyuiTheme(theme)),
+  ],
 }
