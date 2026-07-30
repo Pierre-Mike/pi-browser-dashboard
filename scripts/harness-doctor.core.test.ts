@@ -141,6 +141,12 @@ const healthy = (): HarnessSnapshot => ({
       text: ["    name: Playwright", "      - name: Install Playwright browsers"].join("\n"),
     },
     { name: "codeql.yml", text: `      - uses: github/codeql-action/init@${SHA}` },
+    // The scheduled advisory scan, matched by shape — a cron trigger and a
+    // `bun audit` run in the same workflow — never by filename.
+    {
+      name: "dependency-audit.yml",
+      text: ['    - cron: "17 6 * * *"', "      - run: bun audit --json"].join("\n"),
+    },
   ],
   gateSources: {
     "scripts/typecheck.ts": "const patterns = parseWorkspacePatterns({ pkg })",
@@ -420,6 +426,50 @@ describe("auditHarness", () => {
       presentFiles: healthy().presentFiles.filter((f) => f !== "evals/tasks.jsonl"),
     }
     expect(checksFor(snap)).toContain("files")
+  })
+
+  // The advisory scan is the one gate whose trigger is the point: de-schedule it
+  // and it still passes every other check while scanning nothing. These four
+  // pin the shape — cron present, audit present, both in one file — and prove a
+  // rename cannot fail the check open.
+  it("catches the advisory scan losing its cron (the quiet-repo blind spot)", () => {
+    const snap = withWorkflowText({
+      file: "dependency-audit.yml",
+      edit: (t) => t.replace(/^\s*-\s*cron:.*$/gm, ""),
+    })
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  it("catches the advisory scan losing its `bun audit` step", () => {
+    const snap = withWorkflowText({
+      file: "dependency-audit.yml",
+      edit: (t) => t.replace("bun audit --json", "bun outdated"),
+    })
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  // A cron in one workflow and an audit in another is not a scheduled audit —
+  // the repo already has two weekly crons that scan nothing of the sort.
+  it("does not accept a cron and a `bun audit` in different workflows", () => {
+    const snap = {
+      ...healthy(),
+      workflows: [
+        ...healthy().workflows.filter((w) => w.name !== "dependency-audit.yml"),
+        { name: "nightly.yml", text: '    - cron: "17 6 * * *"' },
+        { name: "pr-audit.yml", text: "      - run: bun audit" },
+      ],
+    }
+    expect(checksFor(snap)).toContain("scheduled-audit")
+  })
+
+  it("accepts a renamed advisory workflow that keeps the shape", () => {
+    const snap = {
+      ...healthy(),
+      workflows: healthy().workflows.map((w) =>
+        w.name === "dependency-audit.yml" ? { ...w, name: "supply-chain.yml" } : w,
+      ),
+    }
+    expect(checksFor(snap)).not.toContain("scheduled-audit")
   })
 })
 
