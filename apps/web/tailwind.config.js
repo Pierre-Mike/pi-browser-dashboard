@@ -406,6 +406,103 @@ export const THEMES = [
     "--depth": "0",
     "--noise": "0",
   },
+  // ── prism ─────────────────────────────────────────────────────────────────
+  //
+  // The other three pop families are each built around one or two hues and tint
+  // their base surfaces to match. `prism` is the opposite construction: six
+  // maximally-saturated hues at once, on chrome with **no hue at all**.
+  //
+  // It comes from a reference palette of five Material-A400-ish blocks —
+  // #ff3d00 / #ffea00 / #00e676 / #00b0ff / #d5006d — plus #00e5ff for the cyan
+  // slot ANSI needs. The happy accident worth knowing: **that is an ANSI
+  // palette.** Six saturated hues, and six slots already named for them, which
+  // is why `prismdark` is the most faithful palette in this file.
+  //
+  // Two structural choices, both deliberate:
+  //
+  // 1. **The shell gradient crosses hues, and `base-300` is saturated.** The
+  //    first attempt gave `prism` *neutral* chrome, on the reasoning that a
+  //    family with six equal hues cannot tint its surfaces without promoting one
+  //    of them. Screenshots killed it: five of the six hues live in `success` /
+  //    `warning` / `error` / `info`, which only appear when a session has
+  //    something to report, so an idle dashboard showed exactly one colour and
+  //    `prismlight` read as `mono` with a pink accent. The colour has to sit
+  //    where it is always visible, so `base-100` -> `base-200` is a **two-hue
+  //    wash** (lemon-white to pale cyan; violet-black to teal-black) and
+  //    `base-300` — the border colour, at 3px on every card — carries a third.
+  //    `themeCatalog.test.ts` asserts both gradient stops carry a real hue and
+  //    that they are *different* hues, so nobody can quietly flatten this back
+  //    to neutral: that is the specific mistake it is guarding.
+  // 2. **Six distinct ink values across seven tokens.** All six reference hues
+  //    are reachable in the UI: magenta `primary`, blue `secondary`, green
+  //    `accent`, cyan `info`, yellow `warning`, orange-red `error`. Only
+  //    `success` doubles up (with `accent`, both green), the same
+  //    one-alias-for-a-good-reason pattern `pidlight` uses for `warning`/`accent`.
+  {
+    name: "prismlight",
+    "color-scheme": "light",
+    // The one reference hex that clears the ink floor untouched: #d5006d is
+    // 5.12:1 here, so the brand hue is literal in BOTH variants.
+    "--color-primary": "#d5006d",
+    "--color-primary-content": "#fffef5",
+    // The rest are the same hues darkened to clear 4.5:1, chroma held near max —
+    // the reference values are 1.23:1 (yellow) to 3.55:1 (orange) as ink on
+    // white, so none of them could ship as-is. Their spreads stay 127-218, which
+    // is what keeps them reading as the reference rather than as a muted set.
+    "--color-secondary": "#017bb4",
+    "--color-accent": "#018646",
+    "--color-neutral": "#1c1c22",
+    // The two-hue wash: lemon-white to pale cyan. Both carry a real tint (spread
+    // 10 and 23) and they are dominant in different channels (r then b).
+    "--color-base-100": "#fffef5",
+    "--color-base-200": "#e8faff",
+    // A real pink, not a gray step — at `--border: 3px` this outlines every card,
+    // input and panel, which is the third hue an idle page shows.
+    "--color-base-300": "#ffb3dd",
+    "--color-base-content": "#131318",
+    "--color-info": "#01808f",
+    "--color-success": "#018646",
+    // Yellow is the hue that loses most: #ffea00 is 1.23:1 on white, and 4.5:1
+    // forces it to bronze. Same place every other light theme puts `warning`.
+    "--color-warning": "#807601",
+    "--color-error": "#db3401",
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.25rem",
+    "--radius-selector": "0.25rem",
+    "--border": "3px",
+    "--depth": "0",
+    "--noise": "0",
+  },
+  {
+    name: "prismdark",
+    "color-scheme": "dark",
+    // Five of the seven ink tokens below are the reference hexes VERBATIM: on
+    // #140620 they measure 5.50 to 15.81, so the floor asked nothing of them.
+    // Only the magenta needed moving — #d5006d is 3.76 here — and it moved the
+    // minimum distance to clear, staying on hue (329 -> 328).
+    "--color-primary": "#f5008a",
+    "--color-primary-content": "#140620",
+    "--color-secondary": "#00b0ff",
+    "--color-accent": "#00e676",
+    "--color-neutral": "#330a26",
+    // The dark wash: violet-black to teal-black. Blue-dominant then
+    // green-dominant — an earlier pair (#140620 / #05191a) looked like it crossed
+    // but did not, because the teal's blue channel still beat its green by 1.
+    "--color-base-100": "#140620",
+    "--color-base-200": "#051a12",
+    "--color-base-300": "#330a26",
+    "--color-base-content": "#eaeaf2",
+    "--color-info": "#00e5ff",
+    "--color-success": "#00e676",
+    "--color-warning": "#ffea00",
+    "--color-error": "#ff3d00",
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.25rem",
+    "--radius-selector": "0.25rem",
+    "--border": "3px",
+    "--depth": "0",
+    "--noise": "0",
+  },
 ]
 
 // Exported so themeCatalog.test.ts can assert it: `exclude: ["rootcolor"]` is

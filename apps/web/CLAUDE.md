@@ -3,11 +3,32 @@
 ## Design system: daisyUI semantic tokens (uniform palette + themed shape)
 
 The UI paints with **daisyUI semantic tokens**, never the raw Tailwind palette.
-`tailwind.config.js` (`base: false`) declares seven theme **families**, each a
+`tailwind.config.js` (`base: false`) declares eight theme **families**, each a
 light + dark pair. Four are restrained by design — `pid` (`pidlight`/`piddark`),
-`mono`, `terminal`, `sunset` — and three are deliberately saturated: `candy`,
-`arcade`, `citrus`. **One semantic class adapts across all fourteen themes**,
-which is what replaced the old hand-written `light dark:` pairs.
+`mono`, `terminal`, `sunset` — and four are deliberately saturated: `candy`,
+`arcade`, `citrus`, `prism`. **One semantic class adapts across all sixteen
+themes**, which is what replaced the old hand-written `light dark:` pairs.
+
+`prism` is the odd one out, and usefully so. The other seven families are each
+built around one or two hues and tint their base surfaces to match; `prism` holds
+**six hues at maximum chroma at once**, from a reference palette of
+`#ff3d00` / `#ffea00` / `#00e676` / `#00b0ff` / `#d5006d` plus `#00e5ff`. That
+palette turns out to be an *ANSI* palette — six saturated hues, six slots already
+named for them — which is why `prismdark`'s terminal is the most faithful in the
+repo, carrying all six verbatim.
+
+**Its chrome is a two-hue wash, and that is a correction worth reading.** The
+first version gave `prism` neutral bases, reasoning that a family with six equal
+hues cannot tint its surfaces without promoting one. Screenshots killed it: five
+of the six hues live in `success` / `warning` / `error` / `info`, tokens that only
+paint when a session has something to report, so an **idle dashboard showed
+exactly one colour** and `prismlight` was indistinguishable from `mono` with a
+pink accent. Colour has to sit where it is always visible, so `base-100` →
+`base-200` now washes across two hues (lemon-white to pale cyan; violet-black to
+teal-black) and `base-300` — at `--border: 3px`, the outline on every card — is a
+real pink rather than a gray step. `themeCatalog.test.ts` asserts both stops carry
+a hue *and* that they differ, because flattening them back to neutral is the
+specific regression that already happened once.
 
 ### Choosing a theme
 
@@ -122,6 +143,14 @@ purple background, and `citrus`'s is strictly `r > g > b` with **lime, not
 emerald**, greens. A family with no character assertion can silently drift into a
 copy of another one; adding a family means adding its rule.
 
+`prism`'s rule is the inverse of `mono`'s: where `mono` desaturates its ANSI hues
+onto near-gray paper, `prism` holds all six at full chroma (channel spread ≥ 112).
+The tightest real value is `prismlight.yellow` at 130, because a yellow dark
+enough to clear 3:1 on light paper sheds chroma faster than any other hue; every
+dark slot is above 210. The *other* half of prism's character — that its shell
+gradient crosses two hues — is asserted in `themeCatalog.test.ts` instead, next to
+the config data it has to read.
+
 `apps/e2e/tests/theme-switch.spec.ts` closes it end to end: switching family
 through the real Appearance picker repaints the pane live, and each assertion
 names the family it exercises. `terminal-light-mode.spec.ts` owns the `pid` pair
@@ -162,16 +191,19 @@ still tells every family apart.)
 | `candy` | `1.5rem` | `1rem` | `2rem` | `2px` | `1` |
 | `arcade` | `0.375rem` | `0` | `0` | `2px` | `1` |
 | `citrus` | `0.5rem` | `0.375rem` | `1.5rem` | `2px` | `0` |
+| `prism` | `0.25rem` | `0.25rem` | `0.25rem` | `3px` | `0` |
 
 Both variants of a family share one shape. Changing a family's form is a change
 to those five lines and **nothing else** — no component edits.
 
-The gate requires the seven rows to be **distinct as whole tuples**, and the three
+The gate requires the eight rows to be **distinct as whole tuples**, and the four
 newest lean on `border` and `depth` to earn that rather than on radius alone:
 `candy` is the roundest box in the set with a 2px sticker outline, `arcade` is a
-lightly-radiused CRT bezel around perfectly square controls and chips, and
-`citrus` is chunky mid-round but **flat** — the `depth: 0` is what stops it
-reading as a warmer `sunset`.
+lightly-radiused CRT bezel around perfectly square controls and chips, `citrus`
+is chunky mid-round but **flat** — the `depth: 0` is what stops it reading as a
+warmer `sunset` — and `prism` is a swatch card: one radius for every role (the
+only family that does that) behind the set's only 3px rule, flat, because a
+lifted swatch is a button.
 
 `pid`'s *shape tokens* are frozen; its *pixels* are not. The migration mapped each
 element by **role** (panel → `box`, control → `btn`, chip → `badge`), and
@@ -289,8 +321,8 @@ on `base-200` — widening the bar is a change to three families, not a floor th
 already meet.
 
 **A vivid family clears that floor by dropping lightness, never saturation.** This
-is the whole design problem of `candy` / `arcade` / `citrus`, and the reason none
-of them needed an exemption. A hue at full lightness simply cannot be ink on a
+is the whole design problem of `candy` / `arcade` / `citrus` / `prism`, and the
+reason none of them needed an exemption. A hue at full lightness simply cannot be ink on a
 near-white surface — hot pink `#ec4899` is 3.19:1, lime `#84cc16` 2.11:1, yellow
 `#facc15` 1.68:1 — and the reflex fix, desaturating until it passes, produces
 exactly the muted palette the families exist not to be. So each light ink token is
@@ -318,6 +350,14 @@ to read as brown flattens every fruit colour sitting on it. The dark
 variants have the inverse constraint and so effectively none: on a near-black
 `base-100` ink must be *light*, and light saturated colour is neon, which is why
 each family is least compromised in its dark variant.
+
+`prism` is the cleanest demonstration of that asymmetry, because it started from
+fixed reference hexes and so measures the gap exactly. On its near-black
+`base-100` **five of its six reference hues clear the ink floor untouched** (5.50
+to 15.81); only the magenta `#d5006d` misses, at 3.76, and it moved the minimum
+distance to `#f5008a` while staying on hue (329 → 328). Against the light
+variant's `base-100` the *same six hues* measure 1.23 (`#ffea00`) to 5.12
+(`#d5006d`) — one passes, five do not. Same palette, same floor, opposite outcome.
 
 **`pid`'s colour freeze is over.** It was real and it was useful: holding the
 default byte-identical while the seven newer themes were built meant a palette

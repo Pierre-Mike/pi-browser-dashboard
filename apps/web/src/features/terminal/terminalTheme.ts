@@ -417,6 +417,68 @@ const citrusDark: TerminalTheme = {
   brightWhite: "#fffbe8",
 }
 
+// ── prism ───────────────────────────────────────────────────────────────────
+//
+// The reference palette this family comes from is, by happy accident, an ANSI
+// palette: six maximally-saturated hues, and six slots already named for them.
+// So `prismdark` below is the most faithful palette in this file — every one of
+// its six hue slots is the literal reference hex, including `magenta` #d5006d,
+// which the *theme* could not use as ink (3.79:1, under the 4.5 token floor) but
+// the pane can (3.65:1, over the 3.0 ANSI floor).
+//
+// The pane sits inside a *two-hue* wash rather than a single tint, because
+// prism's `base-100` and `base-200` are different hues — so the between-channels
+// rule lands it on the blend of the two (lemon-white x pale cyan on the light
+// side, violet-black x teal-black on the dark). The family's own ink is what
+// carries the colour, which is why the test asserts full chroma on all six hue
+// slots: a prism pane with muted ink would just be `mono`.
+const prismLight: TerminalTheme = {
+  background: "#f7fcfa",
+  foreground: "#131318",
+  cursor: "#d5006d",
+  black: "#131318",
+  red: "#e13501",
+  green: "#018947",
+  yellow: "#837901",
+  blue: "#017eb9",
+  magenta: "#e80178",
+  cyan: "#018392",
+  // The neutral ramp stays neutral here: with six saturated hues already in play,
+  // a tinted gray is the one thing that would make the pane look dirty.
+  white: "#81818b",
+  brightBlack: "#696975",
+  brightRed: "#fe4b15",
+  brightGreen: "#01a154",
+  brightYellow: "#9a8d01",
+  brightBlue: "#0194d8",
+  brightMagenta: "#fe349c",
+  brightCyan: "#019aac",
+  brightWhite: "#8f8f95",
+}
+
+const prismDark: TerminalTheme = {
+  background: "#0b1018",
+  foreground: "#eaeaf2",
+  cursor: "#f5008a",
+  black: "#202029",
+  // All six: the reference palette, untouched.
+  red: "#ff3d00",
+  green: "#00e676",
+  yellow: "#ffea00",
+  blue: "#00b0ff",
+  magenta: "#d5006d",
+  cyan: "#00e5ff",
+  white: "#c8c8d4",
+  brightBlack: "#6c6c7a",
+  brightRed: "#ff7847",
+  brightGreen: "#5cffab",
+  brightYellow: "#fff59a",
+  brightBlue: "#6fcdff",
+  brightMagenta: "#ff2d92",
+  brightCyan: "#7af0ff",
+  brightWhite: "#f5f5fa",
+}
+
 // Keyed by the daisyUI theme names declared in tailwind.config.js and
 // catalogued in lib/ui/theme.core.ts. A family added there without a palette
 // here fails terminalTheme.test.ts rather than silently inheriting pid's.
@@ -435,6 +497,8 @@ const PALETTES: Readonly<Record<string, TerminalTheme>> = {
   arcadedark: arcadeDark,
   citruslight: citrusLight,
   citrusdark: citrusDark,
+  prismlight: prismLight,
+  prismdark: prismDark,
 }
 
 /**
