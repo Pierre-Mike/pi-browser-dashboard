@@ -257,6 +257,166 @@ const sunsetDark: TerminalTheme = {
   brightWhite: "#fff1ec",
 }
 
+// ── candy ───────────────────────────────────────────────────────────────────
+//
+// Bubblegum. The light pane is pink paper and the dark one a plum tube, so both
+// keep red *and* blue above green — the ordering that separates candy from
+// `sunset`, which is also warm but whose red beats its blue.
+//
+// Every light palette in this file is dark ink on tinted paper, for the reason
+// the file header gives: xterm's defaults assume a dark background. What differs
+// per family is *which* hues the sixteen slots take and how the neutral ramp is
+// tinted; candy's grays are mauve (#947183 / #9c818f), not slate.
+const candyLight: TerminalTheme = {
+  background: "#ffebf6",
+  foreground: "#3d0a24",
+  cursor: "#d81064",
+  black: "#3d0a24",
+  red: "#df161d",
+  green: "#108242",
+  yellow: "#986706",
+  blue: "#126ed9",
+  magenta: "#d40e92",
+  cyan: "#087b90",
+  white: "#947183",
+  brightBlack: "#83576d",
+  brightRed: "#ed454b",
+  brightGreen: "#13984d",
+  brightYellow: "#b37907",
+  brightBlue: "#2984ee",
+  brightMagenta: "#f129af",
+  brightCyan: "#0991aa",
+  brightWhite: "#9c818f",
+}
+
+// The dark variant is where the family is least compromised: on #200827 a slot
+// can be genuinely neon and still clear the 3:1 ink floor several times over.
+// `magenta` is the theme's own primary, so pink output and the caret agree.
+const candyDark: TerminalTheme = {
+  background: "#200827",
+  foreground: "#fce7f3",
+  cursor: "#ff5eb0",
+  black: "#3b1140",
+  red: "#fb7185",
+  green: "#a3e635",
+  yellow: "#fcd34d",
+  blue: "#7dd3fc",
+  magenta: "#ff5eb0",
+  cyan: "#22d3ee",
+  // The neutral ramp is mauve rather than gray, the same call `terminaldark`
+  // makes with phosphor: plain output should still belong to the family.
+  white: "#f0c8e0",
+  brightBlack: "#8f5f80",
+  brightRed: "#fda4af",
+  brightGreen: "#bef264",
+  brightYellow: "#fde68a",
+  brightBlue: "#bae6fd",
+  brightMagenta: "#ff9ed0",
+  brightCyan: "#67e8f9",
+  brightWhite: "#ffeaf6",
+}
+
+// ── arcade ──────────────────────────────────────────────────────────────────
+//
+// A CRT cabinet: indigo-black glass with violet-tinted neutrals, so the pane is
+// blue-dominant in both variants and `white` carries the family hue instead of
+// being a stock gray dropped onto a purple background.
+const arcadeLight: TerminalTheme = {
+  background: "#f3ebff",
+  foreground: "#1e0a3c",
+  cursor: "#8d40f1",
+  black: "#1e0a3c",
+  red: "#dc133b",
+  green: "#108048",
+  yellow: "#8e6a06",
+  blue: "#3264ee",
+  magenta: "#bd0ed8",
+  cyan: "#077b88",
+  white: "#827496",
+  brightBlack: "#6d5a88",
+  brightRed: "#ee4164",
+  brightGreen: "#139655",
+  brightYellow: "#a77d07",
+  brightBlue: "#4271f0",
+  brightMagenta: "#d72ef2",
+  brightCyan: "#0891a1",
+  brightWhite: "#8e829d",
+}
+
+const arcadeDark: TerminalTheme = {
+  background: "#100224",
+  foreground: "#ece2ff",
+  cursor: "#c084fc",
+  black: "#241046",
+  red: "#ff6b8a",
+  green: "#5cf2a0",
+  yellow: "#fcd34d",
+  blue: "#7dd3fc",
+  magenta: "#ff4fdf",
+  cyan: "#34e5ff",
+  white: "#cbb6f0",
+  brightBlack: "#6d4fa8",
+  brightRed: "#ff9db2",
+  brightGreen: "#8ff7c0",
+  brightYellow: "#fde68a",
+  brightBlue: "#bae6fd",
+  brightMagenta: "#ff8fea",
+  brightCyan: "#8af2ff",
+  brightWhite: "#f7f0ff",
+}
+
+// ── citrus ──────────────────────────────────────────────────────────────────
+//
+// Rind and pith: a strictly r > g > b pane in both variants, which is what keeps
+// it distinct from `sunset`'s plum. The green slots are **lime, not emerald** —
+// red above blue — because a citrus family whose green is a stock emerald has
+// lost the only thing separating it from a warm `pid`.
+const citrusLight: TerminalTheme = {
+  background: "#fff2cc",
+  foreground: "#3d2606",
+  cursor: "#ca4705",
+  black: "#3d2606",
+  red: "#e11a14",
+  green: "#49800a",
+  yellow: "#8a6f04",
+  blue: "#097aa4",
+  magenta: "#d91879",
+  cyan: "#0a8071",
+  white: "#877b65",
+  brightBlack: "#70644b",
+  brightRed: "#ef4943",
+  brightGreen: "#56960c",
+  brightYellow: "#a28304",
+  brightBlue: "#0a90c1",
+  brightMagenta: "#ea4497",
+  brightCyan: "#0c9785",
+  brightWhite: "#928975",
+}
+
+const citrusDark: TerminalTheme = {
+  background: "#171105",
+  foreground: "#fef3c7",
+  cursor: "#fb923c",
+  black: "#2c220a",
+  red: "#fca5a5",
+  green: "#a3e635",
+  yellow: "#fde047",
+  // The cool slots lean teal/aqua rather than a stock blue: on a rind-coloured
+  // pane a true blue is the one hue that reads as foreign.
+  blue: "#5eead4",
+  magenta: "#f0abfc",
+  cyan: "#7dd3fc",
+  white: "#e8d9a8",
+  brightBlack: "#8f7a45",
+  brightRed: "#fecaca",
+  brightGreen: "#bef264",
+  brightYellow: "#fef08a",
+  brightBlue: "#99f6e4",
+  brightMagenta: "#f5d0fe",
+  brightCyan: "#bae6fd",
+  brightWhite: "#fffbe8",
+}
+
 // Keyed by the daisyUI theme names declared in tailwind.config.js and
 // catalogued in lib/ui/theme.core.ts. A family added there without a palette
 // here fails terminalTheme.test.ts rather than silently inheriting pid's.
@@ -269,6 +429,12 @@ const PALETTES: Readonly<Record<string, TerminalTheme>> = {
   terminaldark: terminalDark,
   sunsetlight: sunsetLight,
   sunsetdark: sunsetDark,
+  candylight: candyLight,
+  candydark: candyDark,
+  arcadelight: arcadeLight,
+  arcadedark: arcadeDark,
+  citruslight: citrusLight,
+  citrusdark: citrusDark,
 }
 
 /**
