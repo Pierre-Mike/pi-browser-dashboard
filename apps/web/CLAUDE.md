@@ -78,6 +78,75 @@ hues (one more than `prism`'s six) and a pane whose six ANSI hue slots are all
 *pure* channel triples. The honest summary is that `neonlight` is the bright one
 and `neondark` is the colourful one.
 
+### Adding a family: generate it, then review it on one page
+
+Nine families in, the cost of a tenth was about thirty minutes and only ~5 of
+those were design. The other 25 were spent three ways, and each has a tool now.
+
+**`bun run scaffold:theme <family> --label … --hues … --shape …`** generates one.
+It solves every ink token, writes both variants, all 32 ANSI slots, the catalog
+entry, the shape row and the two palettes, and `bun run theme:check` passes
+immediately afterwards — so any failure you then see is yours. `--dry-run` solves
+and prints the measured table without writing, which is the mode to hunt hues in.
+
+The solver is the part worth committing, because it had been written ad hoc and
+thrown away **three times** — once for `candy`/`arcade`/`citrus`, once for
+`prism`, once for `neon` — and each rewrite re-derived the same two sentences. A
+vivid hue cannot be ink at full lightness (hot pink `#ec4899` is 3.19:1 on white,
+lime `#84cc16` 2.11, yellow `#facc15` 1.68), and the reflex fix of desaturating
+until it passes produces exactly the muted palette a pop family exists not to be.
+So: **drop lightness, never saturation** — take the value nearest `L = 0.5` (the
+maximum-chroma point at `S = 1`) that still clears the floor, which is a bisection
+because contrast is monotone in lightness either side of it. That is the whole of
+`scripts/theme-solve.core.ts`.
+
+Three things it is careful about, all of them lessons from the families above:
+
+- **The floor is that variant's own `base-100`, never white.** `neon` proved this
+  cuts the unexpected way — its electric lemon page is *darker* than white by
+  luminance, so a hue solved against `#ffffff` ships one step too light and misses.
+- **The pane is stricter than the page.** The pane sits between `base-100` and
+  `base-200` (by construction: it is their per-channel midpoint), so anything that
+  has to be legible in the terminal — the cursor, which *is* the theme's primary,
+  and every ANSI ink slot — is solved against the pane.
+- **A bright ANSI slot is derived from its base slot's lightness, not from a second
+  looser floor.** With two floors, every yellow, green and cyan on a near-black
+  pane clears both at `L = 0.5` and solves to the *same hex twice*, silently
+  costing the palette eight slots.
+
+`scripts/theme-emit.core.ts` holds the six insertion anchors, and its co-located
+test reads the six **real** files — so a refactor that moves an anchor is a red
+`bun run test`, not a scaffold that writes a broken family months later.
+
+**`bun run theme:check`** is the inner loop: the four files a theme change has to
+satisfy (`themeCatalog`, `theme.core`, `semanticPalette`, `terminalTheme`), 0.1s
+against `bun run verify`'s ~36s. It takes no `--family` filter on purpose — every
+contrast floor is *one* test looping over all eighteen themes, so a name filter
+would skip the assertions a new hex is most likely to break, and the failure
+messages already name the theme.
+
+**`/theme-lab`** replaces the five-views-times-two-variants screenshot pass with
+one page. Each panel scopes itself with `data-theme`, so every family and both
+variants paint at once, and the **state chips render in two columns, idle and
+reporting, side by side**. That pair is the point rather than a detail: it is the
+review that rejected `prism`'s first version, and reading only the left column is
+exactly the mistake. Two things the lab found about itself on its first
+screenshot, both worth not re-deriving: a bare `.modal-box` renders *invisible*
+(daisyUI's `.modal` is `opacity: 0` until `.modal-open`, and the box inherits it —
+hence `modal modal-open static`), and daisyUI 5 renamed the menu highlight to
+`menu-active`, a rename that fails by rendering an unhighlighted row forever.
+
+The lab is a real file-based route, reachable through `routeTree.gen.ts`, and that
+is deliberate: a dev-only `import.meta.env.DEV` guard leaves the module imported
+and the component body unreachable, which is the shape `fallow audit`'s dead-code
+check fails on. It passes the palette and radius ratchets like any other route —
+which a page whose whole job is rendering the palette had better do first.
+
+What none of this does is write the design story. A generated family is *correct*,
+not designed: retune by taste, then replace the generated character rule in
+`terminalTheme.test.ts` with the sentence the family is actually for, and give it
+a paragraph above.
+
 ### Choosing a theme
 
 `src/lib/ui/theme.core.ts` is the catalog and every decision (`THEME_FAMILIES`,

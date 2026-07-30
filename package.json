@@ -34,6 +34,8 @@
     "axiom-debt:update": "bun run scripts/check-axiom-debt.ts --update",
     "check:feature-tests": "./scripts/check-feature-tests.sh",
     "scaffold:slice": "bun run scripts/scaffold-slice.ts",
+    "scaffold:theme": "bun run scripts/scaffold-theme.ts",
+    "theme:check": "bun run scripts/theme-check.ts",
     "evals": "./evals/run.sh",
     "evals:baseline": "bun run evals/run.ts --baseline --suite full",
     "evals:report": "bun run evals/report.ts",
