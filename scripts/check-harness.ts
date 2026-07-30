@@ -80,6 +80,10 @@ const TRACKED_FILES = [
   "scripts/typecheck.ts",
   "shared/src/index.ts",
   "stryker.config.json",
+  "evals/run.ts",
+  "evals/probe.ts",
+  "evals/report.ts",
+  "evals/score.core.ts",
 ]
 
 const GATE_SOURCES = ["scripts/typecheck.ts", "scripts/check-axiom-debt.ts"]
@@ -104,6 +108,7 @@ const snapshot: HarnessSnapshot = {
   presentFiles: TRACKED_FILES.filter((f) => existsSync(join(root, f))),
   workflows,
   gateSources,
+  evalTasks: await read("evals/tasks.jsonl"),
 }
 
 const findings = auditHarness(snapshot)

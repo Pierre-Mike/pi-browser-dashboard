@@ -53,10 +53,12 @@ if (untyped.length > 0) {
   process.exit(1)
 }
 
-// Repo-level TypeScript that ships no workspace: the gate scripts themselves.
+// Repo-level TypeScript that ships no workspace: the gate scripts themselves,
+// and the eval harness that grades agents against those gates.
 const targets: readonly Project[] = [
   ...workspaces,
   { label: "scripts", dir: join(root, "scripts") },
+  { label: "evals", dir: join(root, "evals") },
 ]
 
 const failed: string[] = []

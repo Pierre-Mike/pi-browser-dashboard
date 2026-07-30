@@ -86,7 +86,7 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/**/*.ts"],
+      "includes": ["scripts/**/*.ts", "evals/**/*.ts"],
       "plugins": ["./biome-plugins/max-one-param-declarations.grit"]
     },
     {
@@ -95,6 +95,7 @@
         "apps/**/*.tsx",
         "scripts/**/*.ts",
         "shared/**/*.ts",
+        "evals/**/*.ts",
         "!**/*.test.ts",
         "!**/*.test.tsx",
         "!**/*.spec.ts"

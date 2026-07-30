@@ -8,6 +8,7 @@ import {
   type HarnessSnapshot,
   REQUIRED_GRIT_PLUGINS,
   requiredContextsOf,
+  tasksMissingAsserts,
   unpinnedActions,
 } from "./harness-doctor.core"
 
@@ -57,7 +58,22 @@ const TRACKED = [
   "scripts/typecheck.ts",
   "shared/src/index.ts",
   "stryker.config.json",
+  "evals/run.ts",
+  "evals/probe.ts",
+  "evals/report.ts",
+  "evals/score.core.ts",
 ]
+
+// One well-formed eval task: a prompt plus at least one assert. The assert is
+// what distinguishes a working agent from one that did nothing, since the gate
+// jury is green on an untouched checkout.
+const EVAL_TASKS = `${JSON.stringify({
+  id: "backoff-pure-algorithm",
+  archetype: "pure-algorithm",
+  suites: ["smoke"],
+  prompt: "…",
+  asserts: [{ name: "responds 200", run: "bun evals/probe.ts --path /backoff/delay" }],
+})}\n`
 
 // A snapshot with every gate in place — each test then removes exactly one
 // thing and asserts the doctor notices.
@@ -101,7 +117,7 @@ const healthy = (): HarnessSnapshot => ({
       lint: "biome check --write .",
       "lint:ci": "biome ci .",
       typecheck: "bun run scripts/typecheck.ts",
-      test: "bun run scripts/check-colocated-tests.ts && bun run scripts/check-harness.ts && bun run test:shared",
+      test: "bun run scripts/check-colocated-tests.ts && bun run scripts/check-harness.ts && bun run test:shared && bun run test:evals",
       "test:web": "cd apps/web && bun test",
       "test:cli": "cd apps/cli && bun test",
       "test:shared": "cd shared && bun test",
@@ -115,6 +131,9 @@ const healthy = (): HarnessSnapshot => ({
       evals: "./evals/run.sh",
       verify:
         "bun run lint:ci && bun run typecheck && bun run test && bun run test:web && bun run test:cli && bun run audit && bun run axiom-debt",
+      "test:evals": "bun test ./evals",
+      "evals:baseline": "bun run evals/run.ts --baseline --suite full",
+      "evals:report": "bun run evals/report.ts",
     },
   }),
   claudeMd: canon("\nshared canon\n"),
@@ -152,6 +171,7 @@ const healthy = (): HarnessSnapshot => ({
     "scripts/typecheck.ts": "const patterns = parseWorkspacePatterns({ pkg })",
     "scripts/check-axiom-debt.ts": "const patterns = parseWorkspacePatterns({ pkg })",
   },
+  evalTasks: EVAL_TASKS,
 })
 
 const checksFor = (snap: HarnessSnapshot): readonly string[] =>
@@ -498,5 +518,47 @@ describe("unpinnedActions", () => {
   it("ignores an expression-driven ref", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting GitHub's own expression syntax
     expect(unpinnedActions("uses: a/b@${{ env.REF }}")).toEqual([])
+  })
+})
+
+describe("tasksMissingAsserts", () => {
+  const withAsserts = JSON.stringify({
+    id: "ok",
+    asserts: [{ name: "a", run: "true" }],
+  })
+
+  it("passes a task set where every task carries an assert", () => {
+    expect(tasksMissingAsserts({ jsonl: `${withAsserts}\n${withAsserts}\n` })).toEqual([])
+  })
+
+  it("names a task whose asserts are missing or empty", () => {
+    const none = JSON.stringify({ id: "gates-only", prompt: "do a thing" })
+    const empty = JSON.stringify({ id: "empty-asserts", asserts: [] })
+    const problems = tasksMissingAsserts({ jsonl: `${withAsserts}\n${none}\n${empty}\n` })
+    expect(problems.map((p) => p.label)).toEqual(["gates-only", "empty-asserts"])
+    expect(problems.every((p) => p.reason.includes("no asserts"))).toBe(true)
+  })
+
+  it("reports a line that is not a JSON object rather than throwing at cell 1 of a paid grid", () => {
+    const problems = tasksMissingAsserts({ jsonl: `${withAsserts}\nnot json\n[1,2]\n` })
+    expect(problems.map((p) => p.label)).toEqual(["line 2", "line 3"])
+  })
+
+  it("rejects an empty task set — a grid with no tasks measures nothing", () => {
+    expect(tasksMissingAsserts({ jsonl: "\n  \n" })).toHaveLength(1)
+  })
+})
+
+describe("auditHarness (eval tasks)", () => {
+  it("catches an eval task with no asserts, which the gates alone would score green", () => {
+    const snap = {
+      ...healthy(),
+      evalTasks: `${JSON.stringify({ id: "free-points", prompt: "…" })}\n`,
+    }
+    expect(checksFor(snap)).toContain("eval-tasks")
+  })
+
+  it("catches the task list being emptied", () => {
+    expect(checksFor({ ...healthy(), evalTasks: "" })).toContain("eval-tasks")
   })
 })

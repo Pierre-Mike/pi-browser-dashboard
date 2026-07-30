@@ -35,17 +35,22 @@ const SKIP = [
 ]
 
 /**
- * The scanned roots come from root `package.json` `workspaces` plus `scripts`,
- * not from a hardcoded `{apps,scripts}` glob. A hardcoded glob fails open: when
+ * The scanned roots come from root `package.json` `workspaces` plus the two
+ * repo-level TypeScript trees that ship no workspace (`scripts`, `evals`), not
+ * from a hardcoded `{apps,scripts}` glob. A hardcoded glob fails open: when
  * `shared/` was added as a workspace it would have been exempt from the ratchet
  * on day one, so the first raw `fetch` written there would have been invisible.
  * Anything you must declare as a workspace to make it install is scanned.
+ *
+ * `evals` is in scope for the same reason it is in the typecheck: the harness
+ * that grades agents against these axioms has no business being exempt from
+ * them. It carries zero debt today and the ratchet is what keeps that true.
  */
 const scanRoots = async (): Promise<readonly string[]> => {
   const patterns = parseWorkspacePatterns({
     pkg: await Bun.file(join(root, "package.json")).json(),
   })
-  return workspaceScanRoots({ patterns, extra: ["scripts"] })
+  return workspaceScanRoots({ patterns, extra: ["scripts", "evals"] })
 }
 
 const collect = async (): Promise<readonly SourceFile[]> => {

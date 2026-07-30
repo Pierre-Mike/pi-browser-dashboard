@@ -8,7 +8,10 @@
     "global-setup.ts",
     "global-teardown.ts",
     "playwright.config.ts",
-    "scripts/check-commit-msg.ts"
+    "scripts/check-commit-msg.ts",
+    "evals/run.ts",
+    "evals/probe.ts",
+    "evals/report.ts"
   ],
   "workspaces": {
     "packages": ["apps/*"]
