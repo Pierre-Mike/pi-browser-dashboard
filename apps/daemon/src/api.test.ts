@@ -100,6 +100,47 @@ describe("GET /extensions/:name/* (static assets)", () => {
   })
 })
 
+/**
+ * The behaviour change from deleting this file's own 14-entry `EXT_MIME_BY_EXT`
+ * in favour of `platform/http-content.core`'s `mimeFromPath`. The extension
+ * asset route sends `X-Content-Type-Options: nosniff`, so an iframe-tier
+ * extension shipping a font or a video was previously served
+ * `application/octet-stream` and the browser refused to use it.
+ *
+ * `woff`/`woff2`/`map` were in the deleted table and not in the wide one; the
+ * fold added them there, and the first case below is what would otherwise have
+ * regressed.
+ */
+describe("GET /extensions/:name/* content types after the MIME consolidation", () => {
+  const served = async (rel: string): Promise<string> => {
+    mkdirSync(join(dir, "assets"), { recursive: true })
+    writeFileSync(join(dir, rel), "x")
+    extensionRegistry.register({ manifest: mk("mimeext"), dir, scope: "global" })
+    const res = await app.request(`/extensions/mimeext/${rel}`)
+    expect(res.status).toBe(200)
+    return res.headers.get("content-type") ?? ""
+  }
+
+  it("still serves webfonts and sourcemaps — the entries the wide table lacked", async () => {
+    expect(await served("assets/inter.woff2")).toBe("font/woff2")
+    expect(await served("assets/legacy.woff")).toBe("font/woff")
+    expect(await served("assets/app.js.map")).toBe("application/json; charset=utf-8")
+  })
+
+  it("now types extensions it used to answer octet-stream for", async () => {
+    expect(await served("assets/hero.avif")).toBe("image/avif")
+    expect(await served("assets/demo.mp4")).toBe("video/mp4")
+    expect(await served("assets/panel.tsx")).toBe("text/typescript; charset=utf-8")
+    expect(await served("assets/notes.txt")).toBe("text/plain; charset=utf-8")
+    expect(await served("assets/config.yaml")).toBe("application/yaml; charset=utf-8")
+    expect(await served("assets/favicon.ico")).toBe("image/vnd.microsoft.icon")
+  })
+
+  it("still defaults to octet-stream for an extension no table knows", async () => {
+    expect(await served("assets/weird.unknownext")).toBe("application/octet-stream")
+  })
+})
+
 describe("file-drop surface", () => {
   // One endpoint saves dropped files, not two. `POST /drops` was the earlier
   // draft; /uploads is what the SPA calls (DropZone → handleDrop → uploadFile).

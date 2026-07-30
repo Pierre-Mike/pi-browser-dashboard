@@ -2,32 +2,12 @@ import { validateRelPath } from "../../platform/safe-path.core"
 // Pure helpers for serving a pre-built SPA (apps/web's Vite `dist`) from the
 // daemon. No I/O — filesystem reads live in static-web.routes.ts. Backs the
 // pid-dashboard CLI's single-port distribution (see api.ts's buildApp).
+//
+// This slice used to keep its own 16-entry extension→MIME table and a
+// `staticMime` around it. Both are gone: the routes call
+// `platform/http-content.core`'s `mimeFromPath`, the repo's one table.
 
 import { extname } from "node:path"
-
-const MIME_BY_EXT: Record<string, string> = {
-  html: "text/html; charset=utf-8",
-  js: "text/javascript; charset=utf-8",
-  mjs: "text/javascript; charset=utf-8",
-  css: "text/css; charset=utf-8",
-  json: "application/json; charset=utf-8",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  ico: "image/x-icon",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  map: "application/json; charset=utf-8",
-  txt: "text/plain; charset=utf-8",
-}
-
-export const staticMime = (rel: string): string => {
-  const ext = extname(rel).slice(1).toLowerCase()
-  return MIME_BY_EXT[ext] ?? "application/octet-stream"
-}
 
 // Resolve a request pathname to a relative asset path under the static root.
 // An extensionless path (a client-side SPA route, e.g. "/sessions/abc") falls
