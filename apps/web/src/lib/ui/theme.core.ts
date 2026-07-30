@@ -71,6 +71,9 @@ export const THEME_FAMILIES: readonly ThemeFamily[] = [
   },
   { id: "citrus", label: "Citrus — orange / lime", light: "citruslight", dark: "citrusdark" },
   { id: "prism", label: "Prism — full spectrum", light: "prismlight", dark: "prismdark" },
+  // The brightest of the set: the only family whose *base surfaces* are fully
+  // saturated rather than tinted, so an idle page is already three hues.
+  { id: "neon", label: "Neon — electric highlighter", light: "neonlight", dark: "neondark" },
 ]
 
 export type ThemeChoice = {

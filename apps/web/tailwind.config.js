@@ -503,6 +503,145 @@ export const THEMES = [
     "--depth": "0",
     "--noise": "0",
   },
+  // ── neon ──────────────────────────────────────────────────────────────────
+  //
+  // The brightest family in the file, and it gets there by attacking the one
+  // thing every family before it treated as fixed: that `base-100` is a
+  // near-white or a near-black. It is not. The only gate on the base surfaces is
+  // `base-content` at 7:1, and that is a *ratio* — it says the two must be far
+  // apart, never that either has to be neutral. Read the other way it is a
+  // licence: pick the ink at one extreme and the surface can be a fully
+  // saturated colour at the other.
+  //
+  // So `neonlight` is a highlighter rather than a tinted white. `base-100` is
+  // electric lemon #f5ff00 (channel spread 255, luminance 0.84) and `base-200`
+  // electric cyan #00f0ff (spread 255) — against near-black ink they measure
+  // 18.35:1 and 14.26:1, nowhere near the 7:1 limit. For scale: `prismlight`
+  // held the previous record for a coloured wash at spreads of 10 and 23. This
+  // is the same construction with 25x the chroma, and it is the answer to the
+  // reason `prism` needed a second pass at all — five of the seven ink tokens
+  // only paint when a session has something to report, so an idle dashboard
+  // shows whatever the *surfaces* are, and the surfaces are where the headroom
+  // was sitting unused.
+  //
+  // `base-300` is the third always-visible hue — the outline on every card, panel
+  // and input: #ff5ce6 light, #9c005c dark. The rule for picking it was learned
+  // from a screenshot rather than from a ratio, and it is the opposite of the
+  // obvious one: **a border is only as visible as its difference from the surface
+  // behind it**, not as visible as its own chroma. The dark variant's first pass
+  // used electric violet #5200f0 (spread 240, the most chromatic value a 7:1
+  // border can hold) and it vanished against an indigo `base-100`. Deep magenta at
+  // spread 156 is less saturated and far more visible.
+  //
+  // Which is also why the three always-painted surfaces here each dominate a
+  // *different* RGB channel — lemon/cyan/pink light, indigo/teal/magenta dark. An
+  // idle page therefore shows one hue per channel, with nothing running and no
+  // status token painted, and `themeCatalog.test.ts` pins exactly that.
+  //
+  // The light inks pay the usual price and it is the usual price: on a lemon
+  // `base-100` an ink token has to clear 4.5:1, which caps it at luminance 0.147
+  // (0.183 on white), so each one is the lightest fully-saturated value at its
+  // hue that still clears — #d1006a magenta at 4.90, #ae00e6 violet at 4.87,
+  // #006ad0 azure at 4.83. Yellow and lime cannot survive as ink at any
+  // lightness, exactly as in `candy` / `citrus` / `prism`; here that costs
+  // nothing, because lemon is the page.
+  //
+  // The dark variant is where a bright family is least compromised, so it is the
+  // one to look at first: ink on a near-black surface must be *light*, and light
+  // saturated colour is neon. All seven ink tokens are electric and all seven are
+  // a different hue — cyan, magenta, lime, azure, spring green, yellow, red —
+  // which is one more distinct hue than `prism` reaches with six.
+  {
+    name: "neonlight",
+    "color-scheme": "light",
+    // Each of these is the lightest fully-saturated value at its hue that clears
+    // 4.5:1 on a lemon base-100. Measured, in token order: 4.90 / 4.87 / 4.83 /
+    // 4.75 / 4.62 / 4.72 / 4.86.
+    "--color-primary": "#d1006a",
+    // Lemon type on a magenta button (4.90:1), not the near-white every other
+    // family uses. `primary-content` is a surface's worth of pixels on every
+    // primary button in the app, and a white one would be the single largest
+    // place this family throws colour away.
+    "--color-primary-content": "#f5ff00",
+    "--color-secondary": "#ae00e6",
+    "--color-accent": "#006ad0",
+    "--color-neutral": "#2b0044",
+    // The highlighter. Not a tinted white: lemon at full chroma, and cyan at full
+    // chroma to wash to. 18.35:1 and 14.26:1 against the ink below.
+    "--color-base-100": "#f5ff00",
+    "--color-base-200": "#00f0ff",
+    // Hot electric pink, 7.58:1 — the widest chroma a 7:1 border can hold with
+    // ink this dark, found by search rather than by eye (#ff2fd0 is prettier and
+    // fails at 6.37).
+    "--color-base-300": "#ff5ce6",
+    // Violet-black rather than neutral black: even the ink carries a hue here,
+    // and dropping it this low is also what buys base-300 its chroma.
+    "--color-base-content": "#12001f",
+    "--color-info": "#00778f",
+    "--color-success": "#00803a",
+    // Yellow as ink is the hue that cannot survive the floor — the same landing
+    // spot as every other light theme in this file. The family's actual yellow is
+    // the page.
+    "--color-warning": "#8a6800",
+    "--color-error": "#d90000",
+    // A neon tube is bent glass: fully-pill controls and chips inside a rounded
+    // panel, behind the thickest rule in the set, lifted. The one family whose
+    // `radius-field` is *larger* than its `radius-box`.
+    "--radius-box": "1.25rem",
+    "--radius-field": "2rem",
+    "--radius-selector": "2rem",
+    "--border": "4px",
+    "--depth": "1",
+    "--noise": "0",
+  },
+  {
+    name: "neondark",
+    "color-scheme": "dark",
+    // Seven ink tokens, seven distinct electric hues, six of them a pure channel
+    // triple (a 0 and a 255). Measured on base-100: 11.84 / 4.93 / 14.06 / 6.39 /
+    // 12.53 / 15.29 / 4.62.
+    "--color-primary": "#00f0ff",
+    "--color-primary-content": "#16006e",
+    "--color-secondary": "#ff00d4",
+    "--color-accent": "#c6ff00",
+    "--color-neutral": "#2a0d80",
+    // Electric indigo, and this exact luminance is a measured boundary rather than
+    // a taste. `base-100` is ~75% of the painted pixels on a real dashboard — the
+    // sidebar and every card are opaque `bg-base-100` *over* the shell gradient,
+    // which is why it dwarfs every other token and is the only one worth spending
+    // the whole budget on. Raising it brightens the page and raises the ink floor
+    // in the same move, and the first token to fall off that floor is `error`: at
+    // luminance 0.013 a genuine red still clears (#ff3348, 4.62) and much past it
+    // red turns coral. A theme that cannot say "failed" in red has traded away the
+    // wrong thing, so the climb stops here — 3.4x `prismdark`'s base-100 luminance
+    // and 4.2x its chroma.
+    "--color-base-100": "#16006e",
+    // Deep emerald-teal, luminance 0.081: 10x `prismdark`'s base-200, which sat at
+    // 0.008 and so was indistinguishable from its own base-100. This is the
+    // second-largest painted area — the shell gradient, every gutter between
+    // cards, the whole lower page.
+    "--color-base-200": "#005c4a",
+    // Deep magenta, chosen for its *contrast against base-100* rather than for its
+    // own chroma, which is the correction that made this family work. The first
+    // pass used electric violet #5200f0 — spread 240, far more chromatic than this
+    // — and on an indigo page it was invisible: a border is only as visible as its
+    // difference from the surface behind it, and screenshots said so immediately.
+    "--color-base-300": "#9c005c",
+    "--color-base-content": "#f7f5ff",
+    "--color-info": "#00a8ff",
+    "--color-success": "#00ff9c",
+    "--color-warning": "#f7ff00",
+    // The one ink token that is not a pure triple: pure #ff0000 measures 3.70 on
+    // this base-100 and misses. #ff3348 is the minimum move that clears, and it is
+    // still unambiguously red — r 255 against g 51 and b 72.
+    "--color-error": "#ff3348",
+    "--radius-box": "1.25rem",
+    "--radius-field": "2rem",
+    "--radius-selector": "2rem",
+    "--border": "4px",
+    "--depth": "1",
+    "--noise": "0",
+  },
 ]
 
 // Exported so themeCatalog.test.ts can assert it: `exclude: ["rootcolor"]` is

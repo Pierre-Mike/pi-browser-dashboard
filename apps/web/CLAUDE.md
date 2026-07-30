@@ -3,14 +3,15 @@
 ## Design system: daisyUI semantic tokens (uniform palette + themed shape)
 
 The UI paints with **daisyUI semantic tokens**, never the raw Tailwind palette.
-`tailwind.config.js` (`base: false`) declares eight theme **families**, each a
+`tailwind.config.js` (`base: false`) declares nine theme **families**, each a
 light + dark pair. Four are restrained by design — `pid` (`pidlight`/`piddark`),
-`mono`, `terminal`, `sunset` — and four are deliberately saturated: `candy`,
-`arcade`, `citrus`, `prism`. **One semantic class adapts across all sixteen
-themes**, which is what replaced the old hand-written `light dark:` pairs.
+`mono`, `terminal`, `sunset` — and five are deliberately saturated: `candy`,
+`arcade`, `citrus`, `prism`, `neon`. **One semantic class adapts across all
+eighteen themes**, which is what replaced the old hand-written `light dark:`
+pairs.
 
-`prism` is the odd one out, and usefully so. The other seven families are each
-built around one or two hues and tint their base surfaces to match; `prism` holds
+`prism` is the odd one out, and usefully so. Every family except `neon` is built
+around one or two hues and tints its base surfaces to match; `prism` holds
 **six hues at maximum chroma at once**, from a reference palette of
 `#ff3d00` / `#ffea00` / `#00e676` / `#00b0ff` / `#d5006d` plus `#00e5ff`. That
 palette turns out to be an *ANSI* palette — six saturated hues, six slots already
@@ -29,6 +30,53 @@ teal-black) and `base-300` — at `--border: 3px`, the outline on every card —
 real pink rather than a gray step. `themeCatalog.test.ts` asserts both stops carry
 a hue *and* that they differ, because flattening them back to neutral is the
 specific regression that already happened once.
+
+`neon` is the answer to the question `prism` raised and only half-answered:
+**if the always-painted surfaces are where colour has to live, how bright can
+those surfaces actually be?** Much brighter than `prism` assumed. The only gate
+on `base-100` / `base-200` / `base-300` is `base-content` at 7:1, and that is a
+*distance*, not a colour — read the other way it is a licence to put the ink at
+one extreme and make the surface a fully saturated hue at the other. So
+`neonlight` is a highlighter rather than a tinted white: `base-100` is electric
+lemon `#f5ff00` and `base-200` electric cyan `#00f0ff`, both at channel spread
+255, measuring 18.35:1 and 14.26:1 against near-black ink and so nowhere near
+the limit. `prismlight`'s wash, the previous high-water mark for a coloured
+shell, sat at spreads of 10 and 23.
+
+Two findings from `neon` are worth not re-deriving, and both came from a browser
+rather than from a contrast table.
+
+**`base-100` is ~75% of the painted pixels, and nothing else is close.** Measured
+on a real dashboard at 1440x900: `base-100` 977,772 px², the next surface 38,080,
+and `base-300` — the card outline — 16,984 at the **1px** Tailwind `border` the
+cards actually use, not the family's `--border`. (`--border` reaches daisyUI's own
+components: `btn`, `input`, `badge`, `tab`, `modal-box`.) So a family that spends
+its budget on accents or on the border width is optimising ~2% of the screen. Put
+it in `base-100`.
+
+**A border is only as visible as its difference from the surface behind it, not
+as visible as its own chroma.** `neondark` first shipped `base-300` as electric
+violet `#5200f0` — spread 240, the most chromatic value a 7:1 border can hold
+anywhere in this file — and on an indigo `base-100` it was *invisible* in the
+screenshot. Deep magenta `#9c005c` at spread 156 is less saturated and far more
+visible. The gate therefore pins **distinct dominant channels** across
+`base-100`/`base-200`/`base-300` rather than a chroma threshold on each: lemon /
+cyan / pink light, indigo / teal / magenta dark, so an idle page shows one hue per
+RGB channel with nothing running and no status token painted. `prism` reaches
+two.
+
+**The dark variant is bounded, and it is worth knowing where.** Raising
+`base-100` brightens the page and raises the ink floor in the same move, and the
+first ink token to fall off is `error`: at `#16006e` (luminance 0.013) a genuine
+red still clears at 4.62 (`#ff3348`); a stop or two brighter and red becomes
+coral. Since a theme that cannot say "failed" in red has traded away the wrong
+thing — the same argument `mono`'s "desaturate, don't erase" rule makes — that is
+where the climb stops, at 3.4x `prismdark`'s base-100 luminance and 4.2x its
+chroma. It follows that **no dark theme is bright in its surfaces**; its colour
+is in the ink and the terminal, where `neondark` carries seven distinct electric
+hues (one more than `prism`'s six) and a pane whose six ANSI hue slots are all
+*pure* channel triples. The honest summary is that `neonlight` is the bright one
+and `neondark` is the colourful one.
 
 ### Choosing a theme
 
@@ -143,6 +191,21 @@ purple background, and `citrus`'s is strictly `r > g > b` with **lime, not
 emerald**, greens. A family with no character assertion can silently drift into a
 copy of another one; adding a family means adding its rule.
 
+`neon`'s two rules go one step past `prism`'s and are the sharpest in the file.
+`neondark`'s six hue slots are each a **pure channel triple** — one channel at 0
+and one at 255, so spread is exactly 255 and no value at that hue is more
+saturated. `prismdark` manages four of six by accident of its reference palette;
+this is all six by construction, and on `#0d1a52` the tightest still measures
+4.30:1. The pane is deliberately at the *dark* end of what the between-the-stops
+rule allows, because spending its ~0.09 of available luminance would push the 3:1
+ANSI floor above what a pure red can reach — the purity and a bright pane are the
+same budget. `neonlight`'s rule is the opposite half: its pane is a **saturated
+colour** (spread 158) where every other light pane here is a near-white
+(`pidlight` 4, `prismlight` 5, `citruslight` 51 at the top end). That is not a
+free choice either — the wash pins the pane's green channel into 240..255, so a
+bright spring green is the only thing the rule permits, and it happens to be the
+honest blend of a lemon `base-100` and a cyan `base-200`.
+
 `prism`'s rule is the inverse of `mono`'s: where `mono` desaturates its ANSI hues
 onto near-gray paper, `prism` holds all six at full chroma (channel spread ≥ 112).
 The tightest real value is `prismlight.yellow` at 130, because a yellow dark
@@ -192,18 +255,21 @@ still tells every family apart.)
 | `arcade` | `0.375rem` | `0` | `0` | `2px` | `1` |
 | `citrus` | `0.5rem` | `0.375rem` | `1.5rem` | `2px` | `0` |
 | `prism` | `0.25rem` | `0.25rem` | `0.25rem` | `3px` | `0` |
+| `neon` | `1.25rem` | `2rem` | `2rem` | `4px` | `1` |
 
 Both variants of a family share one shape. Changing a family's form is a change
 to those five lines and **nothing else** — no component edits.
 
-The gate requires the eight rows to be **distinct as whole tuples**, and the four
+The gate requires the nine rows to be **distinct as whole tuples**, and the five
 newest lean on `border` and `depth` to earn that rather than on radius alone:
 `candy` is the roundest box in the set with a 2px sticker outline, `arcade` is a
 lightly-radiused CRT bezel around perfectly square controls and chips, `citrus`
 is chunky mid-round but **flat** — the `depth: 0` is what stops it reading as a
-warmer `sunset` — and `prism` is a swatch card: one radius for every role (the
+warmer `sunset` — `prism` is a swatch card: one radius for every role (the
 only family that does that) behind the set's only 3px rule, flat, because a
-lifted swatch is a button.
+lifted swatch is a button — and `neon` is bent glass, the only family whose
+controls are *rounder than its panels* (`field` 2rem over `box` 1.25rem, so every
+button and input is a tube end) behind the set's thickest rule at 4px.
 
 `pid`'s *shape tokens* are frozen; its *pixels* are not. The migration mapped each
 element by **role** (panel → `box`, control → `btn`, chip → `badge`), and
@@ -286,7 +352,7 @@ CSS backs it; `themeCatalog.test.ts` covers that half.
 
 `src/lib/ui/themeCatalog.test.ts` is the config half: it loads
 `tailwind.config.js` at runtime and asserts the catalog and the config name the
-same fourteen themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 as
+same eighteen themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 as
 `:root` and theme 1 under `prefers-color-scheme: dark` — the no-JS fallback),
 that `darkMode` is still the suffix selector, that the three `borderRadius`
 aliases are present, that every theme carries the full token set **and its

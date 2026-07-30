@@ -61,6 +61,24 @@ const contrast = ({ a, b }: { readonly a: string; readonly b: string }): number 
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }
 
+// Chroma, as cheaply as it can be measured from a hex: how far apart the extreme
+// channels are. `spread` is 0 for any gray and 255 for a fully-saturated hue, so
+// "does this surface carry a real colour, or is it a gray step?" is one integer.
+// Module scope because two families are pinned on it — `prism` and `neon` — and a
+// helper defined inside one test is a helper the other cannot reuse.
+const channels = (hex: string): readonly [number, number, number] =>
+  [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+
+const spread = (hex: string): number => Math.max(...channels(hex)) - Math.min(...channels(hex))
+
+// Which channel a surface leans on. Two surfaces with different dominants are
+// different *hues*, not one hue at two lightnesses — which is what makes a
+// gradient cross rather than fade.
+const dominant = (hex: string): "r" | "g" | "b" => {
+  const [r, g, b] = channels(hex)
+  return r >= g && r >= b ? "r" : g >= b ? "g" : "b"
+}
+
 // daisyUI 5 prefixes every colour token with `--color-`. The short names stay the
 // vocabulary of this file (and of the exemption list, and of the failure
 // messages) — only the lookup changes.
@@ -184,6 +202,17 @@ const SHAPE_BY_FAMILY = {
     "--radius-selector": "0.25rem",
     "--border": "3px",
     "--depth": "0",
+  },
+  neon: {
+    // Bent glass: the only family whose controls are rounder than its panels
+    // (`field` > `box`), so every button and input is a tube end, behind the
+    // thickest rule in the set — 4px, because `base-300` is this family's third
+    // always-visible hue and the border is where it gets seen.
+    "--radius-box": "1.25rem",
+    "--radius-field": "2rem",
+    "--radius-selector": "2rem",
+    "--border": "4px",
+    "--depth": "1",
   },
 } as const
 
@@ -418,8 +447,8 @@ describe("every theme is complete and legible", () => {
   })
 
   test("prism's shell gradient crosses two hues, and both stops carry one", async () => {
-    // The other seven families tint their base surfaces toward a single hue (or,
-    // for `pid`/`mono`, barely at all). `prism` has six equal hues and no way to
+    // Most families tint their base surfaces toward a single hue (or, for
+    // `pid`/`mono`, barely at all). `prism` has six equal hues and no way to
     // pick a favourite, so the *gradient itself* carries two: `base-100` ->
     // `base-200` washes lemon-white to pale cyan, and violet-black to teal-black.
     //
@@ -437,13 +466,6 @@ describe("every theme is complete and legible", () => {
     // dominance half on a rounding accident), and differing dominant channels say
     // the two stops are not the same hue at two lightnesses.
     const { themes } = await loadConfig()
-    const channels = (hex: string) =>
-      [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
-    const spread = (hex: string) => Math.max(...channels(hex)) - Math.min(...channels(hex))
-    const dominant = (hex: string) => {
-      const [r, g, b] = channels(hex)
-      return r >= g && r >= b ? "r" : g >= b ? "g" : "b"
-    }
     for (const name of ["prismlight", "prismdark"]) {
       const tokens = themes[name] as Theme
       const [one, two] = [
@@ -467,6 +489,69 @@ describe("every theme is complete and legible", () => {
         spread(colour({ tokens, name: "base-300" })),
         `${name}: base-300 is a gray step, so a 3px border shows nothing`,
       ).toBeGreaterThanOrEqual(32)
+    }
+  })
+
+  test("neon's base surfaces are saturated colours, not tinted neutrals", async () => {
+    // `prism` established that colour has to live where it is always painted, and
+    // the test above keeps its wash from flattening. This is the same rule one
+    // step further, and it is the whole reason `neon` exists as a separate family
+    // rather than as a brighter `prism`: `prism`'s wash stops are tinted *whites*
+    // and *blacks* (spread 10 / 23 light, 26 / 21 dark), so they read as chrome
+    // with a hue in it. `neon`'s are the hue — electric lemon to electric cyan,
+    // electric violet to deep teal — because nothing in the gate set requires a
+    // base surface to be neutral. Only `base-content` at 7:1 constrains it, and
+    // that is a distance, not a colour.
+    //
+    // Hence three thresholds an ordinary family cannot reach by accident:
+    //   - all three always-painted surfaces at spread >= 56, ~7x prism's floor of
+    //     8. The real values are 255 / 255 / 163 (light) and 110 / 92 / 156
+    //     (dark); the dark trio sets the floor, because a *dark* surface has less
+    //     room to be chromatic before it stops being dark.
+    //   - the three of them dominate three *different* RGB channels: lemon /
+    //     cyan / pink on the light side, indigo / teal / magenta on the dark. That
+    //     is the strongest statement this family makes and the reason it is worth
+    //     a gate — an idle page, nothing running and not one status token painted,
+    //     still shows one hue per channel. `prism` reaches two.
+    //   - and the light variant's wash is genuinely *bright*, not a dark
+    //     saturated surface with light ink: both stops above 0.5 relative
+    //     luminance. Without this half, "saturated base" would be satisfied by
+    //     inverting the family into a second dark theme, which is the easy way to
+    //     pass a chroma gate while losing the light variant entirely.
+    //
+    // Note what is deliberately *not* asserted: that `base-300` is the most
+    // chromatic value it could be. It is not, and that was the fix — the dark
+    // variant first shipped a spread-240 electric violet border that measured
+    // beautifully and could not be seen, because `base-100` was also violet. The
+    // distinct-dominant rule below is what encodes "visible" instead of "vivid".
+    const { themes } = await loadConfig()
+    for (const name of ["neonlight", "neondark"]) {
+      const tokens = themes[name] as Theme
+      const surfaces = (["base-100", "base-200", "base-300"] as const).map((role) => ({
+        role,
+        hex: colour({ tokens, name: role }),
+      }))
+      for (const { role, hex } of surfaces) {
+        expect(
+          spread(hex),
+          `${name}: ${role} ${hex} is a tinted neutral, not a saturated colour`,
+        ).toBeGreaterThanOrEqual(56)
+      }
+      const dominants = surfaces.map(({ hex }) => dominant(hex))
+      expect(
+        new Set(dominants).size,
+        `${name}: base-100/200/300 (${surfaces.map((s) => s.hex).join(" ")}) lean on ${dominants.join("/")} — an idle page needs one hue per channel`,
+      ).toBe(3)
+    }
+    // The half that keeps the light variant light. `neonlight`'s stops measure
+    // 0.84 and 0.70; anything that drops them under 0.5 has stopped being a
+    // highlighter.
+    for (const role of ["base-100", "base-200"] as const) {
+      const hex = colour({ tokens: themes.neonlight as Theme, name: role })
+      expect(
+        luminance(hex),
+        `neonlight: ${role} ${hex} is too dark to read as a highlighter`,
+      ).toBeGreaterThan(0.5)
     }
   })
 

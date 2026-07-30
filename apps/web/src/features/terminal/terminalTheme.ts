@@ -70,7 +70,7 @@ const pidDark: TerminalTheme = {
 const pidLight: TerminalTheme = {
   background: "#f8fafc",
   foreground: "#0f172a",
-  // The cursor is the theme's `primary`, as it is in all seven other palettes.
+  // The cursor is the theme's `primary`, as it is in every other palette here.
   // pidlight was the lone exception — cursor sky-600 under a sky-500 primary,
   // because the primary was too light for the pane. With primary at sky-700 the
   // exception has no reason left, and the caret gains contrast (3.91 → 5.67).
@@ -479,6 +479,81 @@ const prismDark: TerminalTheme = {
   brightWhite: "#f5f5fa",
 }
 
+// ── neon ────────────────────────────────────────────────────────────────────
+//
+// `prismdark` was the most faithful palette in this file because its reference
+// hexes happened to be an ANSI palette. `neondark` goes one step past faithful:
+// every one of its six hue slots is a **pure** channel triple — one channel at
+// 0, one at 255 — which is the most chroma a hex can carry and a thing no other
+// palette here does even once (`prismdark` manages four of six). On #0f1a3c the
+// tightest of them still measures 4.30:1, so the purity costs no legibility.
+//
+// The panes are decided by the between-`base-100`-and-`base-200` rule rather
+// than chosen, and for this family that rule is unusually opinionated, which is
+// worth reading before "fixing" either colour. `neonlight` washes lemon
+// (245,255,0) to cyan (0,240,255), so the pane's green channel is pinned into
+// 240..255: the honest blend of the family's two wash hues is a **bright spring
+// green**, and it is the only saturated light pane in the repo (spread 158,
+// against `citruslight`'s 51 and `pidlight`'s 4). `neondark` washes indigo
+// (22,0,110) to teal (0,92,74), which pins the pane's blue channel into 74..110 —
+// a dark indigo, and deliberately at the dark end of what that allows: the pane
+// has ~0.09 of luminance available and using it would push the ANSI ink floor
+// (3:1) above what a pure red can reach, costing the palette the very purity the
+// test below pins. So the dark variant's colour is all in the ink.
+const neonLight: TerminalTheme = {
+  background: "#5cfaa0",
+  foreground: "#12001f",
+  cursor: "#d1006a",
+  black: "#12001f",
+  // Each slot is the lightest fully-saturated value at its hue clearing ~3.6:1 on
+  // the pane, with the bright half a lighter step at ~3.1. On a pane this bright
+  // that band is only ~0.5 of ratio wide, which is why the two slots sharing the
+  // pane's own hue — `brightGreen` and `brightCyan` — are the tightest in the
+  // file at 3.19 and 3.18.
+  red: "#e50000",
+  green: "#00842f",
+  yellow: "#906c00",
+  blue: "#006fdf",
+  magenta: "#d500a0",
+  cyan: "#007e94",
+  // The neutral ramp is green-tinted, not gray: on paper this saturated a true
+  // gray is the one thing that reads as dirt.
+  white: "#4f7a60",
+  brightBlack: "#3a6349",
+  brightRed: "#f80000",
+  brightGreen: "#008d45",
+  brightYellow: "#9c7500",
+  brightBlue: "#0079f0",
+  brightMagenta: "#e800ad",
+  brightCyan: "#0086a0",
+  brightWhite: "#5c8268",
+}
+
+const neonDark: TerminalTheme = {
+  background: "#0d1a52",
+  foreground: "#f7f5ff",
+  cursor: "#00f0ff",
+  black: "#2a1050",
+  // All six pure: a 0 and a 255 in every one.
+  red: "#ff0033",
+  green: "#00ff85",
+  yellow: "#eaff00",
+  blue: "#0091ff",
+  magenta: "#ff00cc",
+  cyan: "#00fff2",
+  // Violet-tinted neutrals, the same call `arcadedark` and `candydark` make:
+  // plain output belongs to the family too.
+  white: "#d8ccff",
+  brightBlack: "#7a5cc4",
+  brightRed: "#ff5c7a",
+  brightGreen: "#66ffb8",
+  brightYellow: "#f5ff7a",
+  brightBlue: "#5cc0ff",
+  brightMagenta: "#ff5ce0",
+  brightCyan: "#7afff5",
+  brightWhite: "#f5f0ff",
+}
+
 // Keyed by the daisyUI theme names declared in tailwind.config.js and
 // catalogued in lib/ui/theme.core.ts. A family added there without a palette
 // here fails terminalTheme.test.ts rather than silently inheriting pid's.
@@ -499,6 +574,8 @@ const PALETTES: Readonly<Record<string, TerminalTheme>> = {
   citrusdark: citrusDark,
   prismlight: prismLight,
   prismdark: prismDark,
+  neonlight: neonLight,
+  neondark: neonDark,
 }
 
 /**
