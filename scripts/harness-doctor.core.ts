@@ -202,6 +202,16 @@ export const unpinnedActions = (workflow: string): readonly string[] => {
   return out
 }
 
+// The shape of a scheduled advisory scan: a cron trigger and a `bun audit` run,
+// in the SAME workflow. Matched by shape rather than by filename on purpose —
+// a check for `.github/workflows/dependency-audit.yml` would go green the moment
+// someone renamed or replaced the file, which is the failure mode the whole
+// doctor exists to prevent. Requiring both in one file also rejects the
+// accidental pass where `bun audit` sits in a PR-only workflow while some
+// unrelated job supplies the cron.
+const CRON_TRIGGER = /^\s*-\s*cron:/m
+const BUN_AUDIT_RUN = /\bbun\s+audit\b/
+
 export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   const findings: Finding[] = []
   const miss = (finding: Finding): void => {
@@ -379,6 +389,23 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   // --- Gate scripts still on disk ----------------------------------------
   for (const file of REQUIRED_FILES) {
     if (!snap.presentFiles.includes(file)) miss({ check: "files", detail: `${file} is missing` })
+  }
+
+  // --- Advisories are scanned on a clock, not on push traffic --------------
+  // Every other dependency signal here is event-driven, so a repo nobody is
+  // pushing to is a repo nobody is scanning — and a new advisory is an event in
+  // the world, not in this repo. The template upstream went 2.5 quiet weeks and
+  // accumulated 16 advisories, one critical, before a routine PR tripped over
+  // them.
+  const scansOnAClock = snap.workflows.some(
+    (workflow) => CRON_TRIGGER.test(workflow.text) && BUN_AUDIT_RUN.test(workflow.text),
+  )
+  if (!scansOnAClock) {
+    miss({
+      check: "scheduled-audit",
+      detail:
+        "no workflow runs `bun audit` on a cron — advisories would only surface when someone happens to open a PR, so a quiet repo becomes a blind one",
+    })
   }
 
   return findings
