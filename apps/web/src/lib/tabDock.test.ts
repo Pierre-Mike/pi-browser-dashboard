@@ -88,9 +88,20 @@ describe("shared tab dock", () => {
     expect(tabButtonClass(false)).not.toContain("py-1.5")
   })
 
-  it("stacks the sub-tab rail as a fixed-width, scrollable column tinted like the dock", () => {
+  it("grows each tab to a tappable height below lg, without loosening desktop density", () => {
+    // py-1 around a text-xs line is ~24px — fine for a cursor, a coin toss for
+    // a thumb. A min-height rather than more padding is what lets the same
+    // string stay dense on desktop: the assertion above still holds.
+    const cls = tabButtonClass(false)
+    expect(cls).toContain("min-h-8")
+    expect(cls).toContain("lg:min-h-0")
+  })
+
+  it("stacks the sub-tab rail as a scrollable column tinted like the dock, narrower on small screens", () => {
     expect(subTabRailClass).toContain("flex-col")
-    expect(subTabRailClass).toContain("w-48")
+    // 192px of a 390px phone is half the width gone before the panel starts.
+    expect(subTabRailClass).toContain("w-40")
+    expect(subTabRailClass).toContain("lg:w-48")
     expect(subTabRailClass).toContain("overflow-y-auto")
     expect(subTabRailClass).toContain("bg-base-200/60")
   })

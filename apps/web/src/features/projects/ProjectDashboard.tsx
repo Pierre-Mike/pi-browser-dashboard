@@ -20,8 +20,9 @@ import { NewPidAppButton } from "../pid-apps/NewPidAppButton"
 import { PidAppHost } from "../pid-apps/PidAppHost"
 import { usePidApps } from "../pid-apps/usePidApps"
 import { PidSettingsPanel } from "../pid-settings/PidSettingsPanel"
+import { fillViewportClass } from "../sessions/navChrome"
 import { RecentSessionsFeed } from "../sessions/RecentSessionsFeed"
-import { SidebarReopenButton } from "../sessions/sidebarRail"
+import { NavChromeChips } from "../sessions/sidebarRail"
 import { useSessions } from "../sessions/useSessions"
 import { useTerminalStates } from "../terminal/useTerminalState"
 import { CollapsibleRail, RailExpandButton } from "./CollapsibleRail"
@@ -274,10 +275,10 @@ export const ProjectDashboard = ({ project }: Props) => {
   return (
     <div
       data-testid="project-dashboard"
-      className={`flex flex-col gap-1 ${fillViewport ? "h-screen -my-4 pt-1" : ""}`}
+      className={`flex flex-col gap-1 ${fillViewport ? `${fillViewportClass} pt-1` : ""}`}
     >
       <div data-testid="project-topbar" className="flex items-center gap-2">
-        <SidebarReopenButton />
+        <NavChromeChips />
 
         <Link
           to="/"

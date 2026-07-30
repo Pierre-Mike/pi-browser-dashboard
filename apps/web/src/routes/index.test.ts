@@ -73,7 +73,7 @@ describe("root dashboard navigation polish (shared daisyUI dock)", () => {
 describe("root dashboard — collapsed-sidebar reopen chip", () => {
   it("hosts the chip as the first item of the tab-dock row, not as a floating overlay", () => {
     expect(src).toContain('from "../features/sessions/sidebarRail"')
-    expect(src).toMatch(/<SidebarReopenButton\s*\/>\s*<nav/)
+    expect(src).toMatch(/<NavChromeChips\s*\/>\s*<nav/)
   })
 })
 

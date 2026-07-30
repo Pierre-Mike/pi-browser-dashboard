@@ -86,21 +86,29 @@ export const tabDockNavClass =
 
 // One tab button. Active = daisyUI primary fill with a lift; idle = muted,
 // warming on hover.
+//
+// `min-h-8 lg:min-h-0` rather than more padding: py-1 around a text-xs line is
+// ~24px, which is fine under a cursor and a coin toss under a thumb — but the
+// dock's whole point on desktop is that identity, nav and actions fit one row,
+// so the touch size has to arrive as a floor that lifts below lg and vanishes
+// above it.
 export const tabButtonClass = (active: boolean): string =>
   [
     "group shrink-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-btn px-2.5 py-1",
+    "min-h-8 lg:min-h-0",
     "text-xs font-medium transition-all duration-150",
     active
       ? "bg-primary text-primary-content shadow-sm shadow-primary/30"
       : "text-base-content/60 hover:bg-base-300/70 hover:text-base-content",
   ].join(" ")
 
-// The vertical sub-tab rail: a fixed-width, scrollable column that sits to the
-// LEFT of a parent tab's content (e.g. the Specs tab lists each dropped
-// spec/app here). Same base-200 tint + rounding as the horizontal dock so the
-// two navs read as one system.
+// The vertical sub-tab rail: a scrollable column that sits to the LEFT of a
+// parent tab's content (e.g. the Specs tab lists each dropped spec/app here).
+// Same base-200 tint + rounding as the horizontal dock so the two navs read as
+// one system. Narrower below lg — 192px out of a phone's ~390 is half the width
+// spent before the panel it labels even starts.
 export const subTabRailClass =
-  "flex w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-box border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  "flex w-40 lg:w-48 shrink-0 flex-col gap-1 overflow-y-auto rounded-box border border-base-300 bg-base-200/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 
 // The chip that restores a collapsed left rail (see CollapsibleRail). It rides
 // in the topbar rather than standing where the rail was, so a collapsed rail

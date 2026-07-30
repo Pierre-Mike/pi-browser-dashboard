@@ -210,7 +210,7 @@ describe("ProjectDashboard single-line topbar", () => {
     // The chip belongs to a row that exists anyway, so the tab panels below
     // (terminal, canvas, spec host) keep the full width down the left edge.
     expect(src).toContain('from "../sessions/sidebarRail"')
-    const chipIdx = src.indexOf("<SidebarReopenButton />")
+    const chipIdx = src.indexOf("<NavChromeChips />")
     const topbarIdx = src.indexOf('data-testid="project-topbar"')
     const tabsIdx = src.indexOf('data-testid="project-tabs"')
     expect(chipIdx).toBeGreaterThan(topbarIdx)

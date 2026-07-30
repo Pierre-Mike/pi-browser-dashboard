@@ -21,7 +21,7 @@ import { useSessions } from "./useSessions"
 
 type SidebarProps = {
   readonly variant?: SidebarVariant
-  // Whole-rail collapse flag, shared with the pages' SidebarReopenButton chip.
+  // Whole-rail collapse flag, shared with the pages' NavChromeChips row.
   // Two separate usePersistedFlag instances in the same tab don't sync with
   // each other (the hook only listens for cross-tab storage events), so the
   // desktop call site must pass its own instance down. Optional so the
