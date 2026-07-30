@@ -21,6 +21,24 @@ import {
   zellijSessionName,
 } from "./terminal.core"
 
+// Zellij paints the tab bar and the status bar itself, inside the pty, from
+// ZELLIJ's theme — which the dashboard cannot reach. xterm's palette stops at
+// the characters the program writes; the two bars are drawn by plugin panes the
+// layout asks for, so in any of the four LIGHT themes they stayed dark strips
+// inside a light pane. The fix is to stop asking for them: no plugin pane, no
+// mis-themed row, and three rows of pty go back to the terminal. Every layout
+// this core generates is held to that here, so a new layout cannot reintroduce
+// the defect by copying an old one.
+const expectNoZellijChrome = (kdl: string): void => {
+  expect(kdl).not.toContain("plugin location=")
+  expect(kdl).not.toContain("tab-bar")
+  expect(kdl).not.toContain("status-bar")
+  expect(kdl).not.toContain("compact-bar")
+  // The template existed only to inject those plugin panes around `children`.
+  expect(kdl).not.toContain("default_tab_template")
+  expect(kdl).not.toContain("children")
+}
+
 describe("zellijSessionName", () => {
   it("returns the bare repo name verbatim — no prefix, case preserved so we share the user's session", () => {
     expect(zellijSessionName("pi-browser-dashboard")).toBe("pi-browser-dashboard")
@@ -72,35 +90,23 @@ describe("projectZellijCommand", () => {
     expect(cmd).toContain("exec zellij attach 'foo'")
   })
 
-  it("creates a new session with a layout that pins zellij's tab bar visible (no auto-claude)", () => {
-    // Bare `zellij -s <name>` relies on the user's config to show the tab
-    // bar / status bar — some configs hide them, leaving the dashboard
-    // terminal indistinguishable from a single shell pane. Mirror the
-    // session drill-in shape: write a layout file with default_tab_template
-    // pinning the tab-bar and status-bar plugins. Unlike the drill-in, no
-    // auto-claude pane — the user picks what to run.
+  it("creates a new session with a bare content pane and no zellij chrome (no auto-claude)", () => {
     const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
     expect(cmd).toContain("mktemp")
     expect(cmd).toContain(`exec zellij -s 'foo' -n`)
-    expect(cmd).toContain("default_tab_template")
-    expect(cmd).toContain(`plugin location="zellij:tab-bar"`)
-    expect(cmd).toContain(`plugin location="zellij:status-bar"`)
+    expectNoZellijChrome(cmd)
     // No auto-claude — the project terminal should drop the user at a shell.
     expect(cmd).not.toContain("claude")
   })
 
-  it("wraps the content pane in an explicit `tab {}` so the FIRST tab renders the tab bar / status bar (not just new tabs)", () => {
-    // zellij applies default_tab_template only to tabs materialised through a
-    // `tab {}` block (and to new tabs opened at runtime). A bare `pane` at the
-    // layout root becomes an EMPTY first tab with no plugin panes: the user
-    // opens the terminal and sees no tab bar / status bar — only after opening
-    // a SECOND tab does the zellij UI appear. Confirmed via
-    // `zellij -n <file> … action dump-layout` on 0.43.1: the bare-pane layout
-    // dumps `tab name="Tab #1" {}` (empty) plus a new_tab_template carrying the
-    // bars, whereas `tab { pane }` injects the content through the template so
-    // tab #1 carries the bars too.
+  it("wraps the content pane in an explicit `tab {}` so the first tab holds the pane", () => {
+    // Verified against zellij 0.44.3 (`attach -b` + `action list-panes`):
+    // `layout { tab { pane } }` materialises tab #1 with `terminal_0` in it and
+    // nothing else. The `tab {}` wrapper is kept from the templated shape
+    // because it is what puts the content in the FIRST tab rather than in a
+    // new-tabs-only template.
     const cmd = projectZellijCommand({ cwd: "/x", sessionName: "foo" })
-    expect(cmd).toMatch(/default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{/)
+    expect(cmd).toMatch(/layout \{\s*\n\s*tab \{/)
   })
 
   it("uses exec so the bash wrapper is replaced (close → detach, not kill)", () => {
@@ -163,12 +169,7 @@ describe("sessionZellijCommand", () => {
     return cmd ?? ""
   }
 
-  it("auto-attaches to the claude bg session while keeping zellij's tab bar visible", () => {
-    // The drill-in used to exec `claude attach <short>` directly (no tab bar,
-    // no room for a second pane); then dropped auto-attach entirely because
-    // the layout used didn't include default_tab_template and swallowed the
-    // zellij UI. This shape keeps both: default_tab_template restores the
-    // tab bar / status bar, and the first pane auto-runs `claude attach`.
+  it("auto-attaches to the claude bg session in a pane with no zellij chrome around it", () => {
     const cmd = drillInCmd()
     expect(cmd).toContain("cd '/wt'")
     expect(cmd).toContain("zellij list-sessions -s")
@@ -179,10 +180,9 @@ describe("sessionZellijCommand", () => {
     // New session: layout file written via mktemp + heredoc, then `-n <file>`.
     expect(cmd).toContain("mktemp")
     expect(cmd).toContain("exec zellij -s 'abcd1234' -n")
-    // Layout must include default_tab_template so the tab bar is visible.
-    expect(cmd).toContain("default_tab_template")
-    expect(cmd).toContain(`plugin location="zellij:tab-bar"`)
-    expect(cmd).toContain(`plugin location="zellij:status-bar"`)
+    // The claude TUI owns the whole pty: no bar zellij paints in its own theme
+    // sits above or below it.
+    expectNoZellijChrome(cmd)
     // Layout must auto-run `claude attach <short>` wrapped in `bash -lc`.
     // Direct `command="claude"` produces a pty that claude rejects, so the
     // TUI paints once and the pane collapses within seconds — leaving the
@@ -191,17 +191,9 @@ describe("sessionZellijCommand", () => {
     expect(cmd).not.toContain(`pane command="claude"`)
   })
 
-  it("wraps the claude pane in an explicit `tab {}` so the FIRST tab renders the tab bar / status bar (not just new tabs)", () => {
-    // Same zellij quirk as the project terminal: a bare `pane command="bash"`
-    // at the layout root materialises an EMPTY first tab (no tab-bar /
-    // status-bar plugin panes) and demotes default_tab_template to a
-    // new-tabs-only template. The drill-in claude pane must live inside an
-    // explicit `tab { … }` so it's injected through the template and the bars
-    // render on the very first (and only) tab the user sees.
+  it("wraps the claude pane in an explicit `tab {}` so the first tab holds it", () => {
     const cmd = drillInCmd()
-    expect(cmd).toMatch(
-      /default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{[\s\S]*pane command="bash"/,
-    )
+    expect(cmd).toMatch(/layout \{\s*\n\s*tab \{[\s\S]*pane command="bash"/)
   })
 
   it("survives a failing `claude attach` — falls back to a login shell instead of collapsing the pane", () => {
@@ -294,16 +286,12 @@ describe("piBackgroundLayoutKdl", () => {
     expect(kdl).toContain(`args "-l" "/tmp/pid-pi-x/launch.sh"`)
   })
 
-  it("pins the tab-bar / status-bar template so the zellij UI shows once attached", () => {
-    expect(kdl).toContain("default_tab_template")
-    expect(kdl).toContain(`plugin location="zellij:tab-bar"`)
-    expect(kdl).toContain(`plugin location="zellij:status-bar"`)
+  it("asks for no zellij chrome, so attaching later shows pi's output and nothing else", () => {
+    expectNoZellijChrome(kdl)
   })
 
-  it("wraps the pane in an explicit `tab {}` so the FIRST tab renders the bars", () => {
-    expect(kdl).toMatch(
-      /default_tab_template \{[\s\S]*?\n {4}\}\s*tab \{[\s\S]*pane command="bash"/,
-    )
+  it("wraps the pane in an explicit `tab {}` so the first tab holds it", () => {
+    expect(kdl).toMatch(/layout \{\s*\n\s*tab \{[\s\S]*pane command="bash"/)
   })
 })
 
@@ -337,6 +325,10 @@ describe("sessionPiZellijCommand", () => {
   it("locks the check-then-create keyed by the pi session name", () => {
     expect(cmd).toContain("pid-zellij-pi-bd83d0a7.lock")
     expect(cmd).toMatch(/rmdir "\$lock"[\s\S]*exec zellij attach 'pi-bd83d0a7'/)
+  })
+
+  it("carries no zellij chrome on the resurrect branch either", () => {
+    expectNoZellijChrome(cmd)
   })
 })
 
@@ -481,6 +473,17 @@ describe("orchestratorZellijCommand", () => {
       sessionName: ORCHESTRATOR_ZELLIJ_SESSION,
     })
     expect(c).toContain(`cd '/it'\\''s/here'`)
+  })
+
+  it("splits the two panes with no zellij chrome around them", () => {
+    // The split is the only structure here. zellij labels the two panes from
+    // their `name=` (verified on 0.44.3: `action list-panes` reports
+    // `terminal_0 orchestrator` / `terminal_1 agents`), so dropping the tab bar
+    // costs no identification.
+    expect(cmd).toContain(`pane split_direction="vertical"`)
+    expect(cmd).toContain(`pane name="orchestrator"`)
+    expect(cmd).toContain(`pane name="agents"`)
+    expectNoZellijChrome(cmd)
   })
 })
 

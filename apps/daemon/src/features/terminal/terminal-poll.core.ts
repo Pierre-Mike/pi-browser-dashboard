@@ -83,9 +83,11 @@ export const parseSessionList = (raw: string): ReadonlyArray<ZellijSessionLine> 
 // ---- zellij action list-panes -------------------------------------------
 
 // `PANE_ID  TYPE  TITLE` header, then one row per pane. TYPE is `terminal` or
-// `plugin` — the daemon's layouts wrap every content pane in tab-bar and
-// status-bar plugin panes, and dumping a plugin's screen classifies zellij's
-// own UI rather than the agent.
+// `plugin`, and dumping a plugin's screen classifies zellij's own UI rather than
+// the agent. The daemon's own layouts no longer emit a plugin pane at all (see
+// the block above `projectLayoutKdl` in terminal.core.ts), so today this filter
+// only has to survive a plugin pane a *human* opened — which is exactly why it
+// is still a filter and not an assumption about how many rows to skip.
 const PANE_INDEX_RE = /_(\d+)$/
 
 const paneIndex = (id: string): number => {
