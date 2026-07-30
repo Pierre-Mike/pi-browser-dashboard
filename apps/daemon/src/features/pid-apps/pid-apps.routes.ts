@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { Hono, type Context as HonoContext } from "hono"
 import { appRuntime } from "../../platform/runtime"
-import { validateRelPath } from "../projects/projects.core"
+import { validateRelPath } from "../../platform/safe-path.core"
 import { PID_APP_CSP } from "./pid-apps.core"
 import { PidAppsService, type PidAppWriteError } from "./pid-apps.io"
 

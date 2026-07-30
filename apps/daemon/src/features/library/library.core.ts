@@ -303,14 +303,6 @@ export const resolveAgenticRepoPath = (input: {
   readonly homeDir: string
 }): string => input.envPath ?? expandHome({ p: DEFAULT_AGENTIC_REPO, homeDir: input.homeDir })
 
-// Coerce arbitrary id to a safe path segment (mirrors claude-config.core).
-export const isSafeSegment = (id: string): boolean =>
-  id.length > 0 &&
-  !id.startsWith(".") &&
-  !id.includes("/") &&
-  !id.includes("\\") &&
-  !id.includes("\0")
-
 // --- Catalog document mutation -------------------------------------------------
 //
 // For `add` / `remove`, we need to update the on-disk YAML without losing

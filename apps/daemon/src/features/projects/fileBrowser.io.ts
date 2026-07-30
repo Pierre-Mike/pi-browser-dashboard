@@ -1,3 +1,5 @@
+import { mimeFromPath } from "../../platform/http-content.core"
+import { resolveProjectPath } from "../../platform/safe-path.core"
 // Shared filesystem operations for browsing a directory tree at an arbitrary
 // root path. Used by both the projects feature (keyed by project id) and the
 // sessions feature (keyed by session worktreePath / cwd).
@@ -7,13 +9,7 @@
 
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import {
-  isSkippedTreeDir,
-  looksBinary,
-  MAX_TREE_FILES,
-  mimeFromPath,
-  resolveProjectPath,
-} from "./projects.core"
+import { isSkippedTreeDir, looksBinary, MAX_TREE_FILES } from "./projects.core"
 import type { FileError } from "./projects.io"
 
 // The traversal guard belongs to this surface, not just to its callers inside

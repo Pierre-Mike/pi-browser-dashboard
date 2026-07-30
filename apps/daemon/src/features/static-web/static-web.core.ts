@@ -1,9 +1,9 @@
+import { validateRelPath } from "../../platform/safe-path.core"
 // Pure helpers for serving a pre-built SPA (apps/web's Vite `dist`) from the
 // daemon. No I/O — filesystem reads live in static-web.routes.ts. Backs the
 // pid-dashboard CLI's single-port distribution (see api.ts's buildApp).
 
 import { extname } from "node:path"
-import { validateRelPath } from "../projects/projects.core"
 
 const MIME_BY_EXT: Record<string, string> = {
   html: "text/html; charset=utf-8",

@@ -1,3 +1,5 @@
+import { mimeFromPath } from "../../platform/http-content.core"
+import { resolveProjectPath } from "../../platform/safe-path.core"
 // Imperative shell for pid-apps: discovers HTML apps under <project>/.pid/ and
 // resolves their assets for streaming. The pure rules live in pid-apps.core.ts;
 // the security guards added here are the realpath containment check (symlink
@@ -7,7 +9,6 @@
 import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { Context, Effect, Layer } from "effect"
-import { mimeFromPath, resolveProjectPath } from "../projects/projects.core"
 import { ProjectsService, resolveProjectDir } from "../projects/projects.io"
 import {
   applyPidAppManifest,

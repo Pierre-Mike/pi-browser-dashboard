@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
-import { isSafeSegment } from "../claude-config/claude-config.core"
+import { isSafeSegment, resolveProjectPath } from "../../platform/safe-path.core"
 import { readFileAt, resolveRawAt, treeAt } from "./fileBrowser.io"
 import {
   compareProjectsByCommit,
@@ -10,7 +10,6 @@ import {
   parseGitCommitTimestamp,
   parseGitHead,
   parseGithubOrigin,
-  resolveProjectPath,
   sortEntries,
 } from "./projects.core"
 
