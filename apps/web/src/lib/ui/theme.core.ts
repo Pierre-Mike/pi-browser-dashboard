@@ -58,6 +58,18 @@ export const THEME_FAMILIES: readonly ThemeFamily[] = [
     dark: "terminaldark",
   },
   { id: "sunset", label: "Sunset — rose / violet", light: "sunsetlight", dark: "sunsetdark" },
+  // The three saturated families. Appended, never inserted: `pid` has to stay at
+  // index 0 (it carries daisyUI's `default` / `prefersdark` pair, the no-JS
+  // fallback before React boots) and `nextThemeFamily` cycles in this order, so
+  // the restrained families keep the low numbers a habit-driven user reaches for.
+  { id: "candy", label: "Candy — bubblegum pink / cyan", light: "candylight", dark: "candydark" },
+  {
+    id: "arcade",
+    label: "Arcade — electric violet / magenta",
+    light: "arcadelight",
+    dark: "arcadedark",
+  },
+  { id: "citrus", label: "Citrus — orange / lime", light: "citruslight", dark: "citrusdark" },
 ]
 
 export type ThemeChoice = {

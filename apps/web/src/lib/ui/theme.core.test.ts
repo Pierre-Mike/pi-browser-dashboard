@@ -28,8 +28,12 @@ const fromStored = (raw: string | null) =>
 const ids = THEME_FAMILIES.map((f) => f.id)
 
 describe("THEME_FAMILIES", () => {
-  test("ships the four sample families", () => {
-    expect(ids).toEqual(["pid", "mono", "terminal", "sunset"])
+  test("ships the seven sample families", () => {
+    // The first four are the restrained set the design system started with; the
+    // last three are deliberately saturated. Appending is the only safe edit —
+    // `pid` must stay index 0 (daisyUI's `default`/`prefersdark` pair, and the
+    // no-JS fallback), and `nextThemeFamily` cycles in this order.
+    expect(ids).toEqual(["pid", "mono", "terminal", "sunset", "candy", "arcade", "citrus"])
   })
 
   test("pid is first, so it stays daisyUI's :root theme and the default", () => {

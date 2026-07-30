@@ -105,6 +105,14 @@ const REQUIRED_TOKENS = [
 //   mono      — tight and technical.
 //   terminal  — fully square, including a 0s button transition.
 //   sunset    — soft, with fully-pill badges.
+//   candy     — pillowy: the roundest box in the set, with a 2px sticker
+//               outline and a lift. Bubblegum is not a hairline aesthetic.
+//   arcade    — a CRT cabinet: a lightly-radiused bezel around perfectly
+//               square controls and chips (a segment display has no corners
+//               to round), thick-ruled and lifted.
+//   citrus    — chunky mid-round: fruit-crate stencilling, so a 2px rule and
+//               flat (no depth), which is what keeps it from reading as a
+//               warmer `sunset`.
 //
 // Both variants of a family share one shape: light and dark are the same design
 // in two lightings.
@@ -143,6 +151,27 @@ const SHAPE_BY_FAMILY = {
     "--border": "1px",
     "--depth": "1",
   },
+  candy: {
+    "--radius-box": "1.5rem",
+    "--radius-field": "1rem",
+    "--radius-selector": "2rem",
+    "--border": "2px",
+    "--depth": "1",
+  },
+  arcade: {
+    "--radius-box": "0.375rem",
+    "--radius-field": "0",
+    "--radius-selector": "0",
+    "--border": "2px",
+    "--depth": "1",
+  },
+  citrus: {
+    "--radius-box": "0.5rem",
+    "--radius-field": "0.375rem",
+    "--radius-selector": "1.5rem",
+    "--border": "2px",
+    "--depth": "0",
+  },
 } as const
 
 const SHAPE_TOKENS = Object.keys(SHAPE_BY_FAMILY.pid) as ReadonlyArray<
@@ -179,6 +208,17 @@ const INK_TOKENS = [
 // `sunsetlight.accent` is that family's own call, with a single `text-accent`
 // site behind it. Every ratio below is measured, and the list is a ratchet: it
 // cannot grow without someone writing the number down.
+//
+// The three *pop* families (`candy`, `arcade`, `citrus`) add nothing here, which
+// was the constraint their palettes were designed against rather than a
+// coincidence. A vivid hue used as ink on a near-white surface cannot clear
+// 4.5:1 at full lightness — hot pink #ec4899 is 3.19:1 on white — so each light
+// ink token is the *lightest* value at that hue and near-maximum chroma which
+// still clears the floor (#d81064 at 4.77:1 is still unmistakably hot pink;
+// desaturating instead is what would have cost the family its character). The
+// vividness those tokens give up as ink is paid back on the surfaces, where the
+// same token is the background under `*-content`, and in `base-200`/`base-300`,
+// which carry a real tint because only `base-content`'s 7:1 constrains them.
 const INK_CONTRAST_EXEMPT = new Set([
   "pidlight.accent", // #f59e0b amber-500 on #ffffff — 2.15:1 (also `warning`)
   "pidlight.warning", // #f59e0b amber-500 on #ffffff — 2.15:1

@@ -6,7 +6,7 @@ import { terminalTheme } from "./terminalTheme"
 // The xterm pane is the largest surface in the app and the only one daisyUI
 // cannot reach: xterm paints its own canvas from hex values, so no semantic
 // token reaches inside it. The palette is therefore keyed by *daisyUI theme
-// name* — eight themes, eight palettes — and this file is what keeps each one
+// name* — one palette per theme, fourteen of each — and this file keeps each one
 // inside its family instead of falling back to pid's slate/sky pair. That
 // fallback was the defect: `terminaldark` wrapped a slate-blue terminal in a
 // phosphor-green shell and `sunsetdark` put a cool navy pane inside warm plum
@@ -114,7 +114,7 @@ const loadThemes = async (): Promise<Readonly<Record<string, Record<string, stri
 }
 
 describe("every theme gets its own terminal palette", () => {
-  it("resolves a palette for all eight catalogued themes", () => {
+  it("resolves a palette for every catalogued theme", () => {
     for (const name of THEME_NAMES) {
       const palette = terminalTheme({ theme: name })
       for (const slot of ["background", "foreground", "cursor"] as const) {
@@ -334,5 +334,58 @@ describe("each pane sits inside its family's chrome", () => {
     // The contrast case: pid's pane is slate, and its blue channel dominates.
     const pid = at(terminalTheme({ theme: "piddark" }).background)
     expect(pid.b).toBeGreaterThan(pid.r)
+  })
+
+  // ── the three pop families ────────────────────────────────────────────────
+  //
+  // Same job as the three above: a family with no character assertion can drift
+  // into a copy of another one and nothing notices. `sunset` is the near miss
+  // these have to stay clear of — it is also warm and also rose-ish — so each
+  // rule below is a channel *ordering* rather than "has some red in it".
+
+  it("keeps the candy family bubblegum — magenta-leaning, never merely warm", () => {
+    // Magenta is red AND blue over green, which is what separates candy's pink
+    // paper and plum CRT from sunset's warm cream (where red beats blue).
+    for (const name of ["candylight", "candydark"]) {
+      const pane = at(terminalTheme({ theme: name }).background)
+      expect(pane.r, `${name}: pane has no pink in it`).toBeGreaterThan(pane.g)
+      expect(pane.b, `${name}: pane is warm, not magenta`).toBeGreaterThan(pane.g)
+    }
+    // …and the ink is pink too, so the pane is not a lone tinted rectangle.
+    for (const name of ["candylight", "candydark"]) {
+      const ink = at(terminalTheme({ theme: name }).foreground)
+      expect(ink.r, `${name}: ink is not pink-leaning`).toBeGreaterThan(ink.g)
+    }
+  })
+
+  it("keeps the arcade family indigo, with violet-tinted neutrals", () => {
+    for (const name of ["arcadelight", "arcadedark"]) {
+      const pane = at(terminalTheme({ theme: name }).background)
+      expect(pane.b, `${name}: pane is not blue-dominant`).toBeGreaterThan(pane.r)
+      expect(pane.b).toBeGreaterThan(pane.g)
+    }
+    // A CRT cabinet's neutrals are violet-tinted, not gray: `white` carries the
+    // family hue, which is what stops the ramp reading as a stock palette
+    // dropped onto a purple background.
+    for (const name of ["arcadelight", "arcadedark"]) {
+      const white = at(terminalTheme({ theme: name }).white as string)
+      expect(white.b, `${name}.white is a neutral gray`).toBeGreaterThan(white.g)
+    }
+  })
+
+  it("keeps the citrus family fruit-warm, with a lime green rather than an emerald", () => {
+    for (const name of ["citruslight", "citrusdark"]) {
+      const pane = at(terminalTheme({ theme: name }).background)
+      // Strictly ordered r > g > b — an amber/rind ramp. sunset's plum pane
+      // fails this (its blue beats its green), so the two cannot be swapped.
+      expect(pane.r, `${name}: pane is not warm`).toBeGreaterThan(pane.g)
+      expect(pane.g, `${name}: pane is amber, not lemon`).toBeGreaterThan(pane.b)
+      // Citrus green keeps its yellow side: lime, not the emerald every other
+      // family uses. Red over blue is what "yellow-green" means numerically.
+      for (const key of ["green", "brightGreen"] as const) {
+        const slot = at(terminalTheme({ theme: name })[key] as string)
+        expect(slot.r, `${name}.${key} is an emerald, not a lime`).toBeGreaterThan(slot.b)
+      }
+    }
   })
 })

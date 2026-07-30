@@ -3,10 +3,11 @@
 ## Design system: daisyUI semantic tokens (uniform palette + themed shape)
 
 The UI paints with **daisyUI semantic tokens**, never the raw Tailwind palette.
-`tailwind.config.js` (`base: false`) declares four theme **families**, each a
-light + dark pair: `pid` (`pidlight`/`piddark`), `mono`, `terminal`, `sunset`.
-**One semantic class adapts across all eight themes**, which is what replaced the
-old hand-written `light dark:` pairs.
+`tailwind.config.js` (`base: false`) declares seven theme **families**, each a
+light + dark pair. Four are restrained by design — `pid` (`pidlight`/`piddark`),
+`mono`, `terminal`, `sunset` — and three are deliberately saturated: `candy`,
+`arcade`, `citrus`. **One semantic class adapts across all fourteen themes**,
+which is what replaced the old hand-written `light dark:` pairs.
 
 ### Choosing a theme
 
@@ -58,7 +59,7 @@ surface no theme can reach, which is exactly how it used to be.
 
 ### The xterm pane is a ninth surface, keyed by theme name
 
-`features/terminal/terminalTheme.ts` holds **eight palettes, one per theme**,
+`features/terminal/terminalTheme.ts` holds **one palette per theme**,
 keyed by the resolved daisyUI name; `TerminalView` passes `useTheme().resolved`
 straight in. It used to be one light/dark pair shared by every family, and that
 showed: `terminaldark` wrapped a slate-blue terminal in a phosphor-green shell
@@ -112,6 +113,15 @@ near-grayscale while `red` stays hue-identifiable — desaturate, don't erase, o
 build failure stops reading as an error — and `sunset`'s pane is warm where
 `pid`'s is cool.
 
+The three pop families are pinned the same way, and each rule is a channel
+*ordering* rather than "has some colour in it", because `sunset` is the near miss
+they all have to stay clear of: `candy`'s pane is magenta-leaning (red **and**
+blue over green — `sunset` is warm, so its red beats its blue), `arcade`'s is
+blue-dominant with violet-tinted neutrals rather than a stock gray ramp on a
+purple background, and `citrus`'s is strictly `r > g > b` with **lime, not
+emerald**, greens. A family with no character assertion can silently drift into a
+copy of another one; adding a family means adding its rule.
+
 `apps/e2e/tests/theme-switch.spec.ts` closes it end to end: switching family
 through the real Appearance picker repaints the pane live, and each assertion
 names the family it exercises. `terminal-light-mode.spec.ts` owns the `pid` pair
@@ -135,19 +145,33 @@ instead.
 ### Shape is a theme property too
 
 A family owns **component form** as well as colour. Each theme sets
-`--rounded-box` (panels, cards, modals, popovers, dropdown surfaces, code
-blocks), `--rounded-btn` (buttons, inputs, selects, tabs, small controls),
-`--rounded-badge` (chips and pills) and `--animation-btn`:
+`--radius-box` (panels, cards, modals, popovers, dropdown surfaces, code
+blocks), `--radius-field` (buttons, inputs, selects, tabs, small controls),
+`--radius-selector` (chips and pills), `--border` and `--depth`. (Under daisyUI 4
+the first three were `--rounded-box` / `--rounded-btn` / `--rounded-badge` and
+there was a fourth knob, `--animation-btn`; v5 hardcodes the button transition
+and adds `--border` / `--depth` in its place, so the row is still five wide and
+still tells every family apart.)
 
-| family | `box` | `btn` | `badge` | `animation-btn` |
-|---|---|---|---|---|
-| `pid` (default, shape **frozen**) | `0.75rem` | `0.5rem` | `1rem` | `0.2s` |
-| `mono` | `0.25rem` | `0.125rem` | `0.25rem` | `0.1s` |
-| `terminal` | `0` | `0` | `0` | `0s` |
-| `sunset` | `1rem` | `0.75rem` | `2rem` | `0.3s` |
+| family | `radius-box` | `radius-field` | `radius-selector` | `border` | `depth` |
+|---|---|---|---|---|---|
+| `pid` (default, shape **frozen**) | `0.75rem` | `0.5rem` | `1rem` | `1px` | `0` |
+| `mono` | `0.25rem` | `0.125rem` | `0.25rem` | `1px` | `0` |
+| `terminal` | `0` | `0` | `0` | `2px` | `0` |
+| `sunset` | `1rem` | `0.75rem` | `2rem` | `1px` | `1` |
+| `candy` | `1.5rem` | `1rem` | `2rem` | `2px` | `1` |
+| `arcade` | `0.375rem` | `0` | `0` | `2px` | `1` |
+| `citrus` | `0.5rem` | `0.375rem` | `1.5rem` | `2px` | `0` |
 
 Both variants of a family share one shape. Changing a family's form is a change
-to those four lines and **nothing else** — no component edits.
+to those five lines and **nothing else** — no component edits.
+
+The gate requires the seven rows to be **distinct as whole tuples**, and the three
+newest lean on `border` and `depth` to earn that rather than on radius alone:
+`candy` is the roundest box in the set with a 2px sticker outline, `arcade` is a
+lightly-radiused CRT bezel around perfectly square controls and chips, and
+`citrus` is chunky mid-round but **flat** — the `depth: 0` is what stops it
+reading as a warmer `sunset`.
 
 `pid`'s *shape tokens* are frozen; its *pixels* are not. The migration mapped each
 element by **role** (panel → `box`, control → `btn`, chip → `badge`), and
@@ -230,7 +254,7 @@ CSS backs it; `themeCatalog.test.ts` covers that half.
 
 `src/lib/ui/themeCatalog.test.ts` is the config half: it loads
 `tailwind.config.js` at runtime and asserts the catalog and the config name the
-same eight themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 as
+same fourteen themes, that `pidlight`/`piddark` stay first (daisyUI emits theme 0 as
 `:root` and theme 1 under `prefers-color-scheme: dark` — the no-JS fallback),
 that `darkMode` is still the suffix selector, that the three `borderRadius`
 aliases are present, that every theme carries the full token set **and its
@@ -263,6 +287,37 @@ both in `themeCatalog.test.ts`:
 `base-100` and not the whole shell gradient, because `sunsetlight` sits at 4.14
 on `base-200` — widening the bar is a change to three families, not a floor they
 already meet.
+
+**A vivid family clears that floor by dropping lightness, never saturation.** This
+is the whole design problem of `candy` / `arcade` / `citrus`, and the reason none
+of them needed an exemption. A hue at full lightness simply cannot be ink on a
+near-white surface — hot pink `#ec4899` is 3.19:1, lime `#84cc16` 2.11:1, yellow
+`#facc15` 1.68:1 — and the reflex fix, desaturating until it passes, produces
+exactly the muted palette the families exist not to be. So each light ink token is
+the **lightest value at that hue and near-maximum chroma that still clears 4.5:1**:
+`#d81064` (4.77) is still unmistakably hot pink, `#8d40f1` (4.76) still electric
+violet. Saturation is what the eye reads as pop; lightness is what the gate reads.
+
+Two hues do not survive the trip in recognisable form — lime lands olive
+(`#4e7b09`) and yellow lands bronze (`#886d03`) — which is where every other light
+theme already puts `warning` (`monolight` / `terminallight` `#a16207`,
+`sunsetlight` `#b45309`), so it is precedent, not a new compromise. What those
+tokens give up as ink comes back on the **surfaces**, where the token is the
+background under its `*-content` and a `btn-primary` is full-strength colour, and
+in `base-200` / `base-300`, which only `base-content`'s 7:1 constrains — there is
+~10:1 of headroom, so they carry a real tint (`candy` `#ffc2e0`, `arcade`
+`#d6bcff`, `citrus` `#ffd95c`) instead of the usual near-gray step. `citrus` is
+the family that proves this is load-bearing rather than decorative: it has the
+least ink headroom of the three, its first pass used a honey ramp
+(`#ffefc9` / `#ffdf8a`), and it read as sepia until the ramp became actual lemon.
+Two other citrus findings worth not re-deriving — pushing an orange *towards*
+orange makes it duller (at a fixed ratio, hue 18 lands `#ce4205` and hue 38
+`#9f6604`, so the brightest legal orange is at the red end), and its dark
+`base-100` had to drop from `#171006` to `#120d03` because a brown light enough
+to read as brown flattens every fruit colour sitting on it. The dark
+variants have the inverse constraint and so effectively none: on a near-black
+`base-100` ink must be *light*, and light saturated colour is neon, which is why
+each family is least compromised in its dark variant.
 
 **`pid`'s colour freeze is over.** It was real and it was useful: holding the
 default byte-identical while the seven newer themes were built meant a palette
