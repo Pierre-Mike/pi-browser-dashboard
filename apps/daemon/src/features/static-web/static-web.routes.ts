@@ -1,6 +1,7 @@
 import { normalize } from "node:path"
 import { Hono } from "hono"
-import { resolveStaticRel, staticMime } from "./static-web.core"
+import { mimeFromPath } from "../../platform/http-content.core"
+import { resolveStaticRel } from "./static-web.core"
 
 // Serves a pre-built SPA from `rootDir` (apps/web's Vite `dist`, bundled into
 // the pid-dashboard CLI package). Mounted at "/" only when a staticDir is
@@ -20,7 +21,7 @@ export const buildStaticApp = (rootDir: string) => {
     return new Response(file.stream(), {
       status: 200,
       headers: {
-        "Content-Type": staticMime(rel),
+        "Content-Type": mimeFromPath(rel),
         "Cache-Control": rel === "index.html" ? "no-cache" : "public, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
       },

@@ -27,6 +27,7 @@ import * as tunnelRoute from "./features/tunnel/tunnel.routes"
 import * as uploadsRoute from "./features/uploads/uploads.routes"
 import { AGENT_SKILL_MD } from "./platform/agent-skill"
 import { extensionRegistry } from "./platform/extensions/registry"
+import { mimeFromPath } from "./platform/http-content.core"
 import { appRuntime } from "./platform/runtime"
 import { validateRelPath } from "./platform/safe-path.core"
 import { ShellIo } from "./platform/shell.io"
@@ -169,29 +170,6 @@ const terminalScreens = {
   refreshIfStale: () => terminalRoute.terminalPoller.refreshIfStale(),
 }
 
-// Minimal content-type map for extension static assets (iframe tier).
-const EXT_MIME_BY_EXT: Record<string, string> = {
-  js: "text/javascript; charset=utf-8",
-  mjs: "text/javascript; charset=utf-8",
-  html: "text/html; charset=utf-8",
-  css: "text/css; charset=utf-8",
-  json: "application/json; charset=utf-8",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  map: "application/json; charset=utf-8",
-}
-
-const extMime = (rel: string): string => {
-  const dot = rel.toLowerCase().lastIndexOf(".")
-  if (dot === -1) return "application/octet-stream"
-  return EXT_MIME_BY_EXT[rel.toLowerCase().slice(dot + 1)] ?? "application/octet-stream"
-}
 const app = new Hono()
   .use(
     "*",
@@ -303,7 +281,7 @@ const app = new Hono()
     return new Response(file.stream(), {
       status: 200,
       headers: {
-        "Content-Type": extMime(rel),
+        "Content-Type": mimeFromPath(rel),
         "Cache-Control": "private, max-age=30",
         "X-Content-Type-Options": "nosniff",
       },

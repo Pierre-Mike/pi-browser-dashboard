@@ -69,4 +69,25 @@ describe("mimeFromPath", () => {
     expect(mimeFromPath("nodot")).toBe("application/octet-stream")
     expect(mimeFromPath("trailing.")).toBe("application/octet-stream")
   })
+
+  // Arrived when the `api.ts` and `static-web` tables were folded in here: both
+  // of those carried these three and this table did not, so without them the
+  // consolidation would have regressed webfonts and sourcemaps to octet-stream
+  // under `nosniff`. They apply to this function's existing callers too — the
+  // project file browser and pid-apps static assets.
+  test("maps the webfont and sourcemap extensions the folded-in tables carried", () => {
+    expect(mimeFromPath("assets/inter.woff2")).toBe("font/woff2")
+    expect(mimeFromPath("assets/legacy.woff")).toBe("font/woff")
+    expect(mimeFromPath("assets/app.js.map")).toBe("application/json; charset=utf-8")
+  })
+
+  // The one value conflict between the three tables: static-web said
+  // `image/x-icon`, this table said `image/vnd.microsoft.icon`. The IANA
+  // registration wins (an `x-` type is by definition unregistered), and it is
+  // what the widest table already served. Pinned so the fold's choice is a
+  // decision on record rather than an accident of which file survived.
+  test("maps .ico to the IANA-registered type, not the legacy x- one", () => {
+    expect(mimeFromPath("favicon.ico")).toBe("image/vnd.microsoft.icon")
+    expect(mimeFromPath("favicon.ico")).not.toBe("image/x-icon")
+  })
 })

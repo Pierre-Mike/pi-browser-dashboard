@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test"
-import { resolveStaticRel, staticMime } from "./static-web.core"
+import { resolveStaticRel } from "./static-web.core"
+
+// `staticMime` and its 16-entry table used to be tested here. Both were folded
+// into `platform/http-content.core`'s `mimeFromPath`; the content types this
+// slice now serves are asserted through the real route in
+// static-web.routes.test.ts, which is where the behaviour change is visible.
 
 describe("resolveStaticRel", () => {
   it("resolves the root path to index.html", () => {
@@ -34,18 +39,5 @@ describe("resolveStaticRel", () => {
 
   it("rejects backslash escapes", () => {
     expect(resolveStaticRel("/assets\\..\\secret.txt")).toBeNull()
-  })
-})
-
-describe("staticMime", () => {
-  it("maps common extensions", () => {
-    expect(staticMime("index.html")).toBe("text/html; charset=utf-8")
-    expect(staticMime("assets/app.js")).toBe("text/javascript; charset=utf-8")
-    expect(staticMime("assets/app.css")).toBe("text/css; charset=utf-8")
-    expect(staticMime("favicon.svg")).toBe("image/svg+xml")
-  })
-
-  it("defaults to octet-stream for an unknown extension", () => {
-    expect(staticMime("weird.unknownext")).toBe("application/octet-stream")
   })
 })

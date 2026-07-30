@@ -8,14 +8,26 @@
  * complexity and duplication per file.
  *
  * Moved verbatim out of `features/projects/projects.core.ts` so slices needing a
- * content type stop reaching into the projects slice for one. Behaviour is
- * unchanged: the table and both functions are byte-identical to what shipped there.
+ * content type stop reaching into the projects slice for one.
  *
- * NOTE: two other extension tables still exist — `api.ts` (14 entries) and
- * `features/static-web/static-web.core.ts` (16) — with DIFFERENT coverage from this
- * one (44). Folding them in here changes what those callers return for extensions
- * they currently miss, so it is a behaviour change and a separate change. See the
- * MIME-consolidation task.
+ * This is now the repo's ONLY extension→MIME table. Two smaller ones — `api.ts`
+ * (14 entries, extension static assets) and `features/static-web/static-web.core.ts`
+ * (16, the bundled SPA) — were folded in here. They were divergent *partial*
+ * duplicates, not mirrors, so the fold is a deliberate behaviour change: each of
+ * those callers now answers a real content type for ~31 extensions it used to call
+ * `application/octet-stream`. Both routes send `X-Content-Type-Options: nosniff`,
+ * which makes a wrong type fatal rather than cosmetic, so the direction of the
+ * change matters. Two details the fold had to get right:
+ *
+ * - `woff`, `woff2` and `map` were in BOTH smaller tables and in neither this one.
+ *   Folding without adding them would have regressed webfonts and sourcemaps on
+ *   the SPA and extension tiers to octet-stream. They are added below, which also
+ *   fixes them for `mimeFromPath`'s existing callers (the file browser and
+ *   pid-apps static assets).
+ * - `ico` was the one true conflict: `static-web` said `image/x-icon`, this table
+ *   says `image/vnd.microsoft.icon`. The latter wins — it is the IANA-registered
+ *   type (`x-` marks an unregistered tree) and it is what this table, the widest
+ *   of the three, already served. Every browser accepts both for a favicon.
  */
 
 import { basename } from "node:path"
@@ -28,6 +40,8 @@ const MIME_BY_EXT: Readonly<Record<string, string>> = {
   json: "application/json; charset=utf-8",
   jsonl: "application/json; charset=utf-8",
   ndjson: "application/json; charset=utf-8",
+  // A `.map` sourcemap is JSON; devtools fetches it as such.
+  map: "application/json; charset=utf-8",
   xml: "application/xml; charset=utf-8",
   yaml: "application/yaml; charset=utf-8",
   yml: "application/yaml; charset=utf-8",
@@ -52,6 +66,8 @@ const MIME_BY_EXT: Readonly<Record<string, string>> = {
   avif: "image/avif",
   bmp: "image/bmp",
   ico: "image/vnd.microsoft.icon",
+  woff: "font/woff",
+  woff2: "font/woff2",
   mp3: "audio/mpeg",
   wav: "audio/wav",
   ogg: "audio/ogg",
