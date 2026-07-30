@@ -217,9 +217,12 @@ const trivialSection = (run: RunFile): string => {
   if (!run.baseline) return ""
   const flagged = trivialTasks({ baseline: run.cells })
   if (flagged.length === 0) {
-    return `\n**Baseline check: every task sits at the ${NO_OP_SCORE.toFixed(
+    // Deliberately a claim about the *asserts*, not about the score: a cell can
+    // land below the 1/3 floor when a gate is red for an environmental reason,
+    // and saying "every task sits at the floor" would then be false.
+    return `\n**Baseline check: no assert passes without the work being done, and no task exceeds the ${NO_OP_SCORE.toFixed(
       2,
-    )} do-nothing floor — no assert passes without the work being done, so the grid measures real work.**\n`
+    )} do-nothing floor — the grid measures real work.**\n`
   }
   return `\n**Baseline check: these tasks score without an agent — sharpen their asserts.**\n\n${table(
     {

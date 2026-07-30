@@ -158,9 +158,15 @@ Rules that keep the grid honest:
 1. **Every task needs at least one assert** (`bun run doctor` enforces this) —
    otherwise the task is free points.
 2. **No assert may pass before the agent starts.** Run `bun run evals:baseline`
-   after adding one. A regression guard ("`/health` stays public") has to be
-   *chained* onto the positive proof inside a single assert (`… && …`) rather
-   than shipped as its own, or it hands out points forever.
+   after adding one — the first baseline run of this grid caught five asserts
+   that were green with nobody doing the work, and dragged the floor from 0.33
+   to 0.41. Two shapes cause it, and both are easy to write by accident:
+   - a **negative** grep over a file that does not exist yet
+     (`! grep -q fetch new/slice.ts` passes when `new/` is empty) — put
+     `test -f <file> &&` in front of every one;
+   - a **regression guard** ("`/health` stays public", "the endpoint still
+     answers") — chain it onto the positive proof inside a single assert
+     (`… && …`) instead of shipping it as its own point.
 3. **Prefer a functional assert over a grep.** A grep proves an agent typed the
    right words; the probe proves the feature answers. Grep for *structure* (where
    the `fetch` lives, whether the core reads a clock) and probe for *behaviour*.
