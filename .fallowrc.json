@@ -18,64 +18,8 @@
   },
   "ignoreExports": [
     {
-      "file": "apps/daemon/src/features/brainstorms/brainstorms.routes.ts",
+      "file": "apps/daemon/src/features/*/*.routes.ts",
       "exports": ["app", "createApp"]
-    },
-    {
-      "file": "apps/daemon/src/features/claude-config/claude-config.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/dispatch/dispatch.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/events/events.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/extensions/extensions.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/fleet/fleet.routes.ts",
-      "exports": ["createApp"]
-    },
-    {
-      "file": "apps/daemon/src/features/global-settings/global-settings.routes.ts",
-      "exports": ["app", "createApp"]
-    },
-    {
-      "file": "apps/daemon/src/features/issue-driver/issue-driver.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/library/library.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/pid-apps/pid-apps.routes.ts",
-      "exports": ["createApp"]
-    },
-    {
-      "file": "apps/daemon/src/features/projects/projects.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/rules/rules.routes.ts",
-      "exports": ["createApp"]
-    },
-    {
-      "file": "apps/daemon/src/features/sessions/sessions.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/terminal/terminal.routes.ts",
-      "exports": ["app"]
-    },
-    {
-      "file": "apps/daemon/src/features/uploads/uploads.routes.ts",
-      "exports": ["app"]
     }
   ],
   "duplicates": {

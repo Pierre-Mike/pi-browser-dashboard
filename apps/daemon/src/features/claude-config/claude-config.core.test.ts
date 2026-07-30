@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test"
-import { isSafeSegment } from "../../platform/safe-path.core"
 import { flattenHooks, parseSettings, parseSkillFrontmatter } from "./claude-config.core"
 
 describe("flattenHooks", () => {

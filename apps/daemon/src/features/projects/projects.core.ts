@@ -1,7 +1,5 @@
 // Pure helpers for the projects feature. No I/O.
 
-import { basename, isAbsolute, normalize, relative, resolve, sep } from "node:path"
-
 export type FileEntry = {
   readonly name: string
   readonly type: "dir" | "file" | "symlink" | "other"

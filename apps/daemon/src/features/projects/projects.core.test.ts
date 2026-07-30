@@ -1,6 +1,4 @@
 import { describe, expect, it, test } from "bun:test"
-import { contentDispositionAttachment, mimeFromPath } from "../../platform/http-content.core"
-import { resolveProjectPath, validateRelPath } from "../../platform/safe-path.core"
 import {
   compareProjectsByCommit,
   isSkippedTreeDir,
@@ -12,8 +10,6 @@ import {
   parseGithubUrl,
   sortEntries,
 } from "./projects.core"
-
-const ROOT = "/repos/demo"
 
 describe("looksBinary", () => {
   it("flags buffers containing a NUL byte", () => {
