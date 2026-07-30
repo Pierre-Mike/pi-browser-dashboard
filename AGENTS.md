@@ -2627,6 +2627,28 @@ Its own inputs are *discovered*, never listed: workspaces from `package.json`,
 workflows from the directory, plugins from a glob. A hand-maintained list inside
 the checker would fail open in exactly the way the checker exists to prevent.
 
+**Being offline is the one hole doctor cannot close about itself.** It validates
+the *committed* `.github/rulesets/main.json` against the job names the workflows
+declare, but it cannot ask GitHub whether that file still describes reality — so
+branch protection edited through the web UI leaves the committed contract stale
+in silence, every gate stays green, and this checker goes on validating a
+contract nobody enforces. `.github/workflows/ruleset-drift.yml` closes it from
+the other side, on a cron for the same reason `bun audit` is on one: drift
+arrives on someone else's clock, not on our PR traffic. It reconciles live
+against committed, opens or refreshes ONE deduped `governance` issue and closes
+it when they agree again — never a red run, because a permanently red cron badge
+becomes wallpaper, and reconciling is a real decision that may take days
+(sometimes the UI edit is the correct one and the *file* is what should change).
+It fails only when the comparison itself fails, which must never be readable as
+agreement. The comparison is semantic, not textual: the live payload is
+projected onto the shape the committed file declares and both sides are
+canonically sorted, because a `jq -S`-grade compare would report drift every day
+over key ordering alone and be muted inside a week. Reading a ruleset needs no
+admin — only *writing* one does, which is why `apply-ruleset.sh` is human-run and
+this is not. `bun run doctor` asserts the watch by shape (a cron trigger and the
+drift comparison in one workflow), so renaming the file is fine and deleting the
+step is not.
+
 **Do not rename the `lint` / `bun-test` job display names in
 `.github/workflows/unit-tests.yml`.** The branch ruleset pins its required
 status checks to the exact strings `biome ci (lint + format)` and
