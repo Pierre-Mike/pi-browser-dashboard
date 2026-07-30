@@ -23,16 +23,16 @@ export const THEMES = [
     "--color-primary": "#0369a1",
     "--color-primary-content": "#f8fafc",
     "--color-secondary": "#4f46e5",
-    "--color-accent": "#f59e0b",
+    "--color-accent": "#a26907",
     "--color-neutral": "#1e293b",
     "--color-base-100": "#ffffff",
     "--color-base-200": "#f1f5f9",
     "--color-base-300": "#e2e8f0",
     "--color-base-content": "#0f172a",
     "--color-info": "#0369a1",
-    "--color-success": "#10b981",
-    "--color-warning": "#f59e0b",
-    "--color-error": "#f43f5e",
+    "--color-success": "#0c855d",
+    "--color-warning": "#a26907",
+    "--color-error": "#e80d33",
     "--radius-box": "0.75rem",
     "--radius-field": "0.5rem",
     "--radius-selector": "1rem",
@@ -165,7 +165,7 @@ export const THEMES = [
     "--color-primary": "#e11d48",
     "--color-primary-content": "#ffffff",
     "--color-secondary": "#7c3aed",
-    "--color-accent": "#ea580c",
+    "--color-accent": "#c64a0a",
     "--color-neutral": "#3b1f2b",
     "--color-base-100": "#fffaf6",
     "--color-base-200": "#fdeee3",
@@ -209,8 +209,10 @@ export const THEMES = [
   // ── the pop families ──────────────────────────────────────────────────────
   //
   // The four families above are restrained on purpose. These three are not: they
-  // exist to be obviously different at a glance, and every one of them clears
-  // the same floors with **no entry in `INK_CONTRAST_EXEMPT`**.
+  // exist to be obviously different at a glance, and every one of them cleared
+  // the ink floor from the day it landed — back when `pid` and `sunset` between
+  // them still held four exemptions. There is no exemption set to be absent from
+  // any more: all eighteen themes now clear 4.5:1 on every ink token.
   //
   // The design problem, stated once because all three share it. A token is both
   // a *surface* (`bg-primary` under `text-primary-content`) and *ink*

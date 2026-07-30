@@ -242,17 +242,33 @@ const INK_TOKENS = [
   "error",
 ] as const
 
-// Measured misses, deliberately deferred — not "frozen hex", which is no longer
-// true of anything in this repo. `pidlight`'s three *status* hues carry meaning
-// (a "blocked" pill has to read differently from a "failed" one at a glance in
-// the sidebar), so darkening them changes what the app communicates and wants
-// its own reviewable before/after rather than riding along on an accent fix.
-// `sunsetlight.accent` is that family's own call, with a single `text-accent`
-// site behind it. Every ratio below is measured, and the list is a ratchet: it
-// cannot grow without someone writing the number down.
+// There is no ink-contrast exemption any more, and the set is gone rather than
+// emptied — an empty ratchet is a mechanism waiting to be re-used, and this one
+// has no work left to do. `INK_CONTRAST_EXEMPT` held four measured misses, all in
+// light themes and all *status* hues: `pidlight.accent`/`warning` (#f59e0b
+// amber-500, 2.15:1 on white), `pidlight.success` (#10b981 emerald-500, 2.54),
+// `pidlight.error` (#f43f5e rose-500, 3.67) and `sunsetlight.accent` (#ea580c
+// orange-600, 3.43 on #fffaf6). They were deferred rather than waived because a
+// status colour *means* something — a "blocked" pill has to read differently from
+// a "failed" one at a glance in the sidebar — so darkening the set changes what
+// the app communicates and wanted its own reviewable before/after instead of
+// riding along on the accent fix.
 //
-// The three *pop* families (`candy`, `arcade`, `citrus`) add nothing here, which
-// was the constraint their palettes were designed against rather than a
+// All four were then solved the way every other family solves its light ink, by
+// `scripts/theme-solve.core.ts`: hold the hue and the saturation, drop only the
+// lightness, take the value nearest maximum chroma that clears the floor. They
+// land at 4.61 / 4.64 / 4.63 / 4.62, deliberately ~0.1 above the 4.5 bar rather
+// than on it — the exact-floor solutions cleared it by as little as 0.002, which
+// is inside one 8-bit step, and buying the margin cost 2-3 points of channel
+// spread out of 155-222.
+//
+// The one counter-intuitive result is worth keeping: `error` came out *more*
+// chromatic than the rose-500 it replaced (spread 181 -> 219). rose-500 is a
+// washed rose, and darkening toward hue 349 raises chroma — so the token that
+// most needs to read as alarming is the one this change improved most.
+//
+// The three *pop* families (`candy`, `arcade`, `citrus`) never appeared here,
+// which was the constraint their palettes were designed against rather than a
 // coincidence. A vivid hue used as ink on a near-white surface cannot clear
 // 4.5:1 at full lightness — hot pink #ec4899 is 3.19:1 on white — so each light
 // ink token is the *lightest* value at that hue and near-maximum chroma which
@@ -261,13 +277,6 @@ const INK_TOKENS = [
 // vividness those tokens give up as ink is paid back on the surfaces, where the
 // same token is the background under `*-content`, and in `base-200`/`base-300`,
 // which carry a real tint because only `base-content`'s 7:1 constrains them.
-const INK_CONTRAST_EXEMPT = new Set([
-  "pidlight.accent", // #f59e0b amber-500 on #ffffff — 2.15:1 (also `warning`)
-  "pidlight.warning", // #f59e0b amber-500 on #ffffff — 2.15:1
-  "pidlight.success", // #10b981 emerald-500 on #ffffff — 2.54:1
-  "pidlight.error", // #f43f5e rose-500 on #ffffff — 3.67:1
-  "sunsetlight.accent", // #ea580c orange-600 on #fffaf6 — 3.43:1
-])
 
 describe("tailwind.config.js matches the theme catalog", () => {
   test("every catalogued theme name is defined in the config, and vice versa", async () => {
@@ -430,10 +439,12 @@ describe("every theme is complete and legible", () => {
     // test above proves only that the button is readable. pidlight passed it by
     // exemption and failed this one at 2.77:1, which is how the default theme
     // ended up the least legible one shipped.
+    //
+    // Every theme, every ink token, no exemptions — the four that used to be
+    // listed are solved, so this loop no longer skips anything.
     const { themes } = await loadConfig()
     for (const [name, tokens] of Object.entries(themes)) {
       for (const token of INK_TOKENS) {
-        if (INK_CONTRAST_EXEMPT.has(`${name}.${token}`)) continue
         const ratio = contrast({
           a: colour({ tokens, name: token }),
           b: colour({ tokens, name: "base-100" }),
@@ -555,23 +566,10 @@ describe("every theme is complete and legible", () => {
     }
   })
 
-  test("every ink exemption names a token that exists, and misses the bar", async () => {
-    // A stale exemption is worse than none: it reads as a documented decision
-    // while quietly covering nothing. So each entry has to still be a real
-    // failure — the day one is repaid, this test says so and the line goes.
-    const { themes } = await loadConfig()
-    for (const entry of INK_CONTRAST_EXEMPT) {
-      const [name = "", token = ""] = entry.split(".")
-      const tokens = themes[name]
-      expect(tokens, `${entry} names a theme that does not exist`).toBeDefined()
-      const ratio = contrast({
-        a: colour({ tokens: tokens as Theme, name: token }),
-        b: colour({ tokens: tokens as Theme, name: "base-100" }),
-      })
-      expect(
-        ratio,
-        `${entry} now clears 4.5:1 (${ratio.toFixed(2)}) — delete the exemption`,
-      ).toBeLessThan(4.5)
-    }
-  })
+  // The companion "every ink exemption still misses the bar" test is gone with the
+  // set it guarded. Its job was to make a repaid exemption fail the build rather
+  // than linger as a stale comment, and it did exactly that: all four entries were
+  // solved in one change, the test went red on all four, and both it and the set
+  // came out together. There is nothing left for it to assert — the loop above now
+  // covers all eighteen themes with no skip.
 })
