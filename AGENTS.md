@@ -594,9 +594,11 @@ was needed.
   on both client-less shapes: a session created with `attach -b` and never
   attached, and one whose client attached and then went away. The dump is live,
   not frozen at detach time. That is why the poller spends a `zellij action
-  list-panes` first, keeps only `TYPE=terminal` rows (the daemon's layouts wrap
-  every content pane in tab-bar/status-bar *plugin* panes) and dumps each one by
-  id.
+  list-panes` first, keeps only `TYPE=terminal` rows and dumps each one by id.
+  The daemon's own layouts no longer emit any plugin pane (see "Zellij paints no
+  chrome" below), so today that filter only has to survive panes a *human*
+  opened; it is kept because a `plugin` row's screen would classify zellij's UI
+  rather than the agent.
 - **Every pane, not only the first.** A zellij session can hold more than one
   terminal pane, and an agent running in the second one used to be invisible to
   chips, `wait --via screen`, `explain`, `pid terminals` and rules all at once —
@@ -750,6 +752,62 @@ was needed.
   tool call with no approval step, and its `Project trust` selector only opens on an
   explicit `/trust` — but see `pi-prompt-resting` for the modal-overlay cost that
   follows from it.
+
+### Zellij paints no chrome
+
+Every layout `terminal.core.ts` generates is a bare `tab { … }` holding the
+content pane and nothing else. Each one used to open with a
+`default_tab_template` wrapping `children` in two plugin panes —
+`zellij:tab-bar` (1 row, top) and `zellij:status-bar` (2 rows, bottom) — so the
+zellij UI showed regardless of the user's own config. Those three rows were the
+one surface inside the terminal pane that the dashboard's theme system could not
+reach.
+
+The pane is themed in two layers and neither owns those rows: daisyUI paints the
+panel, and `apps/web/src/features/terminal/terminalTheme.ts` hands xterm a
+sixteen-slot palette per resolved theme. A plugin pane's bars are drawn by
+*zellij*, inside the pty, from **zellij's** theme, and arrive at xterm as
+already-coloured cells. zellij's default theme is dark, so each of the four light
+themes rendered a light terminal with a black strip glued to its top and bottom.
+
+Theming them to match was the alternative and it is a worse shape whichever way
+it is done. A zellij session is server-side, long-lived and **shared** while the
+theme is a per-browser choice, so two browsers on different families attach to
+one pty and there is no single right answer for the chrome to take. A neutral
+compromise palette would have to read against four light and four dark panes at
+once — the "one pair shared by every family" shape the per-theme xterm palettes
+were built to replace. And `zellij --config <file>` *replaces* the user's config
+rather than merging, so it would take their keybindings with it.
+
+Deleting the plugin panes needs no answer to any of that: there is nothing left
+to theme. It also returns three rows to the terminal, and the dashboard already
+carries its own tabs, session list, state chips and pane API — the bars were
+duplicating the app's navigation in a strip the app could not paint.
+
+Measured against zellij 0.44.3 while deciding:
+
+- A layout **file** does accept config nodes at its top level: `theme "x"` plus a
+  `themes { … }` block parses and boots, while a `theme` node *inside*
+  `layout { }` is rejected as an unknown layout node. So a per-project or
+  per-session zellij theme is technically reachable without touching the user's
+  config — it would still only apply on the create branch (every reconnect is an
+  `attach`) and still has to pick one answer for all viewers.
+- `layout { tab { pane } }` materialises tab #1 holding `terminal_0` and no
+  plugin panes (`zellij -n <file> attach -b`, then `action list-panes`). The
+  explicit `tab { … }` wrapper is what puts the content in the FIRST tab, so it
+  is kept from the templated shape.
+- The orchestrator's split keeps its labels: `action list-panes` reports
+  `terminal_0 orchestrator` / `terminal_1 agents` from the layout's `name=`, and
+  a `pane_frames true` config still draws those names on the frame. Pane frames
+  are untouched by this change.
+
+What it costs: a user who opens a second zellij **tab** (`Ctrl t n`) no longer
+sees a tab bar naming it. Keybindings are unaffected — they belong to the client,
+not to the plugin panes.
+
+`terminal.core.test.ts` holds every layout to this through one shared
+`expectNoZellijChrome` helper, so a new layout cannot reintroduce the defect by
+copying an old one.
 
 ### Zellij session names are user-global on purpose (`PID_ZELLIJ_PREFIX`)
 

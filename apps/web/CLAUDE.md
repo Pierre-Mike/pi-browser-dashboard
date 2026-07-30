@@ -118,6 +118,20 @@ names the family it exercises. `terminal-light-mode.spec.ts` owns the `pid` pair
 (`rgb(11,18,32)` / `rgb(248,250,252)`) and asserts `data-theme` alongside them,
 so a pane that fell back to `pid` can no longer pass as its own family.
 
+**There is no tenth surface, because the tenth one was deleted.** For a while the
+pane had three rows nothing here could reach: zellij's own tab bar and status bar,
+drawn by plugin panes *inside the pty* from **zellij's** dark theme, so all four
+light themes showed a light terminal with a black strip top and bottom. The fix
+was on the daemon side and it was a subtraction — the layouts in
+`apps/daemon/src/features/terminal/terminal.core.ts` no longer ask for those
+plugin panes. A zellij session is server-side and shared while the theme is a
+per-browser choice, so no per-viewer zellij theme can be right for two browsers on
+one pty; removing the chrome is the only fix that is theme-independent by
+construction. Full reasoning and the 0.44.3 measurements are in AGENTS.md under
+"Zellij paints no chrome". If you find yourself wanting to add a palette entry for
+a row *the terminal program did not write*, that is the sign to delete the row
+instead.
+
 ### Shape is a theme property too
 
 A family owns **component form** as well as colour. Each theme sets

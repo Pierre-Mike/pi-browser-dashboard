@@ -25,9 +25,12 @@ b8465f3b [Created 1day 1h 33m 22s ago] (current)
 edfe61ab [Created 1day 11h 34m 32s ago] (EXITED - attach to resurrect)
 `
 
-// Verbatim `zellij --session <name> action list-panes` output for a session
-// created from the daemon's own layout (tab-bar + status-bar plugin panes
-// around one content terminal pane).
+// Verbatim `zellij --session <name> action list-panes` output for a session that
+// holds a plugin pane beside its content pane. The daemon's own layouts stopped
+// emitting plugin panes (they were zellij-themed chrome the dashboard could not
+// repaint), but a human can still open one — and a session the daemon merely
+// derived was never guaranteed to be one the daemon created. So the fixture keeps
+// the `plugin` row: it is what the filter exists for.
 const PANE_LIST = `PANE_ID  TYPE  TITLE
 plugin_1  plugin  zellij:status-bar
 terminal_0  terminal  bash -lc claude attach abcd1234; exec bash -l

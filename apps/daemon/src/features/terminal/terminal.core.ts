@@ -139,34 +139,68 @@ export const prefixedZellijSession = (args: {
 // '\''. Safe for any byte string in a POSIX shell.
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 
-// Layout for the project / global zellij session. Mirrors the drill-in
-// shape (default_tab_template with the tab-bar + status-bar plugins) so the
-// zellij UI is always visible — bare `zellij -s <name>` depends on the
-// user's config to render those bars, and some configs hide them. There is
-// no auto-running command pane; the content `pane` drops the user at their
-// default shell so they can run `claude` (or anything else) themselves.
+// ---- why no layout here asks for zellij's tab bar or status bar ----------
 //
-// The content pane MUST be wrapped in an explicit `tab { … }`. zellij applies
-// default_tab_template only to tabs materialised through a `tab {}` block (and
-// to new tabs opened at runtime); a bare `pane` at the layout root becomes an
-// EMPTY first tab and demotes the template to a new-tabs-only one. The visible
-// symptom is a first terminal tab with no tab bar / status bar — the zellij UI
-// only appears once the user opens a second tab. Verified against zellij 0.43.1
-// with `zellij -n <file> … action dump-layout`: the bare-pane layout dumps
-// `tab name="Tab #1" {}` (empty) plus a new_tab_template carrying the bars,
-// while `tab { pane }` injects the content through the template so tab #1
-// carries the bars too.
+// Every layout below is a bare `tab { … }` with the content pane and nothing
+// else. They used to open with a `default_tab_template` wrapping `children` in
+// two plugin panes — `zellij:tab-bar` (1 row, top) and `zellij:status-bar`
+// (2 rows, bottom) — so that the zellij UI showed regardless of the user's
+// config. Those three rows are the one surface in the terminal pane that the
+// dashboard's theme system provably cannot reach.
+//
+// The pane is themed in two layers and neither one owns those rows. daisyUI
+// paints the panel around the terminal, and `apps/web/src/features/terminal/
+// terminalTheme.ts` hands xterm a sixteen-slot palette per theme. But a plugin
+// pane's bars are drawn by ZELLIJ, inside the pty, from zellij's OWN theme —
+// they arrive at xterm as already-coloured cells. zellij's default theme is
+// dark, so in each of the four light themes (`pidlight`, `monolight`,
+// `terminallight`, `sunsetlight`) the pane rendered as a light terminal with a
+// black strip glued to its top and bottom.
+//
+// Theming those rows to match instead was the alternative, and it is a worse
+// shape whichever way it is done:
+//
+//   - A zellij session is server-side, long-lived and SHARED; the theme is a
+//     per-browser choice (an override over a machine-wide default). Two
+//     browsers on different families attach to one pty, so there is no single
+//     right answer for the chrome to take. `zellij --config <file>` is worse
+//     still: it REPLACES the user's config rather than merging, so it would
+//     take their keybindings with it.
+//   - A neutral compromise palette would have to read acceptably against four
+//     light and four dark panes at once, which is precisely the "one pair
+//     shared by every family" shape the per-theme xterm palettes replaced.
+//   - Verified on 0.44.3: a layout FILE does accept config nodes at its top
+//     level (`theme "x"` + a `themes { … }` block parses and boots, while a
+//     `theme` node INSIDE `layout { }` is rejected as an unknown layout node),
+//     so a per-project theme is technically reachable. It would still only
+//     apply on the create branch — every reconnect is an `attach` — and it
+//     still has to pick one answer for all viewers.
+//
+// Deleting the plugin panes needs no answer to any of that: there is nothing
+// left to theme. It also returns the three rows to the terminal, and the
+// dashboard already carries its own tabs, session list, state chips and pane
+// API, so the bars were duplicating the app's navigation in a strip the app
+// could not paint.
+//
+// What it costs: a user who opens a second zellij TAB (`Ctrl t n`) no longer
+// sees a tab bar naming it. Keybindings are unaffected — they are the client's,
+// not the plugin panes'. Pane FRAMES are untouched, so a multi-pane session
+// still labels its panes from `name=` under a `pane_frames true` config.
+//
+// Nothing in the daemon counted these panes: `parseTerminalPaneRows` keeps only
+// `TYPE=terminal` rows, so the poller, the pane budget and `dump-screen
+// --pane-id` all see one row fewer of noise, not a missing input.
+//
+// The content pane is still wrapped in an explicit `tab { … }`, which is what
+// puts it in the FIRST tab. Verified on 0.44.3 (`zellij -n <file> attach -b`
+// then `action list-panes`): `layout { tab { pane } }` materialises tab #1
+// holding `terminal_0` and no plugin panes.
+
+// Layout for the project / global zellij session. No auto-running command pane;
+// the content `pane` drops the user at their default shell so they can run
+// `claude` (or anything else) themselves.
 const projectLayoutKdl = (): string =>
   `layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
     tab {
         pane
     }
@@ -275,24 +309,17 @@ const ORCHESTRATOR_BOOTSTRAP_CMD =
   "pgrep -f tts_daemon.sh >/dev/null || (bash scripts/tts_daemon.sh & disown); " +
   "claude respawn --all >/dev/null 2>&1 || true; exec claude"
 
-// Layout for the orchestrator session. Same tab-bar/status-bar template as the
-// project/global layouts (so the zellij UI is visible), with a vertical split:
-// the left pane boots the supervisor via ORCHESTRATOR_BOOTSTRAP_CMD, the right
-// pane shows the `claude agents` fleet board. The bootstrap is wrapped in
-// `bash -lc` (same rationale as the drill-in claude pane: a direct command pane
-// gives claude a pty it rejects within seconds). The command is ASCII-safe and
-// quote-free, so inlining it into the double-quoted KDL arg is safe.
+// Layout for the orchestrator session: a vertical split, the left pane booting
+// the supervisor via ORCHESTRATOR_BOOTSTRAP_CMD and the right pane showing the
+// `claude agents` fleet board. The bootstrap is wrapped in `bash -lc` (same
+// rationale as the drill-in claude pane: a direct command pane gives claude a
+// pty it rejects within seconds). The command is ASCII-safe and quote-free, so
+// inlining it into the double-quoted KDL arg is safe. The two `name=`s are what
+// identify the panes — both in `action list-panes` and in a pane frame under a
+// `pane_frames true` config — which is why no tab bar is needed to tell them
+// apart.
 const orchestratorLayoutKdl = (): string =>
   `layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
     tab {
         pane split_direction="vertical" {
             pane name="orchestrator" command="bash" {
@@ -326,24 +353,11 @@ export const orchestratorZellijCommand = (args: {
     layoutKdl: orchestratorLayoutKdl(),
   })
 
-// Layout for the drill-in zellij session. Two requirements pull against
-// each other here:
-//   1. Auto-run `claude attach <short>` so the terminal tab "just works"
-//      the moment the user opens it (prior shape made them type it).
-//   2. Keep zellij's tab bar / status bar visible so a second pane can be
-//      opened alongside the claude TUI.
-//
-// `default_tab_template` is the load-bearing piece: without it, a layout
-// with a single top-level `pane` hides the tab/status bars and looks
-// identical to running claude bare — which is why an earlier auto-attach
-// shape was reverted.
-//
-// The claude pane MUST be wrapped in an explicit `tab { … }`. zellij applies
-// default_tab_template only to tabs materialised through a `tab {}` block (and
-// to runtime new tabs); a bare `pane` at the layout root becomes an EMPTY first
-// tab with no plugin panes and demotes the template to new-tabs-only — so the
-// drill-in opens with no tab bar / status bar until a second tab is created.
-// See projectLayoutKdl for the dump-layout evidence on zellij 0.43.1.
+// Layout for the drill-in zellij session: auto-run `claude attach <short>` so
+// the terminal tab "just works" the moment the user opens it (a prior shape made
+// them type it), in a pane that owns the whole pty. The claude TUI is the one
+// program here that most wants every row it can get, and it draws its own status
+// line — a zellij status bar under it was a second one in a different theme.
 //
 // The command is wrapped in `bash -lc`, not run directly as `command="claude"`.
 // Directly invoking `claude` from a zellij pane produces a pty that claude
@@ -359,15 +373,6 @@ export const orchestratorZellijCommand = (args: {
 // pane alive with the failure output visible so the user can retry.
 const sessionClaudeLayoutKdl = (short: string): string =>
   `layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
     tab {
         pane command="bash" {
             args "-lc" "claude attach ${short}; exec bash -l"
@@ -429,19 +434,10 @@ export const piZellijSessionName = (short: string): string => `pi-${short}`
 // records pi's pid then `exec pi … <intent>`, so the session's sole process IS
 // pi and the session ends when pi exits. `scriptPath` is a daemon-minted
 // mktemp path (no shell/KDL metacharacters), so it inlines into the KDL arg
-// verbatim. Same tab-bar/status-bar template as the other layouts so the zellij
-// UI is visible the moment the user attaches.
+// verbatim. No plugin panes, like every other layout here — see the block above
+// projectLayoutKdl.
 export const piBackgroundLayoutKdl = (scriptPath: string): string =>
   `layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
     tab {
         pane command="bash" {
             args "-l" "${scriptPath}"
@@ -458,15 +454,6 @@ export const piBackgroundLayoutKdl = (scriptPath: string): string =>
 // hex + hyphens, so it inlines into the KDL arg without escaping.
 const sessionPiLayoutKdl = (sessionId: string): string =>
   `layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
     tab {
         pane command="bash" {
             args "-lc" "pi --session ${sessionId}; exec bash -l"
