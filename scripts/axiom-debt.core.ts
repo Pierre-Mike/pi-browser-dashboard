@@ -3,7 +3,8 @@
  * error everywhere, because the existing codebase already violates them in bulk:
  *
  *   1. `cross-slice-import` — a feature slice reaching into a sibling slice's
- *      internals instead of a published door (modular monolith).
+ *      internals instead of its published door: `<slice>.door.ts`, the one
+ *      cross-slice path this counter leaves open (modular monolith).
  *   2. `env-outside-config`  — reading `process.env` outside the typed config
  *      funnel (typed config at boot).
  *   3. `raw-fetch`           — calling `fetch` outside a `*.io.ts` port.
@@ -56,8 +57,23 @@ const countMatches = ({ text, re }: { readonly text: string; readonly re: RegExp
   [...text.matchAll(re)].length
 
 // `from "../<slice>/<file>.<tier>"` — a relative hop *out* of the current slice
-// and straight into a sibling's internals.
-const CROSS_SLICE = /from\s+["']\.\.\/([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)\.(core|io|routes)["']/g
+// and straight into a sibling's internals. The `(../)+features/` alternative
+// catches the same hop written the long way round (`../../features/<slice>/…`
+// from a nested directory), which the bare `../` form silently missed: the
+// greedy character class cannot cross a `/`, so a second `../` made the whole
+// pattern fail and the import went uncounted.
+const CROSS_SLICE =
+  /from\s+["'](?:\.\.\/(?:\.\.\/)*features\/|\.\.\/)([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)\.(core|io|routes|door)["']/g
+
+/**
+ * The published door is the ONE tier a sibling slice may import — hence it is
+ * listed in the tier alternation above and then exempted here, rather than
+ * simply left out of the pattern. Listed-and-exempted is the difference between
+ * "the door is sanctioned" and "the door happens not to be described yet": the
+ * next tier suffix someone invents falls outside the alternation and stays
+ * invisible, so the sanctioned surface has to be spelled out to stay closed.
+ */
+const DOOR_TIER = "door"
 
 const sliceOf = (path: string): string | null => {
   const m = /(?:^|\/)features\/([^/]+)\//.exec(path)
@@ -69,7 +85,7 @@ export const countCrossSliceImports = (file: SourceFile): number => {
   if (own === null) return 0
   let n = 0
   for (const m of file.text.matchAll(CROSS_SLICE)) {
-    if (m[1] !== own) n += 1
+    if (m[1] !== own && m[3] !== DOOR_TIER) n += 1
   }
   return n
 }

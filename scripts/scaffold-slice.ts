@@ -17,6 +17,12 @@
  * The generated slice is deliberately a *working* trivial feature, not a set of
  * TODOs: `bun run verify` passes immediately after scaffolding, which means any
  * failure you see afterwards is yours.
+ *
+ * `--door` additionally emits `<feature>.door.ts`, the slice's published surface
+ * (the modular-monolith door). Opt-in on purpose: a door nobody imports yet is
+ * an unused export, and `bun run audit` fails on dead code. Ask for it when you
+ * already know a second module will consume this one, and wire that import in
+ * the same change.
  */
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
@@ -30,9 +36,16 @@ const fail = (msg: string): never => {
   process.exit(1)
 }
 
-const name = process.argv[2] ?? ""
+const usage = "usage: bun run scaffold:slice <feature> [--door]  (kebab-case, e.g. issue-triage)"
+
+const args = process.argv.slice(2)
+const unknownFlag = args.find((arg) => arg.startsWith("-") && arg !== "--door")
+if (unknownFlag !== undefined) fail(`unknown flag ${unknownFlag}\n${usage}`)
+
+const withDoor = args.includes("--door")
+const name = args.find((arg) => !arg.startsWith("-")) ?? ""
 if (!/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name)) {
-  fail("usage: bun run scaffold:slice <feature>  (kebab-case, e.g. issue-triage)")
+  fail(usage)
 }
 
 const pascal = name
@@ -136,7 +149,7 @@ const ioTs = `/**
 import { Context, Effect, Layer } from "effect"
 import type { ${pascal}Error } from "./${name}.core"
 
-type ${pascal}ServiceApi = {
+${withDoor ? "export " : ""}type ${pascal}ServiceApi = {
   readonly labelFor: (id: string) => Effect.Effect<string | null, ${pascal}Error, never>
 }
 
@@ -245,6 +258,28 @@ describe("GET /${name}/:id", () => {
 })
 `
 
+const doorTs = `/**
+ * Published door for the \`${name}\` slice (modular monolith) — the ONE file
+ * another feature slice may import. Every other cross-slice path is a
+ * back-channel that \`bun run axiom-debt\` counts as debt, and a pure
+ * \`*.core.ts\` may not import a door at all: a door re-exports a
+ * \`Context.Tag\`, so consuming one would drag the Effect runtime into pure
+ * code (biome bans it by shape).
+ *
+ * It publishes the service \`Context.Tag\` and its interface type, never the
+ * implementation, so a consumer couples to the Tag: swapping \`${pascal}IoLive\`
+ * — for a test Layer, or for a client that talks to another process the day this
+ * module ships as its own deployment — is a Layer change at the composition
+ * root, not a call-site change.
+ *
+ * Keep it narrow: whatever this file exports is what other modules couple to.
+ * Data crossing the door belongs in \`shared/src\` as an effect \`Schema\`;
+ * promote it there and re-export it here so consumers have a single import
+ * site, e.g. \`export { type ${pascal} } from "@pid/shared"\`.
+ */
+export { ${pascal}Service, type ${pascal}ServiceApi } from "./${name}.io"
+`
+
 // --- write the slice --------------------------------------------------------
 
 await mkdir(sliceDir, { recursive: true })
@@ -254,6 +289,7 @@ const files: Record<string, string> = {
   [`${name}.io.ts`]: ioTs,
   [`${name}.routes.ts`]: routesTs,
   [`${name}.routes.test.ts`]: routesTestTs,
+  ...(withDoor ? { [`${name}.door.ts`]: doorTs } : {}),
 }
 for (const [file, content] of Object.entries(files)) {
   await Bun.write(join(sliceDir, file), content)
@@ -339,4 +375,17 @@ next steps:
   5. (web) add the query hook + route under apps/web/src/features/${name}/,
      going through the typed RPC client in apps/web/src/lib/api.ts
   6. bun run verify
-`)
+${
+  withDoor
+    ? `
+door: ${name}.door.ts is this slice's published surface — the only file another
+      slice may import. Re-export the shared Schema contract there too, and add
+      the consuming import NOW: an unconsumed door is an unused export and
+      \`bun run audit\` fails on dead code.
+`
+    : `
+door: this slice publishes nothing yet. When a second module needs it, re-run
+      with --door (or add ${name}.door.ts by hand) rather than letting the
+      consumer reach into .core / .io / .routes.
+`
+}`)
