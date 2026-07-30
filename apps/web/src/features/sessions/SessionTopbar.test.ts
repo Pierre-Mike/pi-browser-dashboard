@@ -72,7 +72,7 @@ describe("session topbar", () => {
     // No reserved left column: the chip lives in this row, so the terminal /
     // chat panes below run flush to the left edge.
     expect(src).toContain('from "./sidebarRail"')
-    expect(src).toMatch(/data-testid="session-topbar"[^>]*>\s*<SidebarReopenButton\s*\/>/)
+    expect(src).toMatch(/data-testid="session-topbar"[^>]*>\s*<NavChromeChips\s*\/>/)
   })
 
   it("keeps every drill-in action button under its established testid", () => {

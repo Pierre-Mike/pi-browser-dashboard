@@ -1,6 +1,7 @@
 import { decodeSessionState, type SessionState } from "@pid/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
+import { fillViewportClass } from "../features/sessions/navChrome"
 import { SessionPanel } from "../features/sessions/SessionPanel"
 import { SessionTopbar } from "../features/sessions/SessionTopbar"
 import { BOARD_TAB_PREFIX, SESSION_TABS, type SessionTab } from "../features/sessions/sessionTabs"
@@ -65,7 +66,7 @@ function SessionDrillIn() {
   }
 
   return (
-    <div className="flex flex-col gap-1 h-screen -my-4 pt-1">
+    <div className={`flex flex-col gap-1 ${fillViewportClass} pt-1`}>
       <SessionTopbar
         session={session}
         fallbackId={id}

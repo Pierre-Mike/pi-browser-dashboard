@@ -216,10 +216,18 @@ export const SessionCardActions = ({ session }: { session: SessionState }) => {
   const isPi = session.harness === "pi"
   return (
     <>
-      {/* Always visible on touch (no hover to reveal it) — only md: and up
-          hides it by default and brings it back on the card's hover or a
-          keyboard focus landing on one of its buttons. */}
-      <div className="flex items-center gap-1.5 pt-1 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+      {/* Hidden until hover only where a pointer can actually hover, and always
+          visible otherwise. The gate is `pointer-fine:` and not `md:` because
+          width is the wrong question: an iPad is 820px wide *and* has no hover,
+          so a width gate left every tablet with a card whose Kill / Delete /
+          Send were invisible and unreachable. Keyboard focus inside the row
+          reveals it too, for the mouse case.
+          `flex-wrap` because the six items need ~470px on one line, which pushed
+          the whole document 83px wider than a 390px phone. */}
+      <div
+        data-testid="session-card-actions"
+        className="flex flex-wrap items-center gap-1.5 pt-1 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"
+      >
         <button
           type="button"
           onClick={a.onCopy}

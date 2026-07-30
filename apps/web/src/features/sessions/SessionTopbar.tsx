@@ -4,7 +4,7 @@ import { TAB_ICONS, tabButtonClass, tabDockNavClass } from "../../lib/tabDock"
 import type { SessionState } from "../../lib/types"
 import { sessionIdentity } from "./sessionIdentity"
 import { isSessionTabActive, SESSION_TAB_DOCK, type SessionTab } from "./sessionTabs"
-import { SidebarReopenButton } from "./sidebarRail"
+import { NavChromeChips } from "./sidebarRail"
 import type { SessionActions } from "./useSessionActions"
 
 // The session identity cluster, shaped like ProjectIdentity on the project page:
@@ -178,7 +178,7 @@ export const SessionTopbar = ({
   readonly actions: SessionActions
 }) => (
   <div data-testid="session-topbar" className="flex items-center gap-2">
-    <SidebarReopenButton />
+    <NavChromeChips />
 
     <Link
       to="/"

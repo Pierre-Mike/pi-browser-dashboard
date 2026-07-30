@@ -9,8 +9,9 @@ import { LibraryPanel } from "../features/library/LibraryPanel"
 import { GlobalTerminal } from "../features/projects/GlobalTerminal"
 import { OrchestrationPanel } from "../features/projects/OrchestrationPanel"
 import { useProjects } from "../features/projects/useProjects"
+import { fillViewportClass } from "../features/sessions/navChrome"
 import { RecentSessionsFeed } from "../features/sessions/RecentSessionsFeed"
-import { SidebarReopenButton } from "../features/sessions/sidebarRail"
+import { NavChromeChips } from "../features/sessions/sidebarRail"
 import { useSessions } from "../features/sessions/useSessions"
 import { useTerminalStates } from "../features/terminal/useTerminalState"
 import { TunnelPanel } from "../features/tunnel/TunnelPanel"
@@ -141,12 +142,12 @@ function IndexPage() {
   return (
     <div
       data-testid="dashboard"
-      className={`flex flex-col gap-2 ${fillViewport ? "h-screen -my-4 pt-4" : ""}`}
+      className={`flex flex-col gap-2 ${fillViewport ? `${fillViewportClass} pt-4` : ""}`}
     >
       {/* The reopen chip rides in this row while the sidebar is collapsed, so no
           page content below has to leave room for it. */}
       <div className="flex items-center gap-2">
-        <SidebarReopenButton />
+        <NavChromeChips />
         <nav
           data-testid="dashboard-tabs"
           role="tablist"

@@ -20,7 +20,12 @@ describe("session drill-in route", () => {
   })
 
   it("sizes the page as a viewport-tall flex column, like the project dashboard", () => {
-    expect(src).toContain('className="flex flex-col gap-1 h-screen -my-4 pt-1"')
+    // Through the shared helper rather than a literal `h-screen`: 100vh on a
+    // phone measures the *large* viewport, so the pane's bottom sat behind the
+    // browser's own retractable bar. All three primary surfaces read the same
+    // string so the fix cannot land on two of them.
+    expect(src).toContain("fillViewportClass")
+    expect(src).not.toContain("h-screen")
   })
 
   it("takes its ?tab= whitelist from the shared dock definition", () => {

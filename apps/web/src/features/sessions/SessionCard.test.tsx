@@ -141,13 +141,17 @@ describe("SessionCard markup", () => {
     expect(tag).toContain("group")
   })
 
-  test("the action row is always visible below md, revealed by hover/focus at md and up", () => {
+  test("the action row hides until hover only where a pointer can hover", () => {
     const html = renderCard(sampleSession)
-    // Base (mobile/touch, no hover) stays visible; only md: and up hides it
-    // by default and brings it back on hover or keyboard focus.
-    expect(html).toContain("md:opacity-0")
-    expect(html).toContain("md:group-hover:opacity-100")
-    expect(html).toContain("md:group-focus-within:opacity-100")
+    // The gate used to be `md:`, which asks about width when the question is
+    // about the input device — and the two disagree exactly where it matters: an
+    // iPad is 820px wide (so `md:` applied) and has no hover (so nothing ever
+    // brought the row back). Kill / Delete / Send were invisible and unreachable
+    // on every tablet. `pointer-fine:` asks the device instead.
+    expect(html).toContain("pointer-fine:opacity-0")
+    expect(html).toContain("pointer-fine:group-hover:opacity-100")
+    expect(html).toContain("pointer-fine:group-focus-within:opacity-100")
+    expect(html).not.toContain("md:opacity-0")
   })
 
   test("a needs_input session opens the SendKeys panel by default", () => {

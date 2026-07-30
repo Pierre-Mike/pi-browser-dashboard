@@ -1,7 +1,7 @@
 ---
 domain: apps/web/src/features/sessions
-updated: 2026-07-28
-updated_by: claude (session topbar folded to one row)
+updated: 2026-07-30
+updated_by: claude (mobile + tablet responsive pass)
 ---
 
 # Conventions
@@ -60,3 +60,35 @@ updated_by: claude (session topbar folded to one row)
   `string | undefined` at the point of use. `sessionIdentity.ts` is the pure
   guard for the name/short pair; `session.name || session.short` is the older
   inline form used by `SessionCard`.
+
+- **SES-C005: the shell's chrome row is ONE row at every width — the mobile drawer toggle rides in it, not above it**
+  confidence: 0.6 | added: 2026-07-30
+  SES-C001 said collapsed chrome must reserve zero width; the same rule applies
+  to *height*, and the mobile nav broke it. `MobileNav` used to own a sticky
+  `<header>` holding the hamburger, so every viewport below the breakpoint paid a
+  second chrome row — 53px measured, on the axis a phone has least of — and
+  because the fill-viewport panes are `h-dvh` boxes *below* that row, the row's
+  height also pushed each pane's bottom exactly 53px past the fold. Both symptoms
+  had one cause and one fix: delete the header, publish the drawer's open flag
+  next to the rail flag (`sidebarRail.tsx`), and render the hamburger from
+  `NavChromeChips` — the component all three primary surfaces already mount as
+  the first item of the row they render anyway. The two chips are exact
+  complements (`lg:hidden` vs `hidden lg:inline-flex`), so exactly one is visible
+  at any width and the row costs one slot. Do not add a viewport-only bar to
+  this shell; put the control in the row that exists.
+
+- **SES-C006: `md` is 768px, which is an iPad in portrait — gate a sidebar on `lg`, and gate hover-reveal on the pointer, not on width**
+  confidence: 0.6 | added: 2026-07-30
+  Two separate bugs, one root cause: `md:` was being used as a proxy for "this is
+  a desktop", and it is not. At `md` a tablet in portrait handed 288 of its 768px
+  to a permanent rail and left ~450px for a terminal, so the static sidebar now
+  starts at `lg` (`sidebarAsideClass` / `sidebarLoadingClass`) and tablets get the
+  drawer. Worse, `SessionCardActions` hid its row behind `md:opacity-0
+  md:group-hover:opacity-100`: an iPad satisfies `md` *and* cannot hover, so Kill
+  / Delete / Send were transparent with no gesture that could reveal them. The
+  gate is `pointer-fine:` — it asks the input device the question width was
+  standing in for. When you reach for a breakpoint, check whether the real
+  predicate is width (how much room is there?) or capability (can this pointer
+  hover?); Tailwind 4 ships `pointer-fine` / `pointer-coarse` for the second.
+  Both are proven in `apps/e2e/tests/responsive-shell.spec.ts`, and the touch
+  half needs `isMobile: true` to be observable at all (E2E-G002).

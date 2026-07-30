@@ -89,10 +89,12 @@ test.describe("test-extension project panel", () => {
     await expect(frame.getByTestId("test-extension-button")).toBeVisible({ timeout: 15_000 })
     await expect(frame.getByTestId("test-extension-button")).toContainText("Test Extension")
 
-    // The dashboard container must use h-screen when an ext: tab is active,
-    // so the iframe fills the viewport without X/Y scrollbars.
+    // The dashboard container must be viewport-tall when an ext: tab is active,
+    // so the iframe fills it without X/Y scrollbars. `h-dvh`, not `h-screen`:
+    // 100vh counts the strip behind a phone's retractable URL bar, so a vh-tall
+    // host hangs its own bottom below the fold (see navChrome.fillViewportClass).
     const dashboard = page.getByTestId("project-dashboard")
     const dashClass = await dashboard.getAttribute("class")
-    expect(dashClass).toContain("h-screen")
+    expect(dashClass).toContain("h-dvh")
   })
 })
