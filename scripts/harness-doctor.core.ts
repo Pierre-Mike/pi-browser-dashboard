@@ -35,6 +35,8 @@ export type HarnessSnapshot = {
   readonly workflows: readonly Workflow[]
   /** Source text of gate scripts whose *shape* is asserted below. */
   readonly gateSources: Readonly<Record<string, string>>
+  /** Raw evals/tasks.jsonl — one JSON task per line. See `tasksMissingAsserts`. */
+  readonly evalTasks: string
 }
 
 // The literal status-check contexts the branch ruleset requires. A PR cannot
@@ -116,6 +118,12 @@ const REQUIRED_SCRIPTS: readonly string[] = [
   "scaffold:slice",
   "evals",
   "verify",
+  // The graded eval grid: the agent-facing half of the harness. `evals:baseline`
+  // is the one that keeps the grid honest — it scores every task with NO agent,
+  // so a task that a do-nothing run already passes is visible for free.
+  "test:evals",
+  "evals:baseline",
+  "evals:report",
 ]
 
 // Gates that must be *composed* into a command CI already runs, not merely
@@ -131,6 +139,10 @@ const COMPOSED_GATES: readonly { readonly script: string; readonly needle: strin
   { script: "verify", needle: "test:cli" },
   { script: "verify", needle: "audit" },
   { script: "verify", needle: "axiom-debt" },
+  // The eval harness's own pure cores (scoring, probe judgements, gate
+  // derivation) are unit-tested like any other core — the harness that judges
+  // the agent is judged by the repo's own gates.
+  { script: "test", needle: "test:evals" },
 ]
 
 const REQUIRED_FILES: readonly string[] = [
@@ -152,6 +164,12 @@ const REQUIRED_FILES: readonly string[] = [
   "scripts/typecheck.ts",
   "shared/src/index.ts",
   "stryker.config.json",
+  // The graded grid, not just the task list: a runner, a functional probe, a
+  // report with the A/B verdict, and the pure scorer they share.
+  "evals/run.ts",
+  "evals/probe.ts",
+  "evals/report.ts",
+  "evals/score.core.ts",
 ]
 
 /**
@@ -200,6 +218,53 @@ export const unpinnedActions = (workflow: string): readonly string[] => {
     if (!/^[0-9a-f]{40}$/.test(ref)) out.push(`${m[1]}@${ref}`)
   }
   return out
+}
+
+export type EvalTaskProblem = { readonly label: string; readonly reason: string }
+
+/**
+ * Eval tasks that hand out free points, or lines that are not tasks at all.
+ *
+ * The grid's gate jury (`bun run verify`) is green on an untouched checkout, so
+ * a task judged by the gates alone scores an agent that did *nothing* a perfect
+ * 1.0 — which is exactly what the stub eval this replaced did. A task's own
+ * `asserts` are the only jury that can tell those apart, so a task without at
+ * least one is not a weak measurement, it is no measurement. Nobody notices
+ * that by reading the file; a gate does.
+ *
+ * Parses rather than greps: a task list that stopped being valid JSONL would
+ * make the runner throw at cell 1 of 36, hours into a paid grid.
+ */
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const parsedLine = (line: string): unknown => {
+  try {
+    return JSON.parse(line)
+  } catch {
+    return null
+  }
+}
+
+export const tasksMissingAsserts = (input: {
+  readonly jsonl: string
+}): readonly EvalTaskProblem[] => {
+  const lines = input.jsonl.split("\n").filter((line) => line.trim().length > 0)
+  if (lines.length === 0) {
+    return [{ label: "evals/tasks.jsonl", reason: "declares no tasks at all" }]
+  }
+  return lines.flatMap((line, index) => {
+    const task = parsedLine(line)
+    if (!isJsonObject(task)) {
+      return [{ label: `line ${index + 1}`, reason: "is not a JSON object" }]
+    }
+    const id = typeof task.id === "string" && task.id.length > 0 ? task.id : `line ${index + 1}`
+    const asserts = task.asserts
+    if (!Array.isArray(asserts) || asserts.length === 0) {
+      return [{ label: id, reason: "has no asserts, so the repo gates alone would score it" }]
+    }
+    return []
+  })
 }
 
 export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
@@ -379,6 +444,14 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
   // --- Gate scripts still on disk ----------------------------------------
   for (const file of REQUIRED_FILES) {
     if (!snap.presentFiles.includes(file)) miss({ check: "files", detail: `${file} is missing` })
+  }
+
+  // --- Every eval task carries at least one assert -------------------------
+  for (const problem of tasksMissingAsserts({ jsonl: snap.evalTasks })) {
+    miss({
+      check: "eval-tasks",
+      detail: `evals/tasks.jsonl: ${problem.label} ${problem.reason} — add a functional assert (see evals/README.md), the gates are green on an untouched checkout`,
+    })
   }
 
   return findings

@@ -212,11 +212,31 @@ that remain: drive the count to zero, then replace the class with the rule.
 ### Evals and retrospectives close the loop
 
 Tests and lint verify deterministic code. **Evals** verify the non-deterministic
-half — including the harness itself. `evals/tasks.jsonl` is a frozen set of
-golden tasks; `./evals/run.sh` hands each to a headless agent in a throwaway
-worktree and **the repo's own gates are the judge** — a task passes iff
-`bun run verify` is green afterwards. Weekly in CI
-(`.github/workflows/evals.yml`), no-op without an `ANTHROPIC_API_KEY`.
+half — including the harness itself. `evals/` is a grid of
+`task × model × repeat`: each cell hands one task to a headless agent in a
+throwaway worktree, then judges it twice. The repo's own gates — every step
+`bun run verify` composes, *derived* from package.json rather than listed — prove
+nothing broke; per-task **asserts**, mostly real HTTP and WebSocket traffic
+through `evals/probe.ts`, prove the feature actually runs.
+
+The asserts are worth **twice** the gates, and that ratio is the whole point:
+`bun run verify` is green on an untouched checkout, so the gates-only eval this
+replaced scored an agent that changed nothing a perfect 1.0. The shares are per
+*jury*, not per check, which pins the do-nothing ceiling at 1/3 however many
+gates or asserts a task happens to have. `bun run evals:baseline` runs the entire
+grid with **no agent** — free, and the only honest way to ask what a task is
+worth before the work is done. `bun run doctor` rejects a task with no asserts,
+and the report flags any assert that is already green before the agent starts.
+
+The task set spans application *archetypes*, not just CRUD — pure algorithm,
+persistence + state machine, external HTTP failure mapping, a `@pid/shared`
+contract, cross-cutting middleware, a web query slice, background (non-request)
+work, SSE, WebSocket, rename survival — so a structure that only fits one shape
+shows up as a column of zeros. `evals/report.ts --compare` answers *did my
+harness change help?* against a 2σ noise floor built from the repeats, never a
+single run: score up → keep it and ratchet the floor; a sustained drop → revert.
+Weekly in CI (`.github/workflows/evals.yml`); the free baseline always runs, the
+paid grid no-ops without an `ANTHROPIC_API_KEY`.
 
 When a change to `CLAUDE.md`, a skill, a hook or a gate makes agents start
 failing these tasks, the harness regressed: fix the harness, not the task.
@@ -226,6 +246,26 @@ history, merged PRs and the gate output into a few ranked, **enforcement-biased*
 proposals — prefer a hook, lint rule, test or script over a written guideline,
 because enforcements compound and guidelines decay. Loop: `/retro` proposes →
 apply → re-run the evals → keep what raises the score.
+
+### Pick the model tier from the grid, not from habit
+
+Strong determinism is supposed to buy a cheaper model, and the grid is what says
+where it actually does: `evals/report.ts` ranks each tier by mean score **and by
+cost per point**, so a model that is 10× cheaper but fails half the grid stops
+looking cheap. Route per *archetype*, because that is where tiers diverge —
+structural work inside a shape the scaffolder already stamps out is a different
+task from behaviour that has to be live-correct (background work, upstream
+failure mapping, streaming; anything whose proof is a round-trip rather than a
+type).
+
+**The numbers for this repo are not measured yet.** Measure them with
+`bun run evals -- --suite full --models opus,sonnet,haiku`, record the table and
+its σ under "Reference run" in `evals/README.md`, and update this paragraph in
+the same commit. Do not import another repo's figures: a score is a property of
+*this* harness — its gates, its tasks, its asserts — not of the model alone.
+Re-measure after a harness change or a new model release, and before concluding a
+tier cannot do something, re-run that cell with `--repeats 3`: a single red cell
+is often variance, which is why the noise floor exists at all.
 
 ### The harness checks itself
 
@@ -263,7 +303,7 @@ bun run verify         # lint:ci + typecheck + test + web/cli suites + audit + a
 bun run lint           # biome check --write .   (autofix)
 bun run lint:ci        # biome ci .              (CI gate)
 bun run typecheck      # tsc --noEmit over every workspace
-bun run test           # colocation check + doctor + daemon + shared + scripts suites
+bun run test           # colocation + doctor + daemon + shared + scripts + evals suites
 bun run test:web       # web unit suite
 bun run test:cli       # cli unit suite
 bun run test:shared    # shared contract suite
@@ -273,7 +313,9 @@ bun run audit          # fallow: dead code / duplication / cycles / complexity
 bun run doctor         # harness self-check (also inside `test`)
 bun run axiom-debt     # ratchet on the four debt classes
 bun run scaffold:slice # generate a feature slice in canonical shape
-bun run evals          # golden agent tasks (needs ANTHROPIC_API_KEY)
+bun run evals          # graded agent grid (needs ANTHROPIC_API_KEY)
+bun run evals:baseline # the same grid with NO agent — free, and keeps it honest
+bun run evals:report   # score a run, or --compare two against the noise floor
 bun run dev            # daemon (:8787) + web (:5173)
 ```
 

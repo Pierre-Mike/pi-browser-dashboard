@@ -50,3 +50,9 @@ apps/cli/dist-web/
 # temp config Vite writes next to vite.config.ts while it loads it.
 *.tsbuildinfo
 vite.config.ts.timestamp-*.mjs
+
+# Eval run output: one JSON grid per run plus each agent's raw transcript. Local
+# measurements, not source — and biome sets `vcs.useIgnoreFile`, so leaving a
+# generated JSON blob untracked-but-unignored would fail `lint:ci` for whoever
+# ran the grid last (the same trap the .pid/ block above describes).
+evals/results/

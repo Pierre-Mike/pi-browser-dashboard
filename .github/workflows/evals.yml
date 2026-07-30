@@ -1,13 +1,31 @@
 name: Agent evals
 
-# Weekly golden-task agent evals (see evals/README.md): headless `claude -p`
-# attempts each task in a throwaway worktree and the repo's own gates judge
-# the result. Measures whether the harness still steers agents to the
-# canonical shape. No-ops when the ANTHROPIC_API_KEY secret is absent.
+# Weekly graded agent evals (see evals/README.md). Every cell is one
+# (task × model × repeat): a headless `claude -p` attempts the task in a
+# throwaway worktree, then two juries score it — the repo's own gates prove
+# nothing broke, and the task's functional asserts (real HTTP/WS through
+# evals/probe.ts) prove the feature actually runs.
+#
+# The baseline step runs FIRST and costs nothing: it scores the whole grid with
+# no agent at all, which is what keeps the task set honest. `bun run verify` is
+# green on an untouched checkout, so any task the baseline scores above the
+# do-nothing floor is measuring nothing and the report says so.
+#
+# The paid half no-ops when the ANTHROPIC_API_KEY secret is absent.
 on:
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
+    inputs:
+      suite:
+        description: "smoke | core | full"
+        default: "core"
+      models:
+        description: "comma-separated model tiers (opus,sonnet,haiku)"
+        default: "sonnet"
+      repeats:
+        description: "runs per cell (>=2 to get a noise floor)"
+        default: "1"
 
 permissions:
   contents: read
@@ -15,12 +33,23 @@ permissions:
 jobs:
   evals:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     env:
+      # Every value a `run:` block below reads comes through env, never through
+      # a `${{ … }}` expansion inside the script: an expansion is substituted
+      # into the shell source before it runs, so anything attacker-influenced
+      # becomes shell code (zizmor rates it template-injection, high severity).
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SUITE: ${{ inputs.suite || 'core' }}
+      MODELS: ${{ inputs.models || 'sonnet' }}
+      REPEATS: ${{ inputs.repeats || '1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          # The runner creates git worktrees; it never pushes. A persisted token
+          # in .git/config would be readable by every agent this job spawns.
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Setup bun
@@ -31,10 +60,32 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: run golden tasks
+      - name: Baseline (no agent — proves the tasks measure real work)
+        run: bun run evals/run.ts --baseline --suite "$SUITE" --concurrency 2 --run-id ci-baseline
+
+      - name: Run the grid
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "ANTHROPIC_API_KEY secret not configured — skipping agent evals."
             exit 0
           fi
-          ./evals/run.sh
+          bun install -g @anthropic-ai/claude-code
+          bun run evals/run.ts \
+            --suite "$SUITE" --models "$MODELS" --repeats "$REPEATS" \
+            --concurrency 2 --run-id ci-grid --label "ci ${GITHUB_SHA:0:7}"
+
+      - name: Report
+        if: always()
+        run: |
+          for run in evals/results/*.json; do
+            [ -e "$run" ] || continue
+            bun run evals/report.ts "$run" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: eval-results
+          path: evals/results/
+          retention-days: 90
