@@ -1,0 +1,158 @@
+name: Ruleset drift
+
+# Does the committed branch-protection contract still describe reality?
+#
+# `bun run doctor` validates `.github/rulesets/main.json` against the job names
+# the workflows declare, but it is pure and offline by design — it cannot ask
+# GitHub anything. So the one thing it cannot catch is the one thing most likely
+# to happen: somebody edits branch protection through the web UI, the committed
+# file goes stale *silently*, and governance-as-code quietly stops being true
+# while every gate stays green. Nothing else in this repo would notice.
+#
+# On a clock rather than on PR traffic, for the same reason `bun audit` is
+# (see dependency-audit.yml): drift arrives on someone else's schedule, not on
+# ours, and a repo nobody is pushing to is a repo nobody is checking.
+#
+# This job does NOT fail on drift. It opens — or refreshes — one deduped issue
+# and closes it when the two agree again, exactly as the advisory scan does and
+# for the same reason: a permanently red scheduled check teaches people to
+# ignore it, and reconciling a ruleset may legitimately take a few days (the
+# UI edit might be the correct one, in which case the *file* is what changes).
+# An issue has an owner, a body that stays current, and a close condition.
+#
+# The run fails only when the COMPARISON fails — an API error, an unparseable
+# body, a token that cannot read. Those are same-day actionable, and none of
+# them may be allowed to read as "they agree" and close the issue.
+#
+# Token: the built-in GITHUB_TOKEN is enough. `apply-ruleset.sh` needs admin
+# because *writing* a ruleset does; reading one does not — verified against
+# this repo, where GET /repos/{owner}/{repo}/rulesets/{id} answers 200 with the
+# full `rules` array to an entirely unauthenticated request. If that ever
+# changes, `gh api` exits non-zero and the run fails loudly rather than
+# reporting a clean comparison it never made.
+#
+# Note: GitHub disables scheduled workflows after 60 days of repo inactivity.
+on:
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ruleset-drift
+  cancel-in-progress: false
+
+jobs:
+  # Deliberately NOT one of the job names the branch ruleset pins as a required
+  # status check (see CLAUDE.md): a required check that only ever reports on a
+  # cron would make every PR permanently unmergeable.
+  drift:
+    name: ruleset drift (committed vs live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      # `set -e` on purpose: any API failure fails the run here, before the
+      # comparison, so a blip can never be mistaken for agreement. An empty
+      # LIST, by contrast, is a successful read that found nothing — that means
+      # the ruleset was deleted, which is drift and is reported as such below.
+      - name: Fetch the live ruleset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          name="$(jq -r .name .github/rulesets/main.json)"
+          gh api "repos/${GH_REPO}/rulesets" > live-list.json
+          id="$(jq -r --arg n "$name" \
+            '[.[] | select(.name == $n)] | .[0].id // empty' live-list.json)"
+          if [ -z "$id" ]; then
+            printf 'null' > live.json
+          else
+            gh api "repos/${GH_REPO}/rulesets/${id}" > live.json
+          fi
+
+      # Exit 1 is drift (an issue, not a red run); exit 2 is a comparison that
+      # could not be made, and that DOES fail the step.
+      - name: Compare committed against live
+        id: compare
+        run: |
+          set -uo pipefail
+          bun scripts/check-ruleset-drift.ts .github/rulesets/main.json live.json report.md
+          status=$?
+          case "$status" in
+            0) echo "drift=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "drift=true"  >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::the ruleset comparison could not be made — not reporting agreement"
+              exit 1
+              ;;
+          esac
+
+      # `${{ github.* }}` is expanded into `env:` and read back as a quoted
+      # shell variable, never interpolated into the script body: an expansion
+      # inside `run:` is the template-injection class zizmor fails at high
+      # severity.
+      - name: Open, refresh or close the drift issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ISSUE_TITLE: "Branch ruleset has drifted from .github/rulesets/main.json"
+          DRIFT: ${{ steps.compare.outputs.drift }}
+        run: |
+          set -uo pipefail
+
+          gh label create governance --color 5319e7 \
+            --description "Branch protection, required checks, repo policy" 2> /dev/null || true
+
+          # Deduped on the exact title over open labelled issues, not through
+          # the search index, which lags behind issue creation.
+          existing="$(gh issue list --state open --label governance --limit 100 \
+            --json number,title \
+            --jq 'map(select(.title == env.ISSUE_TITLE)) | .[0].number // empty')"
+
+          if [ "$DRIFT" = "false" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" \
+                --comment "The live ruleset matches the committed one again. Run: $RUN_URL"
+            fi
+            exit 0
+          fi
+
+          {
+            printf 'The branch ruleset live on GitHub no longer matches the committed contract.\n\n'
+            printf 'Nothing fails over this — the issue *is* the alarm, and it closes itself when\n'
+            printf 'the two agree again.\n\n'
+            printf 'Two ways to reconcile, and the choice is a real one:\n\n'
+            printf '- The **file** is right (someone edited protection in the UI): re-apply it with\n'
+            printf '  `./.github/scripts/apply-ruleset.sh`, which needs admin.\n'
+            printf '- The **UI change** is right: commit it into `.github/rulesets/main.json` so\n'
+            printf '  `bun run doctor` keeps validating the contract people actually rely on.\n\n'
+            printf 'Either way, do not leave them disagreeing — `doctor` validates the committed\n'
+            printf 'file against the workflow job names, so a stale file means that check is\n'
+            printf 'guarding a contract nobody enforces.\n\n'
+            printf 'Latest comparison: %s\n\n' "$RUN_URL"
+            head -c 50000 report.md
+          } > body.md
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md --add-label governance
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file body.md --label governance
+          fi

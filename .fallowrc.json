@@ -9,6 +9,7 @@
     "global-teardown.ts",
     "playwright.config.ts",
     "scripts/check-commit-msg.ts",
+    "scripts/check-ruleset-drift.ts",
     "evals/run.ts",
     "evals/probe.ts",
     "evals/report.ts"

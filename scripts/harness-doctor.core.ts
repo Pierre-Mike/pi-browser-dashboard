@@ -184,6 +184,11 @@ const REQUIRED_FILES: readonly string[] = [
   "scripts/check-commit-msg.ts",
   "scripts/check-feature-tests.sh",
   "scripts/check-tests-touched.sh",
+  // The offline half of the ruleset contract is this checker; the online half
+  // is the drift comparison. Tracked by path so renaming it fails loudly here
+  // rather than quietly satisfying the shape check with a dangling reference.
+  "scripts/check-ruleset-drift.ts",
+  "scripts/ruleset-drift.core.ts",
   "scripts/scaffold-slice.ts",
   "scripts/typecheck.ts",
   "shared/src/index.ts",
@@ -319,6 +324,13 @@ export const tasksMissingAsserts = (input: {
 // unrelated job supplies the cron.
 const CRON_TRIGGER = /^\s*-\s*cron:/m
 const BUN_AUDIT_RUN = /\bbun\s+audit\b/
+
+// The shape of the ruleset-drift watch, by the same rule and for the same
+// reason: a cron trigger and a run of the drift comparison, in the SAME
+// workflow. Named by the script it must invoke rather than by the workflow's
+// filename, so renaming the workflow keeps the check honest while deleting the
+// comparison — or moving the cron into a different file — fails it.
+const RULESET_DRIFT_RUN = /\bcheck-ruleset-drift\b/
 
 /**
  * One exported function per check, and `auditHarness` is the spread of their
@@ -668,6 +680,27 @@ export const checkScheduledAudit = (snap: HarnessSnapshot): readonly Finding[] =
         },
       ]
 
+// --- The committed ruleset is reconciled against the live one, on a clock ---
+// This checker validates `.github/rulesets/main.json` against the workflow job
+// names, but it is pure and offline: it cannot ask GitHub whether that file
+// still describes reality. A UI edit to branch protection makes the committed
+// contract stale silently, and every gate here stays green while it does. The
+// reconciliation has to run somewhere with a network, so it runs on a cron —
+// and this asserts that it still does.
+
+export const checkRulesetDriftWatch = (snap: HarnessSnapshot): readonly Finding[] =>
+  snap.workflows.some(
+    (workflow) => CRON_TRIGGER.test(workflow.text) && RULESET_DRIFT_RUN.test(workflow.text),
+  )
+    ? []
+    : [
+        {
+          check: "ruleset-drift-watch",
+          detail:
+            "no workflow runs the ruleset drift comparison on a cron — branch protection edited through the GitHub UI would leave .github/rulesets/main.json stale with nothing to notice, and this offline checker would keep validating a contract nobody enforces",
+        },
+      ]
+
 export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => [
   ...checkGritPlugins(snap),
   ...checkCorePurity(snap),
@@ -684,4 +717,5 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => [
   ...checkRequiredFiles(snap),
   ...checkEvalTasks(snap),
   ...checkScheduledAudit(snap),
+  ...checkRulesetDriftWatch(snap),
 ]

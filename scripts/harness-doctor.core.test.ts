@@ -17,6 +17,7 @@ import {
   checkLefthook,
   checkOneParam,
   checkRequiredFiles,
+  checkRulesetDriftWatch,
   checkScheduledAudit,
   checkScripts,
   checkTypecheckCoverage,
@@ -68,7 +69,9 @@ const TRACKED = [
   "scripts/check-colocated-tests.ts",
   "scripts/check-commit-msg.ts",
   "scripts/check-feature-tests.sh",
+  "scripts/check-ruleset-drift.ts",
   "scripts/check-tests-touched.sh",
+  "scripts/ruleset-drift.core.ts",
   "scripts/scaffold-slice.ts",
   "scripts/typecheck.ts",
   "shared/src/index.ts",
@@ -180,6 +183,15 @@ const healthy = (): HarnessSnapshot => ({
     {
       name: "dependency-audit.yml",
       text: ['    - cron: "17 6 * * *"', "      - run: bun audit --json"].join("\n"),
+    },
+    // The ruleset-drift watch, matched the same way: a cron trigger and the
+    // drift comparison in one file, never by filename.
+    {
+      name: "ruleset-drift.yml",
+      text: [
+        '    - cron: "41 7 * * *"',
+        "      - run: bun scripts/check-ruleset-drift.ts .github/rulesets/main.json live.json",
+      ].join("\n"),
     },
   ],
   gateSources: {
@@ -517,6 +529,56 @@ describe("auditHarness", () => {
     }
     expect(checksFor(snap)).not.toContain("scheduled-audit")
   })
+
+  // The drift watch is the ONLY thing standing between a UI edit to branch
+  // protection and a committed ruleset that silently stops describing reality —
+  // this checker is offline, so it cannot notice on its own. Same four
+  // red-team cases as the advisory scan, for the same reason.
+  it("catches the drift watch losing its cron (the UI-edit blind spot)", () => {
+    const snap = withWorkflowText({
+      file: "ruleset-drift.yml",
+      edit: (t) => t.replace(/^\s*-\s*cron:.*$/gm, ""),
+    })
+    expect(checksFor(snap)).toContain("ruleset-drift-watch")
+  })
+
+  it("catches the drift watch losing its comparison step", () => {
+    const snap = withWorkflowText({
+      file: "ruleset-drift.yml",
+      edit: (t) => t.replace("check-ruleset-drift.ts", "echo skipped"),
+    })
+    expect(checksFor(snap)).toContain("ruleset-drift-watch")
+  })
+
+  it("does not accept a cron and a drift comparison in different workflows", () => {
+    const snap = {
+      ...healthy(),
+      workflows: [
+        ...healthy().workflows.filter((w) => w.name !== "ruleset-drift.yml"),
+        { name: "nightly.yml", text: '    - cron: "41 7 * * *"' },
+        { name: "pr-governance.yml", text: "      - run: bun scripts/check-ruleset-drift.ts" },
+      ],
+    }
+    expect(checksFor(snap)).toContain("ruleset-drift-watch")
+  })
+
+  it("accepts a renamed drift workflow that keeps the shape", () => {
+    const snap = {
+      ...healthy(),
+      workflows: healthy().workflows.map((w) =>
+        w.name === "ruleset-drift.yml" ? { ...w, name: "governance-watch.yml" } : w,
+      ),
+    }
+    expect(checksFor(snap)).not.toContain("ruleset-drift-watch")
+  })
+
+  it("catches the drift comparison script being deleted", () => {
+    const snap = {
+      ...healthy(),
+      presentFiles: healthy().presentFiles.filter((f) => f !== "scripts/ruleset-drift.core.ts"),
+    }
+    expect(checksFor(snap)).toContain("files")
+  })
 })
 
 // `auditHarness` is the spread of these, and each one is callable on its own so a
@@ -539,7 +601,11 @@ const EVERY_CHECK = {
   checkRequiredFiles,
   checkEvalTasks,
   checkScheduledAudit,
+  checkRulesetDriftWatch,
 } as const
+
+// Keeps the import list honest: `checkRulesetDriftWatch` must be in the spread
+// too, which the "account for every finding" test below proves.
 
 describe("per-check functions", () => {
   it("are all silent on a healthy snapshot", () => {
