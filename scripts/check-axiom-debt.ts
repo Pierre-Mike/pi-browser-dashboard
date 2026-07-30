@@ -97,8 +97,8 @@ if (added.length > 0) {
     console.error(`  [${d.cls}] ${d.path}: ${d.baseline} -> ${d.actual}`)
   }
   console.error("")
-  console.error("  cross-slice-import: depend on a published door (a service Tag), not a sibling")
-  console.error("                      slice's internals.")
+  console.error("  cross-slice-import: import the sibling's <slice>.door.ts — the service Tag it")
+  console.error("                      publishes — not its .core / .io / .routes internals.")
   console.error("  env-outside-config: read the environment in platform/config.io.ts and pass")
   console.error("                      values in.")
   console.error("  raw-fetch:          call the typed Hono RPC client, or do the I/O in a *.io.ts.")

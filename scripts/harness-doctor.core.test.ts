@@ -94,6 +94,12 @@ const healthy = (): HarnessSnapshot => ({
         ],
         deniedGlobals: Object.fromEntries(CORE_DENIED_GLOBALS.map((g) => [g, "no"])),
         importNames: ["Effect", "Layer", "Context"],
+        // The door ban has to live in *this* override — the shape-scoped one —
+        // and in a `group` array rather than only in the prose of a `message`.
+        importPatterns: [
+          { group: ["**/*.io"], message: "no io in a core" },
+          { group: ["**/*.door"], message: "a *.door.ts re-exports a Tag" },
+        ],
       },
     ],
   }),
@@ -223,6 +229,33 @@ describe("auditHarness", () => {
       biome: healthy().biome.replace(`"apps/**/*.ts",`, ""),
     }
     expect(checksFor(snap)).toContain("no-cast-json")
+  })
+
+  // A door re-exports a service Context.Tag, so a core importing one pulls the
+  // Effect runtime in past the ban on `effect` itself. Note what survives this
+  // edit: the rule's `message` still spells `*.door.ts`, and an earlier draft of
+  // the check was satisfied by exactly that — prose about a rule that was gone.
+  it("catches the door ban being dropped from the core override", () => {
+    const snap = { ...healthy(), biome: healthy().biome.replace('"**/*.door"', '"**/*.nope"') }
+    expect(checksFor(snap)).toContain("core-purity")
+  })
+
+  // Scoped by shape or not at all: a door ban sitting in a path-scoped override
+  // evaporates the next time an app is renamed — the exact decay this checker
+  // exists to catch — so finding the pattern *somewhere* in biome.json is not
+  // enough.
+  it("rejects a door ban parked outside the shape-scoped override", () => {
+    type Pattern = { group: string[]; message?: string }
+    const moved = JSON.parse(healthy().biome) as {
+      overrides: { includes: string[]; importPatterns?: Pattern[] }[]
+    }
+    const coreOverride = moved.overrides[1]
+    if (coreOverride) coreOverride.importPatterns = [{ group: ["**/*.io"] }]
+    moved.overrides.unshift({
+      includes: ["apps/daemon/src/**/*.ts"],
+      importPatterns: [{ group: ["**/*.door"] }],
+    })
+    expect(checksFor({ ...healthy(), biome: JSON.stringify(moved) })).toContain("core-purity")
   })
 
   it("catches a deleted lefthook job", () => {

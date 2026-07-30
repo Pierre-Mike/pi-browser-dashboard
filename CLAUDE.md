@@ -28,10 +28,11 @@ apps/daemon/src/
     <feature>.core.test.ts   # co-located unit test (data-in / data-out)
     <feature>.io.ts          # I/O as an Effect service (Context.Tag + Layer)
     <feature>.routes.ts      # Hono shell; impure read -> pure core -> respond
+    <feature>.door.ts        # opt-in: the ONLY file another slice may import
   platform/                  # cross-cutting infra (runtime, config, ws, sse-bus)
   api.ts                     # assembles routes; exports AppType for hc RPC
   server.ts / main.ts        # composition root (Bun.serve, live Layers)
-shared/src/                  # effect Schema wire contracts (the published doors)
+shared/src/                  # effect Schema wire contracts (doors re-export them)
 apps/web/                    # Vite + React + TanStack Router (UI only) + Query
 apps/cli/                    # `pid-dashboard` single-binary distribution
 apps/e2e/                    # Playwright end-to-end suite
@@ -60,10 +61,11 @@ in its slice. Anything a *second workspace* needs goes in `shared/`.
   word "repo" free for what it means in this domain: a git repository.
 
 Biome enforces this by file shape: in `**/*.core.ts` the imports
-`Effect`/`Layer`/`Context` and any `*.io` module are banned, the globals
-`Date` / `process` / `Promise` / `console` / `setTimeout` / `setInterval` /
-`fetch` are banned, and three GritQL plugins (`biome-plugins/`) ban `throw`,
-`await`, and 2+ positional parameters on a declaration.
+`Effect`/`Layer`/`Context` and any `*.io` or `*.door` module are banned, the
+globals `Date` / `process` / `Promise` / `console` / `setTimeout` /
+`setInterval` / `fetch` are banned, and three GritQL plugins
+(`biome-plugins/`) ban `throw`, `await`, and 2+ positional parameters on a
+declaration.
 
 ### Axioms, and the tool that enforces each
 
@@ -141,12 +143,27 @@ Biome enforces this by file shape: in `**/*.core.ts` the imports
   `(c, next)`) are exempt by construction. `complexity/useMaxParams: max 2` is
   the floor everywhere.
 - **Modules talk through doors, not back-channels (modular monolith).** A slice
-  may import another slice's *published* door — a service `Context.Tag`, or a
-  contract in `shared/` — but never its internal files. Compose every module's
-  live `Layer` into one process by default; a module becomes a separate
-  deployment only under real pressure, and because consumers depend on the `Tag`,
-  that split swaps a `Layer` at the composition root, not call sites. Design as
-  if distributed; deploy as if together.
+  may import another slice's *published* door, never its internal files — and
+  the door is a **file**: `<feature>.door.ts`, inside the slice that publishes
+  it. Ownership stays with the module fronting the code, and it is the one
+  cross-slice path `bun run axiom-debt` leaves open. It re-exports that slice's
+  service `Context.Tag` and its interface type, plus the `shared/` `Schema`
+  contract for the data crossing it, so a consumer has one import site and
+  nothing else in the slice is reachable from outside. Naming the file matters
+  more than it looks: with the boundary enforced but its shape unspecified, the
+  template this canon comes from watched three models invent three conventions
+  for the same task — a door in the slice, a door in `shared/`, and a narrowed
+  port schema — so three PRs would have left three patterns behind.
+  `bun run scaffold:slice <feature> --door` stamps one out. Opt-in, because a
+  door nobody imports yet is an unused export that `fallow audit` calls dead
+  code: publish one and wire the consumer in the same change. A pure
+  `*.core.ts` may not import a door at all — a door re-exports a `Tag`, so
+  consuming one would drag the Effect runtime into pure code past the ban on
+  `effect` itself, and biome bans it by shape. Compose every module's live
+  `Layer` into one process by default; a module becomes a separate deployment
+  only under real pressure, and because consumers depend on the `Tag`, that
+  split swaps a `Layer` at the composition root, not call sites. Design as if
+  distributed; deploy as if together.
 - **Conventional commits.** `type(scope)?: subject` — the lefthook `commit-msg`
   hook (`scripts/check-commit-msg.ts`) rejects anything else.
 - **Dead code, cycles and duplication are audited.** `fallow audit`
@@ -174,13 +191,16 @@ Biome enforces this by file shape: in `**/*.core.ts` the imports
 ### Scaffold a slice; never hand-copy one
 
 ```bash
-bun run scaffold:slice <feature>     # kebab-case
+bun run scaffold:slice <feature>            # kebab-case
+bun run scaffold:slice <feature> --door     # …plus its published door
 ```
 
 Writes the five slice files in canonical shape (pure core + test, `Context.Tag`
 io port with live *and* test Layers, Hono routes + test), mounts the route in
 `api.ts`, and registers the live `Layer` in `platform/runtime.ts`. `bun run
 verify` passes immediately afterwards, so any failure you then see is yours.
+`--door` adds `<feature>.door.ts` on top — ask for it only when you are about to
+wire the consuming import, since an unconsumed door is dead code.
 
 A written recipe is advice and decays; every hand-copied slice drifts a little
 from the last one. Generating the shape makes the canonical form the *cheapest*
@@ -321,7 +341,9 @@ bun run dev            # daemon (:8787) + web (:5173)
 
 ### How to add a feature slice
 
-1. `bun run scaffold:slice <feature>` — never hand-copy an existing slice.
+1. `bun run scaffold:slice <feature>` — never hand-copy an existing slice. Add
+   `--door` when another slice will consume this one; it also emits
+   `<feature>.door.ts`, the slice's published surface.
 2. Grow the pure decision logic in `<feature>.core.ts` + its co-located test.
    If the rule is data-in/data-out, it belongs in the core, not in a handler.
 3. Replace the stub I/O in `<feature>.io.ts`. Keep `<Feature>IoTest` in step

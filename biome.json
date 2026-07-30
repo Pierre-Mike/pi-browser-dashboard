@@ -139,6 +139,10 @@
                   {
                     "group": ["**/*.io", "**/*.io.ts", "./*.io", "../**/*.io"],
                     "message": "The functional core must not import imperative-shell I/O services (*.io). Keep the core pure; wire io in *.routes.ts / server.ts."
+                  },
+                  {
+                    "group": ["**/*.door", "**/*.door.ts", "./*.door", "../**/*.door"],
+                    "message": "A published door (*.door.ts) re-exports its slice's service Context.Tag, so importing one would pull the Effect runtime into the pure core through the back door. Consume another module's door from *.routes.ts / *.io.ts and pass plain data into the core."
                   }
                 ]
               }
