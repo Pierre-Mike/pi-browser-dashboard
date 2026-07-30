@@ -447,8 +447,8 @@ describe("every theme is complete and legible", () => {
   })
 
   test("prism's shell gradient crosses two hues, and both stops carry one", async () => {
-    // The other seven families tint their base surfaces toward a single hue (or,
-    // for `pid`/`mono`, barely at all). `prism` has six equal hues and no way to
+    // Most families tint their base surfaces toward a single hue (or, for
+    // `pid`/`mono`, barely at all). `prism` has six equal hues and no way to
     // pick a favourite, so the *gradient itself* carries two: `base-100` ->
     // `base-200` washes lemon-white to pale cyan, and violet-black to teal-black.
     //

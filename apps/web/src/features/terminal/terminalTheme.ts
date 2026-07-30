@@ -70,7 +70,7 @@ const pidDark: TerminalTheme = {
 const pidLight: TerminalTheme = {
   background: "#f8fafc",
   foreground: "#0f172a",
-  // The cursor is the theme's `primary`, as it is in all seven other palettes.
+  // The cursor is the theme's `primary`, as it is in every other palette here.
   // pidlight was the lone exception — cursor sky-600 under a sky-500 primary,
   // because the primary was too light for the pane. With primary at sky-700 the
   // exception has no reason left, and the caret gains contrast (3.91 → 5.67).

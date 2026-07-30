@@ -10,8 +10,8 @@ light + dark pair. Four are restrained by design — `pid` (`pidlight`/`piddark`
 eighteen themes**, which is what replaced the old hand-written `light dark:`
 pairs.
 
-`prism` is the odd one out, and usefully so. The other seven families are each
-built around one or two hues and tint their base surfaces to match; `prism` holds
+`prism` is the odd one out, and usefully so. Every family except `neon` is built
+around one or two hues and tints its base surfaces to match; `prism` holds
 **six hues at maximum chroma at once**, from a reference palette of
 `#ff3d00` / `#ffea00` / `#00e676` / `#00b0ff` / `#d5006d` plus `#00e5ff`. That
 palette turns out to be an *ANSI* palette — six saturated hues, six slots already
