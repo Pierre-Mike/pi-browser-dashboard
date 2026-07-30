@@ -70,6 +70,7 @@ export const THEME_FAMILIES: readonly ThemeFamily[] = [
     dark: "arcadedark",
   },
   { id: "citrus", label: "Citrus — orange / lime", light: "citruslight", dark: "citrusdark" },
+  { id: "prism", label: "Prism — full spectrum", light: "prismlight", dark: "prismdark" },
 ]
 
 export type ThemeChoice = {

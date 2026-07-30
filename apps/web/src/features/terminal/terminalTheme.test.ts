@@ -373,6 +373,27 @@ describe("each pane sits inside its family's chrome", () => {
     }
   })
 
+  it("keeps every one of prism's six hues at full chroma", () => {
+    // The exact inverse of the `mono` rule above: `mono` desaturates its ANSI
+    // hues onto near-gray paper, `prism` holds all six at maximum chroma. This
+    // is the half of prism's character that lives in the palette; the other half
+    // — that its shell gradient crosses two hues — is asserted in
+    // themeCatalog.test.ts, next to the config data it reads.
+    //
+    // 112 with margin: the tightest real value is prismlight.yellow at 130,
+    // because a yellow dark enough to clear 3:1 on light paper sheds chroma
+    // faster than any other hue. Every dark slot is above 210.
+    for (const name of ["prismlight", "prismdark"]) {
+      const palette = terminalTheme({ theme: name })
+      for (const key of ["red", "green", "yellow", "blue", "magenta", "cyan"] as const) {
+        expect(
+          spread(palette[key] as string),
+          `${name}.${key} (${palette[key]}) is not at full chroma`,
+        ).toBeGreaterThanOrEqual(112)
+      }
+    }
+  })
+
   it("keeps the citrus family fruit-warm, with a lime green rather than an emerald", () => {
     for (const name of ["citruslight", "citrusdark"]) {
       const pane = at(terminalTheme({ theme: name }).background)

@@ -113,6 +113,9 @@ const REQUIRED_TOKENS = [
 //   citrus    — chunky mid-round: fruit-crate stencilling, so a 2px rule and
 //               flat (no depth), which is what keeps it from reading as a
 //               warmer `sunset`.
+//   prism     — a swatch card: one radius for every role (the only family that
+//               does this) behind the set's only 3px rule, and flat, because a
+//               lifted swatch is a button.
 //
 // Both variants of a family share one shape: light and dark are the same design
 // in two lightings.
@@ -170,6 +173,16 @@ const SHAPE_BY_FAMILY = {
     "--radius-field": "0.375rem",
     "--radius-selector": "1.5rem",
     "--border": "2px",
+    "--depth": "0",
+  },
+  prism: {
+    // One radius for every role, which no other family does, plus the set's only
+    // 3px rule: a swatch card, where each element is a hard-edged block of
+    // colour. `depth: 0` because a lifted swatch is a button, not a swatch.
+    "--radius-box": "0.25rem",
+    "--radius-field": "0.25rem",
+    "--radius-selector": "0.25rem",
+    "--border": "3px",
     "--depth": "0",
   },
 } as const
@@ -401,6 +414,59 @@ describe("every theme is complete and legible", () => {
           `${name}: text-${token} on base-100 is ${ratio.toFixed(2)}:1`,
         ).toBeGreaterThanOrEqual(4.5)
       }
+    }
+  })
+
+  test("prism's shell gradient crosses two hues, and both stops carry one", async () => {
+    // The other seven families tint their base surfaces toward a single hue (or,
+    // for `pid`/`mono`, barely at all). `prism` has six equal hues and no way to
+    // pick a favourite, so the *gradient itself* carries two: `base-100` ->
+    // `base-200` washes lemon-white to pale cyan, and violet-black to teal-black.
+    //
+    // This exists because the first version of the family got it wrong in a way
+    // only a screenshot caught. Neutral chrome seemed like the principled answer
+    // to "which of six hues gets to tint the page", but five of prism's hues live
+    // in `success`/`warning`/`error`/`info` — tokens that only paint when a
+    // session has something to report — so an idle dashboard showed a single
+    // colour and the light variant was indistinguishable from `mono` with a pink
+    // accent. Flattening these two stops back to neutral would silently
+    // reintroduce exactly that, hence a gate rather than a comment.
+    //
+    // Both halves are needed. `spread >= 8` says a stop really is tinted (a
+    // near-neutral like `#ffffff` has spread 0 and would otherwise satisfy the
+    // dominance half on a rounding accident), and differing dominant channels say
+    // the two stops are not the same hue at two lightnesses.
+    const { themes } = await loadConfig()
+    const channels = (hex: string) =>
+      [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+    const spread = (hex: string) => Math.max(...channels(hex)) - Math.min(...channels(hex))
+    const dominant = (hex: string) => {
+      const [r, g, b] = channels(hex)
+      return r >= g && r >= b ? "r" : g >= b ? "g" : "b"
+    }
+    for (const name of ["prismlight", "prismdark"]) {
+      const tokens = themes[name] as Theme
+      const [one, two] = [
+        colour({ tokens, name: "base-100" }),
+        colour({ tokens, name: "base-200" }),
+      ]
+      expect(
+        spread(one),
+        `${name}: base-100 ${one} has no hue to wash from`,
+      ).toBeGreaterThanOrEqual(8)
+      expect(spread(two), `${name}: base-200 ${two} has no hue to wash to`).toBeGreaterThanOrEqual(
+        8,
+      )
+      expect(
+        dominant(one),
+        `${name}: base-100 ${one} and base-200 ${two} are the same hue, so the gradient does not cross`,
+      ).not.toBe(dominant(two))
+      // …and the border colour is a third real hue, not a gray step: at
+      // `--border: 3px` it outlines every card on the page.
+      expect(
+        spread(colour({ tokens, name: "base-300" })),
+        `${name}: base-300 is a gray step, so a 3px border shows nothing`,
+      ).toBeGreaterThanOrEqual(32)
     }
   })
 
