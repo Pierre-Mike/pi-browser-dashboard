@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ThemeLabRouteImport } from './routes/theme-lab'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsIdRouteImport } from './routes/sessions.$id'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
 
+const ThemeLabRoute = ThemeLabRouteImport.update({
+  id: '/theme-lab',
+  path: '/theme-lab',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,36 +37,47 @@ const ProjectsIdRoute = ProjectsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/theme-lab': typeof ThemeLabRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/theme-lab': typeof ThemeLabRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/theme-lab': typeof ThemeLabRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/sessions/$id': typeof SessionsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/projects/$id' | '/sessions/$id'
+  fullPaths: '/' | '/theme-lab' | '/projects/$id' | '/sessions/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects/$id' | '/sessions/$id'
-  id: '__root__' | '/' | '/projects/$id' | '/sessions/$id'
+  to: '/' | '/theme-lab' | '/projects/$id' | '/sessions/$id'
+  id: '__root__' | '/' | '/theme-lab' | '/projects/$id' | '/sessions/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ThemeLabRoute: typeof ThemeLabRoute
   ProjectsIdRoute: typeof ProjectsIdRoute
   SessionsIdRoute: typeof SessionsIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/theme-lab': {
+      id: '/theme-lab'
+      path: '/theme-lab'
+      fullPath: '/theme-lab'
+      preLoaderRoute: typeof ThemeLabRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ThemeLabRoute: ThemeLabRoute,
   ProjectsIdRoute: ProjectsIdRoute,
   SessionsIdRoute: SessionsIdRoute,
 }

@@ -140,6 +140,16 @@ const REQUIRED_SCRIPTS: readonly string[] = [
   "axiom-debt",
   "axiom-debt:update",
   "scaffold:slice",
+  // The theme half of the same argument. A family is six coupled edits and a
+  // contrast solver that had been written and thrown away three times; the
+  // generator is what makes the canonical form the cheapest one to produce, and
+  // `theme:check` is the four-file inner loop that replaced running `verify`
+  // twenty times while moving a hue. Neither is a gate — their contents run
+  // inside `test:web` and `test` — but both are listed here for the reason
+  // `scaffold:slice` is: a generator that quietly disappears means the next
+  // family gets hand-copied, which is the decay this whole file exists to catch.
+  "scaffold:theme",
+  "theme:check",
   "evals",
   "verify",
   // The graded eval grid: the agent-facing half of the harness. `evals:baseline`
@@ -190,6 +200,13 @@ const REQUIRED_FILES: readonly string[] = [
   "scripts/check-ruleset-drift.ts",
   "scripts/ruleset-drift.core.ts",
   "scripts/scaffold-slice.ts",
+  // Tracked by path, like the ruleset pair above: the solver and the anchors are
+  // the parts with no other guard, and renaming either should fail loudly here
+  // rather than leave `scaffold:theme` pointing at nothing.
+  "scripts/scaffold-theme.ts",
+  "scripts/theme-solve.core.ts",
+  "scripts/theme-emit.core.ts",
+  "scripts/theme-check.ts",
   "scripts/typecheck.ts",
   "shared/src/index.ts",
   "stryker.config.json",

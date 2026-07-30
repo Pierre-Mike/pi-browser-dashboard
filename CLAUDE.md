@@ -384,6 +384,8 @@ bun run audit          # fallow: dead code / duplication / cycles / complexity
 bun run doctor         # harness self-check (also inside `test`)
 bun run axiom-debt     # ratchet on the four debt classes
 bun run scaffold:slice # generate a feature slice in canonical shape
+bun run scaffold:theme # generate a daisyUI theme family, contrast solved
+bun run theme:check    # the four theme gates only — the inner loop, ~0.1s
 bun run evals          # graded agent grid (needs ANTHROPIC_API_KEY)
 bun run evals:baseline # the same grid with NO agent — free, and keeps it honest
 bun run evals:report   # score a run, or --compare two against the noise floor
