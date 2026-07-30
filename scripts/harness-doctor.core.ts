@@ -279,6 +279,35 @@ export const auditHarness = (snap: HarnessSnapshot): readonly Finding[] => {
     })
   }
 
+  // --- A pure core may not import a published door -------------------------
+  // A `<feature>.door.ts` re-exports its slice's service `Context.Tag`, so a
+  // core importing one pulls the Effect runtime in by a route the direct ban on
+  // `effect` cannot see: the import specifier says `../projects/projects.door`,
+  // not `effect`. The door is also the one cross-slice path the debt ratchet
+  // leaves open, which is exactly why the core needs its own ban — the
+  // sanctioned path must not become the pure layer's loophole.
+  //
+  // Matched inside the override scoped by SHAPE (`**/*.core.ts`) rather than
+  // anywhere in the file: a door ban parked in a path-scoped override would
+  // stop applying the next time an app is renamed, which is the failure this
+  // whole checker exists to prevent. The body runs to the *next* `"includes"`,
+  // which is where the next override starts.
+  //
+  // And it must appear in a `"group"` array, not merely somewhere in the body.
+  // The first draft of this check searched the body for `*.door` and passed
+  // after the pattern had been deleted, because the rule's own explanatory
+  // `"message"` still said the words `*.door.ts` — a checker satisfied by prose
+  // about a rule instead of the rule.
+  const coreOverrideBody =
+    /"includes":\s*\[[^\]]*"\*\*\/\*\.core\.ts"[^\]]*\]((?:(?!"includes")[\s\S])*)/.exec(snap.biome)
+  if (!/"group":\s*\[[^\]]*\*\.door/.test(coreOverrideBody?.[1] ?? "")) {
+    miss({
+      check: "core-purity",
+      detail:
+        'the "**/*.core.ts" override does not ban importing a published door (*.door) — a door re-exports a service Context.Tag, so the pure core could pull the Effect runtime in through it',
+    })
+  }
+
   // --- Lefthook: every gate still wired -----------------------------------
   for (const job of REQUIRED_LEFTHOOK_JOBS) {
     if (!snap.lefthook.includes(`name: ${job}`)) {

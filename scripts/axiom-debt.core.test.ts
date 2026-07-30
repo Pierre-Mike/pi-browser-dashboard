@@ -44,6 +44,49 @@ describe("countCrossSliceImports", () => {
       }),
     ).toBe(0)
   })
+
+  // The door is the sanctioned cross-slice path: a sibling may depend on the
+  // service Tag a `*.door.ts` publishes, and only on that.
+  it("does not count a sibling slice's published door", () => {
+    const n = countCrossSliceImports({
+      path: "apps/daemon/src/features/terminal/terminal.routes.ts",
+      text: 'import { ProjectsService } from "../projects/projects.door"',
+    })
+    expect(n).toBe(0)
+  })
+
+  // Same hop, written the long way round from a nested directory. The single
+  // `../` pattern used to miss this entirely, so a back-channel only had to add
+  // one path segment to disappear from the ratchet.
+  it("counts a cross-slice hop routed through an explicit features/ path", () => {
+    const n = countCrossSliceImports({
+      path: "apps/daemon/src/features/terminal/nested/helper.ts",
+      text: [
+        'import { ProjectsService } from "../../features/projects/projects.io"',
+        'import type { S } from "../../../features/sessions/sessions.core"',
+      ].join("\n"),
+    })
+    expect(n).toBe(2)
+  })
+
+  it("exempts the door on the long-way-round path too", () => {
+    const n = countCrossSliceImports({
+      path: "apps/daemon/src/features/terminal/nested/helper.ts",
+      text: 'import { ProjectsService } from "../../features/projects/projects.door"',
+    })
+    expect(n).toBe(0)
+  })
+
+  // `../../platform/config.io` is a platform import from a nested slice
+  // directory, not a sibling slice — widening the pattern must not start
+  // charging debt for reaching into the shared infra layer.
+  it("still does not count platform imports from a nested slice directory", () => {
+    const n = countCrossSliceImports({
+      path: "apps/daemon/src/features/terminal/nested/helper.ts",
+      text: 'import { config } from "../../../platform/config.io"',
+    })
+    expect(n).toBe(0)
+  })
 })
 
 describe("countEnvReads", () => {
