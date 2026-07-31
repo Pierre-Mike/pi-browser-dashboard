@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Either, Layer } from "effect"
-import { type Project, ProjectsIoTest } from "../projects/projects.io"
+import { type Project, ProjectsIoTest } from "../projects/projects.door"
 import { PidAppsIoLive, PidAppsService } from "./pid-apps.io"
 
 // A real on-disk project tree, discovered through the live repo layer backed by

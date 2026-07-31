@@ -13,7 +13,7 @@
 
 import { Context, Data, Effect, Layer, Ref } from "effect"
 import { ShellIo } from "../../platform/shell.io"
-import { ProjectsService } from "../projects/projects.io"
+import { ProjectsService } from "../projects/projects.door"
 import {
   formatTddPrompt,
   goalText,

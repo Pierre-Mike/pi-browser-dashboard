@@ -9,7 +9,7 @@ import { resolveProjectPath } from "../../platform/safe-path.core"
 import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
 import { join, sep } from "node:path"
 import { Context, Effect, Layer } from "effect"
-import { ProjectsService, resolveProjectDir } from "../projects/projects.io"
+import { ProjectsService, resolveProjectDir } from "../projects/projects.door"
 import {
   applyPidAppManifest,
   appRootFor,

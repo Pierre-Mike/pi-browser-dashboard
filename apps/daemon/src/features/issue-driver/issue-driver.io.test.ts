@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Effect, Layer } from "effect"
 import { ShellIo, type ShellRepoApi } from "../../platform/shell.io"
-import { ProjectsIoTest } from "../projects/projects.io"
+import { ProjectsIoTest } from "../projects/projects.door"
 import {
   GhIssueClient,
   type GhIssueClientApi,

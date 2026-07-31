@@ -4,7 +4,7 @@ import { dirname, join } from "node:path"
 import { Context, Effect, Either, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
 import { isSafeSegment } from "../../platform/safe-path.core"
-import { ProjectsService } from "../projects/projects.io"
+import { ProjectsService } from "../projects/projects.door"
 import {
   copyDir,
   GitClient,
