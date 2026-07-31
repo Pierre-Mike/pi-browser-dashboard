@@ -138,11 +138,26 @@ const REQUIRED_TOKENS = [
 // Both variants of a family share one shape: light and dark are the same design
 // in two lightings.
 //
-// daisyUI 5 note: `--animation-btn` is GONE — v5 hardcodes
-// `transition-duration:.2s` on `.btn` and exposes no per-theme knob, so
-// `terminal`'s deliberate `0s` ("a CRT does not ease") is no longer expressible.
-// In its place v5 adds `--border` (read by 22 components) and `--depth` (14), so
-// the shape row is still five values wide and still distinguishes every family.
+// daisyUI 5 deleted `--animation-btn`, the daisyUI-4 knob `terminal` used to hold
+// its `0s` button ("a CRT does not ease"): v5 hardcodes `transition-duration:.2s`
+// inside `.btn` and exposes no property. The repo declares its own knob instead —
+// `--pid-btn-duration`, read by one unlayered rule in `apps/web/src/styles.css` —
+// and it is the sixth column of this table. The `pid-` prefix is deliberate:
+// daisyUI still owns the whole `--btn-*` namespace internally (`--btn-bg`,
+// `--btn-fg`, `--btn-p`, `--btn-shadow`), and re-using the retired
+// `--animation-btn` would squat a name upstream may reissue with different
+// meaning — this one drives a *transition*, not an animation.
+//
+// **The sixth column is optional, and the gate is two-sided rather than
+// required.** A duration is only worth declaring where it says something, so a
+// family that has nothing to say about button speed declares nothing and inherits
+// the `.2s` fallback in the CSS rule — which is the path seven of the nine take.
+// Requiring the token everywhere would force a bespoke number per family for
+// symmetry, which is how a shape row stops being a design decision and becomes a
+// form to fill in. What the gate does instead is assert *both* directions: a
+// family with a row carries exactly that value in both variants, and a family
+// without one carries no value at all, so a stray override cannot appear in
+// tailwind.config.js without being recorded here.
 const SHAPE_BY_FAMILY = {
   pid: {
     "--radius-box": "0.75rem",
@@ -164,6 +179,12 @@ const SHAPE_BY_FAMILY = {
     "--radius-selector": "0",
     "--border": "2px",
     "--depth": "0",
+    // The one family whose button speed is not a taste call: a phosphor terminal
+    // repaints, it does not ease, and a 200ms colour fade on a square green
+    // button is the single most out-of-character motion in the family. This value
+    // shipped under daisyUI 4 as `--animation-btn: 0s`, was lost in the v5
+    // migration because the property was deleted upstream, and is restored here.
+    "--pid-btn-duration": "0s",
   },
   sunset: {
     "--radius-box": "1rem",
@@ -178,6 +199,19 @@ const SHAPE_BY_FAMILY = {
     "--radius-selector": "2rem",
     "--border": "2px",
     "--depth": "1",
+    // The opposite end of the same axis, and the reason `terminal` is not the only
+    // row here. `candy` already exaggerates every other shape token it owns — the
+    // roundest box in the set, a 2px sticker outline, a lift — so 200ms is the one
+    // place it stops exaggerating; a pillowy button is allowed to take its time.
+    // `sunset` is soft too and deliberately gets nothing: it is one of the four
+    // restrained families, and the slow ease belongs to the family whose whole
+    // shape row is turned up, not to every family with a large radius.
+    //
+    // It also does a job no `0s` row can do. `0s` is indistinguishable from a rule
+    // that hardcodes zero for `terminal`, or from a var that fails to resolve and
+    // collapses; a *third* value that is neither 0 nor the fallback is what proves
+    // the CSS actually reads the custom property. The e2e spec asserts all three.
+    "--pid-btn-duration": "0.4s",
   },
   arcade: {
     "--radius-box": "0.375rem",
@@ -216,9 +250,22 @@ const SHAPE_BY_FAMILY = {
   },
 } as const
 
-const SHAPE_TOKENS = Object.keys(SHAPE_BY_FAMILY.pid) as ReadonlyArray<
-  keyof (typeof SHAPE_BY_FAMILY)["pid"]
->
+// The union of every token any family declares, *discovered* from the table
+// rather than listed beside it — it used to be `Object.keys(SHAPE_BY_FAMILY.pid)`,
+// which was the same thing while every row had the same five keys and quietly
+// became "whatever the default family happens to declare" the moment one did not.
+// A hand-kept list here would fail open in exactly the way this gate exists to
+// prevent: a token declared for one family and typo'd for the next would simply
+// stop being checked.
+type ShapeToken = {
+  [Family in keyof typeof SHAPE_BY_FAMILY]: keyof (typeof SHAPE_BY_FAMILY)[Family]
+}[keyof typeof SHAPE_BY_FAMILY]
+
+type ShapeRow = Readonly<Partial<Record<ShapeToken, string>>>
+
+const SHAPE_TOKENS: ReadonlyArray<ShapeToken> = [
+  ...new Set(Object.values(SHAPE_BY_FAMILY).flatMap((row) => Object.keys(row) as ShapeToken[])),
+]
 
 // There is no primary-contrast exemption any more. `pidlight` used to be named
 // here — slate-50 on sky-500, 2.65:1 — because `pid` was held byte-frozen while
@@ -366,15 +413,22 @@ describe("every theme is complete and legible", () => {
     }
   })
 
-  test("carries the shape its family declares", async () => {
+  test("carries the shape its family declares, and nothing it does not", async () => {
+    // Both directions, which is what makes the optional sixth token safe. A token
+    // in the row must appear in both variants with that exact value; a token
+    // *absent* from the row must be absent from the config too, because
+    // `SHAPE_TOKENS` is the union over every family. So `terminal`'s `0s` cannot
+    // drift, and `pid` cannot acquire a button duration that no table row records
+    // — the config value would compare against `undefined` and fail here.
     const { themes } = await loadConfig()
     for (const family of THEME_FAMILIES) {
-      const expected = SHAPE_BY_FAMILY[family.id as keyof typeof SHAPE_BY_FAMILY]
+      const expected: ShapeRow | undefined =
+        SHAPE_BY_FAMILY[family.id as keyof typeof SHAPE_BY_FAMILY]
       expect(expected, `${family.id} has no row in SHAPE_BY_FAMILY`).toBeDefined()
       for (const name of [family.light, family.dark]) {
         for (const token of SHAPE_TOKENS) {
           expect((themes[name] as Theme)[token], `${name} deviates on ${token}`).toBe(
-            expected[token],
+            (expected as ShapeRow)[token],
           )
         }
       }

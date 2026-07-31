@@ -192,3 +192,47 @@ test("the sunset family softens the very same components", async ({ page }) => {
   await expectRadius({ target: terminalPane({ page }), radius: "16px" })
   await expectRadius({ target: terminalButton({ page }), radius: "12px" })
 })
+
+// A real daisyUI `.btn`, and it has to be one: the rule in src/styles.css keys
+// on `.btn`, so asserting against a hand-rolled button (the terminal's restart
+// control is one — `rounded-btn` but no `btn`) would pass on a stylesheet that
+// never applies. This one lives in the Appearance fieldset, beside the picker
+// that drives it.
+const appearanceButton = ({ page }: { page: Page }) => page.getByTestId("gs-appearance-set-default")
+
+const openAppearance = async ({ page }: { page: Page }): Promise<void> => {
+  await page.getByTestId("dashboard-tab-settings").click()
+  await expect(page.getByTestId("gs-appearance-family")).toBeVisible()
+}
+
+// daisyUI 5 hardcodes `transition-duration:.2s` inside a layered `.btn` and
+// exposes no property, so `terminal`'s deliberate `0s` — a phosphor tube
+// repaints, it does not ease — died in the v5 migration. It is restored by one
+// unlayered rule reading `--pid-btn-duration`, and this is what proves the rule
+// actually wins the cascade: the *computed* duration on a rendered button.
+// Asserting the custom property instead would prove only that a variable
+// exists, which this repo has already learned is worth nothing.
+//
+// All three outcomes, in one test and through the real picker, because each
+// alone is ambiguous. `0s` on its own is indistinguishable from a rule that
+// hardcodes zero, or from a var that fails to resolve and collapses to an
+// initial value. The fallback alone is indistinguishable from the rule being
+// absent entirely — which is exactly the failure mode of tidying it into a
+// layer. `candy`'s 0.4s is the disambiguator: a third value that is neither
+// zero nor daisyUI's default can only come from the theme being read.
+test("a family's button speed is its own, and the rest inherit daisyUI's", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" })
+  await openWithTheme({ page, stored: "pid:dark" })
+  await openAppearance({ page })
+
+  // pid declares no duration, so it inherits the .2s fallback in the rule.
+  await expect(appearanceButton({ page })).toHaveCSS("transition-duration", "0.2s")
+
+  await page.getByTestId("gs-appearance-family").selectOption("terminal")
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "terminaldark")
+  await expect(appearanceButton({ page })).toHaveCSS("transition-duration", "0s")
+
+  await page.getByTestId("gs-appearance-family").selectOption("candy")
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "candydark")
+  await expect(appearanceButton({ page })).toHaveCSS("transition-duration", "0.4s")
+})
