@@ -56,3 +56,7 @@ vite.config.ts.timestamp-*.mjs
 # generated JSON blob untracked-but-unignored would fail `lint:ci` for whoever
 # ran the grid last (the same trap the .pid/ block above describes).
 evals/results/
+
+# Demo-capture scratch: the rig lives in doc/demo/README.md, not as source.
+# Committing it here would put it in front of biome and fallow's dead-code scan.
+.demo-tmp/

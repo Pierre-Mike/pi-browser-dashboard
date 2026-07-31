@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>pi-browser-dashboard — Feature Tour</title>
-<meta name="description" content="A browser front-end to Claude Code background sessions. Animated walkthroughs of every feature, told as the things you actually sit down to do." />
+<meta name="description" content="A browser front-end to Claude Code background sessions. High-resolution walkthroughs of every feature, told as the things you actually sit down to do — plus all eighteen themes." />
 <meta property="og:title" content="pi-browser-dashboard — Feature Tour" />
 <meta property="og:description" content="Drive your Claude Code agents from any browser. Every feature, told as a real user story." />
 <meta property="og:type" content="website" />
@@ -184,6 +184,49 @@
   .card .body h3 { margin: 0 0 6px; font-size: 16.5px; font-weight: 650; letter-spacing: -.01em; }
   .card .body p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 
+  /* ---- still-first media ----
+     A card shows a crisp WebP still and only fetches its gif on hover. Loading 27
+     gifs eagerly is ~19MB and every one of them animates at once; the stills are
+     3.4MB total and are the sharper image anyway (2x device pixels, no palette). */
+  .card .media img.still { position: absolute; inset: 0; }
+  .card .media img.anim { position: absolute; inset: 0; opacity: 0; transition: opacity .25s ease; }
+  .card .media.playing img.anim { opacity: 1; }
+  .card .media .play {
+    position: absolute; bottom: 10px; left: 10px; z-index: 2; transition: .15s;
+    font-size: 11px; padding: 5px 9px; border-radius: 6px; color: var(--text);
+    background: rgba(10,12,16,.75); border: 1px solid var(--border); backdrop-filter: blur(4px);
+  }
+  .card .media.playing .play { opacity: 0; }
+
+  /* ---- theme gallery ---- */
+  .themes { padding-top: 64px; }
+  .theme-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 24px 0 20px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--panel); }
+  .seg button {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 16px; cursor: pointer;
+    background: none; border: none; color: var(--muted);
+  }
+  .seg button[aria-pressed="true"] { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0a0c10; }
+  .theme-note { color: var(--faint); font-size: 13px; }
+  .theme-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .swatch {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    transition: transform .18s ease, border-color .18s ease;
+  }
+  .swatch:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .swatch .shot { position: relative; aspect-ratio: 16 / 10; background: var(--bg-soft); cursor: zoom-in; overflow: hidden; }
+  .swatch .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .swatch .meta { padding: 11px 14px 13px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .swatch .meta b { font-size: 14.5px; font-weight: 650; }
+  .swatch .meta span { color: var(--muted); font-size: 12.5px; }
+  .swatch .meta .lab { margin-left: auto; font-size: 11.5px; }
+  .theme-hero {
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    background: var(--panel); margin-bottom: 24px;
+  }
+  .theme-hero img { width: 100%; }
+  .theme-hero .cap { padding: 12px 16px; color: var(--muted); font-size: 13.5px; }
+
   /* ---- lightbox ---- */
   .lb {
     position: fixed; inset: 0; z-index: 100; display: none;
@@ -232,16 +275,17 @@
     invisible from your phone, impossible to compare. pi-browser-dashboard puts the whole fleet
     on one live page — spawn, watch, steer, review, and ship — without leaving the browser.
     Same supervisor, same worktrees, same auto-cleanup. Below: every feature, told as the thing
-    you actually sat down to do.
+    you actually sat down to do — and the nine colour families it can wear while you do it.
   </p>
   <div class="cta">
     <a class="btn primary" href="#walkthrough">See a day in the life ↓</a>
+    <a class="btn" href="#story-themes">Browse the themes 🎨</a>
     <a class="btn" href="https://github.com/Pierre-Mike/pi-browser-dashboard#quick-start" target="_blank" rel="noopener">Quick start</a>
   </div>
   <div class="stats">
-    <div class="stat"><div class="n" id="statFeatures">22</div><div class="l">Features</div></div>
-    <div class="stat"><div class="n" id="statStories">8</div><div class="l">User stories</div></div>
-    <div class="stat"><div class="n">3</div><div class="l">Surfaces</div></div>
+    <div class="stat"><div class="n" id="statFeatures">26</div><div class="l">Features</div></div>
+    <div class="stat"><div class="n" id="statStories">9</div><div class="l">User stories</div></div>
+    <div class="stat"><div class="n">18</div><div class="l">Themes</div></div>
     <div class="stat"><div class="n">0</div><div class="l">Databases</div></div>
   </div>
 </section>
@@ -250,7 +294,7 @@
   <div class="walk-head">
     <div class="story-kicker"><span class="ico">🗓️</span>A day driving the fleet</div>
     <h2>One bug report, start to finish.</h2>
-    <p>Every feature in this dashboard exists to move one of these eight moments forward. Here's how they chain together on an ordinary morning — each step jumps to the feature that powers it. New: Orchestration tab, Project Settings, Git Pull, and extensions that contribute their own project-panel tabs.</p>
+    <p>Every feature in this dashboard exists to move one of these nine moments forward. Here's how they chain together on an ordinary morning — each step jumps to the feature that powers it. Newest: the command palette, Peek summaries, project Fleets, sandboxed Specs tabs, machine-wide settings, and eighteen contrast-gated themes.</p>
   </div>
   <div class="steps" id="walkSteps"></div>
 </section>
@@ -267,7 +311,7 @@
 
 <footer>
   <div class="footer-inner">
-    <div>Every clip recorded against the live dev app by driving real Chrome with Playwright — one feature per clip, no mockups.</div>
+    <div>Every still and clip captured from the live dev app by driving real Chrome over CDP at 2x device pixels — one feature per capture, no mockups, no retouching.</div>
     <div>MIT · <a href="https://github.com/Pierre-Mike/pi-browser-dashboard" target="_blank" rel="noopener">source</a> · <code>bun run dev</code></div>
   </div>
 </footer>
@@ -281,126 +325,149 @@ const STORIES = [
     id: "story-1", nav: "Monitor", icon: "📡",
     kicker: "Monitor the fleet",
     title: "\"Show me everything my agents are doing, at a glance.\"",
-    desc: "A live grid of session cards refreshed over SSE from the supervisor's roster. Group, pin, and filter — across the whole machine or a single project. One Orchestration tab gives a single pane on the voice supervisor coordinating work across every project.",
+    desc: "A live grid of session cards refreshed over SSE from the supervisor's roster. Group, pin and filter — across the whole machine or a single project. The Orchestration tab is global by design: one voice supervisor coordinates work across every project, so it lives on the root dashboard rather than inside one.",
     scenario: "It's 9am and six agents ran overnight. You open one page and instantly see which finished, which are blocked waiting on you, and which are still churning — no terminals opened.",
     items: [
-      { gif: "01-activity-feed", surface: "Home", title: "Activity feed", desc: "Sessions / projects grid with live state badges and card hover detail." },
-      { gif: "02-sidebar", surface: "Home", title: "Sidebar navigation", desc: "Project buckets — pinned plus by-state grouping, with \"show more\"." },
-      { gif: "14-project-sessions", surface: "Project", title: "Project sessions", desc: "Per-project session-card grid with state pills and a spawn button." },
-      { gif: "20-orchestration", surface: "Home", title: "Orchestration", desc: "Global tab showing the voice supervisor session that coordinates work across all projects." },
+      { gif: "01-activity", surface: "Home", title: "Activity feed", desc: "Sessions and projects on one live grid, with state badges that update over SSE." },
+      { gif: "02-sidebar", surface: "Home", title: "Sidebar & full-width toggle", desc: "Project buckets — pinned plus by-state grouping and “show more” — collapsing to reclaim the full width." },
+      { gif: "17-project-activity", surface: "Project", title: "Project activity", desc: "One project's sessions, with working / blocked / failed counts in the topbar." },
+      { gif: "09-orchestration", surface: "Home", title: "Orchestration", desc: "The voice supervisor session that dispatches and collects work across every project." },
     ],
   },
   {
     id: "story-2", nav: "Dispatch", icon: "🚀",
     kicker: "Dispatch & steer",
     title: "\"Spawn the work and keep my hands on the controls.\"",
-    desc: "Type a prompt, pick an agent and permission mode, fan out N parallel sessions in one click — then peek, open in CLI, or stop any session from its header.",
-    scenario: "A bug report lands. You type the fix prompt, pick the tdd skill and auto-accept mode, and fan out three attempts at once — then peek at each summary to pick the winner.",
+    desc: "Type a prompt, pick skills, tools and a permission mode, fan out N parallel sessions in one click. Peek asks Haiku to read a session's live screen and write back what it is actually doing. Everything the dashboard can do is also one double-tap of Shift away.",
+    scenario: "A bug report lands. You type the fix prompt, pick the tdd skill and auto-accept mode, and fan out three attempts at once — then Peek each one to pick the winner without opening a single terminal.",
     items: [
-      { gif: "03-spawn-modal", surface: "Home", title: "Spawn modal", desc: "Dispatch bar: prompt box, skill chips, permission mode, N-sessions." },
-      { gif: "09-session-controls", surface: "Session", title: "Session controls + Peek", desc: "Header (name / state / short id / cwd), Open-in-CLI, Peek summary, Delete." },
+      { gif: "03-spawn", surface: "Home", title: "Spawn a session", desc: "Prompt box, Claude / pi harness tabs, skill chips, a tool allow-list, effort and model — times N sessions." },
+      { gif: "12-peek", surface: "Home", title: "Peek", desc: "A Haiku call reads the session's live screen and writes a summary onto its card." },
+      { gif: "11-palette", surface: "Home", title: "Command palette", desc: "Double-tap Shift for projects, sessions and actions — including every theme command." },
     ],
   },
   {
     id: "story-3", nav: "Follow", icon: "👁️",
     kicker: "Follow the work",
     title: "\"Watch the work as it happens.\"",
-    desc: "Read the agent's reasoning as a rendered transcript, inspect the worktree diff line-by-line, or open the JSON-Canvas it's sketching the plan on.",
-    scenario: "An agent has been running ten minutes. You scroll its transcript to see which files it touched and why, watch the worktree diff grow line by line, and open the canvas it planned on.",
+    desc: "Read the agent's reasoning as a rendered transcript, browse and preview any file in its worktree, or open a drawing board that lives in that worktree as a real file the agent can read and edit alongside you.",
+    scenario: "An agent has been running ten minutes. You scroll its transcript to see which files it touched and why, open one to read the change, and sketch the next step on a board it can see.",
     items: [
-      { gif: "10-chat", surface: "Session", title: "Chat transcript", desc: "JSONL transcript: tool-use, tool-result and assistant blocks, rendered." },
-      { gif: "13-files-diff", surface: "Session", title: "Files diff", desc: "Syntax-highlighted worktree diff of everything the session changed." },
-      { gif: "11-brainstorm", surface: "Session", title: "Brainstorm board", desc: "JSON-Canvas editor on a board in the session's worktree: boards rail, Box/Link/File/Group/Export toolbar, grid, minimap, zoom." },
+      { gif: "13-chat", surface: "Session", title: "Chat transcript", desc: "The JSONL transcript rendered: tool-use, tool-result and assistant blocks." },
+      { gif: "16-session-files", surface: "Session", title: "Session files", desc: "The session's whole worktree, with markdown, image, PDF and code previews." },
+      { gif: "14-brainstorm", surface: "Session", title: "Brainstorm board", desc: "Any .canvas file in the worktree is a board — boards rail, Box / Link / File / Group toolbar, minimap, zoom." },
     ],
   },
   {
     id: "story-4", nav: "Review", icon: "🔀",
     kicker: "Review & ship",
     title: "\"Review the code and ship the PR.\"",
-    desc: "Browse the project file tree with previews, read pull requests and their diffs inline, and pull the latest changes — without leaving the dashboard.",
-    scenario: "The agent says it's done. You skim the file tree, open the pull request it raised, read the diff inline with full syntax highlighting, hit Git Pull to sync — before the coffee gets cold.",
+    desc: "Browse the project tree with previews, read pull requests and their diffs inline, and pull the latest — the topbar carries a one-click Git Pull next to the branch. Fleets run a saved recipe of agents over the working diff instead of one prompt at a time.",
+    scenario: "The agent says it's done. You skim the tree, open the pull request it raised, read the diff inline with full highlighting, then set a review fleet on the working diff before the coffee gets cold.",
     items: [
-      { gif: "17-files-tree", surface: "Project", title: "Project files tree", desc: "Full file tree with markdown / image / PDF preview." },
-      { gif: "15-github", surface: "Project", title: "GitHub / PR diff", desc: "Pull-request list with an inline, syntax-highlighted PR-diff viewer." },
-      { gif: "22-git-pull", surface: "Project", title: "Git pull", desc: "One-click git pull from the GitHub tab — sync the project without leaving the browser." },
+      { gif: "20-project-files", surface: "Project", title: "Project files", desc: "Full tree with rendered markdown, images, PDFs and syntax-highlighted code." },
+      { gif: "18-github", surface: "Project", title: "GitHub / PR diff", desc: "The pull-request list with an inline, syntax-highlighted diff per PR." },
+      { gif: "24-fleets", surface: "Project", title: "Fleets", desc: "Saved multi-agent recipes — review-diff, fix-then-verify — with a dry run before the real one." },
     ],
   },
   {
     id: "story-5", nav: "Terminal", icon: "⌨️",
     kicker: "Drop to a shell",
     title: "\"Drop into a real terminal when I need one.\"",
-    desc: "Embedded xterm.js attached to a zellij layout — globally, per session, or rooted at a project path. Fall back to the CLI without losing context.",
-    scenario: "The agent gets stuck on a flaky test. You drop into its live shell, re-run the test yourself, tweak an env var, and hand control back — same worktree, nothing lost.",
+    desc: "An embedded xterm attached to a zellij session — globally, per session, or rooted at a project path. It is the same pty the CLI would attach to, so nothing is lost either way, and each theme family paints its own 16-colour palette into the pane.",
+    scenario: "The agent gets stuck on a flaky test. You attach to its live pane, watch what it is doing, and hand control back — same worktree, same process, nothing restarted.",
     items: [
-      { gif: "04-terminal-global", surface: "Home", title: "Global terminal", desc: "Attached to the zellij \"default\" shell — a live prompt in the browser." },
-      { gif: "12-terminal-session", surface: "Session", title: "Session terminal", desc: "xterm attached to the per-session zellij layout." },
-      { gif: "16-terminal-project", surface: "Project", title: "Project terminal", desc: "Shell rooted at the project's path." },
+      { gif: "15-terminal-session", surface: "Session", title: "Session terminal", desc: "Attached to the per-session zellij layout — the agent's own live pane." },
+      { gif: "19-terminal-project", surface: "Project", title: "Project terminal", desc: "A shell rooted at the project's path, sharing whatever already runs there." },
+      { gif: "04-terminal-global", surface: "Home", title: "Global terminal", desc: "Attached to the zellij “default” session — whatever you left running on the machine." },
     ],
   },
   {
     id: "story-6", nav: "Configure", icon: "⚙️",
     kicker: "Tune Claude",
     title: "\"See and tune how Claude is configured.\"",
-    desc: "Browse hooks, skills, settings.json and CLAUDE.md — both your global ~/.claude config and a project's local .claude overrides. Set per-project defaults (default skill, permission mode) from the Settings tab.",
-    scenario: "A hook isn't firing. You open the config panel, compare your global ~/.claude settings against the project's local .claude overrides, spot the shadowed skill, then flip the default-skill setting in the project's Settings tab.",
+    desc: "Browse hooks, skills, settings.json and CLAUDE.md — both the global ~/.claude config and a project's local .claude overrides. Global settings parameterise git, library, orchestration and network; per-project settings pin a default skill and permission mode.",
+    scenario: "A hook isn't firing. You compare global against the project's local overrides, spot the shadowed skill, then flip the default-skill setting in that project's Settings tab.",
     items: [
-      { gif: "05-claude-config", surface: "Home", title: "Claude config", desc: "hooks / skills / settings.json / CLAUDE.md from ~/.claude." },
-      { gif: "18-claude-project", surface: "Project", title: "Project Claude config", desc: "A project's .claude hooks, skills and settings." },
-      { gif: "21-project-settings", surface: "Project", title: "Project settings", desc: "Per-project .pid/settings: default skill, permission mode, and other daemon-level options." },
+      { gif: "05-claude-config", surface: "Home", title: "Claude config", desc: "hooks / skills / settings.json / CLAUDE.md, read straight from ~/.claude." },
+      { gif: "10-settings", surface: "Home", title: "Global settings", desc: "The daemon's settings file as a form — git, library, orchestration, network, and Appearance." },
+      { gif: "21-project-claude", surface: "Project", title: "Project Claude config", desc: "The same panel scoped to one project's .claude directory." },
+      { gif: "23-project-settings", surface: "Project", title: "Project settings", desc: "Per-project .pid/settings: default skills, permission mode, spawn defaults." },
     ],
   },
   {
     id: "story-7", nav: "Extend", icon: "🧩",
     kicker: "Customize & extend",
     title: "\"Extend the dashboard with my own tools.\"",
-    desc: "Install skills, agents and tools from the catalog, then add iframe extensions gated by per-capability toggles — global or scoped to a project. Extensions can contribute tabs directly to the project panel.",
-    scenario: "Your team has a house style for code review. You install the shared skill from the library, enable the iframe extension that surfaces it, and it adds its own tab right inside the project panel.",
+    desc: "Install skills, agents and tools from the catalog, then add iframe extensions gated by per-capability toggles. Drop an HTML file in a project's .pid/ and it becomes a sandboxed tab — no build step, no RPC unless you grant it.",
+    scenario: "Your team has a house style for code review. You install the shared skill from the library, then drop the spec you wrote for it into .pid/ so it opens as a tab right next to the code.",
     items: [
-      { gif: "06-library", surface: "Home", title: "Library", desc: "Skills / agents / tools catalog with one-click install entries." },
-      { gif: "07-extensions", surface: "Home", title: "Extensions", desc: "Installed iframe extensions with per-capability toggles." },
-      { gif: "19-library-project", surface: "Project", title: "Project Library", desc: "Catalog with an all / global / local scope selector." },
+      { gif: "06-library", surface: "Home", title: "Library", desc: "Skills / agents / tools catalog with one-click global or local install." },
+      { gif: "07-extensions", surface: "Home", title: "Extensions", desc: "Installed iframe extensions, each capability (fs, git, events) granted separately." },
+      { gif: "25-specs", surface: "Project", title: "Specs (pid-apps)", desc: "Any HTML under a project's .pid/ becomes a sandboxed tab — opaque origin, no RPC by default." },
+      { gif: "22-project-library", surface: "Project", title: "Project Library", desc: "The catalog with an all / global / local scope selector." },
     ],
   },
   {
     id: "story-8", nav: "Remote", icon: "🌐",
     kicker: "Reach it anywhere",
     title: "\"Reach my dashboard from any device.\"",
-    desc: "Start a Cloudflare tunnel from the UI and share the URL — the same grid of sessions, now on your phone.",
-    scenario: "You're away from your desk when a session blocks. You start a Cloudflare tunnel, open the URL on your phone, approve the permission, and the agent picks up right where it stopped.",
+    desc: "Start a Cloudflare tunnel from the UI and share the URL — the same grid of sessions, now on your phone, terminal and all. The shell lays out down to a phone, so the drawer replaces the sidebar rather than squeezing it.",
+    scenario: "You're away from your desk when a session blocks. You start a tunnel, open the URL on your phone, approve the permission, and the agent picks up where it stopped.",
     items: [
-      { gif: "08-tunnel", surface: "Home", title: "Tunnel", desc: "Cloudflare tunnel start / stop with URL controls." },
+      { gif: "08-tunnel", surface: "Home", title: "Tunnel", desc: "Cloudflare tunnel start / stop, with the public URL masked until you reveal it." },
     ],
   },
+];
+
+// Nine families x two variants. The `light`/`dark`/`lab` files are all captured
+// from the same populated dashboard, because that is the only surface that tells
+// the truth about a palette: five of the seven ink tokens only paint when a
+// session has something to report, so an idle page can hide a whole family.
+const FAMILIES = [
+  { id: "pid",      name: "Pid",      hue: "sky / slate",                 note: "The default. Frozen shape, AA-clean accent." },
+  { id: "mono",     name: "Mono",     hue: "grayscale",                   note: "Desaturated, but red still reads as red." },
+  { id: "terminal", name: "Terminal", hue: "phosphor green",              note: "Square everything; no blue in the tube." },
+  { id: "sunset",   name: "Sunset",   hue: "rose / violet",               note: "Warm pane, lifted cards, big radii." },
+  { id: "candy",    name: "Candy",    hue: "bubblegum pink / cyan",       note: "Roundest boxes in the set, 2px sticker outline." },
+  { id: "arcade",   name: "Arcade",   hue: "electric violet / magenta",   note: "CRT bezel around perfectly square controls." },
+  { id: "citrus",   name: "Citrus",   hue: "orange / lime",               note: "Chunky and deliberately flat — not a warm Sunset." },
+  { id: "prism",    name: "Prism",    hue: "full spectrum",               note: "Six hues at once; a two-hue wash on the chrome." },
+  { id: "neon",     name: "Neon",     hue: "electric highlighter",        note: "Electric lemon page at 18:1; controls rounder than panels." },
 ];
 
 // The end-to-end walkthrough — moments in the order a real task hits them.
 // Each step points back at the story that powers it.
 const WALK = [
-  { to: "story-2", title: "Dispatch the fix", text: "A bug report lands. Type the prompt, pick a skill and permission mode, fan out a few parallel attempts." },
-  { to: "story-1", title: "Watch the fleet light up", text: "The new sessions appear on the live grid with state badges — running, blocked, done — updating over SSE." },
-  { to: "story-3", title: "Follow the reasoning", text: "Open the front-runner and read its transcript and growing diff to see exactly what it's doing, and why." },
-  { to: "story-5", title: "Jump in when it's stuck", text: "It trips on a flaky test. Drop into the session's live shell, re-run it, and hand control back." },
-  { to: "story-4", title: "Review the PR and pull", text: "It raises a pull request. Skim the file tree, read the PR diff inline, then git pull to sync — no tab-switching." },
-  { to: "story-6", title: "Tune what felt off", text: "A hook misbehaved mid-run. Compare global vs project Claude config, fix the shadowed skill, update project settings." },
-  { to: "story-7", title: "Teach it your way", text: "Install your team's review skill from the library and enable the extension that adds a tab to the project panel." },
+  { to: "story-2", title: "Dispatch the fix", text: "A bug report lands. Type the prompt, pick skills and a permission mode, fan out a few parallel attempts." },
+  { to: "story-1", title: "Watch the fleet light up", text: "The new sessions appear on the live grid with state badges — working, blocked, done — updating over SSE." },
+  { to: "story-3", title: "Follow the reasoning", text: "Open the front-runner and read its transcript and worktree to see exactly what it is doing, and why." },
+  { to: "story-5", title: "Jump in when it's stuck", text: "It trips on a flaky test. Attach to the session's live pane, see the failure, hand control back." },
+  { to: "story-4", title: "Review the PR and ship", text: "It raises a pull request. Skim the tree, read the diff inline, then run a review fleet over the working diff." },
+  { to: "story-6", title: "Tune what felt off", text: "A hook misbehaved mid-run. Compare global against project config, fix the shadowed skill, pin the default." },
+  { to: "story-7", title: "Teach it your way", text: "Install your team's review skill, and drop its spec into .pid/ so it opens as a tab beside the code." },
   { to: "story-8", title: "Approve from your phone", text: "You step away; another session blocks. Open the tunnel URL on mobile and approve — it keeps going." },
+  { to: "story-themes", title: "Make it yours", text: "Nine colour families, light and dark, every one of them contrast-gated. Switch from the palette, mid-task." },
 ];
 
 const GIFDIR = "gifs/";
+const SHOTDIR = "shots/";
+const THEMEDIR = "themes/";
 const main = document.getElementById("main");
 const navLinks = document.getElementById("navLinks");
+const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 // Walkthrough nav link + steps.
 {
   const wa = document.createElement("a");
   wa.href = "#walkthrough"; wa.textContent = "Walkthrough"; navLinks.appendChild(wa);
   document.getElementById("walkSteps").innerHTML = WALK.map((w, i) => `
-    <div class="step\" data-step=\"${i + 1}\">
-      <div class="num\">${i + 1}</div>
+    <div class="step" data-step="${i + 1}">
+      <div class="num">${i + 1}</div>
       <div>
-        <h3>${w.title}</h3>
-        <p>${w.text}</p>
-        <a class="jump\" href=\"#${w.to}\">See the feature →</a>
+        <h3>${esc(w.title)}</h3>
+        <p>${esc(w.text)}</p>
+        <a class="jump" href="#${w.to}">See the feature →</a>
       </div>
     </div>`).join("");
 }
@@ -411,27 +478,96 @@ for (const s of STORIES) {
 
   const sec = document.createElement("section");
   sec.className = "story"; sec.id = s.id;
+  // Two images per card: the still paints immediately, the gif is only fetched
+  // when a pointer lands on the card (see `armMedia`). `data-anim` rather than
+  // `src` is the whole mechanism — a `src` here would download all 27 up front.
   const cards = s.items.map(it => `
-    <article class="card\" data-gif=\"${it.gif}\" data-title=\"${it.title}\" data-desc=\"${it.desc.replace(/"/g, "&quot;")}">
-      <div class="media\">
-        <span class="surface\">${it.surface}</span>
-        <span class="zoom\">⤢ Expand</span>
-        <img loading="lazy\" src=\"${GIFDIR}${it.gif}.gif\" alt=\"${it.title} — ${it.desc}\" />
+    <article class="card" data-gif="${esc(it.gif)}" data-title="${esc(it.title)}" data-desc="${esc(it.desc)}">
+      <div class="media" data-anim="${GIFDIR}${esc(it.gif)}.gif">
+        <img class="still" loading="lazy" src="${SHOTDIR}${esc(it.gif)}.webp" alt="${esc(it.title)} — ${esc(it.desc)}" />
+        <img class="anim" alt="" aria-hidden="true" />
+        <span class="surface">${esc(it.surface)}</span>
+        <span class="play">▶ Hover to play</span>
+        <span class="zoom">⤢ Expand</span>
       </div>
-      <div class="body\">
-        <h3>${it.title}</h3>
-        <p>${it.desc}</p>
+      <div class="body">
+        <h3>${esc(it.title)}</h3>
+        <p>${esc(it.desc)}</p>
       </div>
     </article>`).join("");
   sec.innerHTML = `
-    <div class="story-head\">
-      <div class="story-kicker\"><span class=\"ico\">${s.icon}</span>${s.kicker}</div>
-      <h2><span class="quote\">${s.title}</span></h2>
-      <p class="story-desc\">${s.desc}</p>
-      <p class="story-scenario\"><span class=\"you\">The moment:</span> ${s.scenario}</p>
+    <div class="story-head">
+      <div class="story-kicker"><span class="ico">${s.icon}</span>${esc(s.kicker)}</div>
+      <h2><span class="quote">${esc(s.title)}</span></h2>
+      <p class="story-desc">${esc(s.desc)}</p>
+      <p class="story-scenario"><span class="you">The moment:</span> ${esc(s.scenario)}</p>
     </div>
-    <div class="grid\">${cards}</div>`;
+    <div class="grid">${cards}</div>`;
   main.appendChild(sec);
+}
+
+// ------------------------------------------------------------- theme gallery
+{
+  const a = document.createElement("a");
+  a.href = "#story-themes"; a.textContent = "Themes"; navLinks.appendChild(a);
+
+  const sec = document.createElement("section");
+  sec.className = "story themes"; sec.id = "story-themes";
+  const tiles = FAMILIES.map(f => `
+    <div class="swatch">
+      <div class="shot" data-full="${THEMEDIR}${f.id}-VARIANT.webp" data-title="${esc(f.name)} — ${esc(f.hue)}" data-desc="${esc(f.note)}">
+        <img loading="lazy" data-family="${f.id}" src="${THEMEDIR}${f.id}-dark.webp" alt="${esc(f.name)} theme, dark variant" />
+      </div>
+      <div class="meta">
+        <b>${esc(f.name)}</b><span>${esc(f.hue)}</span>
+        <a class="lab" href="${THEMEDIR}${f.id}-lab.webp" target="_blank" rel="noopener">tokens ↗</a>
+      </div>
+    </div>`).join("");
+  sec.innerHTML = `
+    <div class="story-head">
+      <div class="story-kicker"><span class="ico">🎨</span>Make it yours</div>
+      <h2><span class="quote">"Give me a dashboard I actually want to stare at."</span></h2>
+      <p class="story-desc">Nine colour families, each a light and a dark variant — eighteen themes, one set of semantic classes. A family owns its <em>shape</em> too (corner radius per role, border width, depth), and its own sixteen-slot terminal palette, so the xterm pane stops looking like a hole in the page. Every one of them is gated, not eyeballed: <b>4.5:1</b> for every ink token on its own background, <b>7:1</b> for body text, in all eighteen.</p>
+      <p class="story-scenario"><span class="you">The moment:</span> It's late, the room is dark, and slate-on-white is not it. Double-tap Shift, "Theme: next family", and the whole shell — cards, chips, buttons, terminal — repaints without a reload.</p>
+    </div>
+    <div class="theme-hero">
+      <img loading="lazy" src="${GIFDIR}27-themes.gif" alt="The dashboard cycling through all nine theme families" />
+      <div class="cap">One dashboard, nine families, switched live from the command palette. Nothing reloads and no session detaches.</div>
+    </div>
+    <div class="theme-hero">
+      <img loading="lazy" src="${SHOTDIR}26-theme-lab.webp" alt="The /theme-lab route: every family and both variants on one page" />
+      <div class="cap"><b>/theme-lab</b> — the review surface itself. Every family, both variants, every token and daisyUI component, and the session-state chips in <em>two</em> columns: idle and reporting. Reading only the idle column is how a family ships looking like one colour.</div>
+    </div>
+    <div class="theme-toolbar">
+      <div class="seg" role="group" aria-label="Theme variant">
+        <button type="button" data-variant="dark" aria-pressed="true">Dark</button>
+        <button type="button" data-variant="light" aria-pressed="false">Light</button>
+      </div>
+      <span class="theme-note">Click a tile to enlarge · <b>tokens ↗</b> opens that family's full palette, components and state chips.</span>
+    </div>
+    <div class="theme-grid">${tiles}</div>`;
+  main.appendChild(sec);
+
+  let variant = "dark";
+  sec.querySelectorAll(".seg button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      variant = btn.dataset.variant;
+      sec.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+      sec.querySelectorAll(".swatch img[data-family]").forEach(img => {
+        img.src = `${THEMEDIR}${img.dataset.family}-${variant}.webp`;
+        img.alt = `${img.dataset.family} theme, ${variant} variant`;
+      });
+    });
+  });
+  sec.querySelectorAll(".swatch .shot").forEach(shot => {
+    shot.addEventListener("click", () => {
+      openLB({
+        src: shot.dataset.full.replace("VARIANT", variant),
+        title: `${shot.dataset.title} · ${variant}`,
+        desc: shot.dataset.desc,
+      });
+    });
+  });
 }
 
 // reveal on scroll
@@ -440,22 +576,43 @@ const io = new IntersectionObserver((entries) => {
 }, { threshold: 0.08 });
 document.querySelectorAll(".card").forEach(c => { io.observe(c); });
 
+// ------------------------------------------------------------------ playback
+// Hover arms the gif; the fetch happens once, on first hover, and the still
+// stays underneath so there is never an empty frame while the gif decodes.
+// `pointer: fine` gates it — on touch there is no hover, and the lightbox is
+// the play control instead.
+const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+if (canHover) {
+  document.querySelectorAll(".card .media").forEach(m => {
+    const anim = m.querySelector("img.anim");
+    m.addEventListener("mouseenter", () => {
+      if (!anim.src) anim.src = m.dataset.anim;
+      m.classList.add("playing");
+    });
+    m.addEventListener("mouseleave", () => m.classList.remove("playing"));
+  });
+} else {
+  document.querySelectorAll(".card .media .play").forEach(el => { el.textContent = "▶ Tap to play"; });
+}
+
 // lightbox
 const lb = document.getElementById("lightbox");
 const lbImg = document.getElementById("lbImg");
 const lbCap = document.getElementById("lbCap");
-function openLB(card) {
-  const { gif, title, desc } = card.dataset;
-  lbImg.src = `${GIFDIR}${gif}.gif`;
+function openLB({ src, title, desc }) {
+  lbImg.src = src;
   lbImg.alt = title;
-  lbCap.innerHTML = `${title}<span>${desc}</span>`;
+  lbCap.innerHTML = `${esc(title)}<span>${esc(desc)}</span>`;
   lb.classList.add("open");
   document.body.style.overflow = "hidden";
 }
 function closeLB() { lb.classList.remove("open"); lbImg.src = ""; document.body.style.overflow = ""; }
 document.querySelectorAll(".card .media").forEach(m => {
   m.addEventListener("click", () => {
-    openLB(m.closest(".card"));
+    const card = m.closest(".card");
+    // The lightbox always shows the gif: it is the one place big enough for the
+    // motion to be the point rather than a thumbnail flicker.
+    openLB({ src: `${GIFDIR}${card.dataset.gif}.gif`, title: card.dataset.title, desc: card.dataset.desc });
   });
 });
 document.getElementById("lbClose").addEventListener("click", closeLB);
@@ -463,7 +620,7 @@ lb.addEventListener("click", (e) => { if (e.target === lb) closeLB(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lb.classList.contains("open")) closeLB(); });
 
 document.getElementById("statFeatures").textContent = STORIES.reduce((n, s) => n + s.items.length, 0);
-document.getElementById("statStories").textContent = STORIES.length;
+document.getElementById("statStories").textContent = STORIES.length + 1;
 </script>
 </body>
 </html>

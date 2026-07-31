@@ -8,6 +8,12 @@ rendering than a terminal can manage.
 > Status: pre-1.0. APIs, file layouts, and UI all move. Pin a commit if you
 > depend on a specific behavior.
 
+[![The activity feed: sessions and projects on one live grid](./doc/demo/shots/01-activity.webp)](https://pierre-mike.github.io/pi-browser-dashboard/)
+
+**[▶ Browse the full feature tour](https://pierre-mike.github.io/pi-browser-dashboard/)**
+— every feature as a still and a clip, captured from the live app, plus all
+eighteen themes. Source and re-record instructions: [`doc/demo/`](./doc/demo/).
+
 ## What it does
 
 - **Grid of session cards** — one per `claude --bg` background session,
@@ -23,6 +29,18 @@ rendering than a terminal can manage.
   Claude config (hooks, skills, settings) browser.
 - **Stateless daemon** — no database. The supervisor owns processes,
   worktrees, and persistence; the daemon is a thin watcher + shell-out.
+- **Nine theme families, light and dark** — eighteen themes over one set of
+  semantic tokens. A family owns its colour, its *shape* (corner radius per role,
+  border width, depth) and its own sixteen-slot terminal palette, and every one is
+  contrast-gated rather than eyeballed: 4.5:1 for each ink token, 7:1 for body
+  text. Switch from the command palette; nothing reloads.
+
+| | |
+|---|---|
+| ![Pid, dark](./doc/demo/themes/pid-dark.webp) | ![Neon, light](./doc/demo/themes/neon-light.webp) |
+| `pid` — sky / slate, the default | `neon` — an electric-lemon page at 18:1 |
+
+[All nine families, both variants →](./doc/demo/README.md#themes)
 
 ## Requirements
 
