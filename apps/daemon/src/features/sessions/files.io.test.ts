@@ -25,6 +25,13 @@ const makeRunner = (
 const argsMatch = (args: readonly string[], pattern: readonly string[]): boolean =>
   args.length === pattern.length && args.every((a, i) => a === pattern[i])
 
+// The base-ref candidates this suite drives `pickBase` with. Stated here as a
+// fixture rather than imported: these tests are about the fallback walk (try
+// each ref, stop at the first that verifies), not about global-settings'
+// ordering policy — `gitBaseCandidates` has its own core test for that, and
+// `FilesIoLive` is the only production caller, which reads the live settings.
+const CANDIDATES: readonly string[] = ["origin/main", "origin/master", "main", "master", "HEAD"]
+
 describe("FilesService.diffWorktree", () => {
   test("returns changed=false when worktree has no diffs against the base", async () => {
     const { runner } = makeRunner([
@@ -35,7 +42,7 @@ describe("FilesService.diffWorktree", () => {
       (a) => (argsMatch(a, ["ls-files", "--others", "--exclude-standard", "-z"]) ? ok("") : null),
       (a) => (argsMatch(a, ["diff", "origin/main"]) ? ok("") : null),
     ])
-    const svc = makeFilesService(runner)
+    const svc = makeFilesService(runner, CANDIDATES)
     const out = await Effect.runPromise(svc.diffWorktree("/wt"))
     expect(out).toEqual({
       worktreePath: "/wt",
@@ -47,10 +54,11 @@ describe("FilesService.diffWorktree", () => {
     })
   })
 
-  test("uses the configured base candidates (global git settings) over the default", async () => {
+  test("uses whatever base candidates it was given (global git settings)", async () => {
     // A repo whose default branch is `develop` on remote `upstream`: only that
-    // ref verifies. The default candidate list (origin/main, …) would never
-    // match, so a green diff proves the configured candidates flow through.
+    // ref verifies. `CANDIDATES` above would never match, so a green diff proves
+    // the configured candidates — the ones `FilesIoLive` derives from the live
+    // settings — are what `pickBase` actually walks.
     const { runner } = makeRunner([
       (a) => (argsMatch(a, ["rev-parse", "--is-inside-work-tree"]) ? ok("true\n") : null),
       (a) =>
@@ -83,7 +91,7 @@ describe("FilesService.diffWorktree", () => {
           ? ok("diff --git a/apps/foo.ts b/apps/foo.ts\n@@ ... @@\n")
           : null,
     ])
-    const svc = makeFilesService(runner)
+    const svc = makeFilesService(runner, CANDIDATES)
     const out = await Effect.runPromise(svc.diffWorktree("/wt"))
     expect(out.changed).toBe(true)
     expect(out.base).toBe("origin/main")
@@ -107,7 +115,7 @@ describe("FilesService.diffWorktree", () => {
       (a) => (argsMatch(a, ["ls-files", "--others", "--exclude-standard", "-z"]) ? ok("") : null),
       (a) => (argsMatch(a, ["diff", "main"]) ? ok("diff-body") : null),
     ])
-    const svc = makeFilesService(runner)
+    const svc = makeFilesService(runner, CANDIDATES)
     const out = await Effect.runPromise(svc.diffWorktree("/wt"))
     expect(out.base).toBe("main")
     expect(out.files).toHaveLength(1)
@@ -124,7 +132,7 @@ describe("FilesService.diffWorktree", () => {
           ? { stdout: "", stderr: "fatal: not a git repo", code: 128 }
           : null,
     ])
-    const svc = makeFilesService(runner)
+    const svc = makeFilesService(runner, CANDIDATES)
     const exit = await Effect.runPromiseExit(svc.diffWorktree("/not-a-repo"))
     expect(exit._tag).toBe("Failure")
     if (exit._tag === "Failure") {
@@ -151,7 +159,7 @@ describe("FilesService.diffWorktree", () => {
       (a) => (argsMatch(a, ["ls-files", "--others", "--exclude-standard", "-z"]) ? ok("") : null),
       (a) => (argsMatch(a, ["diff", "origin/main"]) ? ok(big) : null),
     ])
-    const svc = makeFilesService(runner)
+    const svc = makeFilesService(runner, CANDIDATES)
     const out = await Effect.runPromise(svc.diffWorktree("/wt"))
     expect(out.truncated).toBe(true)
     expect(out.diff.length).toBe(200_000)

@@ -1,6 +1,5 @@
 import { Context, Data, Effect, Layer } from "effect"
-import { DEFAULT_GLOBAL_SETTINGS, gitBaseCandidates } from "../global-settings/global-settings.core"
-import { GlobalSettingsService } from "../global-settings/global-settings.io"
+import { GlobalSettingsService, gitBaseCandidates } from "../global-settings/global-settings.door"
 import {
   type FileChange,
   MAX_DIFF_BYTES,
@@ -67,12 +66,6 @@ const defaultGitRunner: GitRunner = async (args, cwd) => {
   const code = await proc.exited
   return { stdout, stderr, code }
 }
-
-// Pick a base ref that exists in the worktree. The candidate order is derived
-// from the global git settings (gitBaseCandidates): branches are cut from
-// `<remote>/<branch>` (see AGENTS.md), so that's our preferred diff target.
-// Fallbacks let the diff still render for unusual repos.
-const DEFAULT_BASE_CANDIDATES = gitBaseCandidates(DEFAULT_GLOBAL_SETTINGS.git)
 
 const verifyRef = ({
   git,
@@ -183,9 +176,16 @@ const computeDiff = ({
     }
   })
 
+// `baseCandidates` is required, not defaulted. The ordered list is derived from
+// the user's git settings (`gitBaseCandidates`, published by the global-settings
+// door) and `FilesIoLive` below always supplies it, so a compile-time default
+// could only ever be a *stale* answer — the one this service exists to avoid.
+// Callers that are not the live Layer are tests, and a test stating its own
+// candidates is stating its own fixture rather than inheriting another slice's
+// policy constant.
 export const makeFilesService = (
   gitRunner: GitRunner,
-  baseCandidates: readonly string[] = DEFAULT_BASE_CANDIDATES,
+  baseCandidates: readonly string[],
 ): FilesServiceApi => ({
   diffWorktree: (worktreePath) =>
     computeDiff({ git: gitRunner, worktreePath, candidates: baseCandidates }),
