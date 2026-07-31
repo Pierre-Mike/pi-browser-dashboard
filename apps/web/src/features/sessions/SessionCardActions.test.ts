@@ -27,6 +27,17 @@ describe("the action row on a small screen", () => {
   })
 })
 
+describe("the copy control's label", () => {
+  it("says what it does — copy a CLI command, not open the session", () => {
+    // The label used to be a bare Open ↗, which on a card whose body is the way
+    // *into* the session reads as the open control and silently writes to the
+    // clipboard instead. The drill-in topbar already names the same action this
+    // way, so the two surfaces now agree.
+    expect(src).toContain("Open in CLI ↗")
+    expect(src).not.toMatch(/"Open ↗"/)
+  })
+})
+
 describe("parsePeekSummary", () => {
   it("extracts a string summary", () => {
     expect(parsePeekSummary({ summary: "Reading the transcript…" })).toBe("Reading the transcript…")

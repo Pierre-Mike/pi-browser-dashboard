@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import type { SessionState } from "../../lib/types"
+import { renderWithRouter } from "../fleet/renderWithRouter"
 import type { TerminalStateEvent } from "../terminal/terminalState"
 import { SessionCard } from "./SessionCard"
 
@@ -36,6 +37,17 @@ const renderCardWith = (input: {
 }
 
 const renderCard = (session: SessionState): string => renderCardWith({ session })
+
+// A pi card's body is a drill-in <Link>, which needs a router context — see
+// renderWithRouter.ts. Claude cards render fine either way (their body is a
+// plain <button>); the router render is used for both so the two harnesses are
+// compared through the same markup path.
+const renderCardInRouter = (session: SessionState): Promise<string> => {
+  const qc = new QueryClient()
+  return renderWithRouter(() =>
+    createElement(QueryClientProvider, { client: qc }, createElement(SessionCard, { session })),
+  )
+}
 
 // Counts the deepest run of currently-open <button> tags. >1 means a <button>
 // is nested inside another <button> — invalid HTML that React rejects with
@@ -182,22 +194,43 @@ describe("SessionCard (pi harness)", () => {
     harness: "pi",
   }
 
-  test("badges the card as pi", () => {
-    const html = renderCard(piSession)
+  test("badges the card as pi", async () => {
+    const html = await renderCardInRouter(piSession)
     expect(html).toContain('data-testid="harness-badge"')
     expect(html).toContain(">pi<")
   })
 
-  test("hides claude-only controls (peek/send/kill) but keeps delete", () => {
-    const html = renderCard(piSession)
+  test("hides claude-only controls (peek/send/kill) but keeps delete", async () => {
+    const html = await renderCardInRouter(piSession)
     expect(html).not.toContain('data-testid="peek"')
     expect(html).not.toContain('data-testid="send-toggle"')
     expect(html).not.toContain('data-testid="stop"')
     expect(html).toContain('data-testid="delete"')
   })
 
-  test("copy control offers the pi resume command instead of claude attach", () => {
-    expect(renderCard(piSession)).toContain("pi --session aaaa1111-2222-3333-4444-555566667777")
+  test("copy control offers the pi resume command instead of claude attach", async () => {
+    expect(await renderCardInRouter(piSession)).toContain(
+      "pi --session aaaa1111-2222-3333-4444-555566667777",
+    )
+  })
+
+  // The activity feed reaches a session only through the card body, and that
+  // body used to be a quick-reply button — which a pi run cannot have, since it
+  // has no supervisor pty to write keys into. So the pi card rendered an
+  // onClick-less <button> and the whole card was inert: nothing on it opened
+  // anything, and the drill-in was reachable only from the sidebar (whose row
+  // opens the reply modal, which carries an "Open full session →" link). The
+  // body is that drill-in link directly for pi.
+  test("the card body links straight to the session drill-in", async () => {
+    const html = await renderCardInRouter(piSession)
+    expect(html).toContain('data-testid="session-card-open"')
+    expect(html).toContain('href="/sessions/aaaa1111"')
+  })
+
+  test("claude cards keep the quick-reply body instead of the drill-in link", async () => {
+    const html = await renderCardInRouter(sampleSession)
+    expect(html).toContain('data-testid="session-card-reply"')
+    expect(html).not.toContain('data-testid="session-card-open"')
   })
 
   test("claude cards are unchanged: no harness badge", () => {

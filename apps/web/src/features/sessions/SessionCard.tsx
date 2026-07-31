@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+import type { ReactNode } from "react"
 import { useState } from "react"
 import { ageStr, cwdTail, stateColor } from "../../lib/format"
 import type { SessionState } from "../../lib/types"
@@ -20,6 +22,44 @@ type Props = {
 const SURFACE_CLS =
   "flex flex-col gap-1.5 text-left -m-1 p-1 rounded-btn cursor-pointer hover:bg-base-200 focus:outline-none focus:ring-2 focus:ring-primary"
 
+// The card body, and the one thing on a card that means "go to this session".
+// A claude card opens the quick-reply modal (which itself carries an "Open full
+// session →" link). A pi run has no supervisor pty to write keys into, so it
+// gets no reply modal — and when that was the only handler the body could carry,
+// a pi card was *inert*: nothing on it navigated anywhere, and the drill-in was
+// reachable only from a sidebar row. So for pi the body is that drill-in link
+// directly, same route and params the reply modal's link uses.
+const CardBody = ({
+  session,
+  onReply,
+  children,
+}: {
+  session: SessionState
+  // Null for a harness with no quick reply — the body becomes a <Link> instead.
+  onReply: (() => void) | null
+  children: ReactNode
+}) =>
+  onReply ? (
+    <button
+      type="button"
+      data-testid="session-card-reply"
+      onClick={onReply}
+      className={SURFACE_CLS}
+    >
+      {children}
+    </button>
+  ) : (
+    <Link
+      to="/sessions/$id"
+      params={{ id: session.short }}
+      data-testid="session-card-open"
+      title="Open this session"
+      className={SURFACE_CLS}
+    >
+      {children}
+    </Link>
+  )
+
 export const SessionCard = ({ session, terminal }: Props) => {
   const tone = stateColor(session.state)
   const [replyOpen, setReplyOpen] = useState(false)
@@ -28,8 +68,8 @@ export const SessionCard = ({ session, terminal }: Props) => {
   const screenTone = terminalStateAddsInfo({ sessionState: session.state, terminal })
     ? stateColor(terminal?.state ?? "idle")
     : null
-  // The reply modal drives claude's pty (attach → write keys) — a pi run has
-  // no supervisor pty to reply into, so its surface stays inert.
+  // The reply modal drives claude's pty (attach → write keys) — a pi run has no
+  // supervisor pty to reply into, so its body drills in instead (see CardBody).
   const canReply = session.harness !== "pi"
   // `result` is a free-form, harness-varying payload (`unknown` on the wire) —
   // only preview it when it is actually text.
@@ -42,20 +82,15 @@ export const SessionCard = ({ session, terminal }: Props) => {
       {/* The card is a plain container, not a <button>: the action controls and
           the SendKeys <textarea> in SessionCardActions are real <button>/
           <textarea> elements and cannot legally nest inside a <button>. Only the
-          content surface is the clickable "open reply" button; the action row is
-          its sibling, so action clicks never reach openReply (no stopPropagation
-          hack needed). */}
+          body is the clickable surface; the action row is its sibling, so action
+          clicks never reach it (no stopPropagation hack needed). */}
       <div
         data-testid="session-card"
         data-short={session.short}
         data-state={session.state}
         className={`group rounded-box border border-base-300 bg-base-100 shadow-sm p-3 flex flex-col gap-1.5 ring-1 transition-shadow hover:shadow-md ${tone.ring}`}
       >
-        <button
-          type="button"
-          onClick={canReply ? () => setReplyOpen(true) : undefined}
-          className={canReply ? SURFACE_CLS : `${SURFACE_CLS} cursor-default`}
-        >
+        <CardBody session={session} onReply={canReply ? () => setReplyOpen(true) : null}>
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2 min-w-0" data-testid="session-card-name">
               <span className={`inline-block w-2 h-2 rounded-full ${tone.dot}`} aria-hidden />
@@ -108,7 +143,7 @@ export const SessionCard = ({ session, terminal }: Props) => {
               {resultPreview}
             </div>
           ) : null}
-        </button>
+        </CardBody>
 
         <SessionCardActions session={session} />
       </div>
