@@ -1013,6 +1013,11 @@ export const terminalPoller = createTerminalPoller({
     noteRead: markTerminalScreenRead,
     noteScreen: noteTerminalScreen,
     forgetPaneStates,
+    // An output wait is the one consumer that needs every pass, so its presence
+    // suspends the poller's per-target backoff. `screenObservers` is exactly the
+    // set of pending screen waits — `subscribeTerminalScreens` is only reached
+    // from that path — so its emptiness is the question, not a proxy for it.
+    hasScreenWaiters: () => screenObservers.size > 0,
     now: () => Date.now(),
   },
   tailMaxChars: TERMINAL_STATE_TAIL_MAX_CHARS,

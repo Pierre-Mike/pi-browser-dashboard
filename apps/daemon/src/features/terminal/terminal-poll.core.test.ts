@@ -1,14 +1,27 @@
 import { describe, expect, it } from "bun:test"
 import {
+  advanceCadence,
   advancePassOffset,
+  backoffPasses,
   foldPaneReadings,
   foldScreenDump,
+  isPaneListFresh,
+  isTargetDue,
+  MAX_BACKOFF_PASSES,
+  MAX_READS_PER_PASS,
+  MAX_READS_PER_PASS_WATCHED,
+  PANE_LIST_REFRESH_PASSES,
   type PaneReading,
+  type PollCadence,
   type PollCandidate,
   parseSessionList,
   parseTerminalPaneIds,
   parseTerminalPaneRows,
+  pollCadenceKey,
+  readBudgetForPass,
   rotateTargets,
+  screenFingerprint,
+  selectDueTargets,
   selectPanesToDump,
   selectPollTargets,
   stalePaneKeys,
@@ -383,7 +396,7 @@ describe("stalePaneKeys", () => {
   })
 })
 
-// One pass is bounded (MAX_DUMPS_PER_PASS). A bound that always truncated the
+// One pass is bounded (MAX_READS_PER_PASS). A bound that always truncated the
 // same tail of the candidate list would make those terminals permanently
 // invisible — the exact blind spot per-pane polling exists to remove — so the
 // pass starts where the last one stopped instead.
@@ -506,5 +519,160 @@ describe("zellij argv builders", () => {
       "--pane-id",
       "terminal_0",
     ])
+  })
+})
+
+// Every read this poller makes is a zellij client connecting, and zellij answers
+// a connection by repainting in full for its attached clients — cross-session, so
+// a read against one terminal repaints another. Measured on 0.44.3: ~1-2
+// full-screen repaints per connection. These are the two dials that keep a pass
+// from arriving in a watched browser terminal as a two-second freeze.
+describe("readBudgetForPass", () => {
+  it("tightens the budget exactly while a terminal WebSocket is attached", () => {
+    expect(readBudgetForPass({ watched: true })).toBe(MAX_READS_PER_PASS_WATCHED)
+    expect(readBudgetForPass({ watched: false })).toBe(MAX_READS_PER_PASS)
+  })
+
+  // The watched budget is the one a browser has to absorb inside one interval. If
+  // it ever grows to the unwatched number the freeze is back, so the ordering is
+  // the assertion — not the literals, which are free to be retuned.
+  it("spends strictly less while watched than while nobody is looking", () => {
+    expect(MAX_READS_PER_PASS_WATCHED).toBeLessThan(MAX_READS_PER_PASS)
+    expect(MAX_READS_PER_PASS_WATCHED).toBeGreaterThan(1)
+  })
+})
+
+describe("backoffPasses", () => {
+  it("doubles per quiet read and then holds at the ceiling", () => {
+    expect(backoffPasses({ quietPasses: 0 })).toBe(1)
+    expect(backoffPasses({ quietPasses: 1 })).toBe(2)
+    expect(backoffPasses({ quietPasses: 2 })).toBe(4)
+    expect(backoffPasses({ quietPasses: 3 })).toBe(MAX_BACKOFF_PASSES)
+    expect(backoffPasses({ quietPasses: 99 })).toBe(MAX_BACKOFF_PASSES)
+  })
+
+  // A garbage count must read as "poll it now", never as "never poll it again":
+  // 2 ** NaN is NaN, and `pass >= NaN` is false forever.
+  it.each([
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])("degrades a nonsense quiet count (%p) to every pass", (quietPasses) => {
+    const passes = backoffPasses({ quietPasses })
+    expect(Number.isFinite(passes)).toBe(true)
+    expect(passes).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe("isTargetDue", () => {
+  it("reads an unknown target as due — a new terminal is classified on sight", () => {
+    expect(isTargetDue({ cadence: undefined, pass: 7 })).toBe(true)
+  })
+
+  it("is due on and after its scheduled pass, and not before", () => {
+    const cadence: PollCadence = { quietPasses: 2, nextDuePass: 10 }
+    expect(isTargetDue({ cadence, pass: 9 })).toBe(false)
+    expect(isTargetDue({ cadence, pass: 10 })).toBe(true)
+    expect(isTargetDue({ cadence, pass: 11 })).toBe(true)
+  })
+})
+
+describe("advanceCadence", () => {
+  it("resets to every pass the moment a screen moves", () => {
+    expect(
+      advanceCadence({ cadence: { quietPasses: 3, nextDuePass: 4 }, pass: 12, changed: true }),
+    ).toEqual({ quietPasses: 0, nextDuePass: 13 })
+  })
+
+  it("halves the rate on the first quiet read rather than dropping to the ceiling", () => {
+    // A terminal that pauses for one interval mid-run must not go stale for the
+    // full backoff window.
+    expect(advanceCadence({ cadence: undefined, pass: 1, changed: false })).toEqual({
+      quietPasses: 1,
+      nextDuePass: 3,
+    })
+  })
+
+  it("compounds over consecutive quiet reads up to the ceiling", () => {
+    let cadence = advanceCadence({ cadence: undefined, pass: 1, changed: false })
+    const schedule = [cadence.nextDuePass]
+    for (let pass = 2; pass <= 6; pass += 1) {
+      cadence = advanceCadence({ cadence, pass, changed: false })
+      schedule.push(cadence.nextDuePass)
+    }
+    // Read as "after the pass numbered N, come back at": 1->3, 2->6, then the
+    // ceiling holds the gap at MAX_BACKOFF_PASSES from whenever the read happened.
+    expect(schedule).toEqual([3, 6, 11, 12, 13, 14])
+    expect(cadence.nextDuePass - 6).toBe(MAX_BACKOFF_PASSES)
+  })
+})
+
+describe("selectDueTargets", () => {
+  const targets: ReadonlyArray<PollCandidate> = ["a", "b", "c"].map((n) => ({
+    scope: "session" as const,
+    id: n,
+    sessionName: n,
+  }))
+  const cadences = new Map<string, PollCadence>([
+    [pollCadenceKey({ scope: "session", id: "a" }), { quietPasses: 3, nextDuePass: 99 }],
+    [pollCadenceKey({ scope: "session", id: "b" }), { quietPasses: 0, nextDuePass: 5 }],
+  ])
+
+  it("keeps the moving and the never-seen, and skips the backed-off", () => {
+    const picked = selectDueTargets({ targets, pass: 5, cadences, ignoreBackoff: false })
+    // `c` has no cadence at all — never read, so always due.
+    expect(picked.map((t) => t.id)).toEqual(["b", "c"])
+  })
+
+  // An `untilOutput` wait resolves off these passes and nothing else, so a
+  // backed-off target would add up to MAX_BACKOFF_PASSES of latency to a wait
+  // that advertises the poll interval.
+  it("suspends the backoff entirely while a screen wait is pending", () => {
+    expect(
+      selectDueTargets({ targets, pass: 5, cadences, ignoreBackoff: true }).map((t) => t.id),
+    ).toEqual(["a", "b", "c"])
+  })
+
+  it("keys cadences the way terminal state keys rows, so the two cannot drift", () => {
+    expect(pollCadenceKey({ scope: "project", id: "pi-browser-dashboard" })).toBe(
+      "project:pi-browser-dashboard",
+    )
+  })
+})
+
+describe("screenFingerprint", () => {
+  it("is stable for identical text and differs for a one-character change", () => {
+    expect(screenFingerprint({ text: "hello" })).toBe(screenFingerprint({ text: "hello" }))
+    expect(screenFingerprint({ text: "hello" })).not.toBe(screenFingerprint({ text: "hellp" }))
+  })
+
+  // The two screens a real terminal alternates between are usually the same length
+  // (a spinner frame, a clock tick), so length alone would call them equal and
+  // back the busiest terminal off. And the hash alone would collide on
+  // transpositions, hence both.
+  it("separates same-length screens and reorderings", () => {
+    expect(screenFingerprint({ text: "⠋ Working" })).not.toBe(
+      screenFingerprint({ text: "⠙ Working" }),
+    )
+    expect(screenFingerprint({ text: "ab" })).not.toBe(screenFingerprint({ text: "ba" }))
+  })
+
+  it("does not carry the screen text itself — it is a hash, not a copy", () => {
+    const secret = "sk-live-0123456789"
+    expect(screenFingerprint({ text: secret })).not.toContain("sk-live")
+  })
+})
+
+describe("isPaneListFresh", () => {
+  it("is stale when there is no entry at all", () => {
+    expect(isPaneListFresh({ listedAtPass: undefined, pass: 3 })).toBe(false)
+  })
+
+  it("holds for the refresh window and expires on the pass after it", () => {
+    expect(isPaneListFresh({ listedAtPass: 10, pass: 10 })).toBe(true)
+    expect(isPaneListFresh({ listedAtPass: 10, pass: 10 + PANE_LIST_REFRESH_PASSES - 1 })).toBe(
+      true,
+    )
+    expect(isPaneListFresh({ listedAtPass: 10, pass: 10 + PANE_LIST_REFRESH_PASSES })).toBe(false)
   })
 })
