@@ -661,22 +661,65 @@ was needed.
   the poller entirely — no timer, and the refresh-on-read hook goes inert too.
   It is deliberately lazier than the attached path's 400ms throttle because each
   polled session costs a `list-panes` spawn plus one `dump-screen` spawn PER
-  PANE, where the attached path costs a regex over bytes it already has. Two
-  constants bound that, and both are in the pure core with their arithmetic:
+  PANE, where the attached path costs a regex over bytes it already has.
+- **The real cost of a read is a repaint in somebody's terminal, not the
+  daemon's wall clock — and that is what set every number below.** Measured on
+  zellij 0.44.3: a zellij CLI client CONNECTING makes zellij repaint the full
+  screen for its attached clients, ~1-2 repaints per connection, and it is
+  **cross-session** — reads aimed at session A repaint an attached client of
+  unrelated session B. So a pass's spawn count is not a private cost. At 28
+  targets, the old pass made 62 connections (1 `list-sessions` + 29 `list-panes` +
+  34 dumps, verified with a PATH shim that logged every invocation) and delivered
+  ~110-220 full-screen repaints — 400KB-1MB of ANSI — into every open terminal
+  WebSocket inside a 2.3-second window, once every 15s. The dashboard's terminal
+  froze for about two seconds every fifteen, and so did the user's own `zellij
+  attach` in a native terminal. Confirmed from the other side too: a pty client
+  attached to a session this daemon does **not** own and never polls still took a
+  repaint storm every 15.00s, and 21 hand-fired reads at *other* sessions
+  reproduced one on demand. If you are about to add a zellij read anywhere on a
+  timer, that is the cost to price it at.
+- Four constants bound the pass, all in the pure core with their arithmetic:
   `MAX_PANES_PER_SESSION` (4) stops one tiled session consuming a pass — and is
   the same ceiling the write surface enforces when a caller asks for a new pane
   (see "Panes: the daemon's only write surface into zellij" below), so raising
-  it raises both — and
-  `MAX_DUMPS_PER_PASS` (64) bounds the whole pass by a constant instead of by how
-  many sessions the user happens to have open (39 live ones on the box this was
-  measured on). A `dump-screen` spawn measures ~38ms wall, so a worst-case pass is
-  64 dumps ≈ 2.4s plus one `list-panes` per session — under a fifth of the default
-  interval — and with the ordinary one-pane session those 64 dumps cover 64
-  terminals. Passes are sequential, never fanned out, and coalesced (one in flight
+  it raises both. `MAX_READS_PER_PASS` (64) and `MAX_READS_PER_PASS_WATCHED` (12)
+  bound the whole pass, counting **every** connection — `list-sessions` and
+  `list-panes` as much as the dumps. That the pane lists went uncounted is why the
+  old bound of 64 *dumps* still grew with the session list: it capped 34 of the 62
+  connections a pass actually made. The two numbers answer different questions, so
+  collapsing them would trade one regression for another: the tight one is what a
+  watched browser terminal absorbs without a hitch (12 reads ≈ 25 repaints over
+  ~0.5s), the loose one is how fresh an unwatched machine's chips are. `watched`
+  means at least one terminal WS bridge is attached — exactly when a repaint has a
+  browser to land in.
+- **A quiet screen is not re-read.** Per target, `PollCadence` doubles the gap
+  after each read that finds the same screen (1, 2, 4, then `MAX_BACKOFF_PASSES`
+  = 8, so ~2 minutes at the default interval), and resets to every pass the moment
+  the screen moves. The signal is a `screenFingerprint` of the dumped text, not the
+  classification, and that direction matters both ways: a working agent's spinner
+  churns every frame while its slug sits at `working` (a classification-driven
+  backoff would starve the busiest terminal, the one someone is most likely waiting
+  on), and a `blocked` prompt is byte-identical until answered (so it would look
+  fresh forever while nothing happened). A fingerprint rather than the text itself,
+  because a per-terminal copy of every screen is real memory and screen text is the
+  one thing this slice never retains. An **output wait suspends the backoff
+  entirely** (`hasScreenWaiters`, wired to `screenObservers.size > 0`): `pid wait
+  --until-output` resolves off these passes and nothing else, so a backed-off target
+  would silently add up to 8 passes of latency to a wait that advertises the poll
+  interval. Pane lists are cached for `PANE_LIST_REFRESH_PASSES` (8) on top of that
+  and dropped early by any empty dump, since a pane set changes far more slowly than
+  the interval. Measured end to end against the old poller on the same machine, same
+  sessions, with a terminal attached: **59 reads per pass over 2.30s → 12 over
+  0.51s.**
+- Passes are sequential, never fanned out, and coalesced (one in flight
   at a time), so a pass that did overrun would cost freshness rather than pile
   subprocesses up. The budget skips WHOLE sessions, never half of one: a fold over
   a partial pane set could report `working` for a session whose unread pane is
-  blocked, which is exactly what the ordering exists to prevent. And because a
+  blocked, which is exactly what the ordering exists to prevent. It also stops at
+  the first target it cannot afford rather than walking the rest to skip each one —
+  which is what keeps the rotation cursor honest, since a cursor advanced by
+  *skipped* targets walks back to 0 every pass and re-reads the same head forever.
+  And because a
   budget that always truncated the same tail would make those terminals
   permanently invisible — the very blind spot per-pane polling removes — each pass
   starts where the last one stopped (`rotateTargets` / `advancePassOffset`),

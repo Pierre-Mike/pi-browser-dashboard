@@ -139,14 +139,65 @@ export const parseTerminalPaneIds = (raw: string): ReadonlyArray<string> =>
 // pane nothing can observe — which is the opposite of what panes are for here.
 export const MAX_PANES_PER_SESSION = 4
 
-// Whole-pass dump budget, so the cost is bounded by a constant instead of by
-// how many sessions the user happens to have open (39 live ones on the machine
-// this was written on). 64 dumps is ~2.4s at the measured spawn cost — under a
-// fifth of the default 15s interval — and with the ordinary one-content-pane
-// session it covers 64 terminals, i.e. more than that machine had. Passes are
-// sequential and coalesced (one in flight at a time), so exceeding the interval
-// would cost freshness rather than pile subprocesses up.
-export const MAX_DUMPS_PER_PASS = 64
+// Whole-pass budget over EVERY zellij read the pass makes — each `list-panes` as
+// well as each `dump-screen` — because the thing that has to be bounded is the
+// number of times this daemon opens a connection to a zellij server, and only
+// half of those are dumps.
+//
+// It was 64 and it counted dumps only, on the reasoning that a dump is the
+// expensive call (~38ms of wall clock each) and the pass is sequential, so the
+// cost was "bounded by a constant instead of by how many sessions the user
+// happens to have open". Both halves of that were wrong, and the user-visible
+// symptom was a browser terminal that froze for two seconds every fifteen:
+//
+//   - `list-panes` is one read per TARGET and was never counted, so the real
+//     per-pass connection count grew with the session list after all. Measured on
+//     the machine this was rewritten on: 28 targets => 1 list-sessions + 28
+//     list-panes + 33 dumps = 62 zellij invocations per pass, of which the old
+//     budget bounded 33.
+//   - The cost that matters is not the daemon's wall clock. **Every zellij CLI
+//     client that connects makes zellij repaint in full for its attached
+//     clients** — measured on 0.44.3 at ~1-2 full-screen repaints per connection,
+//     and it is CROSS-SESSION: reads against session A repaint an attached client
+//     of unrelated session B. So one pass shipped ~110-220 full-screen repaints
+//     (~400KB-1MB of ANSI) down every open terminal WebSocket inside a 2-4 second
+//     window, once per interval. That is what the freeze was. Verified by
+//     attaching a pty client to a session this daemon does not own and never
+//     polls: it still received a repaint storm every 15.00s, and firing 21 CLI
+//     reads at *other* sessions by hand reproduced one on demand.
+//
+// So the budget counts connections. It stays at 64 while nobody is looking: the
+// repaints still happen, but with no terminal WebSocket open there is no xterm to
+// parse them and no user to see the hitch, and a pass that covers the whole
+// machine keeps every chip one interval fresh.
+export const MAX_READS_PER_PASS = 64
+
+// The budget while at least one terminal WebSocket is attached — i.e. exactly when
+// the repaints have somewhere visible to land. Set by what a browser absorbs
+// without a hitch rather than by what the daemon can spawn in an interval: 12
+// reads is ~25 repaints (~85KB) over ~0.5s, against the ~110-220 (~400KB-1MB) that
+// froze the terminal for two seconds.
+//
+// Two budgets rather than one low one because they are answers to different
+// questions. The low number is what a watched terminal tolerates; the high one is
+// how fresh an unwatched machine's chips are. Collapsing them would make the
+// dashboard's chips four times staler for every user who does not have a terminal
+// open, to fix a symptom only visible to users who do.
+export const MAX_READS_PER_PASS_WATCHED = 12
+
+// How many passes a cached pane list stays good for. A pane set changes when
+// somebody opens or closes a pane, which is rare next to the poll interval, and
+// re-listing every pass doubled the pass's connection count for no news. A dump
+// that comes back empty invalidates the entry early (see terminal-poll.io.ts), so
+// a pane that vanished costs one wasted read rather than eight passes of silence.
+export const PANE_LIST_REFRESH_PASSES = 8
+
+// Ceiling on the per-target backoff, in passes. At the default 15s interval a
+// terminal whose screen has not changed for three consecutive reads settles at
+// one read every 2 minutes. The ceiling bounds the staleness a chip can show, and
+// 2 minutes is the same order as the bounded staleness `rotateTargets` already
+// accepts on a machine with more terminals than one pass can cover.
+export const MAX_BACKOFF_PASSES = 8
 
 // `paneIds` arrives sorted by pane index (parseTerminalPaneIds), so keeping the
 // first N keeps the panes the layout opened first — for a daemon-created
@@ -204,7 +255,7 @@ export const selectPollTargets = (input: {
 // ---- rotating the pass so the budget is not a permanent blind spot ------
 
 // A pass that always started at the head of the candidate list and stopped at
-// MAX_DUMPS_PER_PASS would make everything past the cut permanently invisible —
+// MAX_READS_PER_PASS would make everything past the cut permanently invisible —
 // the same "silently reports on some panes and calls it the truth" bug that
 // per-pane classification exists to remove, just moved from panes to sessions.
 // Starting where the last pass stopped turns that into bounded staleness
@@ -230,6 +281,114 @@ export const advancePassOffset = (input: {
   readonly visited: number
   readonly total: number
 }): number => (input.total <= 0 ? 0 : (input.offset + input.visited) % input.total)
+
+// ---- how often one target is worth re-reading ---------------------------
+
+// Rotation bounds what a pass costs; this bounds how often a pass has anything
+// worth spending. Every read repaints the user's open terminals (see
+// MAX_READS_PER_PASS), so re-reading a screen that is not moving is the one cost
+// here with no benefit at all — and on a real machine most terminals are exactly
+// that: a shell sitting at a prompt, or an agent that finished hours ago.
+//
+// The signal is whether the SCREEN moved, not whether the classification did.
+// Classification is the wrong trigger in both directions: a working agent whose
+// spinner churns every frame stays `working` pass after pass (so a
+// classification-driven backoff would starve the busiest terminal, the one
+// somebody is most likely waiting on), while a `blocked` prompt is byte-identical
+// until it is answered (so it would look fresh forever while nothing happened).
+// A fingerprint of the dumped text answers "is anything happening here" directly.
+export type PollCadence = {
+  // Consecutive reads that found the same screen as the read before.
+  readonly quietPasses: number
+  // The pass number this target becomes worth reading again.
+  readonly nextDuePass: number
+}
+
+// 1, 2, 4, 8, 8, 8 … — doubling, capped. The first quiet read only halves the
+// rate rather than dropping straight to the ceiling, so a terminal that pauses
+// for one interval mid-run does not go stale for two minutes.
+export const backoffPasses = (input: { readonly quietPasses: number }): number => {
+  const quiet = Number.isFinite(input.quietPasses) ? Math.max(0, Math.trunc(input.quietPasses)) : 0
+  if (quiet <= 0) return 1
+  return Math.min(2 ** quiet, MAX_BACKOFF_PASSES)
+}
+
+// A target with no cadence yet has never been read, and a new terminal must be
+// classified on the pass that finds it — so "unknown" reads as due, never as
+// backed off.
+export const isTargetDue = (input: {
+  readonly cadence: PollCadence | undefined
+  readonly pass: number
+}): boolean => input.cadence === undefined || input.pass >= input.cadence.nextDuePass
+
+// What the cadence becomes after a read. `changed` is "the screen moved, or the
+// classification did" — either one means this terminal is live and worth the
+// next pass.
+export const advanceCadence = (input: {
+  readonly cadence: PollCadence | undefined
+  readonly pass: number
+  readonly changed: boolean
+}): PollCadence => {
+  const quietPasses = input.changed ? 0 : (input.cadence?.quietPasses ?? 0) + 1
+  return { quietPasses, nextDuePass: input.pass + backoffPasses({ quietPasses }) }
+}
+
+// The targets this pass should actually spend reads on, in the order given.
+//
+// `ignoreBackoff` is the escape hatch and it exists for one caller: an output
+// wait (`pid wait --until-output`, `--via screen`) resolves off these passes and
+// nothing else, so while one is pending every target has to be read at the full
+// interval or the wait silently gains up to MAX_BACKOFF_PASSES of latency.
+export const selectDueTargets = (input: {
+  readonly targets: ReadonlyArray<PollCandidate>
+  readonly pass: number
+  readonly cadences: ReadonlyMap<string, PollCadence>
+  readonly ignoreBackoff: boolean
+}): ReadonlyArray<PollCandidate> => {
+  if (input.ignoreBackoff) return input.targets
+  return input.targets.filter((target) =>
+    isTargetDue({
+      cadence: input.cadences.get(pollCadenceKey({ scope: target.scope, id: target.id })),
+      pass: input.pass,
+    }),
+  )
+}
+
+// `<scope>:<id>` — the same shape terminal-state.core.ts keys its state map by,
+// so a cadence and a state for one terminal are looked up under one string and
+// cannot drift apart on how they were spelled.
+export const pollCadenceKey = (input: { readonly scope: string; readonly id: string }): string =>
+  `${input.scope}:${input.id}`
+
+// Cheap content hash of one screen dump: djb2 over the text plus its length.
+// A fingerprint rather than the text itself for two reasons — a per-terminal copy
+// of every screen is real memory (~4KB x every terminal the daemon can see), and
+// screen text is the one thing this slice is careful never to retain or forward
+// beyond the observer that asked for it (see terminal.routes.ts's
+// `subscribeTerminalScreens`). Collisions cost one skipped read, not correctness:
+// the next changed frame lands on a different hash.
+export const screenFingerprint = (input: { readonly text: string }): string => {
+  let hash = 5381
+  for (let i = 0; i < input.text.length; i += 1) {
+    hash = (hash * 33 + input.text.charCodeAt(i)) | 0
+  }
+  return `${input.text.length}:${hash}`
+}
+
+// ---- is a cached pane list still good? ----------------------------------
+
+export const isPaneListFresh = (input: {
+  readonly listedAtPass: number | undefined
+  readonly pass: number
+}): boolean =>
+  input.listedAtPass !== undefined && input.pass - input.listedAtPass < PANE_LIST_REFRESH_PASSES
+
+// ---- how many reads this pass may spend ---------------------------------
+
+// See MAX_READS_PER_PASS: the cap tightens exactly while a terminal WebSocket is
+// open, because that is when a zellij repaint has a browser to land in.
+export const readBudgetForPass = (input: { readonly watched: boolean }): number =>
+  input.watched ? MAX_READS_PER_PASS_WATCHED : MAX_READS_PER_PASS
 
 // ---- folding several panes into one session-level reading ---------------
 

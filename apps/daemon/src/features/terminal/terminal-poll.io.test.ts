@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test"
-import { MAX_DUMPS_PER_PASS, MAX_PANES_PER_SESSION, type PollCandidate } from "./terminal-poll.core"
+import {
+  MAX_PANES_PER_SESSION,
+  MAX_READS_PER_PASS,
+  MAX_READS_PER_PASS_WATCHED,
+  PANE_LIST_REFRESH_PASSES,
+  type PollCandidate,
+} from "./terminal-poll.core"
 import { createTerminalPoller, type ScreenText, type TerminalPollPorts } from "./terminal-poll.io"
 
 const SESSION_LIST = `default [Created 12h ago]
@@ -97,6 +103,7 @@ const makeHarness = (overrides?: Partial<TerminalPollPorts>): Harness => {
     forgetPaneStates: (input) => {
       forgotten.push({ scope: input.scope, id: input.id, keepPaneIds: [...input.keepPaneIds] })
     },
+    hasScreenWaiters: () => false,
     now: () => nowMs,
     ...overrides,
   }
@@ -481,49 +488,68 @@ describe("createTerminalPoller.tick over several panes", () => {
   })
 })
 
-// The whole-pass dump budget, and the rotation that keeps it from turning into a
-// permanent blind spot for whatever sorts last.
-describe("createTerminalPoller.tick dump budget", () => {
-  // Enough candidates that MAX_DUMPS_PER_PASS bites with one pane each.
-  const manyCandidates = (count: number): PollCandidate[] =>
-    Array.from({ length: count }, (_, i) => ({
-      scope: "session" as const,
-      id: `s${i}`,
-      sessionName: `s${i}`,
-    }))
+// Enough candidates that the per-pass read budget bites with one pane each.
+const manyCandidates = (count: number): PollCandidate[] =>
+  Array.from({ length: count }, (_, i) => ({
+    scope: "session" as const,
+    id: `s${i}`,
+    sessionName: `s${i}`,
+  }))
 
-  const bigHarness = (count: number): Harness => {
-    const h = makeHarness({
-      listSessions: async () =>
-        `${manyCandidates(count)
-          .map((c) => `${c.sessionName} [Created 1m ago]`)
-          .join("\n")}\n`,
-    })
-    h.candidates.length = 0
-    h.candidates.push(...manyCandidates(count))
-    return h
-  }
+const bigHarness = (input: { readonly count: number; readonly attached?: boolean }): Harness => {
+  const h = makeHarness({
+    listSessions: async () =>
+      `${manyCandidates(input.count)
+        .map((c) => `${c.sessionName} [Created 1m ago]`)
+        .join("\n")}\n`,
+  })
+  h.candidates.length = 0
+  h.candidates.push(...manyCandidates(input.count))
+  // A session name nothing derived, so it tightens the budget (there IS a bridge
+  // somewhere) without removing any candidate from the target set.
+  if (input.attached === true) h.attached.push("a-terminal-somebody-has-open")
+  return h
+}
 
-  it("stops a pass at the budget instead of spawning one dump per pane found", async () => {
-    const h = bigHarness(MAX_DUMPS_PER_PASS + 10)
+// Every read is a zellij client connecting, and zellij repaints in full for its
+// attached clients when one does — so the budget counts `list-panes` and
+// `list-sessions` alongside the dumps. Anything uncounted is a repaint the user
+// gets for free, which is what turned a pass into a two-second freeze.
+const readsIn = (h: Harness): number => h.paneListed.length + h.dumped.length + 1
+
+describe("createTerminalPoller.tick read budget", () => {
+  it("counts the pane lists and the session list, not only the dumps", async () => {
+    const h = bigHarness({ count: MAX_READS_PER_PASS * 3 })
     await makePoller(h).tick()
-    expect(h.dumped).toHaveLength(MAX_DUMPS_PER_PASS)
+    expect(readsIn(h)).toBeLessThanOrEqual(MAX_READS_PER_PASS)
+    // Proof the budget is the thing that stopped it, not the candidate list.
+    expect(h.dumped.length).toBeLessThan(MAX_READS_PER_PASS * 3)
+  })
+
+  it("spends far less per pass while a terminal WebSocket is attached", async () => {
+    const watched = bigHarness({ count: MAX_READS_PER_PASS * 3, attached: true })
+    await makePoller(watched).tick()
+    expect(readsIn(watched)).toBeLessThanOrEqual(MAX_READS_PER_PASS_WATCHED)
   })
 
   it("starts the next pass where the last one stopped, so nothing is invisible forever", async () => {
-    const h = bigHarness(MAX_DUMPS_PER_PASS + 10)
+    const h = bigHarness({ count: MAX_READS_PER_PASS * 3 })
     const poller = makePoller(h)
     await poller.tick()
     expect(h.dumped[0]).toBe("s0/terminal_0")
+    const covered = h.dumped.length
     h.dumped.length = 0
+    // Same screen everywhere, so pass 2 would have nothing due at all — the
+    // rotation is what this asserts, so keep every target due.
+    h.setDump(" ⠙ Working...")
     await poller.tick()
-    expect(h.dumped[0]).toBe(`s${MAX_DUMPS_PER_PASS}/terminal_0`)
+    expect(h.dumped[0]).toBe(`s${covered}/terminal_0`)
   })
 
   it("never leaves a session half-dumped — a partial pane set would fold to a wrong row", async () => {
     // Two panes each, so the budget cuts mid-session unless whole sessions are
     // skipped. Every session that produced any row must have produced both.
-    const h = bigHarness(MAX_DUMPS_PER_PASS)
+    const h = bigHarness({ count: MAX_READS_PER_PASS })
     const twoPane = { ...h.ports, listPanes: async () => TWO_PANE_LIST }
     await createTerminalPoller({ ports: twoPane, tailMaxChars: 8_000 }).tick()
     const perSession = new Map<string, number>()
@@ -532,7 +558,193 @@ describe("createTerminalPoller.tick dump budget", () => {
       perSession.set(name, (perSession.get(name) ?? 0) + 1)
     }
     expect([...perSession.values()].every((n) => n === 2)).toBe(true)
-    expect(h.dumped.length).toBeLessThanOrEqual(MAX_DUMPS_PER_PASS)
+    expect(readsIn(h)).toBeLessThanOrEqual(MAX_READS_PER_PASS)
+  })
+
+  // The pass used to be able to spend its last read on a `list-panes` for a
+  // session it could no longer afford to dump: a connection made, every open
+  // terminal repainted, and nothing classified.
+  it("does not spend its last read on a pane list it cannot afford to dump", async () => {
+    const h = bigHarness({ count: MAX_READS_PER_PASS, attached: true })
+    await makePoller(h).tick()
+    // One dump for every pane list — never a list with no dump behind it.
+    expect(h.paneListed.length).toBe(h.dumped.length)
+  })
+})
+
+// A pane set changes when somebody opens or closes a pane, which is rare next to
+// the poll interval — so re-listing every pass doubled the connection count of an
+// ordinary pass for no news.
+describe("createTerminalPoller.tick pane list cache", () => {
+  const changingDump = (h: Harness, pass: number): void => {
+    // Keep the screen moving so the target stays due every pass; the cache is what
+    // is under test here, not the backoff.
+    h.setDump(` ⠋ Working... ${pass}`)
+  }
+
+  it("lists panes once and reuses it for the whole refresh window", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    for (let pass = 1; pass <= PANE_LIST_REFRESH_PASSES; pass += 1) {
+      changingDump(h, pass)
+      await poller.tick()
+    }
+    // Two candidate sessions, one list each, however many passes ran.
+    expect(h.paneListed).toEqual(["default", "abcd1234"])
+    expect(h.dumped.length).toBe(2 * PANE_LIST_REFRESH_PASSES)
+  })
+
+  it("re-lists once the window is over, so a new pane cannot stay invisible", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    for (let pass = 1; pass <= PANE_LIST_REFRESH_PASSES + 1; pass += 1) {
+      changingDump(h, pass)
+      await poller.tick()
+    }
+    expect(h.paneListed).toEqual(["default", "abcd1234", "default", "abcd1234"])
+  })
+
+  // A pane that has gone away dumps nothing, and trusting the cache after that
+  // would keep spending a read on it — and keep its row — for the rest of the
+  // window.
+  it("drops a cached list as soon as one of its panes dumps nothing", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    expect(h.paneListed).toEqual(["default", "abcd1234"])
+    h.setDump("")
+    await poller.tick()
+    h.setDump(" ⠋ Working...")
+    await poller.tick()
+    // Pass 2 spent no list at all — the cache was still inside its window, and it
+    // is the empty DUMP that dropped it. Pass 3 therefore re-lists both.
+    expect(h.paneListed).toEqual(["default", "abcd1234", "default", "abcd1234"])
+  })
+
+  // Only a fresh list is evidence about which panes exist. Pruning rows against a
+  // cached list would delete a live pane's row.
+  it("prunes pane rows only off a list it actually fetched", async () => {
+    const h = makeHarness({ listPanes: async () => TWO_PANE_LIST })
+    const poller = makePoller(h)
+    await poller.tick()
+    const afterFirst = h.forgotten.length
+    expect(afterFirst).toBeGreaterThan(0)
+    h.setDump(" ⠙ Working...")
+    await poller.tick()
+    expect(h.forgotten.length).toBe(afterFirst)
+  })
+})
+
+// The reads are what repaint the user's open terminals, so a read that can only
+// confirm an unchanged screen is pure cost. On a real machine most terminals are
+// exactly that: a shell at a prompt, or an agent that finished hours ago.
+describe("createTerminalPoller.tick backoff on a quiet screen", () => {
+  // Quiet takes two reads to establish: the first read of a terminal has nothing
+  // to compare against, so it always counts as movement. Pass 2 is the one that
+  // finds the screen unchanged and halves the rate, so pass 3 is the first skip.
+  it("stops re-reading a screen that is not moving", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    expect(h.dumped.length).toBe(2)
+    await poller.tick()
+    expect(h.dumped.length).toBe(4)
+    await poller.tick()
+    expect(h.dumped.length).toBe(4)
+  })
+
+  it("comes straight back to every pass as soon as the screen moves again", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    await poller.tick()
+    await poller.tick() // quiet: backed off to every 2nd pass
+    await poller.tick() // skipped
+    h.setDump(" ⠙ Working... now with output")
+    await poller.tick() // pass 4: due again, and the screen moved
+    const afterMove = h.dumped.length
+    expect(afterMove).toBe(6)
+    await poller.tick() // pass 5: due, because pass 4 saw movement
+    expect(h.dumped.length).toBe(8)
+  })
+
+  // A working agent's screen churns every frame while its CLASSIFICATION sits at
+  // `working` pass after pass. Backing off on the classification would starve the
+  // busiest terminal — the one somebody is most likely waiting on — so the signal
+  // is the screen, not the slug.
+  it("keeps reading a busy terminal whose classification never changes", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    for (let pass = 1; pass <= 4; pass += 1) {
+      h.setDump(` ⠋ Working... frame ${pass}`)
+      await poller.tick()
+    }
+    expect(h.dumped.length).toBe(8)
+    // One transition, on the first pass — every later pass agreed with it.
+    expect(h.published.filter((p) => p.id === "abcd1234")).toHaveLength(1)
+  })
+
+  // `pid wait --until-output` resolves off these passes and nothing else, so a
+  // backed-off target would silently add latency to a wait that advertises the
+  // poll interval.
+  it("suspends the backoff while a screen wait is pending", async () => {
+    let waiting = false
+    const h = makeHarness({ hasScreenWaiters: () => waiting })
+    const poller = makePoller(h)
+    await poller.tick()
+    await poller.tick() // pass 2 finds both quiet
+    await poller.tick() // pass 3 skips both
+    expect(h.dumped.length).toBe(4)
+    waiting = true
+    // Every pass reads everything again for as long as something is waiting.
+    await poller.tick()
+    expect(h.dumped.length).toBe(6)
+    await poller.tick()
+    expect(h.dumped.length).toBe(8)
+  })
+
+  it("still offers an unchanged screen to output waits on every read", async () => {
+    let waiting = true
+    const h = makeHarness({ hasScreenWaiters: () => waiting })
+    const poller = makePoller(h)
+    await poller.tick()
+    await poller.tick()
+    waiting = false
+    // Both passes read both terminals, and every read was offered — an output
+    // pattern can match a line that appears while the classification holds still.
+    expect(h.noted.length).toBe(4)
+  })
+
+  // A dump that fails or comes back empty is not a read: advancing the backoff on
+  // it would let a session that cannot be dumped talk itself down to one attempt
+  // every MAX_BACKOFF_PASSES.
+  it("does not back off a target it failed to read", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    h.setDump("")
+    await poller.tick()
+    expect(h.dumped.length).toBe(2)
+    await poller.tick()
+    expect(h.dumped.length).toBe(4)
+  })
+
+  // A terminal the user opens in the browser leaves the target set (the WS tap
+  // owns that screen), and must be due again the moment it comes back.
+  it("forgets a target's cadence while it is attached, so a detach re-reads at once", async () => {
+    const h = makeHarness()
+    const poller = makePoller(h)
+    // Four passes of an unchanging screen: both targets are now backed off to a
+    // read every 4th pass, next due on pass 8.
+    for (let pass = 1; pass <= 4; pass += 1) await poller.tick()
+    const beforeAttach = h.dumped.filter((d) => d.startsWith("abcd1234/")).length
+    h.attached.push("abcd1234")
+    await poller.tick() // pass 5: attached, so not a target at all
+    expect(h.dumped.filter((d) => d.startsWith("abcd1234/")).length).toBe(beforeAttach)
+    h.attached.length = 0
+    await poller.tick() // pass 6: detached — and pass 6 is inside the backed-off window
+    expect(h.dumped.filter((d) => d.startsWith("abcd1234/")).length).toBe(beforeAttach + 1)
+    // The other target was never attached, so it is still backed off on pass 6 —
+    // which is what makes the line above about the eviction and not about the pass.
+    expect(h.dumped.filter((d) => d.startsWith("default/")).length).toBe(beforeAttach)
   })
 })
 
