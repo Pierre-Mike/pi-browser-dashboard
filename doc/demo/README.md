@@ -41,6 +41,42 @@ Three things cost real time to work out, all of them load-bearing:
    a scroll in it. The encoder steps itself down through width / fps / colours
    until it fits a budget, rather than every entry being hand-tuned.
 
+## The names are not real; everything else is
+
+Every capture is driven against a **live daemon** — that is what makes the counts,
+the state distribution, the timings and the diffs worth looking at. It also means
+an operator's actual client and project names would end up on a public page at 2x
+legibility. So `redact.mjs` substitutes a stable set of friendly names into the DOM
+before each capture:
+
+| substituted | untouched |
+|---|---|
+| project names (all but this repo) | session counts, states, timings, ages |
+| session `name` / `intent` / `detail` / `result` | the transcript, the terminal, the file tree |
+| the GitHub org and the OS username | PR lists and their diffs, config panels |
+| any off-host URL, any email address | every layout, theme and interaction |
+
+Two rules make it hold, and both are the *inverse* of the obvious one:
+
+1. **Rename everything except a keep-list.** A blocklist only redacts the names
+   someone remembered; the next client name ships. The keep-list is one entry long.
+2. **Enumerate the fields, not the safe text.** The first version kept this repo's
+   own cards real, on the theory that they are the interesting ones, and it leaked
+   twice in a single screenshot: once because `result` is rendered on a card and
+   simply was not in the list of fields to redact, and once because the session
+   *doing the capture* is a session in this repo, so the request to redact the page
+   got printed on the page.
+
+And one that is neither: **shape rules run before name rules.** A URL is redacted
+whole, because splicing an alias into a corporate SharePoint link and leaving the
+host standing is worse than doing nothing — which is exactly what the first
+redacted capture shipped.
+
+`sweep.mjs` re-reads every captured page afterwards and greps the rendered text for
+known-private words, off-host URLs and email addresses. Three hits are expected and
+are false positives: the English word "orchestrator", the **Agentic repo path**
+setting label, and skill *descriptions* that name public tools.
+
 ## How to re-record
 
 ```bash
@@ -59,10 +95,11 @@ node .demo-tmp/capture-themes.mjs          # the 27 theme images + the cycle cli
 node .demo-tmp/capture-themes.mjs --gif    # only the cycle clip
 ```
 
-The three scripts are embedded at the bottom of this file rather than committed as
+The four scripts are embedded at the bottom of this file rather than committed as
 `.mjs` — throwaway demo tooling, not app code, and a committed source file there
 would be scanned by Biome and counted as dead code by `fallow audit`. Save them
-under `.demo-tmp/` (git-ignored) and run from the repo root.
+under `.demo-tmp/` (git-ignored) and run from the repo root. `redact.mjs` is imported
+by the other two; it is never run directly.
 
 Push docs with `SKIP_E2E=1 git push` — the Playwright suite collides with a dev
 server already holding the port.
@@ -235,7 +272,295 @@ no business taking on its own.
 
 ## The capture scripts
 
-Save all three under `.demo-tmp/` at the repo root, then run from the repo root.
+Save all four under `.demo-tmp/` at the repo root, then run from the repo root.
+
+<details>
+<summary><code>.demo-tmp/redact.mjs</code> — the name substitution</summary>
+
+```js
+// Rename real work out of the captures, at render time.
+//
+// The dashboard is captured against a live daemon, which is what makes the tour
+// honest — real cards, real states, real counts. It also means the operator's
+// actual project and client names end up on a public page at 2x legibility. This
+// substitutes a stable set of friendly names into the DOM *before* the capture,
+// so the layout, the counts and the state distribution stay exactly real and only
+// the nouns change.
+//
+// Everything is derived from the daemon rather than from a hand-written blocklist:
+// a blocklist only redacts the names someone remembered, and the next client name
+// ships. The rule here is the inverse — **everything is renamed except an explicit
+// keep-list** — so a project added tomorrow is redacted by default.
+import { readFileSync } from 'node:fs';
+
+const DAEMON = process.env.PID_DAEMON_URL || 'http://localhost:8787';
+
+// The only repo whose name is already the subject of the page.
+const KEEP_PROJECTS = new Set(['pi-browser-dashboard']);
+
+// Neutral codenames. Deliberately boring and product-shaped, so a screenshot reads
+// as "someone's projects" rather than as a puzzle to decode.
+const PROJECT_NAMES = [
+  'acme-storefront', 'orbit-api', 'northwind-etl', 'harbor-mobile', 'lumen-docs',
+  'tidepool', 'atlas-cli', 'beacon-web', 'driftwood', 'meridian-ui',
+  'kestrel', 'sandbar', 'quarry', 'lantern', 'foxglove',
+  'switchback', 'juniper', 'copperline', 'redwood-api', 'saltmarsh',
+  'bellwether', 'clearwater', 'ridgeline', 'nightjar', 'periwinkle',
+  'stonecrop', 'fernbank', 'wavelet', 'gridiron', 'plumtree',
+  'inkwell', 'basalt', 'thornbury', 'halyard', 'moorland',
+  'cobalt-web', 'firefly-api', 'glasshouse', 'harlequin', 'ironwood',
+  'jetstream', 'kelpie', 'limelight', 'marlin', 'nutmeg',
+  'oakhurst', 'pinecrest', 'quillon', 'rosemary', 'sagebrush',
+  'tanager', 'umberline', 'vantage', 'willowbrook', 'yarrow',
+  'zephyr-ui', 'amberly', 'birchwood', 'cindershop', 'dovetail',
+  'elmgrove', 'flintlock', 'goldfinch', 'hazelnut', 'indigo-svc',
+  'jackdaw', 'larkspur', 'mistral', 'nettlefold', 'orchard-api',
+];
+
+// Plausible engineering work, so a redacted card still reads like a real task.
+const SESSION_TITLES = [
+  'checkout retry backoff', 'flaky upload test triage', 'session cookie rotation',
+  'search index rebuild', 'invoice PDF renderer', 'webhook replay endpoint',
+  'image thumbnail pipeline', 'rate limiter tuning', 'stale cache invalidation',
+  'onboarding email copy', 'CSV import validation', 'dark mode audit',
+  'pagination cursor bug', 'audit log retention', 'feature flag cleanup',
+  'timezone handling review', 'password reset flow', 'bulk export throttling',
+  'database index migration', 'error boundary coverage', 'SSO redirect loop',
+  'inventory sync worker', 'notification digest batching', 'form autosave draft',
+  'API pagination contract', 'file picker accessibility', 'metrics cardinality trim',
+  'signup funnel instrumentation', 'queue dead-letter handling', 'schema drift check',
+  'mobile nav breakpoints', 'report scheduling UI', 'token refresh race',
+  'attachment virus scan', 'locale fallback chain', 'seed data refresh',
+  'health check timeouts', 'config validation pass', 'permission matrix tests',
+  'changelog generation', 'staging data anonymiser', 'slow query profiling',
+  'retry budget dashboard', 'sitemap generation', 'draft autosave conflicts',
+  'billing proration edge case', 'avatar upload cropping', 'log sampling rules',
+];
+
+// A session's `intent` is the raw prompt someone typed. It is the single highest-
+// risk field on the page — it can contain a client name, a pasted email thread, a
+// SharePoint link, anything — and it is also the least load-bearing for the demo,
+// because the card's title and detail already carry the story. So every intent is
+// replaced, in every project, including this repo's own: the alternative is a
+// per-session judgement call, and the field whose whole nature is "arbitrary text"
+// is exactly the wrong place to be making those.
+const SESSION_PROMPTS = [
+  'Fix the retry backoff on checkout and add a regression test',
+  'The upload test is flaky in CI \u2014 find out why and make it deterministic',
+  'Rotate session cookies on privilege change; cover it with tests',
+  'Rebuild the search index incrementally instead of all at once',
+  'Add pagination to the reports endpoint and document the cursor contract',
+  'Audit the dark theme for contrast failures and fix what misses AA',
+  'Move the thumbnail pipeline off the request path onto a queue',
+  'Our webhook retries hammer the upstream \u2014 add a proper backoff budget',
+  'Write the migration for the new index, then run it against a copy first',
+  'Trace the slow query on the dashboard and add the missing index',
+  'Split the settings form into sections and validate on the server too',
+  'Add an error boundary per route and a test that proves each one catches',
+];
+
+const SESSION_DETAILS = [
+  'branch pushed; two checks still running',
+  'awaiting a decision on the fallback path',
+  'green locally, one integration test to confirm',
+  'refactor landed; follow-up filed',
+  'blocked on a fixture that needs regenerating',
+  'draft PR open, description written',
+  'reproduced the failure, narrowing it down now',
+  'all suites pass; ready for review',
+  'needs a product answer before continuing',
+  'rebased onto main, conflicts resolved',
+  'added the regression test first, then the fix',
+  'waiting on the deploy to finish',
+];
+
+// What a finished session reports back. Same reason as the prompts: `result` is
+// free text an agent wrote, so it can quote anything it read.
+const SESSION_RESULTS = [
+  'PR #212 open; 3 checks green, 1 pending',
+  'root cause was a missing await in the retry wrapper; test added',
+  'index added, p95 on the dashboard query down from 1.9s to 40ms',
+  'all 8 contrast failures fixed; the ratchet is green',
+  'moved to a queue; request path is 300ms faster at p50',
+  'no change needed \u2014 the flake was the fixture, not the code',
+  'migration written and dry-run against a snapshot; safe to apply',
+  'cursor contract documented and covered by a round-trip test',
+  'split into three sections; server-side validation added',
+  'one error boundary per route, each with a test that proves it catches',
+  'backoff budget added; upstream 429s down to zero over an hour',
+  'session rotation shipped behind a flag, default off',
+];
+
+const pick = (pool, i) => pool[i % pool.length];
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Longest-first, so "EPRI-POC-v2" is consumed before a bare "EPRI" can match it. */
+const byLengthDesc = (a, b) => b[0].length - a[0].length || a[0].localeCompare(b[0]);
+
+export async function buildRedactions() {
+  const [projects, sessions] = await Promise.all([
+    fetch(`${DAEMON}/projects`).then((r) => r.json()),
+    fetch(`${DAEMON}/sessions`).then((r) => r.json()),
+  ]);
+
+  const exact = [];
+  const tokens = [];
+  const projectAlias = new Map();
+
+  // Sorted by id so the same project gets the same codename on every run — a
+  // gallery where "orbit-api" means a different repo per screenshot is worse than
+  // no redaction at all.
+  const renamed = projects.map((p) => p.id).filter((id) => !KEEP_PROJECTS.has(id)).sort();
+  renamed.forEach((id, i) => projectAlias.set(id, pick(PROJECT_NAMES, i)));
+  for (const [real, alias] of projectAlias) tokens.push([real, alias]);
+
+  // Every free-text field, on every session, including this repo's own.
+  //
+  // The narrower rule \u2014 keep the subject repo's cards real \u2014 was tried first and
+  // leaked twice in one screenshot. Once because a session's `result` is rendered
+  // on the card and was simply not in the list of fields to redact (the list was
+  // name/intent/detail; nobody had thought of `result`), and once because the
+  // session doing the capture *is* a session in the subject repo, so the operator's
+  // own request to redact the page got printed on the page. Both are the same
+  // mistake: enumerating which text is safe. Enumerate the fields instead and
+  // redact all of them \u2014 the counts, states, timings, transcript, terminal, files
+  // and PRs are all still completely real, and they are what the tour is showing.
+  const FIELDS = [
+    ['name', SESSION_TITLES],
+    ['intent', SESSION_PROMPTS],
+    ['detail', SESSION_DETAILS],
+    ['result', SESSION_RESULTS],
+  ];
+  sessions.forEach((s, i) => {
+    for (const [field, pool] of FIELDS) {
+      const v = s[field];
+      if (typeof v === 'string' && v.trim().length > 2) exact.push([v, pick(pool, i)]);
+    }
+  });
+
+  // Owners, the machine account, and the config dir. The org name is the one
+  // string here that identifies an employer rather than a hobby repo.
+  tokens.push(['Logic2020', 'northwind']);
+  tokens.push(['pierre-mikel', 'dev']);
+  tokens.push(['Pierre-MikeL', 'dev']);
+  tokens.push(['Pierre-Mike', 'dev']);
+
+  // Two tables, not one. A single regex alternation over 700 rules — several of
+  // them multi-kilobyte agent prompts — is a pattern hundreds of KB wide, run over
+  // every text node several times a second. Split by shape instead:
+  //
+  //   exact  — a whole text node equals the string (session names, intents,
+  //            details). O(1) Map lookup, no regex, any length is free.
+  //   tokens — the string appears *inside* other text (project names, the org,
+  //            the username). Small alternation, and the only one that has to scan.
+  const seen = new Set();
+  const dedupe = (list) =>
+    list.filter(([from]) => (seen.has(from) ? false : (seen.add(from), true))).sort(byLengthDesc);
+  return { exact: dedupe(exact), tokens: dedupe(tokens), patterns: PATTERNS };
+}
+
+// The third table: shapes rather than strings. A blocklist of *names* cannot catch
+// a link — the first redacted capture still carried a corporate SharePoint URL,
+// complete with a colleague's account in the path, because only the project name
+// inside it had a rule. Anything that looks like a link or an address pointing
+// somewhere other than this repo is neutralised by shape.
+const PATTERNS = [
+  ['https?://(?!(?:www\\.)?github\\.com|localhost|127\\.0\\.0\\.1|[^\\s]*trycloudflare)[^\\s\\"\'<>)\\]]+', 'https://example.com/internal-doc'],
+  ['[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}', 'dev@example.com'],
+];
+
+/**
+ * The in-page half. Runs before first paint and re-runs on every mutation, because
+ * this rewrites text that React owns and will happily repaint from its own state a
+ * moment later.
+ */
+export const REDACT_SOURCE = String.raw`(tables) => {
+  const exact = new Map(tables.exact);
+  // A prefix form for every long string, because a value the UI truncates in JS
+  // (rather than in CSS) never equals the original and would silently miss. 28 is
+  // shorter than anything the sidebar shows before its ellipsis.
+  const PREFIX = 28;
+  const prefixes = new Map();
+  for (const [from, to] of tables.exact) {
+    if (from.length > PREFIX) prefixes.set(from.slice(0, PREFIX), to);
+  }
+
+  const escape = (s) => s.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  const tokenMap = new Map(tables.tokens);
+  // Word-ish boundaries so "EPRI" inside "EPRI-POC-v2" cannot fire first — the
+  // table is already longest-first, and the alternation preserves that order.
+  const tokenRx = new RegExp(tables.tokens.map(([f]) => escape(f)).join("|"), "g");
+  // Shape rules run FIRST: a link is redacted whole, so a project alias must not be
+  // spliced into a URL that is then left standing (which is exactly what shipped
+  // the first time — "…/orbit-api%20VIP%20Technical%20Design…" on a real host).
+  const shapes = tables.patterns.map(([rx, to]) => [new RegExp(rx, "g"), to]);
+  const subTokens = (s) => {
+    let out = s;
+    for (const [rx, to] of shapes) out = out.replace(rx, to);
+    return out.replace(tokenRx, (m) => tokenMap.get(m) ?? m);
+  };
+
+  const rewrite = (value) => {
+    const trimmed = value.trim();
+    if (trimmed.length > 2) {
+      const hit = exact.get(trimmed) ?? prefixes.get(trimmed.slice(0, PREFIX));
+      // Preserve the node's own leading/trailing whitespace: some labels are
+      // rendered as " · " separated fragments and eating the spaces reflows them.
+      if (hit !== undefined) return value.replace(trimmed, hit);
+    }
+    return subTokens(value);
+  };
+
+  // Every text node this pass has already judged, keyed to the value it judged.
+  // Without it the shape rules re-scan the whole document twice a second — and on
+  // a page holding a 1.2MB chat transcript that is enough to stop the app
+  // responding to clicks at all, which is how this first shipped: a dozen captures
+  // failed with "tab not found" against a UI that was simply too busy to answer.
+  const judged = new WeakMap();
+
+  let busy = false;
+  const pass = () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const it = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_TEXT);
+      const edits = [];
+      for (let n = it.nextNode(); n; n = it.nextNode()) {
+        const value = n.nodeValue;
+        if (judged.get(n) === value) continue;
+        const next = rewrite(value);
+        judged.set(n, next);
+        if (next !== value) edits.push([n, next]);
+      }
+      for (const [n, next] of edits) n.nodeValue = next;
+      for (const el of document.querySelectorAll("[title],[alt],[aria-label]")) {
+        for (const a of ["title", "alt", "aria-label"]) {
+          const v = el.getAttribute(a);
+          if (!v) continue;
+          const next = rewrite(v);
+          if (next !== v) el.setAttribute(a, next);
+        }
+      }
+      if (document.title) document.title = rewrite(document.title);
+    } finally { busy = false; }
+  };
+
+  const start = () => {
+    pass();
+    new MutationObserver(() => { if (!busy) requestAnimationFrame(pass); })
+      .observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    // The observer covers React. The interval covers what it cannot see: text
+    // painted late by a lazy chunk, and the xterm rows, which are rebuilt wholesale
+    // on every frame the pty writes.
+    setInterval(pass, 500);
+  };
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
+}`;
+```
+
+</details>
 
 <details>
 <summary><code>.demo-tmp/capture.mjs</code> — the rig</summary>
@@ -257,6 +582,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync, statSync, existsSync, symlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { SHOTS } from './shots.mjs';
+import { buildRedactions, REDACT_SOURCE } from './redact.mjs';
 
 const BASE = process.env.DEMO_BASE || 'http://localhost:5180';
 const ROOT = resolve('.');
@@ -407,12 +733,12 @@ async function startCast({ page, dir }) {
   let n = 0;
   cdp.on('Page.screencastFrame', async (ev) => {
     const i = n++;
-    writeFileSync(join(dir, `f${String(i).padStart(5, '0')}.jpg`), Buffer.from(ev.data, 'base64'));
-    // Arrival time, not `ev.metadata.timestamp`: that field is optional in the
-    // CDP schema and Chrome omits it often enough that half a run comes back
-    // NaN. A frame arrives within a millisecond or two of the paint, which is
-    // far inside a 12fps bucket.
-    frames.push({ i, t: Date.now() / 1000 });
+    // Buffered, not written. `writeFileSync` per frame blocks Node's event loop
+    // ~30 times a second, which is invisible for a scripted click but wrecks
+    // anything the app times: the theme clip's double-tap of Shift arrived as two
+    // *separate* taps and the command palette never opened. Frames are held in
+    // memory and flushed once, after the screencast stops.
+    frames.push({ i, t: Date.now() / 1000, buf: Buffer.from(ev.data, 'base64') });
     try { await cdp.send('Page.screencastFrameAck', { sessionId: ev.sessionId }); } catch { /* closed */ }
   });
   await cdp.send('Page.startScreencast', {
@@ -422,7 +748,9 @@ async function startCast({ page, dir }) {
     async stop() {
       try { await cdp.send('Page.stopScreencast'); } catch { /* closed */ }
       await new Promise((r) => setTimeout(r, 250));
-      return frames.sort((a, b) => a.i - b.i);
+      const ordered = frames.sort((a, b) => a.i - b.i);
+      for (const f of ordered) writeFileSync(join(dir, `f${String(f.i).padStart(5, '0')}.jpg`), f.buf);
+      return ordered;
     },
   };
 }
@@ -463,6 +791,10 @@ function buildSequence({ frames, dir, trimHead = 0 }) {
 
 // ------------------------------------------------------------------- main pass
 
+// Built once from the live daemon, injected into every context. See redact.mjs.
+const REDACTIONS = await buildRedactions();
+console.log(`[redact] ${REDACTIONS.exact.length} exact + ${REDACTIONS.tokens.length} token substitutions`);
+
 async function launch() {
   try { return await chromium.launch({ channel: 'chrome', headless: true }); }
   catch { return await chromium.launch({ headless: true }); }
@@ -483,6 +815,7 @@ for (const spec of SHOTS) {
   // Pin the theme before first paint: the shell reads localStorage synchronously
   // at import time, so setting it after load would record a visible repaint.
   await ctx.addInitScript(`localStorage.setItem('pid:ui:theme', ${JSON.stringify(theme)})`);
+  await ctx.addInitScript({ content: `(${REDACT_SOURCE})(${JSON.stringify(REDACTIONS)})` });
   const page = await ctx.newPage();
   const dir = join(WORK, spec.id);
   rmSync(dir, { recursive: true, force: true });
@@ -916,6 +1249,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { FAMILIES } from './shots.mjs';
+import { buildRedactions, REDACT_SOURCE } from './redact.mjs';
 
 const BASE = process.env.DEMO_BASE || 'http://localhost:5180';
 const ROOT = resolve('.');
@@ -932,7 +1266,7 @@ const TILE_W = 1280;
 // Narrower and slower than the feature clips, and deliberately so: every pixel
 // changes hue on every step, which defeats `diff_mode=rectangle` entirely, so this
 // one clip pays full price per frame. At the feature settings it weighed 4MB.
-const GIF_W = 980;
+const GIF_W = 900;
 const GIF_FPS = 10;
 
 mkdirSync(OUT_THEMES, { recursive: true });
@@ -941,6 +1275,10 @@ const log = (...a) => console.log('[themes]', ...a);
 
 const toWebp = ({ png, webp, width }) =>
   execFileSync('cwebp', ['-quiet', '-q', '84', '-resize', String(width), '0', png, '-o', webp]);
+
+// Built once from the live daemon, injected into every context. See redact.mjs.
+const REDACTIONS = await buildRedactions();
+console.log(`[redact] ${REDACTIONS.exact.length} exact + ${REDACTIONS.tokens.length} token substitutions`);
 
 async function launch() {
   try { return await chromium.launch({ channel: 'chrome', headless: true }); }
@@ -982,6 +1320,7 @@ if (!ONLY_GIF) {
         viewport: VIEW, deviceScaleFactor: DSF, colorScheme: mode,
       });
       await ctx.addInitScript(`localStorage.setItem('pid:ui:theme','${family.id}:${mode}')`);
+      await ctx.addInitScript({ content: `(${REDACT_SOURCE})(${JSON.stringify(REDACTIONS)})` });
       const page = await ctx.newPage();
       await page.goto(`${BASE}/?tab=projects`, { waitUntil: 'domcontentloaded', timeout: 25000 });
       await page.waitForTimeout(2600);
@@ -1027,6 +1366,7 @@ if (!ONLY_SHOTS) {
   mkdirSync(dir, { recursive: true });
   const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: DSF, colorScheme: 'light' });
   await ctx.addInitScript(`localStorage.setItem('pid:ui:theme','pid:light')`);
+  await ctx.addInitScript({ content: `(${REDACT_SOURCE})(${JSON.stringify(REDACTIONS)})` });
   const page = await ctx.newPage();
   await page.goto(`${BASE}/?tab=projects`, { waitUntil: 'domcontentloaded', timeout: 25000 });
   await page.waitForTimeout(2600);
@@ -1034,22 +1374,63 @@ if (!ONLY_SHOTS) {
   const cdp = await ctx.newCDPSession(page);
   const frames = [];
   let n = 0;
+  // Buffered, not written per frame — see capture.mjs. Synchronous disk writes on
+  // the event loop stretched the gap between the two Shift keydowns past the
+  // palette's double-tap window, so this very clip could not open the palette.
   cdp.on('Page.screencastFrame', async (ev) => {
     const i = n++;
-    writeFileSync(join(dir, `f${String(i).padStart(5, '0')}.jpg`), Buffer.from(ev.data, 'base64'));
-    frames.push({ i, t: Date.now() / 1000 });
+    frames.push({ i, t: Date.now() / 1000, buf: Buffer.from(ev.data, 'base64') });
     try { await cdp.send('Page.screencastFrameAck', { sessionId: ev.sessionId }); } catch { /* closed */ }
   });
   await cdp.send('Page.startScreencast', {
-    format: 'jpeg', quality: 92, everyNthFrame: 1,
+    // everyNthFrame: 2, unlike the feature clips. Repainting the whole shell nine
+    // times makes this the busiest capture in the set — it emitted ~157 frames a
+    // second — and the output is 10fps anyway, so half of them were work for
+    // nothing and the backlog was actively harmful (see openPalette).
+    format: 'jpeg', quality: 92, everyNthFrame: 2,
     maxWidth: Math.round(VIEW.width * 1.5), maxHeight: Math.round(VIEW.height * 1.5),
   });
 
+  /**
+   * Open the command palette by dispatching the Shift pair *in the page*.
+   *
+   * The palette opens on a double-tap of Shift, which means it is one of the few
+   * things here that depends on the gap between two inputs. Driving it with
+   * `keyboard.press` from Node makes that gap a function of how busy the Node
+   * event loop is — and with a screencast decoding a base64 frame every few
+   * milliseconds it degrades as the run goes on: the first four opens succeed and
+   * the fifth is delivered as two separate taps. Dispatching both from one
+   * `evaluate` puts the timing inside the browser, where it belongs.
+   *
+   * Feature 11 still opens the palette with real key presses — it does it once, on
+   * a quiet page, and that clip is *about* the interaction. This one is about the
+   * themes.
+   */
+  const openPalette = async () => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await page.evaluate(() => {
+        const tap = () => document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Shift', bubbles: true, cancelable: true }));
+        tap();
+        tap();
+      });
+      try {
+        await page.locator('[data-testid="palette-modal"]').waitFor({ state: 'visible', timeout: 3000 });
+        return;
+      } catch { await page.waitForTimeout(800); }
+    }
+    throw new Error('palette never opened after 4 double-taps');
+  };
+
+  // Wait for the grid itself, not a fixed delay: the palette's keydown handler and
+  // the first card land in the same render pass.
+  await page.locator('[data-testid="session-card"], a[href*="/sessions/"]').first()
+    .waitFor({ state: 'visible', timeout: 20000 });
+  await page.waitForTimeout(1200);
+
   const seen = [];
   for (let i = 0; i < FAMILIES.length; i++) {
-    await page.keyboard.press('Shift');
-    await page.keyboard.press('Shift');
-    await page.locator('[data-testid="palette-modal"]').waitFor({ state: 'visible', timeout: 6000 });
+    await openPalette();
     await page.keyboard.type('next', { delay: 20 });
     await page.waitForTimeout(300);
     await page.keyboard.press('Enter');
@@ -1059,6 +1440,8 @@ if (!ONLY_SHOTS) {
   await page.waitForTimeout(1200);
   try { await cdp.send('Page.stopScreencast'); } catch { /* closed */ }
   await new Promise((r) => setTimeout(r, 300));
+  frames.sort((a, b) => a.i - b.i);
+  for (const f of frames) writeFileSync(join(dir, `f${String(f.i).padStart(5, '0')}.jpg`), f.buf);
 
   const distinct = new Set(seen);
   if (distinct.size < FAMILIES.length)
@@ -1084,7 +1467,7 @@ if (!ONLY_SHOTS) {
     // stats_mode=full, not diff: the whole frame changes colour on every step, so
     // a palette weighted toward "what moved" would be weighted toward everything
     // and still have to serve nine palettes at once.
-    '-vf', `scale=${GIF_W}:-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=full:max_colors=192[p];[b][p]paletteuse=dither=sierra2_4a`,
+    '-vf', `scale=${GIF_W}:-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=full:max_colors=160[p];[b][p]paletteuse=dither=sierra2_4a`,
     '-loop', '0', gifPath]);
   rows.push({ file: '27-themes.gif', kb: Math.round(statSync(gifPath).size / 1024) });
   await ctx.close();
