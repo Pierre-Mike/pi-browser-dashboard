@@ -79,8 +79,9 @@ const serveAsset =
     })
   }
 
-// Mounted under the projects router: routes are leaf-relative and read the
-// project id from the parent `:id` param.
+// Mounted at `/projects` by api.ts — the composition root, not the projects
+// slice, which used to compose this app into its own router. The routes declare
+// the project id themselves.
 //   GET  /projects/:id/pid-apps              -> list the project's pid-apps
 //   POST /projects/:id/pid-apps              -> create a new pid-app { name }
 //   GET  /projects/:id/pid-apps/:appId[/*]   -> stream an app asset (entry if bare)

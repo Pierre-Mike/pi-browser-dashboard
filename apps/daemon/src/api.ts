@@ -14,6 +14,8 @@ import { fleetRunRegistry } from "./features/fleet/fleet-run.io"
 import * as globalSettingsRoute from "./features/global-settings/global-settings.routes"
 import * as issueDriverRoute from "./features/issue-driver/issue-driver.routes"
 import * as libraryRoute from "./features/library/library.routes"
+import * as pidAppsRoute from "./features/pid-apps/pid-apps.routes"
+import * as pidSettingsRoute from "./features/pid-settings/pid-settings.routes"
 import * as fileBrowserWriteRoute from "./features/projects/fileBrowserWrite.routes"
 import * as projectsRoute from "./features/projects/projects.routes"
 import { createRulesEngine, type RulesPorts } from "./features/rules/rules.io"
@@ -216,6 +218,19 @@ const app = new Hono()
   // brainstorms slice stays independent of it: the root resolver is passed in.
   .route("/sessions", brainstormsRoute.createApp(sessionsRoute.resolveSessionRoot))
   .route("/projects", projectsRoute.app)
+  // Per-project pid-settings (GET/POST /projects/:id/pid-settings) and pid-apps
+  // (HTML dropped into <project>/.pid/: GET/POST /projects/:id/pid-apps, GET
+  // /projects/:id/pid-apps/:appId[/*]). Mounted here rather than inside
+  // projects.routes.ts, which used to `.route("/", …)` both of them: composing
+  // another slice's fully wired Hono app is a back-channel no door can express
+  // — a `Context.Tag` cannot mean "hand me your mounted router", and publishing
+  // `app` publishes the whole slice. Same reason fleetRoute is mounted here.
+  // Order matters only where patterns overlap and these do not (`fs` vs
+  // `pid-settings` vs `pid-apps` are distinct literal segments), but they sit
+  // ahead of fileBrowserWriteRoute anyway so the global matching sequence is
+  // byte-for-byte what it was when they were nested.
+  .route("/projects", pidSettingsRoute.app)
+  .route("/projects", pidAppsRoute.app)
   .route("/projects", fileBrowserWriteRoute.app)
   // Fleet recipes (declarative multi-agent runs in <project>/.pid/fleet.json):
   // GET /projects/:id/fleets (schema + validation + wave planning), POST

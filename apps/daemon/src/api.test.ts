@@ -170,6 +170,63 @@ describe("GET /rules — mounted and off by default", () => {
   })
 })
 
+// The per-project sub-apps used to be composed into the projects router by
+// `projects.routes.ts` itself (`.route("/", pidSettingsApp)`), a cross-slice
+// back-channel; they are mounted from api.ts now. Nothing asserted the mounts
+// existed: pid-apps.routes.test.ts and pid-settings.routes.test.ts each build
+// their sub-app in isolation via `createApp(run)` and request `/:id/pid-apps`
+// directly, so both suites stay green even if the mount is deleted outright.
+// This block is the missing half — it asserts the assembled table, so dropping
+// a mount, or moving one out from under `/projects`, fails here.
+describe("per-project sub-apps are mounted under /projects", () => {
+  const routes = (app as unknown as { routes: ReadonlyArray<{ method: string; path: string }> })
+    .routes
+
+  const mounted = ({ method, path }: { method: string; path: string }): boolean =>
+    routes.some((r) => r.method === method && r.path === path)
+
+  it("carries every pid-settings and pid-apps path the web client calls", () => {
+    // Full paths, not suffixes: the bug this guards against is a mount landing
+    // at the wrong prefix, which a suffix match would happily accept.
+    for (const [method, path] of [
+      ["GET", "/projects/:id/pid-settings"],
+      ["POST", "/projects/:id/pid-settings"],
+      ["GET", "/projects/:id/pid-apps"],
+      ["POST", "/projects/:id/pid-apps"],
+      // The asset routes: bare `:appId` serves the entry, the wildcard serves
+      // everything under it. e2e drives both, including traversal refusals.
+      ["GET", "/projects/:id/pid-apps/:appId"],
+      ["GET", "/projects/:id/pid-apps/:appId/*"],
+    ] as const) {
+      expect(mounted({ method, path })).toBe(true)
+    }
+  })
+
+  it("resolves them to the slice's own handler, not to an unmatched 404", async () => {
+    // Hono answers an unmounted path with plain-text "404 Not Found". A mounted
+    // route reaches the slice handler, which answers an unknown project with
+    // the repo's one error shape. So the JSON envelope — not the status — is
+    // what distinguishes "mounted and rejected the id" from "never mounted".
+    const unknownProject = "no-such-project-tCH8Qd"
+    for (const path of [
+      `/projects/${unknownProject}/pid-settings`,
+      `/projects/${unknownProject}/pid-apps`,
+    ]) {
+      // Read as text and parse by hand: an unmounted path answers with
+      // plain-text "404 Not Found", and `res.json()` on that throws a
+      // SyntaxError instead of failing an assertion — a green-or-crash test
+      // says nothing about which mount broke.
+      const res = await app.request(path)
+      const raw = await res.text()
+      const parsed: unknown = raw.startsWith("{") ? JSON.parse(raw) : undefined
+      expect({ path, error: (parsed as { error?: unknown } | undefined)?.error }).toEqual({
+        path,
+        error: expect.any(String),
+      })
+    }
+  })
+})
+
 describe("GET /agent-skill.md", () => {
   it("serves the agent skill doc as markdown with substantive content", async () => {
     const res = await app.request("/agent-skill.md")
