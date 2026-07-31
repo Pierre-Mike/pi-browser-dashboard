@@ -283,7 +283,7 @@
     <a class="btn" href="https://github.com/Pierre-Mike/pi-browser-dashboard#quick-start" target="_blank" rel="noopener">Quick start</a>
   </div>
   <div class="stats">
-    <div class="stat"><div class="n" id="statFeatures">26</div><div class="l">Features</div></div>
+    <div class="stat"><div class="n" id="statFeatures">25</div><div class="l">Features</div></div>
     <div class="stat"><div class="n" id="statStories">9</div><div class="l">User stories</div></div>
     <div class="stat"><div class="n">18</div><div class="l">Themes</div></div>
     <div class="stat"><div class="n">0</div><div class="l">Databases</div></div>
@@ -420,6 +420,18 @@ const STORIES = [
   },
 ];
 
+// The themes section is a story like any other — same keys, same shape — so the
+// consistency guard counts it, requires its scenario prose, and validates the
+// walkthrough step that points at it. Rendered separately only because its body is
+// a swatch gallery rather than a card grid.
+const THEME_STORY = {
+  id: "story-themes", nav: "Themes", icon: "🎨",
+  kicker: "Make it yours",
+  title: "\"Give me a dashboard I actually want to stare at.\"",
+  desc: "Nine colour families, each a light and a dark variant — eighteen themes, one set of semantic classes. A family owns its <em>shape</em> too (corner radius per role, border width, depth), and its own sixteen-slot terminal palette, so the xterm pane stops looking like a hole in the page. Every one of them is gated, not eyeballed: <b>4.5:1</b> for every ink token on its own background, <b>7:1</b> for body text, in all eighteen.",
+  scenario: "It's late, the room is dark, and slate-on-white is not it. Double-tap Shift, \"Theme: next family\", and the whole shell — cards, chips, buttons, terminal — repaints without a reload.",
+};
+
 // Nine families x two variants. The `light`/`dark`/`lab` files are all captured
 // from the same populated dashboard, because that is the only surface that tells
 // the truth about a palette: five of the seven ink tokens only paint when a
@@ -509,10 +521,10 @@ for (const s of STORIES) {
 // ------------------------------------------------------------- theme gallery
 {
   const a = document.createElement("a");
-  a.href = "#story-themes"; a.textContent = "Themes"; navLinks.appendChild(a);
+  a.href = `#${THEME_STORY.id}`; a.textContent = THEME_STORY.nav; navLinks.appendChild(a);
 
   const sec = document.createElement("section");
-  sec.className = "story themes"; sec.id = "story-themes";
+  sec.className = "story themes"; sec.id = THEME_STORY.id;
   const tiles = FAMILIES.map(f => `
     <div class="swatch">
       <div class="shot" data-full="${THEMEDIR}${f.id}-VARIANT.webp" data-title="${esc(f.name)} — ${esc(f.hue)}" data-desc="${esc(f.note)}">
@@ -525,18 +537,18 @@ for (const s of STORIES) {
     </div>`).join("");
   sec.innerHTML = `
     <div class="story-head">
-      <div class="story-kicker"><span class="ico">🎨</span>Make it yours</div>
-      <h2><span class="quote">"Give me a dashboard I actually want to stare at."</span></h2>
-      <p class="story-desc">Nine colour families, each a light and a dark variant — eighteen themes, one set of semantic classes. A family owns its <em>shape</em> too (corner radius per role, border width, depth), and its own sixteen-slot terminal palette, so the xterm pane stops looking like a hole in the page. Every one of them is gated, not eyeballed: <b>4.5:1</b> for every ink token on its own background, <b>7:1</b> for body text, in all eighteen.</p>
-      <p class="story-scenario"><span class="you">The moment:</span> It's late, the room is dark, and slate-on-white is not it. Double-tap Shift, "Theme: next family", and the whole shell — cards, chips, buttons, terminal — repaints without a reload.</p>
+      <div class="story-kicker"><span class="ico">${THEME_STORY.icon}</span>${esc(THEME_STORY.kicker)}</div>
+      <h2><span class="quote">${esc(THEME_STORY.title)}</span></h2>
+      <p class="story-desc">${THEME_STORY.desc}</p>
+      <p class="story-scenario"><span class="you">The moment:</span> ${esc(THEME_STORY.scenario)}</p>
     </div>
     <div class="theme-hero">
       <img loading="lazy" src="${GIFDIR}27-themes.gif" alt="The dashboard cycling through all nine theme families" />
       <div class="cap">One dashboard, nine families, switched live from the command palette. Nothing reloads and no session detaches.</div>
     </div>
-    <div class="theme-hero">
+    <div class="theme-hero" id="labHero" data-clip="${GIFDIR}26-theme-lab.gif">
       <img loading="lazy" src="${SHOTDIR}26-theme-lab.webp" alt="The /theme-lab route: every family and both variants on one page" />
-      <div class="cap"><b>/theme-lab</b> — the review surface itself. Every family, both variants, every token and daisyUI component, and the session-state chips in <em>two</em> columns: idle and reporting. Reading only the idle column is how a family ships looking like one colour.</div>
+      <div class="cap"><b>/theme-lab</b> — the review surface itself. Every family, both variants, every token and daisyUI component, and the session-state chips in <em>two</em> columns: idle and reporting. Reading only the idle column is how a family ships looking like one colour. <b>Click to scroll the whole page ⤢</b></div>
     </div>
     <div class="theme-toolbar">
       <div class="seg" role="group" aria-label="Theme variant">
@@ -559,6 +571,13 @@ for (const s of STORIES) {
       });
     });
   });
+  const labHero = sec.querySelector("#labHero");
+  labHero.style.cursor = "zoom-in";
+  labHero.addEventListener("click", () => openLB({
+    src: labHero.dataset.clip,
+    title: "/theme-lab",
+    desc: "Every family and both variants on one page — tokens, components, radius roles, and the state chips in their idle and reporting columns.",
+  }));
   sec.querySelectorAll(".swatch .shot").forEach(shot => {
     shot.addEventListener("click", () => {
       openLB({
