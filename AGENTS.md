@@ -26,7 +26,7 @@ exists at all — only claude writes a per-session `state.json`.
 The handle every surface addresses a session by. Distinct from `sessionId`, the
 run's UUID — claude's own for a claude session, the one the daemon minted for a
 pi one. The registry keys sessions by job dir, and a `daemonShort` alias can
-make the two differ.
+make the exposed short differ from that key.
 _Avoid_: session handle
 
 **Roster**:
@@ -58,18 +58,26 @@ The prompt text a spawn carries — one per dispatched session, one per fleet st
 _Avoid_: task description
 
 **Wait**:
-A server-owned block until a session reaches one of a set of states, or its
-screen shows a given pattern, `via` the supervisor reading, the screen reading,
-or either. The supported alternative to polling.
+A server-owned block until a session reaches one of a set of states — `via` the
+supervisor reading, the screen reading, or either — or until its screen shows a
+given pattern, which `via` never gates. The supported alternative to polling.
 
 **Named key**:
 A keystroke addressed by name (`enter`, `down`, `escape`, …) rather than
 hand-encoded control bytes. `ctrl-c` and `ctrl-z` are deliberately outside the
 vocabulary, though the raw send path still carries any byte.
 
+**`pid`**:
+The agent-facing CLI an agent drives itself. As a bare identifier in code the
+token still means process id (`worker.pid`, `pidAlive`); the CLI is only ever
+the command name. Three neighbours share the prefix and are none of the above:
+`pid-dashboard` (the packaged distribution), `<project>/.pid/` (the per-project
+directory) and pid-app.
+
 **Orchestrator**:
-The role that spawns and steers other sessions rather than doing the work — the
-dispatch bar, a fleet run, an agent driving `pid`. Also one of the four scopes.
+One fixed terminal — the zellij session the daemon boots the supervisor in,
+addressed `orchestrator:orchestrator`. The dispatch bar's role name in
+`## Decisions` below; not a category other sessions belong to.
 
 **Scope**:
 Which terminal is meant — `global`, `orchestrator`, `project` or `session`. A
@@ -81,11 +89,6 @@ only the panes it minted itself. A pane's own reading is addressed
 `<scope>:<id>#<paneId>`, and that id is not a short — never send keys to it.
 
 ### Surfaces hanging off a project or a session
-
-**`pid`**:
-The agent-facing CLI an agent drives itself. Three neighbours share the prefix
-and are not it: `pid-dashboard` (the packaged distribution), `<project>/.pid/`
-(the per-project directory) and pid-app.
 
 **Brainstorm board**:
 Any drawing file in the tree a session works in (`*.canvas`, `*.canvas.json`,
