@@ -7,6 +7,11 @@ do, the session-state and orchestration decisions, the API surface, the pid-apps
 and CLI distribution notes, and the per-directory expertise index. Read it for
 *this* product. Read the canon below for *how we build*.
 
+Its `## Domain` section is the product's vocabulary — supervisor vs harness,
+short, the supervisor and screen readings, scope, pane, board, fleet recipe,
+rule. Use those words; the `_Avoid_` lists name the ones we retired. The
+glossary lives only in `AGENTS.md`, never copied here.
+
 <!-- CANON:START -->
 ## Engineering canon
 

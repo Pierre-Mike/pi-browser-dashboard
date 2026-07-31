@@ -4,6 +4,105 @@
 
 A browser front-end to Claude Code's `claude agents` background sessions. Same supervisor, same worktrees, same auto-cleanup — different surface: a grid of cards reachable from any device, with richer permission and artifact rendering than a terminal can manage.
 
+## Domain
+
+The vocabulary this product is described in. A browser surface over background
+coding-agent sessions that other tools own: the daemon reads, addresses and
+automates them, while whatever harness runs a session owns its process, its
+worktree and its state.
+
+### A session, and the two readings of it
+
+**Supervisor**:
+The Claude Code process that owns background sessions — processes, worktrees,
+summaries, restart-on-attach. This daemon mirrors it and never replaces it.
+_Avoid_: session manager, agent manager
+
+**Harness**:
+Which CLI runs a session, `claude` or `pi`. The choice decides what provenance
+exists at all — only claude writes a per-session `state.json`.
+_Avoid_: cli flavour, cli flavor
+
+**Short**:
+The handle every surface addresses a session by. Distinct from `sessionId`, the
+harness's own UUID for the same run.
+_Avoid_: session handle, job id
+
+**Roster**:
+The supervisor's list of live claude shorts (`roster.json`). A pi session sits in
+no roster, so roster membership is not the test for whether a session exists.
+
+**Supervisor reading**:
+What a session claims about itself — `state.json`, republished as `session.state`.
+
+**Screen reading**:
+What the matcher table concludes from a terminal's own bytes, republished as
+`terminal.state`. Independent of the supervisor reading, and free to contradict it.
+_Avoid_: screen guess
+
+**Matcher**:
+The named classifier row that produced a screen reading (`permission-prompt`,
+`workspace-trust-prompt`, …). A rule names one when a state alone is too coarse
+to act on.
+
+**Explain**:
+The provenance answer for one session: where its state came from, how stale that
+is, what the screen read, and whether the two disagree.
+
+### Driving a session
+
+**Intent**:
+The prompt text a spawn carries. `POST /dispatch` takes one, and so does every
+fleet step.
+_Avoid_: task description
+
+**Wait**:
+A server-owned block until a session reaches one of a set of states, `via` the
+supervisor reading, the screen reading, or either. The supported alternative to
+polling.
+
+**Named key**:
+A keystroke addressed by name (`enter`, `down`, `escape`, …) rather than
+hand-encoded control bytes. `ctrl-c` and `ctrl-z` are deliberately absent.
+
+**Scope**:
+Which terminal is meant — `global`, `orchestrator`, `project` or `session`. A
+terminal is addressed as `<scope>:<id>`, never by a zellij session name.
+
+**Pane**:
+A zellij pane, and the daemon's only write surface into zellij: it may close
+only the panes it minted itself.
+
+### Surfaces hanging off a project or a session
+
+**Board**:
+Any drawing file in the tree a session works in (`*.canvas`, `*.canvas.json`,
+`*.excalidraw`). Its worktree-relative path is its identity.
+
+**pid-app**:
+A static HTML site dropped into `<project>/.pid/` and served as a sandboxed
+project tab. Untrusted by construction, and not the manifest-based extension
+platform.
+_Avoid_: pid extension
+
+**Fleet recipe**:
+A re-runnable description of a multi-agent run: steps, each spawning `n` agents
+on one intent, with `needs` dependencies. Sorting `needs` groups the steps into
+waves that run concurrently.
+_Avoid_: fleet template, fleet config
+
+**Rule**:
+A `when` → `do` automation on either reading of a session. Off unless the file
+says so, and a `keys` action needs its own `confirm`.
+
+**Suppression**:
+A rule that matched and did not fire — cooldown, per-session ceiling, or
+unconfirmed keys. Published like a real firing, because a silently throttled
+automation is indistinguishable from a broken one.
+
+Decisions are recorded in `## Decisions` below and in the prose section that owns
+each feature; this repo keeps no `docs/adr/`.
+
 ## Architecture
 
 Daemon is a thin file-watcher + child-process wrapper over the existing Claude Code supervisor. Sessions are spawned with `claude --bg`, observed via `~/.claude/daemon/roster.json` and `~/.claude/jobs/<id>/state.json`, controlled via `claude stop|respawn|rm`. The supervisor owns processes, worktrees, summarization, restart-on-attach. We never touch them.
