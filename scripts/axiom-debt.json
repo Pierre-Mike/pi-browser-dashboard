@@ -18,10 +18,8 @@
     "apps/daemon/src/features/pid-settings/pid-settings.io.test.ts": 1,
     "apps/daemon/src/features/pid-settings/pid-settings.io.ts": 1,
     "apps/daemon/src/features/projects/projects.routes.ts": 2,
-    "apps/daemon/src/features/sessions/files.io.ts": 2,
-    "apps/daemon/src/features/sessions/sessions.routes.test.ts": 1,
-    "apps/daemon/src/features/sessions/sessions.routes.ts": 3,
-    "apps/daemon/src/features/terminal/terminal.routes.ts": 4
+    "apps/daemon/src/features/sessions/sessions.routes.ts": 2,
+    "apps/daemon/src/features/terminal/terminal.routes.ts": 2
   },
   "env-outside-config": {
     "apps/daemon/src/api.ts": 1,

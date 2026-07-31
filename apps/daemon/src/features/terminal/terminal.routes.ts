@@ -9,10 +9,10 @@ import { readSpawnConfig } from "../../platform/spawn-config"
 import { sseBus } from "../../platform/sse-bus"
 import { upgradeWebSocket } from "../../platform/ws"
 import { readZellijPrefix } from "../../platform/zellij-prefix"
-import { PiSessionsIo } from "../dispatch/pi-sessions.io"
+import { PiSessionsIo } from "../dispatch/pi-sessions.door"
 import type { Project } from "../projects/projects.io"
 import { ProjectsService } from "../projects/projects.io"
-import { SessionRegistry } from "../sessions/sessions.io"
+import { SessionRegistry } from "../sessions/sessions.door"
 import {
   buildChildArgv,
   formatSizeFileContent,
