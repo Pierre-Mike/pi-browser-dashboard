@@ -10,8 +10,7 @@ import { sseBus } from "../../platform/sse-bus"
 import { upgradeWebSocket } from "../../platform/ws"
 import { readZellijPrefix } from "../../platform/zellij-prefix"
 import { PiSessionsIo } from "../dispatch/pi-sessions.door"
-import type { Project } from "../projects/projects.io"
-import { ProjectsService } from "../projects/projects.io"
+import { type Project, ProjectsService } from "../projects/projects.door"
 import { SessionRegistry } from "../sessions/sessions.door"
 import {
   buildChildArgv,

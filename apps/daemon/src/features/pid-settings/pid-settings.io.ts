@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 import { isSafeSegment } from "../../platform/safe-path.core"
-import { ProjectsService, resolveProjectDir } from "../projects/projects.io"
+import { ProjectsService, resolveProjectDir } from "../projects/projects.door"
 import {
   mergePidSettings,
   type PidSettings,

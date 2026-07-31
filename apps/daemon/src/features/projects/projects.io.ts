@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
+import type { Project } from "@pid/shared"
 import { Context, Effect, Layer } from "effect"
 import { ConfigService } from "../../platform/config.io"
 import { isSafeSegment, resolveProjectPath } from "../../platform/safe-path.core"
@@ -13,18 +14,13 @@ import {
   sortEntries,
 } from "./projects.core"
 
-export type Project = {
-  readonly id: string
-  readonly name: string
-  readonly path: string
-  readonly isGitRepo: boolean
-  readonly lastModified: number
-  readonly lastCommitMs?: number
-  readonly branch?: string
-  readonly githubUrl?: string
-  readonly githubOwner?: string
-  readonly githubRepo?: string
-}
+// `Project` is the `@pid/shared` Schema, not a declaration of its own. It used
+// to be re-declared here field-for-field — the second of the two copies
+// `shared/src/project.ts` was written to collapse, whose own header already
+// describes this one in the past tense. The web mirror went at the time; this
+// one outlived the sentence claiming it was gone, which is exactly how a
+// two-declarations defect survives being documented. Consumers import it from
+// `@pid/shared`, or through this slice's door alongside the Tag.
 
 type FileListing = {
   readonly path: string

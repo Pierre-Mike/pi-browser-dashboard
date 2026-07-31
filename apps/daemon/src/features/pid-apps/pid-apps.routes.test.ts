@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
-import { type Project, ProjectsIoTest } from "../projects/projects.io"
+import { type Project, ProjectsIoTest } from "../projects/projects.door"
 import { PidAppsIoLive } from "./pid-apps.io"
 import { createApp } from "./pid-apps.routes"
 

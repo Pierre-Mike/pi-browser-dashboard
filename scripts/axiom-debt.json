@@ -4,21 +4,12 @@
     "apps/daemon/src/features/brainstorms/brainstorms.routes.test.ts": 3,
     "apps/daemon/src/features/brainstorms/brainstorms.routes.ts": 5,
     "apps/daemon/src/features/claude-config/claude-config.io.test.ts": 1,
-    "apps/daemon/src/features/claude-config/claude-config.io.ts": 1,
     "apps/daemon/src/features/dispatch/pi-sessions.core.ts": 1,
     "apps/daemon/src/features/dispatch/pi-sessions.io.ts": 1,
     "apps/daemon/src/features/dispatch/pi.io.ts": 1,
-    "apps/daemon/src/features/issue-driver/issue-driver.io.test.ts": 1,
-    "apps/daemon/src/features/issue-driver/issue-driver.io.ts": 1,
     "apps/daemon/src/features/library/library.io.test.ts": 1,
-    "apps/daemon/src/features/library/library.io.ts": 1,
-    "apps/daemon/src/features/pid-apps/pid-apps.io.test.ts": 1,
-    "apps/daemon/src/features/pid-apps/pid-apps.io.ts": 1,
-    "apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts": 1,
     "apps/daemon/src/features/pid-settings/pid-settings.io.test.ts": 1,
-    "apps/daemon/src/features/pid-settings/pid-settings.io.ts": 1,
-    "apps/daemon/src/features/sessions/sessions.routes.ts": 2,
-    "apps/daemon/src/features/terminal/terminal.routes.ts": 2
+    "apps/daemon/src/features/sessions/sessions.routes.ts": 2
   },
   "env-outside-config": {
     "apps/daemon/src/api.ts": 1,
