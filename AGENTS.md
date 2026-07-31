@@ -21,16 +21,18 @@ _Avoid_: session manager, agent manager
 **Harness**:
 Which CLI runs a session, `claude` or `pi`. The choice decides what provenance
 exists at all — only claude writes a per-session `state.json`.
-_Avoid_: cli flavour, cli flavor
 
 **Short**:
 The handle every surface addresses a session by. Distinct from `sessionId`, the
-harness's own UUID for the same run.
-_Avoid_: session handle, job id
+run's UUID — claude's own for a claude session, the one the daemon minted for a
+pi one. The registry keys sessions by job dir, and a `daemonShort` alias can
+make the exposed short differ from that key.
+_Avoid_: session handle
 
 **Roster**:
-The supervisor's list of live claude shorts (`roster.json`). A pi session sits in
-no roster, so roster membership is not the test for whether a session exists.
+The supervisor's list of the claude workers it currently runs (`roster.json`).
+Membership is liveness, never existence: a departed worker keeps its session for
+as long as its job dir survives, and a pi session sits in no roster at all.
 
 **Supervisor reading**:
 What a session claims about itself — `state.json`, republished as `session.state`.
@@ -52,18 +54,30 @@ is, what the screen read, and whether the two disagree.
 ### Driving a session
 
 **Intent**:
-The prompt text a spawn carries. `POST /dispatch` takes one, and so does every
-fleet step.
+The prompt text a spawn carries — one per dispatched session, one per fleet step.
 _Avoid_: task description
 
 **Wait**:
-A server-owned block until a session reaches one of a set of states, `via` the
-supervisor reading, the screen reading, or either. The supported alternative to
-polling.
+A server-owned block until a session reaches one of a set of states — `via` the
+supervisor reading, the screen reading, or either — or until its screen shows a
+given pattern, which `via` never gates. The supported alternative to polling.
 
 **Named key**:
 A keystroke addressed by name (`enter`, `down`, `escape`, …) rather than
-hand-encoded control bytes. `ctrl-c` and `ctrl-z` are deliberately absent.
+hand-encoded control bytes. `ctrl-c` and `ctrl-z` are deliberately outside the
+vocabulary, though the raw send path still carries any byte.
+
+**`pid`**:
+The agent-facing CLI an agent drives itself. As a bare identifier in code the
+token still means process id (`worker.pid`, `pidAlive`); the CLI is only ever
+the command name. Three neighbours share the prefix and are none of the above:
+`pid-dashboard` (the packaged distribution), `<project>/.pid/` (the per-project
+directory) and pid-app.
+
+**Orchestrator**:
+One fixed terminal — the zellij session the daemon boots the supervisor in,
+addressed `orchestrator:orchestrator`. The dispatch bar's role name in
+`## Decisions` below; not a category other sessions belong to.
 
 **Scope**:
 Which terminal is meant — `global`, `orchestrator`, `project` or `session`. A
@@ -71,19 +85,20 @@ terminal is addressed as `<scope>:<id>`, never by a zellij session name.
 
 **Pane**:
 A zellij pane, and the daemon's only write surface into zellij: it may close
-only the panes it minted itself.
+only the panes it minted itself. A pane's own reading is addressed
+`<scope>:<id>#<paneId>`, and that id is not a short — never send keys to it.
 
 ### Surfaces hanging off a project or a session
 
-**Board**:
+**Brainstorm board**:
 Any drawing file in the tree a session works in (`*.canvas`, `*.canvas.json`,
-`*.excalidraw`). Its worktree-relative path is its identity.
+`*.excalidraw`); "board" for short, `brainstorm` in code. Its worktree-relative
+path is its identity.
 
 **pid-app**:
 A static HTML site dropped into `<project>/.pid/` and served as a sandboxed
 project tab. Untrusted by construction, and not the manifest-based extension
-platform.
-_Avoid_: pid extension
+platform — that one is an extension, and the two are separate features.
 
 **Fleet recipe**:
 A re-runnable description of a multi-agent run: steps, each spawning `n` agents
@@ -96,9 +111,9 @@ A `when` → `do` automation on either reading of a session. Off unless the file
 says so, and a `keys` action needs its own `confirm`.
 
 **Suppression**:
-A rule that matched and did not fire — cooldown, per-session ceiling, or
-unconfirmed keys. Published like a real firing, because a silently throttled
-automation is indistinguishable from a broken one.
+A rule that matched and did not fire — a disabled rule, cooldown, per-session
+ceiling, or unconfirmed keys. Published like a real firing, because a silently
+throttled automation is indistinguishable from a broken one.
 
 Decisions are recorded in `## Decisions` below and in the prose section that owns
 each feature; this repo keeps no `docs/adr/`.
