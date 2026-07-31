@@ -234,7 +234,10 @@ export const SessionCardActions = ({ session }: { session: SessionState }) => {
           className="btn btn-xs btn-ghost normal-case"
           title={`Copy: ${attachCommand(session)}`}
         >
-          {a.copied ? "Copied" : "Open ↗"}
+          {/* The old bare Open ↗ read as *the* open control on a card whose body
+              is the real way in, and all it does is copy a command — the
+              drill-in topbar already spells the same action out this way. */}
+          {a.copied ? "Copied" : "Open in CLI ↗"}
         </button>
         {isPi ? null : <ClaudeControls a={a} />}
         <span className="ml-auto flex items-center gap-1.5">
