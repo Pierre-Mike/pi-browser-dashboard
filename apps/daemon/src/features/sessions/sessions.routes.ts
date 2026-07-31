@@ -4,7 +4,7 @@ import { Hono } from "hono"
 import { contentDispositionAttachment } from "../../platform/http-content.core"
 import { appRuntime } from "../../platform/runtime"
 import { ShellIo } from "../../platform/shell.io"
-import { PiSessionsIo } from "../dispatch/pi-sessions.io"
+import { PiSessionsIo } from "../dispatch/pi-sessions.door"
 import { readFileAt, resolveRawAt, treeAt } from "../projects/fileBrowser.io"
 import {
   errorToStatus,
