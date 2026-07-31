@@ -1,2 +1,26 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
+
+/* The one hand-written rule in the app, and it must stay unlayered.
+
+   daisyUI 4 exposed `--animation-btn`, and the `terminal` family set it to `0s`
+   — a phosphor tube repaints, it does not ease. daisyUI 5 deleted the property
+   and hardcodes `transition-duration:.2s` inside `.btn`, so that family trait
+   was lost in the v5 migration with nothing to restore it through. This rule is
+   the replacement knob, reading a repo-owned `--pid-btn-duration` that each
+   theme may declare (see SHAPE_BY_FAMILY in src/lib/ui/themeCatalog.test.ts).
+
+   UNLAYERED IS LOAD-BEARING. daisyUI ships `.btn` inside a cascade layer, and
+   any unlayered rule beats every layered one regardless of specificity or
+   source order. Move this into `@layer components` (or into the daisyUI layer)
+   to "tidy" it and it silently loses to daisyUI's own `.btn` — the var keeps
+   resolving, the declaration keeps existing, and no button ever changes speed.
+
+   The `.2s` fallback is daisyUI's own value, so a theme that declares nothing
+   is unaffected — which is seven of the nine families. `theme-switch.spec.ts`
+   asserts all three outcomes (0s, 0.4s and the inherited fallback) against a
+   real button's *computed* duration, because asserting the variable would
+   prove only that the variable exists. */
+.btn {
+  transition-duration: var(--pid-btn-duration, 0.2s);
+}

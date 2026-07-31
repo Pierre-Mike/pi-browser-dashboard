@@ -135,6 +135,11 @@ export const THEMES = [
     "--border": "2px",
     "--depth": "0",
     "--noise": "0",
+    // Repo-owned, not daisyUI's: v5 deleted `--animation-btn` and hardcodes
+    // `transition-duration:.2s` inside `.btn`, so one unlayered rule in
+    // src/styles.css reads this instead. A phosphor terminal repaints; it does
+    // not ease. See themeCatalog.test.ts's SHAPE_BY_FAMILY for the whole column.
+    "--pid-btn-duration": "0s",
   },
   {
     name: "terminaldark",
@@ -158,6 +163,7 @@ export const THEMES = [
     "--border": "2px",
     "--depth": "0",
     "--noise": "0",
+    "--pid-btn-duration": "0s",
   },
   {
     name: "sunsetlight",
@@ -268,6 +274,9 @@ export const THEMES = [
     "--border": "2px",
     "--depth": "1",
     "--noise": "0",
+    // The one family that slows down rather than speeds up — see
+    // themeCatalog.test.ts's SHAPE_BY_FAMILY for why candy and not sunset.
+    "--pid-btn-duration": "0.4s",
   },
   {
     name: "candydark",
@@ -293,6 +302,7 @@ export const THEMES = [
     "--border": "2px",
     "--depth": "1",
     "--noise": "0",
+    "--pid-btn-duration": "0.4s",
   },
   {
     name: "arcadelight",
