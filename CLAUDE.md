@@ -7,10 +7,12 @@ do, the session-state and orchestration decisions, the API surface, the pid-apps
 and CLI distribution notes, and the per-directory expertise index. Read it for
 *this* product. Read the canon below for *how we build*.
 
-Its `## Domain` section is the product's vocabulary — supervisor vs harness,
-short, the supervisor and screen readings, scope, pane, board, fleet recipe,
-rule. Use those words; the `_Avoid_` lists name the ones we retired. The
-glossary lives only in `AGENTS.md`, never copied here.
+Its `## Domain` section is the product's vocabulary, and two of its distinctions
+have already cost us bugs: a **short** is not a `sessionId`, and the
+**supervisor reading** of a session (`state.json`) is not its **screen reading**
+(what the matcher table saw) — they are independent and may contradict. Read the
+section before naming anything; the `_Avoid_` lists are near-synonyms we refuse,
+not names in use. The glossary lives only in `AGENTS.md`, never copied here.
 
 <!-- CANON:START -->
 ## Engineering canon
