@@ -26,8 +26,9 @@ type ServiceCall = (
   s: typeof PidSettingsService.Service,
 ) => Effect.Effect<PidSettings, PidSettingsError>
 
-// Mounted under the projects router, so the routes are leaf-relative and read
-// the project id from the parent `:id` param: GET/POST /projects/:id/pid-settings.
+// Mounted at `/projects` by api.ts — the composition root, not the projects
+// slice, which used to compose this app into its own router. The routes declare
+// the project id themselves: GET/POST /projects/:id/pid-settings.
 export const createApp = (run: RunPromise) => {
   // Run a service call and render its Either result as JSON: the success value
   // on the right, or `{ error }` with the mapped status on the left.

@@ -17,7 +17,6 @@
     "apps/daemon/src/features/pid-apps/pid-apps.routes.test.ts": 1,
     "apps/daemon/src/features/pid-settings/pid-settings.io.test.ts": 1,
     "apps/daemon/src/features/pid-settings/pid-settings.io.ts": 1,
-    "apps/daemon/src/features/projects/projects.routes.ts": 2,
     "apps/daemon/src/features/sessions/sessions.routes.ts": 2,
     "apps/daemon/src/features/terminal/terminal.routes.ts": 2
   },
