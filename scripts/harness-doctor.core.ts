@@ -123,6 +123,11 @@ const REQUIRED_LEFTHOOK_JOBS: readonly string[] = [
   "typecheck",
   "axiom-debt",
   "unit",
+  // The glossary's `_Avoid_` lists. A vocabulary is the one axiom that decays
+  // silently — nothing breaks when a retired word creeps back, it just stops
+  // being true that the words mean one thing. Listed here for the same reason
+  // every other job is: deleting it has to be a visible act.
+  "vocabulary",
 ]
 
 const REQUIRED_SCRIPTS: readonly string[] = [
@@ -137,6 +142,7 @@ const REQUIRED_SCRIPTS: readonly string[] = [
   "build:cli",
   "audit",
   "doctor",
+  "vocabulary",
   "axiom-debt",
   "axiom-debt:update",
   "scaffold:slice",
@@ -166,6 +172,10 @@ const COMPOSED_GATES: readonly { readonly script: string; readonly needle: strin
   { script: "test", needle: "check-colocated-tests.ts" },
   { script: "test", needle: "check-harness.ts" },
   { script: "test", needle: "test:shared" },
+  // Staged-file scope in the pre-commit job is not enough on its own: a rename
+  // or a `--no-verify` lands text no hook ever saw. The sweep inside `test` is
+  // what makes the clean baseline mean something.
+  { script: "test", needle: "vocabulary" },
   { script: "verify", needle: "lint:ci" },
   { script: "verify", needle: "typecheck" },
   { script: "verify", needle: "test" },
