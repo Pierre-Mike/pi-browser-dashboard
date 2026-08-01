@@ -133,13 +133,14 @@ const healthy = (): HarnessSnapshot => ({
     "name: typecheck",
     "name: axiom-debt",
     "name: unit",
+    "name: vocabulary",
   ].join("\n"),
   packageJson: JSON.stringify({
     scripts: {
       lint: "biome check --write .",
       "lint:ci": "biome ci .",
       typecheck: "bun run scripts/typecheck.ts",
-      test: "bun run scripts/check-colocated-tests.ts && bun run scripts/check-harness.ts && bun run test:shared && bun run test:evals",
+      test: "bun run scripts/check-colocated-tests.ts && bun run scripts/check-harness.ts && bun run vocabulary && bun run test:shared && bun run test:evals",
       "test:web": "cd apps/web && bun test",
       "test:cli": "cd apps/cli && bun test",
       "test:shared": "cd shared && bun test",
@@ -147,6 +148,7 @@ const healthy = (): HarnessSnapshot => ({
       "build:cli": "bun run build:web:cli && cd apps/cli && bun run build",
       audit: "fallow audit",
       doctor: "bun run scripts/check-harness.ts",
+      vocabulary: "bun run scripts/check-vocabulary.ts --all",
       "axiom-debt": "bun run scripts/check-axiom-debt.ts",
       "axiom-debt:update": "bun run scripts/check-axiom-debt.ts --update",
       "scaffold:slice": "bun run scripts/scaffold-slice.ts",
@@ -305,6 +307,21 @@ describe("auditHarness", () => {
   it("catches a deleted lefthook job", () => {
     const snap = { ...healthy(), lefthook: healthy().lefthook.replace("name: axiom-debt", "") }
     expect(checksFor(snap)).toContain("lefthook")
+  })
+
+  // A vocabulary decays quietly: nothing breaks when a retired word creeps
+  // back, so nothing surfaces it either. Both halves are asserted — the
+  // pre-commit job that catches a word as it is typed, and the full sweep in
+  // `test` that catches one arriving past the hook (a rename, `--no-verify`).
+  it("catches a deleted vocabulary hook", () => {
+    const snap = { ...healthy(), lefthook: healthy().lefthook.replace("name: vocabulary", "") }
+    expect(checksFor(snap)).toContain("lefthook")
+  })
+
+  it("catches the vocabulary sweep dropping out of the test script", () => {
+    const pkg = JSON.parse(healthy().packageJson) as { scripts: Record<string, string> }
+    pkg.scripts.test = pkg.scripts.test?.replace(" && bun run vocabulary", "") ?? ""
+    expect(checksFor({ ...healthy(), packageJson: JSON.stringify(pkg) })).toContain("scripts")
   })
 
   it("catches a gate that is no longer composed into the test script", () => {

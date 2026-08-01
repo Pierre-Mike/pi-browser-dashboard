@@ -20,6 +20,11 @@ pre-commit:
     # Bypass: SKIP_TDD=1 git commit …
     - name: tdd-gate
       run: ./scripts/check-tests-touched.sh
+    # The `_Avoid_` lists in every `## Domain` section. Staged-file scope here;
+    # `bun run test` sweeps the whole tree, so a rename cannot smuggle one past.
+    - name: vocabulary
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,md,mdx,sh,json,jsonc,yml,yaml}"
+      run: bun run scripts/check-vocabulary.ts --staged {staged_files}
 
 commit-msg:
   jobs:
