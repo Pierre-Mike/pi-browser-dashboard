@@ -69,8 +69,9 @@ vocabulary, though the raw send path still carries any byte.
 
 **`pid`**:
 The agent-facing CLI an agent drives itself. As a bare identifier in code the
-token still means process id (`worker.pid`, `pidAlive`); the CLI is only ever
-the command name. Three neighbours share the prefix and are none of the above:
+token means process id instead (`worker.pid`, `pidAlive`); the CLI is the command
+name or a `pid`-prefixed compound (`pidCommand`, `PID_BIN`), never a bare `pid`.
+Three neighbours share the prefix and are none of the above:
 `pid-dashboard` (the packaged distribution), `<project>/.pid/` (the per-project
 directory) and pid-app.
 
