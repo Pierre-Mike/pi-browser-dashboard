@@ -20,7 +20,6 @@ import "@xyflow/react/dist/style.css"
 import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api } from "../../lib/api"
 import { type Axis, alignNodes, distributeNodes, findFirstMatch } from "./canvasArrange"
-import { briefingMessage, type CanvasFormat } from "./canvasBriefing"
 import { CANVAS_IMPORT_EVENT, type CanvasImportDetail } from "./canvasEmbed"
 import {
   type GroupableNode,
@@ -53,14 +52,14 @@ import { EditableLinkNode } from "./EditableLinkNode"
 import { type SyncStatus, useCanvasSync } from "./useCanvasSync"
 
 // The document this canvas edits: a brainstorm board, i.e. a canvas file in a
-// session's worktree. The board carries its session, so "Brief AI" always
-// works: the agent that edits the file is the session whose tree the file lives
-// in, which is why a write lands where the browser is already looking.
+// session's worktree. Briefing the agent about the board is the *panel's* job
+// (BriefAgentButton, above the editor) rather than this toolbar's, because a
+// board can also be open in the Excalidraw editor and both need the same button
+// — hence no `format` here any more.
 type CanvasDocTarget = {
   readonly short: string
   readonly path: string
   readonly file: string
-  readonly format: CanvasFormat
 }
 
 type Props = { readonly target: CanvasDocTarget }
@@ -160,8 +159,6 @@ const CanvasInner = ({ target }: Props) => {
   )
   const { nodes, edges, status, setNodes, setEdges, resetCanvas, lastUpdatedAt } =
     useCanvasSync(docRef)
-  const [briefing, setBriefing] = useState(false)
-  const [briefStatus, setBriefStatus] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [edgeLabelDraft, setEdgeLabelDraft] = useState("")
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null)
@@ -729,39 +726,6 @@ const CanvasInner = ({ target }: Props) => {
     return normalizeArrow((e?.data as Record<string, unknown> | undefined)?.arrow)
   }, [edges, selectedEdgeId])
 
-  const canvasPath = target.file
-
-  // A `.canvas` board is Obsidian JSON Canvas on disk; a legacy `.canvas.json`
-  // one is the React-Flow encoding. The briefing has to name the right one or
-  // the agent writes a file the editor cannot decode.
-  const canvasFormat: CanvasFormat = target.format
-
-  const onBriefAi = useCallback(async () => {
-    if (briefing) return
-    setBriefing(true)
-    setBriefStatus("briefing AI…")
-    try {
-      // biome-ignore lint/suspicious/noExplicitAny: hc client typing depends on daemon AppType resolution
-      const client = api as any
-      const keys = `${briefingMessage({ path: canvasPath, format: canvasFormat })}\r`
-      const res = await client.sessions[":id"].send.$post({
-        param: { id: short },
-        json: { keys },
-      })
-      if (!res.ok) {
-        setBriefStatus(`failed: HTTP ${res.status}`)
-        return
-      }
-      qc.invalidateQueries({ queryKey: ["transcript", short] })
-      setBriefStatus("AI briefed — check the chat tab")
-    } catch (err) {
-      setBriefStatus(`failed: ${err instanceof Error ? err.message : "unknown"}`)
-    } finally {
-      setBriefing(false)
-      setTimeout(() => setBriefStatus(null), 4_000)
-    }
-  }, [briefing, canvasFormat, canvasPath, qc, short])
-
   const badge = statusBadge[status]
 
   return (
@@ -1036,19 +1000,6 @@ const CanvasInner = ({ target }: Props) => {
           className="hidden"
           data-testid="canvas-import-input"
         />
-        {/* Available for a board too, not just the scratch canvas: the board
-            lives in this session's own worktree, so the session it briefs is
-            the one whose writes land where the browser is looking. */}
-        <button
-          type="button"
-          data-testid="canvas-brief-ai"
-          onClick={() => void onBriefAi()}
-          disabled={briefing}
-          className="rounded-btn border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 hover:bg-primary/20 disabled:opacity-40"
-          title="Send the AI a message telling it where to find this drawing so it can read/write live"
-        >
-          {briefing ? "Briefing…" : "Brief AI"}
-        </button>
         <button
           type="button"
           data-testid="canvas-reset"
@@ -1067,14 +1018,6 @@ const CanvasInner = ({ target }: Props) => {
         {lastUpdatedAt ? (
           <span className="text-[10px] text-base-content/60" title={`Last sync: ${lastUpdatedAt}`}>
             synced
-          </span>
-        ) : null}
-        {briefStatus ? (
-          <span
-            data-testid="canvas-brief-status"
-            className="text-[10px] text-base-content/80 ml-auto"
-          >
-            {briefStatus}
           </span>
         ) : null}
         <span className="text-[10px] text-base-content/60 ml-auto">

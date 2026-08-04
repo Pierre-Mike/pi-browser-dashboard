@@ -1082,11 +1082,18 @@ the slice's room door for both).
 **Why the session and not the project.** The boards live in the tree the session
 already owns, so when its agent writes the file the browser is looking at, the
 write lands. The project-scoped version asked a session to write *outside* its
-own worktree — which is the edit that used to go missing. The drill-in's
-Brainstorm tab therefore docks the board beside that session's own terminal, and
-"Brief AI" hands the agent the board's absolute path plus the format it must
-write (`canvasBriefing.ts` — naming the wrong shape produces a file the editor
-then refuses to decode).
+own worktree — which is the edit that used to go missing. The drill-in docks the
+board beside that session's own terminal, and "Brief AI" hands the agent the
+board's absolute path plus the format it must write (`canvasBriefing.ts` — naming
+the wrong shape produces a file the editor then refuses to decode).
+
+**The board no longer carries a terminal of its own.** It used to: the panel
+beside the editor was a second attach to the very same pty, added purely so the
+user had somewhere to type that briefing. Now that the drill-in mounts the
+terminal permanently to the left of every section (see "The drill-in is a split"),
+that panel was the same shell rendered twice, competing for the same width — so it
+is gone and only its button survives, in `features/brainstorms/BriefAgentButton`.
+The button covers all three board kinds, `briefFormatFor` picking the shape.
 
 **Brainstorm is the only drawing section.** The drill-in used to dock a *Canvas*
 tab as well, editing one scratch file per job dir
@@ -2151,7 +2158,7 @@ apps/web/src/
 ├── routes/                  # TanStack Router (file-based)
 │   ├── __root.tsx           # shell: dispatch bar + <Outlet/>
 │   ├── index.tsx            # grid of session cards
-│   └── sessions.$id.tsx     # drill-in: full transcript
+│   └── sessions.$id.tsx     # drill-in: terminal + one docked side pane
 ├── features/
 │   ├── sessions/            # Card, Grid, hooks
 │   ├── dispatch/            # DispatchBar
@@ -2185,6 +2192,45 @@ EventSource(/events) ──> sse.ts ──> queryClient.setQueryData
   casting `.json()`; `fleetFormat.ts` holds the plan/run-rollup/tone helpers.
   `sse.ts`'s `fleet.run` listener keeps `useFleetRuns`' cache fresh the same
   way `terminal.state` keeps `useTerminalState` fresh.
+
+### The drill-in is a split, not a set of tabs
+
+`sessions.$id.tsx` → `SessionSplit` renders **the terminal, always**, in a fixed
+position in the tree, with at most one section docked to its right on a
+draggable splitter (`lib/panelResize.ts` + `PanelResizeHandle`, width persisted
+per-browser under `pid:session:pane-width`).
+
+The terminal being unconditional is the whole design, and it is a *correctness*
+property rather than a preference: every section used to be a tab that **replaced**
+the terminal, so opening the file tree unmounted xterm, dropped the websocket
+attach, and cost a reconnect plus the visible scrollback on the way back.
+`session-split.spec.ts` pins it by stamping a property on the live xterm host,
+toggling panes, and asserting the property survives — a remount would lose it.
+
+`sessionTabs.ts` owns the vocabulary, and all of it is pure:
+
+- `SESSION_TAB_DOCK` lists only what can fill the **right pane** — `brainstorm`,
+  `files`. There is no `terminal` tab; a Terminal button would imply the terminal
+  can be switched away from.
+- `TERMINAL_ONLY_TAB` (`"terminal"`) is routable but not dockable, so the many
+  links minted before the split still resolve — and to what they always showed.
+- `sessionPaneFor(tab)` resolves a raw `?tab=` (which may be
+  `brainstorm:<encoded path>`) to a pane or `null`. Total: an unknown value opens
+  **no** pane rather than an empty bordered box beside the terminal.
+- `toggleSessionTab({ tab, key })` is what a dock click lands on — clicking the
+  lit section returns `TERMINAL_ONLY_TAB`. The dock is the only way back to a
+  full-width terminal, so it has to be the same button that opened the pane.
+
+**Chat is deleted, not hidden.** The drill-in used to dock a Chat tab rendering
+the transcript JSONL above a `ChatComposer`. Beside a live pty that is the same
+conversation twice, and the composer duplicated the terminal's own input line, so
+the tab, `TranscriptView` and `ChatMarkdown` are gone. What stays is everything
+with a second reader: the daemon's `/sessions/:id/transcript` route,
+`features/transcripts/{loadTranscript,pairTranscript,flattenContent}` and
+`ChatComposer` itself — all still used by `SessionReplyModal`, the quick-reply
+surface reached from a card or the sidebar. A file drop on the drill-in now types
+the path into the session's terminal (`TerminalView` already subscribed to
+`dropEvents`) instead of into a composer that is no longer there.
 
 ## Decisions
 

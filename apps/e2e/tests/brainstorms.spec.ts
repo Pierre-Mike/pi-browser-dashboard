@@ -62,11 +62,13 @@ test("brainstorm: a .canvas anywhere in the worktree lists in the rail and binds
   // .canvas codec decoded, not just that a socket opened.
   await expect(page.getByText("seeded idea")).toBeVisible({ timeout: 15_000 })
 
-  // This session's own terminal is docked beside the board, and "Brief AI" works
-  // here now: the board lives in this session's tree, so its writes land in the
-  // file on screen.
-  await expect(page.getByTestId("brainstorm-companion")).toBeVisible()
-  await expect(page.getByTestId("canvas-brief-ai")).toBeVisible()
+  // The board no longer docks a terminal of its own — the drill-in's permanent
+  // one sits to the LEFT of the whole pane. What the board keeps is the button
+  // that briefs that session: the file lives in its tree, so its writes land in
+  // the file on screen.
+  await expect(page.getByTestId("brainstorm-companion")).toHaveCount(0)
+  await expect(page.getByTestId("session-terminal-pane")).toBeVisible()
+  await expect(page.getByTestId("brainstorm-brief-ai")).toBeVisible()
   await expect(page.getByTestId("brainstorm-board-file")).toHaveText("docs/arch.canvas")
 })
 
@@ -118,16 +120,18 @@ test("brainstorm: the + button creates a board under brainstorms/ and switches t
   await expect(page.getByTestId("canvas-status")).toHaveText("live", { timeout: 15_000 })
 })
 
-test("brainstorm: the session panel beside the board is resizable", async ({ page }) => {
+test("brainstorm: the pane docked beside the terminal is resizable", async ({ page }) => {
   const { short } = await seedBoard({
     project: "brainstorm-resize",
     path: "docs/arch.canvas",
     body: seededCanvas,
   })
   await page.goto(`/sessions/${short}?tab=brainstorm`)
-  const panel = page.getByTestId("brainstorm-companion")
+  // One splitter now, on the drill-in's side pane, so it sizes Brainstorm and
+  // Files alike instead of each section shipping its own handle.
+  const panel = page.getByTestId("session-side-pane")
   await expect(panel).toBeVisible({ timeout: 15_000 })
-  const handle = page.getByTestId("brainstorm-companion-resize")
+  const handle = page.getByTestId("session-side-pane-resize")
   await expect(handle).toBeVisible()
 
   const widthOf = () => panel.evaluate((el) => el.getBoundingClientRect().width)
@@ -145,7 +149,7 @@ test("brainstorm: the session panel beside the board is resizable", async ({ pag
   await expect.poll(widthOf).toBeLessThan(widened)
 
   await handle.dblclick()
-  await expect.poll(widthOf).toBe(384)
+  await expect.poll(widthOf).toBe(720)
 })
 
 test("daemon brainstorm routes: list every format, create under brainstorms/, refuse traversal", async ({

@@ -9,14 +9,21 @@ import { join } from "node:path"
 const src = readFileSync(join(import.meta.dir, "sessions.$id.tsx"), "utf8")
 
 describe("session drill-in route", () => {
-  it("composes one topbar and one panel — no second row of chrome", () => {
+  it("composes one topbar and one split shell — no second row of chrome", () => {
     // It used to inline a <header> (title, badge, actions) plus a bordered tab
     // strip underneath: two rows where the project page spends one, and every
-    // terminal / chat pane paid for the second row in height.
+    // terminal pane paid for the second row in height.
     expect(src).toContain("<SessionTopbar")
-    expect(src).toContain("<SessionPanel")
+    expect(src).toContain("<SessionSplit")
     expect(src).not.toContain("<header")
     expect(src).not.toContain("border-b-2 -mb-px")
+  })
+
+  it("routes a dock click through the pure toggle so the lit section closes the pane", () => {
+    // Clicking the active tab is the only way back to a full-width terminal, so
+    // the rule lives in sessionTabs.ts and is unit-tested there rather than
+    // being re-implemented in this handler.
+    expect(src).toContain("toggleSessionTab")
   })
 
   it("sizes the page as a viewport-tall flex column, like the project dashboard", () => {
@@ -43,8 +50,11 @@ describe("session drill-in route", () => {
     expect(src).toContain("prefixes: [BOARD_TAB_PREFIX]")
   })
 
-  it("keeps Terminal as the tab a bare /sessions/:id opens on", () => {
-    expect(src).toContain('const { tab = "terminal" }')
+  it("opens a bare /sessions/:id on the terminal alone, with no side pane", () => {
+    // The terminal is the surface, so the default is "nothing docked beside it"
+    // rather than a section chosen for the user.
+    expect(src).toContain("TERMINAL_ONLY_TAB")
+    expect(src).not.toContain('const { tab = "terminal" }')
   })
 
   it("delegates the action state to the shared hook rather than owning it", () => {

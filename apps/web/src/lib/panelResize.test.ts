@@ -19,6 +19,16 @@ describe("clampPanelWidth", () => {
     expect(clampPanelWidth(10)).toBe(PANEL_MIN_WIDTH)
     expect(clampPanelWidth(9999)).toBe(PANEL_MAX_WIDTH)
   })
+
+  it("opens wide enough for a drawing board and stays inside the bounds", () => {
+    // The pane's only consumer is now the drill-in's right column, which hosts
+    // Brainstorm — an Excalidraw board was unusable at the old 720px ceiling,
+    // and 384px (the width this default inherited from a companion terminal
+    // strip) is too narrow to open one on.
+    expect(PANEL_MAX_WIDTH).toBeGreaterThanOrEqual(1200)
+    expect(PANEL_DEFAULT_WIDTH).toBeGreaterThan(PANEL_MIN_WIDTH)
+    expect(PANEL_DEFAULT_WIDTH).toBeLessThan(PANEL_MAX_WIDTH)
+  })
 })
 
 describe("widthFromDrag", () => {

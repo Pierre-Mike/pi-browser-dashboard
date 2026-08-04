@@ -4,27 +4,25 @@ import {
   isSessionTabActive,
   SESSION_TAB_DOCK,
   SESSION_TABS,
-  sessionSectionFor,
+  sessionPaneFor,
+  TERMINAL_ONLY_TAB,
+  toggleSessionTab,
 } from "./sessionTabs"
 
 describe("session tab dock", () => {
-  it("leads with Terminal, the drill-in's default tab", () => {
-    // Same Terminal-leading shape as the project dashboard's dock, so the two
-    // surfaces open on the same section.
-    expect(SESSION_TAB_DOCK[0]).toEqual({ key: "terminal", label: "Terminal" })
+  it("docks only the side-pane sections — the terminal is always on, so it is not a tab", () => {
+    // The drill-in is a split: terminal permanently left, ONE optional section
+    // docked right. A "Terminal" tab would imply the terminal can be switched
+    // away from, which is exactly what this layout removed.
+    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual(["brainstorm", "files"])
+    expect(SESSION_TAB_DOCK.map((t) => t.label)).toEqual(["Brainstorm", "Files"])
   })
 
-  it("docks exactly the four drill-in sections, title-cased", () => {
-    // Brainstorm is the only drawing section: a board is a canvas file in this
-    // session's own worktree, which is where the retired Canvas tab's scratch
-    // drawing wanted to be anyway.
-    expect(SESSION_TAB_DOCK.map((t) => t.key)).toEqual(["terminal", "chat", "brainstorm", "files"])
-    expect(SESSION_TAB_DOCK.map((t) => t.label)).toEqual([
-      "Terminal",
-      "Chat",
-      "Brainstorm",
-      "Files",
-    ])
+  it("docks no Chat section", () => {
+    // Chat is gone: the terminal IS the conversation now, and a transcript pane
+    // beside a live pty showed the same turns twice.
+    expect(SESSION_TAB_DOCK.map((t) => t.key)).not.toContain("chat")
+    expect(SESSION_TABS).not.toContain("chat" as never)
   })
 
   it("docks no Canvas section", () => {
@@ -32,37 +30,76 @@ describe("session tab dock", () => {
     expect(SESSION_TABS).not.toContain("canvas" as never)
   })
 
-  it("derives the ?tab= whitelist from the dock so no section is dockable-but-unroutable", () => {
-    expect([...SESSION_TABS].sort()).toEqual([...SESSION_TAB_DOCK.map((t) => t.key)].sort())
+  it("keeps ?tab=terminal routable so old deep links land on a closed pane", () => {
+    // Not dockable, but still a legal `?tab=` value: every link minted before
+    // the split existed says `?tab=terminal`, and it now means "terminal only".
+    expect(TERMINAL_ONLY_TAB).toBe("terminal")
+    expect(SESSION_TABS).toContain("terminal")
+    expect([...SESSION_TABS]).toEqual(["terminal", "brainstorm", "files"])
   })
 
   it("has a shared section glyph for every docked tab", () => {
-    // A missing glyph would render a label with no icon, breaking the dock's
-    // icon+label rhythm on this surface only.
     for (const t of SESSION_TAB_DOCK) expect(TAB_ICONS[t.key]).toBeTruthy()
+  })
+})
+
+describe("sessionPaneFor", () => {
+  it("opens no side pane for the terminal-only tab", () => {
+    expect(sessionPaneFor("terminal")).toBeNull()
+  })
+
+  it("resolves a docked section to its own pane", () => {
+    expect(sessionPaneFor("files")).toBe("files")
+    expect(sessionPaneFor("brainstorm")).toBe("brainstorm")
+  })
+
+  it("resolves a board tab to the Brainstorm pane", () => {
+    expect(sessionPaneFor("brainstorm:docs%2Fa.canvas")).toBe("brainstorm")
+  })
+
+  it("is total — an unknown tab opens no pane rather than a blank one", () => {
+    // validateSearch already whitelists, so this is the belt to that braces:
+    // a stale link must never render an empty right pane over the terminal.
+    expect(sessionPaneFor("chat")).toBeNull()
+    expect(sessionPaneFor("")).toBeNull()
+  })
+})
+
+describe("toggleSessionTab", () => {
+  it("opens the pane on the section a dock click names", () => {
+    expect(toggleSessionTab({ tab: "terminal", key: "files" })).toBe("files")
+    expect(toggleSessionTab({ tab: "files", key: "brainstorm" })).toBe("brainstorm")
+  })
+
+  it("closes the pane when the lit section is clicked again", () => {
+    // The dock is how you get the terminal full-width back; without this the
+    // pane would be a one-way door.
+    expect(toggleSessionTab({ tab: "files", key: "files" })).toBe("terminal")
+    expect(toggleSessionTab({ tab: "brainstorm", key: "brainstorm" })).toBe("terminal")
+  })
+
+  it("closes the pane from a selected board too, not just the bare section", () => {
+    expect(toggleSessionTab({ tab: "brainstorm:docs%2Fa.canvas", key: "brainstorm" })).toBe(
+      "terminal",
+    )
   })
 })
 
 describe("isSessionTabActive", () => {
   it("lights the exact section a plain tab names", () => {
-    expect(isSessionTabActive({ tab: "terminal", key: "terminal" })).toBe(true)
+    expect(isSessionTabActive({ tab: "files", key: "files" })).toBe(true)
     expect(isSessionTabActive({ tab: "terminal", key: "files" })).toBe(false)
   })
 
   it("keeps Brainstorm lit while one of its boards is selected", () => {
     const tab = "brainstorm:brainstorms%2Fauth.canvas"
     expect(isSessionTabActive({ tab, key: "brainstorm" })).toBe(true)
-    expect(isSessionTabActive({ tab, key: "terminal" })).toBe(false)
-  })
-})
-
-describe("sessionSectionFor", () => {
-  it("resolves a board tab to the Brainstorm section", () => {
-    expect(sessionSectionFor("brainstorm:docs%2Fa.canvas")).toBe("brainstorm")
-    expect(sessionSectionFor("brainstorm")).toBe("brainstorm")
+    expect(isSessionTabActive({ tab, key: "files" })).toBe(false)
   })
 
-  it("passes a plain section through", () => {
-    expect(sessionSectionFor("files")).toBe("files")
+  it("lights nothing on the terminal-only tab", () => {
+    for (const t of SESSION_TAB_DOCK) {
+      expect(isSessionTabActive({ tab: TERMINAL_ONLY_TAB, key: t.key })).toBe(false)
+    }
   })
 })

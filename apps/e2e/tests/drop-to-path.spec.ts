@@ -23,6 +23,22 @@ const dropFile = async (
   await page.dispatchEvent("html", "drop", { dataTransfer })
 }
 
+// Drop one file and return the absolute path the daemon stored it at. Every test
+// below needs that same round-trip, and spelling it out at each call site is
+// what tripped the duplication gate.
+const dropAndPath = async (
+  page: Page,
+  payload: { readonly name: string; readonly contents: string; readonly type?: string },
+): Promise<string> => {
+  const uploadResp = page.waitForResponse(
+    (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
+    { timeout: 15_000 },
+  )
+  await dropFile(page, payload)
+  const { path } = (await (await uploadResp).json()) as { path: string }
+  return path
+}
+
 test("drop a file on the dashboard: daemon writes it to disk and returns the path", async ({
   page,
 }) => {
@@ -31,18 +47,12 @@ test("drop a file on the dashboard: daemon writes it to disk and returns the pat
 
   await page.goto("/")
 
-  const uploadResp = page.waitForResponse(
-    (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
-    { timeout: 15_000 },
-  )
-  await dropFile(page, { name: "drop-probe.txt", contents: "hello drop" })
-  const resp = await uploadResp
-  const body = (await resp.json()) as { path: string }
+  const path = await dropAndPath(page, { name: "drop-probe.txt", contents: "hello drop" })
 
-  expect(body.path).toMatch(/pid-uploads\/\d{4}-\d{2}-\d{2}\/.+-drop-probe\.txt$/)
-  expect(body.path.startsWith(sandbox)).toBe(true)
-  expect(existsSync(body.path)).toBe(true)
-  expect(readFileSync(body.path, "utf8")).toBe("hello drop")
+  expect(path).toMatch(/pid-uploads\/\d{4}-\d{2}-\d{2}\/.+-drop-probe\.txt$/)
+  expect(path.startsWith(sandbox)).toBe(true)
+  expect(existsSync(path)).toBe(true)
+  expect(readFileSync(path, "utf8")).toBe("hello drop")
 
   // Toast surface confirms user-visible feedback fired.
   await expect(page.locator('[data-testid="dropzone-toasts"]')).toContainText("Uploaded")
@@ -64,18 +74,13 @@ test("drop while spawn modal is open: absolute path is appended into the intent 
   const textarea = page.getByPlaceholder("What should this session do?")
   await textarea.fill("review this")
 
-  const uploadResp = page.waitForResponse(
-    (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
-    { timeout: 15_000 },
-  )
-  await dropFile(page, { name: "spec.md", contents: "# spec" })
-  const { path } = (await (await uploadResp).json()) as { path: string }
+  const path = await dropAndPath(page, { name: "spec.md", contents: "# spec" })
 
   // appendPath: existing content + space + absolute path.
   await expect(textarea).toHaveValue(`review this ${path}`)
 })
 
-test("drop while a session is open: absolute path is appended into the ChatComposer textarea", async ({
+test("drop while the reply modal is open: absolute path is appended into the ChatComposer textarea", async ({
   page,
 }) => {
   await page.goto("/")
@@ -83,21 +88,22 @@ test("drop while a session is open: absolute path is appended into the ChatCompo
   try {
     await waitForCard({ page, short, timeout: 20_000 })
     await waitForSettled({ page, short })
-    await page.goto(`/sessions/${short}`)
 
-    // Session view defaults to the Terminal tab; the ChatComposer lives behind
-    // the Chat tab. Click it to mount the textarea before dropping.
-    await page.getByTestId("tab-chat").click()
-    const composer = page.getByTestId("chat-textarea")
+    // This used to drop onto the drill-in's Chat tab. Chat is gone — the
+    // terminal is the conversation now — so the assertion follows ChatComposer
+    // to the one surface that still mounts it: the sidebar's quick-reply modal.
+    // The drill-in's own drop path (straight into the pty) is the same
+    // TerminalView subscription the global-terminal test below already covers,
+    // so re-asserting it here would only buy a second pty attach.
+    const row = page.locator(`[data-testid="sidebar-session"][data-short="${short}"]`)
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    await row.click()
+
+    const composer = page.getByTestId("session-reply-modal").getByTestId("chat-textarea")
     await expect(composer).toBeVisible({ timeout: 10_000 })
     await composer.fill("look at")
 
-    const uploadResp = page.waitForResponse(
-      (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
-      { timeout: 15_000 },
-    )
-    await dropFile(page, { name: "context.md", contents: "# context" })
-    const { path } = (await (await uploadResp).json()) as { path: string }
+    const path = await dropAndPath(page, { name: "context.md", contents: "# context" })
 
     await expect(composer).toHaveValue(`look at ${path}`)
   } finally {
@@ -128,12 +134,7 @@ test("drop while the global terminal is active: path is sent over the pty WebSoc
   await expect(page.getByTestId("global-terminal")).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("global-terminal")).toContainText("open", { timeout: 20_000 })
 
-  const uploadResp = page.waitForResponse(
-    (r) => r.url().endsWith("/uploads") && r.request().method() === "POST" && r.ok(),
-    { timeout: 15_000 },
-  )
-  await dropFile(page, { name: "term-target.md", contents: "# t" })
-  const { path } = (await (await uploadResp).json()) as { path: string }
+  const path = await dropAndPath(page, { name: "term-target.md", contents: "# t" })
 
   await expect.poll(() => ptyFrames.some((f) => f.includes(path)), { timeout: 10_000 }).toBeTruthy()
 })

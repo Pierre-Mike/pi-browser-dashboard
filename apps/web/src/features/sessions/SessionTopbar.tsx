@@ -3,7 +3,7 @@ import { stateColor } from "../../lib/format"
 import { TAB_ICONS, tabButtonClass, tabDockNavClass } from "../../lib/tabDock"
 import type { SessionState } from "../../lib/types"
 import { sessionIdentity } from "./sessionIdentity"
-import { isSessionTabActive, SESSION_TAB_DOCK, type SessionTab } from "./sessionTabs"
+import { isSessionTabActive, SESSION_TAB_DOCK, type SessionPane } from "./sessionTabs"
 import { NavChromeChips } from "./sidebarRail"
 import type { SessionActions } from "./useSessionActions"
 
@@ -51,7 +51,9 @@ const SessionIdentity = ({
   session ? <ResolvedIdentity session={session} /> : <PendingIdentity fallbackId={fallbackId} />
 
 // The drill-in's section dock — the same shared classes the root dashboard and
-// the project page use, so all three navs read as one system.
+// the project page use, so all three navs read as one system. Here the buttons
+// are *toggles* for the pane docked beside the permanent terminal, so the lit
+// one closes it; there is no Terminal button, because the terminal never leaves.
 const SessionTabDock = ({
   tab,
   onSelect,
@@ -59,13 +61,13 @@ const SessionTabDock = ({
   // Not narrowed to SessionTab: a selected board arrives as
   // `brainstorm:<path>`, and its parent section still has to read as active.
   readonly tab: string
-  readonly onSelect: (next: SessionTab) => void
+  readonly onSelect: (next: SessionPane) => void
 }) => (
   <nav
     data-testid="session-tabs"
     role="tablist"
     aria-label="Session sections"
-    className={`${tabDockNavClass} flex-1 min-w-0`}
+    className={`${tabDockNavClass} shrink min-w-0`}
   >
     {SESSION_TAB_DOCK.map((t) => {
       const active = isSessionTabActive({ tab, key: t.key })
@@ -78,6 +80,11 @@ const SessionTabDock = ({
           data-testid={`tab-${t.key}`}
           data-active={active}
           onClick={() => onSelect(t.key)}
+          title={
+            active
+              ? `Close ${t.label} — terminal full width`
+              : `Open ${t.label} beside the terminal`
+          }
           className={tabButtonClass(active)}
         >
           {TAB_ICONS[t.key]}
@@ -116,7 +123,7 @@ const DELETE_BTN_IDLE = "border-error/40 bg-error/15 text-error hover:bg-error/2
 const SessionActionButtons = ({ actions }: { readonly actions: SessionActions }) => {
   const { flags, on } = actions
   return (
-    <div className="flex items-center gap-1 shrink-0">
+    <div className="flex items-center gap-1 shrink-0 ml-auto">
       <button type="button" onClick={on.copy} className="btn btn-xs btn-ghost normal-case">
         <BusyLabel busy={flags.copied} label="Open in CLI ↗" busyLabel="Copied" />
       </button>
@@ -174,7 +181,7 @@ export const SessionTopbar = ({
   readonly fallbackId: string
   // The raw `?tab=` value, which may name a board inside a section.
   readonly tab: string
-  readonly onSelectTab: (next: SessionTab) => void
+  readonly onSelectTab: (next: SessionPane) => void
   readonly actions: SessionActions
 }) => (
   <div data-testid="session-topbar" className="flex items-center gap-2">

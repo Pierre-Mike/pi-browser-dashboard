@@ -30,6 +30,16 @@ describe("session topbar", () => {
     expect(src).not.toContain("border-b-2 -mb-px")
   })
 
+  it("sizes the dock to its tabs instead of stretching an empty bar across the row", () => {
+    // With four tabs `flex-1` filled the slack. With Terminal (now the surface,
+    // not a tab) and Chat (deleted) gone, two tabs left a wide empty bordered
+    // box that read as an input field, so the dock hugs its content and the
+    // action buttons take the slack instead.
+    expect(src).toContain("shrink min-w-0")
+    expect(src).not.toContain("flex-1 min-w-0")
+    expect(src).toContain("shrink-0 ml-auto")
+  })
+
   it("keeps every session tab reachable under its established testid", () => {
     // e2e specs (terminal-fit, chat-fullwidth, brainstorms, drill-in) click
     // these — moving to the dock must not rename them.
