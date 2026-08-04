@@ -14,11 +14,17 @@ type Props = {
   readonly onSelectTab: (next: string) => void
 }
 
+// The sentence lives in ONE child of the flex box. Inline in the flex container
+// itself, each text run and each <span> becomes its own flex ITEM, so the copy
+// laid out as evenly-spaced columns rather than a wrapped sentence — invisible
+// while this panel was page-wide, obvious now that it is a side pane.
 const EmptyState = () => (
-  <div className="flex flex-1 items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200/40 p-8 text-center text-sm text-base-content/60">
-    No boards in this worktree — click <span className="font-medium text-base-content/80">+</span>{" "}
-    for a drawing board, or drop a <span className="font-mono text-base-content/80">.canvas</span>{" "}
-    file anywhere in the tree.
+  <div className="flex flex-1 items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200/40 p-8">
+    <p className="text-center text-sm text-base-content/60">
+      No boards in this worktree — click <span className="font-medium text-base-content/80">+</span>{" "}
+      for a drawing board, or drop a <span className="font-mono text-base-content/80">.canvas</span>{" "}
+      file anywhere in the tree.
+    </p>
   </div>
 )
 

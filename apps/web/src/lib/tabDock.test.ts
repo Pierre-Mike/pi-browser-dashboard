@@ -61,7 +61,6 @@ describe("shared tab dock", () => {
       "github",
       "files",
       // The session drill-in docks its own sections here too.
-      "chat",
       "brainstorm",
     ]) {
       expect(TAB_ICONS[key]).toBeTruthy()
@@ -69,10 +68,11 @@ describe("shared tab dock", () => {
   })
 
   it("ships no glyph for a section no dock renders", () => {
-    // The Canvas section is retired (Brainstorm boards replaced it). A glyph
-    // with no dock behind it is dead weight fallow cannot see, because
-    // TAB_ICONS is keyed by string.
+    // Canvas is retired (Brainstorm boards replaced it) and Chat is deleted
+    // outright (the terminal is the conversation). A glyph with no dock behind
+    // it is dead weight fallow cannot see, because TAB_ICONS is keyed by string.
     expect(TAB_ICONS.canvas).toBeUndefined()
+    expect(TAB_ICONS.chat).toBeUndefined()
   })
 
   it("reuses the extensions glyph for extension-contributed tabs", () => {

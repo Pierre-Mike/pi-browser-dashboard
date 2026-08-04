@@ -5,6 +5,7 @@ import {
   boardTabKey,
   brainstormEditorFor,
   brainstormsQueryKey,
+  briefFormatFor,
   selectedBoard,
 } from "./brainstorms"
 
@@ -28,6 +29,16 @@ describe("brainstormEditorFor", () => {
     expect(brainstormEditorFor("canvas")).toBe("canvas")
     expect(brainstormEditorFor("canvasJson")).toBe("canvas")
     expect(brainstormEditorFor("excalidraw")).toBe("excalidraw")
+  })
+})
+
+describe("briefFormatFor", () => {
+  it("maps each on-disk kind to the wire shape its briefing must describe", () => {
+    // Getting this wrong means the agent writes a file the open editor cannot
+    // decode — the exact failure the briefing exists to prevent.
+    expect(briefFormatFor("canvas")).toBe("jsonCanvas")
+    expect(briefFormatFor("canvasJson")).toBe("reactFlow")
+    expect(briefFormatFor("excalidraw")).toBe("excalidraw")
   })
 })
 

@@ -2,6 +2,8 @@
 // query key and the tab-key encoding are unit-testable (repo convention,
 // mirrors pid-apps/pidApps.ts).
 
+import type { CanvasFormat } from "../canvas/canvasBriefing"
+
 // Boards come in three on-disk formats. `canvas` is an Obsidian JSON Canvas
 // file (`*.canvas`), `canvasJson` the legacy React-Flow encoding
 // (`*.canvas.json`) kept readable for boards created before the switch, and
@@ -34,6 +36,17 @@ const EDITOR_BY_KIND: Record<BrainstormKind, BrainstormEditor> = {
 }
 
 export const brainstormEditorFor = (kind: BrainstormKind): BrainstormEditor => EDITOR_BY_KIND[kind]
+
+// Which wire shape a board's briefing has to describe. The two canvas encodings
+// look identical from the outside and Excalidraw's is a third thing entirely, so
+// naming the wrong one makes the agent write a file the open editor cannot decode.
+const BRIEF_FORMAT_BY_KIND: Record<BrainstormKind, CanvasFormat> = {
+  canvas: "jsonCanvas",
+  canvasJson: "reactFlow",
+  excalidraw: "excalidraw",
+}
+
+export const briefFormatFor = (kind: BrainstormKind): CanvasFormat => BRIEF_FORMAT_BY_KIND[kind]
 
 // Session-scoped React Query key: boards for session A never collide with B.
 export const brainstormsQueryKey = (short: string) => ["brainstorms", short] as const

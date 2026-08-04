@@ -25,7 +25,7 @@ test("terminal tab grows to fill its container on first mount", async ({ page })
 
     await openSessionPage(page, short)
 
-    await page.getByTestId("tab-terminal").click()
+    // No tab to click: the drill-in mounts the terminal as its main surface.
     const host = page.getByTestId("terminal-host")
     await expect(host).toBeVisible()
 

@@ -2,9 +2,16 @@ import { decodeSessionState, type SessionState } from "@pid/shared"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { fillViewportClass } from "../features/sessions/navChrome"
-import { SessionPanel } from "../features/sessions/SessionPanel"
+import { SessionSplit } from "../features/sessions/SessionSplit"
 import { SessionTopbar } from "../features/sessions/SessionTopbar"
-import { BOARD_TAB_PREFIX, SESSION_TABS, type SessionTab } from "../features/sessions/sessionTabs"
+import {
+  BOARD_TAB_PREFIX,
+  SESSION_TABS,
+  type SessionPane,
+  type SessionTab,
+  TERMINAL_ONLY_TAB,
+  toggleSessionTab,
+} from "../features/sessions/sessionTabs"
 import { useSessionActions } from "../features/sessions/useSessionActions"
 import { api } from "../lib/api"
 import { resolveSessionView } from "../lib/sessionView"
@@ -57,9 +64,13 @@ function SessionDrillIn() {
   const session = sessionQ.data
   const actions = useSessionActions({ id, session })
 
-  const { tab = "terminal" } = Route.useSearch()
+  // No pane docked beside the terminal until the user asks for one.
+  const { tab = TERMINAL_ONLY_TAB } = Route.useSearch()
   const navigate = Route.useNavigate()
   const setTab = (next: SessionTabParam) => navigate({ search: (prev) => ({ ...prev, tab: next }) })
+  // A dock click toggles: the lit section closes the pane, so the same button
+  // that opened it is how the terminal gets its full width back.
+  const onSelectDockTab = (key: SessionPane) => setTab(toggleSessionTab({ tab, key }))
 
   if (resolveSessionView({ isLoading: sessionQ.isLoading, data: session }) === "not-found") {
     return <SessionNotFound id={id} />
@@ -71,7 +82,7 @@ function SessionDrillIn() {
         session={session}
         fallbackId={id}
         tab={tab}
-        onSelectTab={setTab}
+        onSelectTab={onSelectDockTab}
         actions={actions}
       />
 
@@ -84,7 +95,7 @@ function SessionDrillIn() {
         </div>
       ) : null}
 
-      <SessionPanel
+      <SessionSplit
         tab={tab}
         id={id}
         session={session}

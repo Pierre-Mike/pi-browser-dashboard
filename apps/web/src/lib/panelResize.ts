@@ -6,10 +6,18 @@ import { useCallback, useEffect, useRef, useState } from "react"
 // renderer, and the hook is the thin localStorage-backed shell around it.
 
 export const PANEL_MIN_WIDTH = 280
-export const PANEL_MAX_WIDTH = 720
-// Matches the panel's previous fixed w-[24rem] (384px) so nothing shifts until
-// the user drags.
-export const PANEL_DEFAULT_WIDTH = 384
+// Wide enough to give a drawing board most of a large monitor. The pane's only
+// consumer is the session drill-in's right column, and that column now hosts
+// Brainstorm as well as Files — the old 720px ceiling was sized for a terminal
+// strip beside a board, which is the arrangement the split replaced.
+export const PANEL_MAX_WIDTH = 1200
+// Opens on something usable for either section. Brainstorm sets the floor: it
+// spends ~192px of the pane on its board rail before the editor starts, so a
+// narrower default opens an Excalidraw canvas too small to draw on — while still
+// leaving the terminal ~55 columns on a 1440px viewport. The width persists
+// per-browser from the first drag, so this only has to be a good first
+// impression, not everyone's answer.
+export const PANEL_DEFAULT_WIDTH = 720
 
 /** Snap a raw width into [PANEL_MIN_WIDTH, PANEL_MAX_WIDTH] and to a whole pixel. */
 export const clampPanelWidth = (px: number): number =>

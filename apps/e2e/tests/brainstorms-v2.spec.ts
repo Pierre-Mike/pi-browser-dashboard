@@ -65,16 +65,22 @@ test("excalidraw board: lists in the boards rail and binds the live Excalidraw e
   // Excalidraw itself mounted (it renders its own .excalidraw root).
   await expect(page.locator(".excalidraw").first()).toBeVisible({ timeout: 15_000 })
 
-  // And this session's terminal is the panel beside it — no companion to spawn.
-  await expect(page.getByTestId("brainstorm-companion")).toBeVisible()
+  // The board docks no terminal of its own: the drill-in's permanent terminal
+  // sits to the LEFT of the whole pane, and the board keeps only the button that
+  // briefs that session about it.
+  await expect(page.getByTestId("brainstorm-companion")).toHaveCount(0)
+  await expect(page.getByTestId("session-terminal-pane")).toBeVisible()
+  await expect(page.getByTestId("brainstorm-brief-ai")).toBeVisible()
 })
 
 // Regression: the board column was a flex item without `min-w-0`, so its
 // automatic minimum size came from Excalidraw's own content instead of the
-// available row width. The editor grew to its intrinsic size, shoved the side
-// panel past the right viewport edge and left the page with a horizontal
-// scrollbar — the panel was only reachable by scrolling sideways.
-test("excalidraw board: the side panel stays on screen beside the editor, with no horizontal overflow", async ({
+// available row width. The editor grew to its intrinsic size, shoved its
+// neighbour past a viewport edge and left the page with a horizontal scrollbar.
+// Under the split the neighbour is the drill-in's terminal, and the direction
+// flipped — the board is docked to the RIGHT of it — so the overflow this guards
+// against would now push the terminal off the left edge.
+test("excalidraw board: the terminal stays on screen beside the editor, with no horizontal overflow", async ({
   page,
 }) => {
   const { short, boardTab } = await seedExcalidrawBoard("excalidraw-layout")
@@ -87,12 +93,12 @@ test("excalidraw board: the side panel stays on screen beside the editor, with n
     const rect = (sel: string) =>
       document.querySelector(sel)?.getBoundingClientRect() ?? new DOMRect()
     const board = rect('[data-testid="excalidraw-board"]')
-    const companion = rect('[data-testid="brainstorm-companion"]')
+    const terminal = rect('[data-testid="session-terminal-pane"]')
     const canvas = rect(".excalidraw .excalidraw__canvas")
     const doc = document.documentElement
     return {
       board: { left: board.left, right: board.right, width: board.width, bottom: board.bottom },
-      companion: { left: companion.left, right: companion.right, width: companion.width },
+      terminal: { left: terminal.left, right: terminal.right, width: terminal.width },
       canvasWidth: canvas.width,
       docScrollWidth: doc.scrollWidth,
       docClientWidth: doc.clientWidth,
@@ -100,34 +106,34 @@ test("excalidraw board: the side panel stays on screen beside the editor, with n
     }
   })
 
-  // The panel is fully inside the viewport at its persisted/default width.
-  expect(m.companion.width).toBeGreaterThan(200)
-  expect(m.companion.right).toBeLessThanOrEqual(m.viewport.width + 1)
-  // …and the page never scrolls sideways to reach it.
+  // The terminal keeps a real column, fully on screen, with the board beside it.
+  expect(m.terminal.width).toBeGreaterThan(200)
+  expect(m.terminal.left).toBeGreaterThanOrEqual(-1)
+  // …and the page never scrolls sideways to reach either one.
   expect(m.docScrollWidth).toBeLessThanOrEqual(m.docClientWidth)
-  // The editor takes the rest of the row and stops where the panel starts.
-  expect(m.board.width).toBeGreaterThan(300)
-  expect(m.board.right).toBeLessThanOrEqual(m.companion.left + 1)
+  // The editor takes the pane it was given and starts after the terminal ends.
+  expect(m.board.width).toBeGreaterThan(250)
+  expect(m.board.left).toBeGreaterThanOrEqual(m.terminal.right - 1)
   // Excalidraw's own canvas fills the column it was given (no clipped editor).
   expect(m.canvasWidth).toBeGreaterThan(m.board.width * 0.9)
   // And the editor reaches the bottom of the viewport rather than overflowing it.
   expect(m.viewport.height - m.board.bottom).toBeLessThan(24)
 
-  // A window narrow enough that the panel's own width no longer fits gives
-  // width back to the panel instead of overflowing the row off-screen.
+  // A window narrow enough that the pane's own width no longer fits gives width
+  // back to the pane instead of overflowing the row off-screen.
   await page.setViewportSize({ width: 820, height: 700 })
   const narrow = await page.evaluate(() => {
     const rect = (sel: string) =>
       document.querySelector(sel)?.getBoundingClientRect() ?? new DOMRect()
     return {
       boardWidth: rect('[data-testid="excalidraw-board"]').width,
-      companionRight: rect('[data-testid="brainstorm-companion"]').right,
+      paneRight: rect('[data-testid="session-side-pane"]').right,
       docScrollWidth: document.documentElement.scrollWidth,
       docClientWidth: document.documentElement.clientWidth,
       viewportWidth: window.innerWidth,
     }
   })
-  expect(narrow.companionRight).toBeLessThanOrEqual(narrow.viewportWidth + 1)
+  expect(narrow.paneRight).toBeLessThanOrEqual(narrow.viewportWidth + 1)
   expect(narrow.docScrollWidth).toBeLessThanOrEqual(narrow.docClientWidth)
   expect(narrow.boardWidth).toBeGreaterThan(0)
 })
