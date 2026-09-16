@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@pid/shared": "workspace:*",
-    "effect": "^3.10.0",
-    "hono": "^4.12.27",
-    "yaml": "^2.9.0"
+    "effect": "^3.22.2",
+    "hono": "^4.13.7",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14"
