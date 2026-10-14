@@ -4,9 +4,19 @@
   "packageManager": "npm",
   "testRunner": "command",
   "commandRunner": { "command": "bun test ./apps/daemon/src ./apps/cli/src ./scripts" },
-  "mutate": ["apps/*/src/**/*.core.ts", "scripts/*.core.ts", "!**/*.test.ts"],
+  "_mutateComment": "theme.core.ts is excluded because scripts/theme-emit.core.test.ts reads its source text for an anchor, and instrumented source no longer has it.",
+  "mutate": [
+    "apps/*/src/**/*.core.ts",
+    "scripts/*.core.ts",
+    "!**/*.test.ts",
+    "!apps/web/src/lib/ui/theme.core.ts"
+  ],
+  "_disableTypeChecksComment": "The default pattern also stamps // @ts-nocheck into committed HTML such as examples/extensions/hello/index.html, which a drift test compares byte for byte. Only touch the files we mutate.",
+  "disableTypeChecks": "{apps/*/src,scripts}/**/*.core.ts",
   "reporters": ["clear-text", "progress"],
   "thresholds": { "high": 80, "low": 60, "break": 50 },
   "tempDirName": ".stryker-tmp",
+  "_inPlaceComment": "Bun workspaces keep deps like effect and @pid/shared in each app's own node_modules. A sandbox copy only links the root one, so every test failed to import. Mutate in place instead.",
+  "inPlace": true,
   "concurrency": 4
 }

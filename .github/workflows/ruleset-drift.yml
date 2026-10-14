@@ -93,8 +93,9 @@ jobs:
         id: compare
         run: |
           set -uo pipefail
-          bun scripts/check-ruleset-drift.ts .github/rulesets/main.json live.json report.md
-          status=$?
+          # The step shell is `bash -e`: a bare exit 1 (drift) would end the
+          # step before the case below could record it.
+          bun scripts/check-ruleset-drift.ts .github/rulesets/main.json live.json report.md && status=0 || status=$?
           case "$status" in
             0) echo "drift=false" >> "$GITHUB_OUTPUT" ;;
             1) echo "drift=true"  >> "$GITHUB_OUTPUT" ;;

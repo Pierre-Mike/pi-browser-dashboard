@@ -72,8 +72,9 @@ jobs:
           NO_COLOR: "1"
         run: |
           set -uo pipefail
-          bun audit --json > advisories.json 2> audit-error.txt
-          json_status=$?
+          # The step shell is `bash -e`: a bare non-zero `bun audit` (which is
+          # what "advisories found" looks like) would end the step right here.
+          bun audit --json > advisories.json 2> audit-error.txt && json_status=0 || json_status=$?
           bun audit > audit.txt 2>&1 || true
 
           if jq -e 'type == "object"' advisories.json > /dev/null 2>&1; then
