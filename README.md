@@ -1,5 +1,11 @@
 # pi-browser-dashboard
 
+> [!NOTE]
+> **Superseded by [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness).**
+> I built this dashboard before dsh existed. dsh now covers the same ground
+> through its plugin system, so I'm moving my workflow there. This repo stays
+> up for reference, but new work happens in dsh.
+
 A browser front-end to Claude Code's `claude agents` background sessions. Same
 supervisor, same worktrees, same auto-cleanup — different surface: a grid of
 cards reachable from any device, with richer permission and artifact
